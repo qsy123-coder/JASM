@@ -786,6 +786,26 @@
   },
   {
     "Keys": [
+      "xuanling",
+      "秧秧玄翎",
+      "秧秧·玄翎",
+      "玄翎"
+    ],
+    "ReleaseDate": "2026-07-10T00:00:00",
+    "Image": "Xuanling.png",
+    "Rarity": 5,
+    "Element": "Havoc",
+    "Class": "Sword",
+    "Region": [
+      "Huanglong"
+    ],
+    "ModFilesName": "Xuanling",
+    "InGameSkins": [],
+    "InternalName": "Xuanling",
+    "DisplayName": "玄翎"
+  },
+  {
+    "Keys": [
       "Sigrika"
     ],
     "ReleaseDate": "2026-12-11T00:00:00",

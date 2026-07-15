@@ -651,7 +651,7 @@
     "ModFilesName": "Galbrena",
     "InGameSkins": [],
     "InternalName": "Galbrena",
-    "DisplayName": "嘉贝莉娜"
+    "DisplayName": "嘉贝丽娜"
   },
   {
     "Keys": [
@@ -759,6 +759,26 @@
   },
   {
     "Keys": [
+      "xuanling",
+      "秧秧玄翎",
+      "秧秧·玄翎",
+      "玄翎"
+    ],
+    "ReleaseDate": "2026-07-10T00:00:00",
+    "Image": "Xuanling.png",
+    "Rarity": 5,
+    "Element": "Havoc",
+    "Class": "Sword",
+    "Region": [
+      "Huanglong"
+    ],
+    "ModFilesName": "Xuanling",
+    "InGameSkins": [],
+    "InternalName": "Xuanling",
+    "DisplayName": "玄翎"
+  },
+  {
+    "Keys": [
       "Sigrika"
     ],
     "ReleaseDate": "2026-12-11T00:00:00",
@@ -772,7 +792,7 @@
     "ModFilesName": "Sigrika",
     "InGameSkins": [],
     "InternalName": "Sigrika",
-    "DisplayName": "西格里卡"
+    "DisplayName": "西格莉卡"
   },
   {
     "Keys": [
