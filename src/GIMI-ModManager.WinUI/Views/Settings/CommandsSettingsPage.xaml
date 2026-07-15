@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:local="using:GIMI_ModManager.WinUI.Views.Settings"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:settingsViewModels="using:GIMI_ModManager.WinUI.ViewModels.SettingsViewModels"
@@ -20,17 +21,19 @@
             Margin="8,0,8,0"
             HorizontalAlignment="Stretch"
             Spacing="4">
-            <TextBlock Style="{StaticResource PageTitleStyle}" Text="Command Settings " />
+            <TextBlock Style="{StaticResource PageTitleStyle}" Text="Command Settings " l:Uids.Uid="CmdSettings_Title" />
 
 
             <controls:SettingsCard
+                l:Uids.Uid="CmdSettings_CreateCard"
                 Description="Here you can define custom commands that JASM can run for you. Currently, commands that contain {{TargetPath}} can only be run from the Mods Overview page"
                 Header="Create new command"
                 HeaderIcon="{winUi:FontIcon Glyph=&#xE70F;}">
-                <Button Command="{x:Bind ViewModel.OpenCreateCommandCommand}" Content="Create New Command" />
+                <Button Command="{x:Bind ViewModel.OpenCreateCommandCommand}" Content="Create New Command" l:Uids.Uid="CmdSettings_CreateButton" />
             </controls:SettingsCard>
 
             <controls:SettingsExpander
+                l:Uids.Uid="CmdSettings_DefinitionsExpander"
                 Description="Here you can view and delete created command definitions"
                 Header="Command Definitions"
                 HeaderIcon="{winUi:FontIcon Glyph=&#xE74E;}"
@@ -70,7 +73,7 @@
                                                     IsTextSelectionEnabled="True"
                                                     TextTrimming="CharacterEllipsis"
                                                     ToolTipService.ToolTip="{x:Bind CommandDisplayName}">
-                                                    <Run Text="Display Name:" />
+                                                    <Run l:Uids.Uid="CmdSettings_DisplayNameLabel" Text="Display Name:" />
                                                     <Run Text="{x:Bind CommandDisplayName}" />
                                                 </TextBlock>
 
@@ -79,7 +82,7 @@
                                                     IsTextSelectionEnabled="True"
                                                     TextTrimming="CharacterEllipsis"
                                                     ToolTipService.ToolTip="{x:Bind Id}">
-                                                    <Run Text="Command Definition Id:" />
+                                                    <Run l:Uids.Uid="CmdSettings_DefIdLabel" Text="Command Definition Id:" />
                                                     <Run Text="{x:Bind Id}" />
                                                 </TextBlock>
                                             </StackPanel>
@@ -92,17 +95,19 @@
                                                 <Button
                                                     VerticalAlignment="Center"
                                                     Content="Run"
-                                                    IsEnabled="{x:Bind HasNoTargetPathVariable, Mode=OneWay}">
+                                                    IsEnabled="{x:Bind HasNoTargetPathVariable, Mode=OneWay}"
+                                                    l:Uids.Uid="CmdSettings_RunButton">
                                                     <Button.Flyout>
                                                         <Flyout>
                                                             <StackPanel>
-                                                                <TextBlock Text="Are you sure you want to run this command?" />
+                                                                <TextBlock Text="Are you sure you want to run this command?" l:Uids.Uid="CmdSettings_ConfirmRun" />
                                                                 <Button
                                                                     HorizontalAlignment="Center"
                                                                     Command="{x:Bind RunCommand}"
                                                                     CommandParameter="{x:Bind}"
                                                                     Content="Run"
-                                                                    Style="{ThemeResource AccentButtonStyle}" />
+                                                                    Style="{ThemeResource AccentButtonStyle}"
+                                                                    l:Uids.Uid="CmdSettings_RunConfirmButton" />
                                                             </StackPanel>
                                                         </Flyout>
                                                     </Button.Flyout>
@@ -112,21 +117,24 @@
                                                     VerticalAlignment="Center"
                                                     Command="{x:Bind EditCommand}"
                                                     CommandParameter="{x:Bind}"
-                                                    Content="Edit" />
+                                                    Content="Edit"
+                                                    l:Uids.Uid="CmdSettings_EditButton" />
 
                                                 <Button
                                                     VerticalAlignment="Center"
                                                     Content="Delete"
-                                                    IsEnabled="{x:Bind CanDelete, Mode=OneWay}">
+                                                    IsEnabled="{x:Bind CanDelete, Mode=OneWay}"
+                                                    l:Uids.Uid="CmdSettings_DeleteButton">
                                                     <Button.Flyout>
                                                         <Flyout x:Name="DeleteFlyout">
                                                             <StackPanel>
-                                                                <TextBlock Text="Are you sure you want to delete this command?" />
+                                                                <TextBlock Text="Are you sure you want to delete this command?" l:Uids.Uid="CmdSettings_ConfirmDelete" />
                                                                 <Button
                                                                     HorizontalAlignment="Center"
                                                                     Command="{x:Bind DeleteCommand}"
                                                                     CommandParameter="{x:Bind}"
-                                                                    Content="Delete" />
+                                                                    Content="Delete"
+                                                                    l:Uids.Uid="CmdSettings_DeleteConfirmButton" />
                                                             </StackPanel>
                                                         </Flyout>
                                                     </Button.Flyout>
@@ -139,21 +147,21 @@
                                                 IsTextSelectionEnabled="True"
                                                 TextTrimming="CharacterEllipsis"
                                                 ToolTipService.ToolTip="{x:Bind Executable}">
-                                                <Run Text="Executable: " />
+                                                <Run l:Uids.Uid="CmdSettings_ExecutableLabel" Text="Executable: " />
                                                 <Run Text="{x:Bind Executable}" />
                                             </TextBlock>
                                             <TextBlock
                                                 IsTextSelectionEnabled="True"
                                                 TextTrimming="CharacterEllipsis"
                                                 ToolTipService.ToolTip="{x:Bind WorkingDirectory}">
-                                                <Run Text="Working Directory: " />
+                                                <Run l:Uids.Uid="CmdSettings_WorkingDirLabel" Text="Working Directory: " />
                                                 <Run Text="{x:Bind WorkingDirectory}" />
                                             </TextBlock>
                                             <TextBlock
                                                 IsTextSelectionEnabled="True"
                                                 TextTrimming="CharacterEllipsis"
                                                 ToolTipService.ToolTip="{x:Bind Arguments}">
-                                                <Run Text="Arguments: " />
+                                                <Run l:Uids.Uid="CmdSettings_ArgumentsLabel" Text="Arguments: " />
                                                 <Run Text="{x:Bind Arguments}" />
                                             </TextBlock>
 
@@ -179,6 +187,7 @@
 
 
             <controls:SettingsExpander
+                l:Uids.Uid="CmdSettings_RunningExpander"
                 Description="Commands started from JASM for the current running instance"
                 Header="Currently Running Commands"
                 HeaderIcon="{winUi:FontIcon Glyph=&#xE768;}"
@@ -209,7 +218,7 @@
                                                 IsTextSelectionEnabled="True"
                                                 TextTrimming="CharacterEllipsis"
                                                 ToolTipService.ToolTip="{x:Bind CommandDisplayName}">
-                                                <Run Text="Display Name: " />
+                                                <Run l:Uids.Uid="CmdSettings_DisplayNameLabel2" Text="Display Name: " />
                                                 <Run Text="{x:Bind CommandDisplayName}" />
                                             </TextBlock>
 
@@ -217,7 +226,7 @@
                                                 IsTextSelectionEnabled="True"
                                                 TextTrimming="CharacterEllipsis"
                                                 ToolTipService.ToolTip="{x:Bind FullCommand}">
-                                                <Run Text="Full Command: " />
+                                                <Run l:Uids.Uid="CmdSettings_FullCmdLabel" Text="Full Command: " />
                                                 <Run Text="{x:Bind FullCommand}" />
                                             </TextBlock>
 
@@ -226,7 +235,7 @@
                                                 IsTextSelectionEnabled="True"
                                                 TextTrimming="CharacterEllipsis"
                                                 ToolTipService.ToolTip="{x:Bind Id}">
-                                                <Run Text="Command Definition Id: " />
+                                                <Run l:Uids.Uid="CmdSettings_DefIdLabel2" Text="Command Definition Id: " />
                                                 <Run Text="{x:Bind Id}" />
                                             </TextBlock>
                                         </StackPanel>
@@ -237,7 +246,8 @@
                                             VerticalAlignment="Center"
                                             Command="{x:Bind KillCommand}"
                                             CommandParameter="{x:Bind}"
-                                            Content="Kill" />
+                                            Content="Kill"
+                                            l:Uids.Uid="CmdSettings_KillButton" />
 
                                     </Grid>
                                 </DataTemplate>

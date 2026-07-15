@@ -7,6 +7,7 @@
     xmlns:controls1="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:controls2="using:GIMI_ModManager.WinUI.Views.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:local="using:GIMI_ModManager.WinUI.Views.Settings"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -20,13 +21,14 @@
 
 
         <StackPanel Margin="0,0,0,16">
-            <TextBlock FontSize="18" Text="Create Command" />
+            <TextBlock FontSize="18" Text="Create Command" l:Uids.Uid="CreateCmd_Title" />
             <TextBox
                 MinWidth="300"
                 HorizontalAlignment="Left"
                 Header="* Command Name:"
                 PlaceholderText="Command Display Name (Required)"
-                Text="{x:Bind ViewModel.CommandDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                Text="{x:Bind ViewModel.CommandDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                l:Uids.Uid="CreateCmd_NameBox" />
         </StackPanel>
 
 
@@ -41,11 +43,12 @@
                 HorizontalAlignment="Center"
                 SelectedIndex="0"
                 SelectionMode="Single">
-                <controls:SegmentedItem Content="Custom Command" />
+                <controls:SegmentedItem Content="Custom Command" l:Uids.Uid="CreateCmd_CustomCmd" />
                 <controls:SegmentedItem
                     Content="Custom Chained Command"
                     IsEnabled="False"
-                    ToolTipService.ToolTip="Not Implemented" />
+                    ToolTipService.ToolTip="Not Implemented"
+                    l:Uids.Uid="CreateCmd_ChainedCmd" />
             </controls:Segmented>
 
 
@@ -58,7 +61,8 @@
                                 Title="* Executable"
                                 BrowseCommand="{x:Bind ViewModel.SelectExecutableCommand}"
                                 PlaceHolderText="Must either be in $PATH or be an absolute path to the executable (Required)"
-                                SelectedFolderValue="{x:Bind ViewModel.Command, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                SelectedFolderValue="{x:Bind ViewModel.Command, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                l:Uids.Uid="CreateCmd_Executable" />
 
                             <controls2:FolderSelector
                                 Title="Working Directory"
@@ -66,14 +70,16 @@
                                 Footer="{x:Bind ViewModel.EffectiveWorkingDirectory, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.CanEditWorkingDirectory, Mode=OneWay}"
                                 PlaceHolderText="When manually specifying a path, the folder must exist"
-                                SelectedFolderValue="{x:Bind ViewModel.WorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                SelectedFolderValue="{x:Bind ViewModel.WorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                l:Uids.Uid="CreateCmd_WorkingDir" />
 
                             <StackPanel>
                                 <TextBox
                                     Header="Arguments"
                                     PlaceholderText="Arguments that will be passed to the executable"
-                                    Text="{x:Bind ViewModel.Arguments, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock IsTextSelectionEnabled="True" Text="When command is run against a file system object (i.e. a skin/mod folder), {{TargetPath}} will be replaced by the actual path." />
+                                    Text="{x:Bind ViewModel.Arguments, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    l:Uids.Uid="CreateCmd_ArgumentsBox" />
+                                <TextBlock IsTextSelectionEnabled="True" Text="When command is run against a file system object (i.e. a skin/mod folder), {{TargetPath}} will be replaced by the actual path." l:Uids.Uid="CreateCmd_TargetPathNote" />
                             </StackPanel>
 
 
@@ -81,23 +87,27 @@
                                 <CheckBox
                                     Content="Kill Process on JASM exit"
                                     IsChecked="{x:Bind ViewModel.KillProcessOnMainAppExit, Mode=TwoWay}"
-                                    ToolTipService.ToolTip="If checked the process will be killed when JASM exits" />
+                                    ToolTipService.ToolTip="If checked the process will be killed when JASM exits"
+                                    l:Uids.Uid="CreateCmd_KillOnExit" />
                                 <CheckBox
                                     Command="{x:Bind ViewModel.ToggleRunAsAdminCommand}"
                                     Content="Run as Admin"
                                     IsChecked="{x:Bind ViewModel.RunAsAdmin, Mode=TwoWay}"
-                                    ToolTipService.ToolTip="Run the executable as an Administrator" />
+                                    ToolTipService.ToolTip="Run the executable as an Administrator"
+                                    l:Uids.Uid="CreateCmd_RunAsAdmin" />
                                 <CheckBox
                                     Command="{x:Bind ViewModel.ToggleUseShellExecuteCommand}"
                                     Content="Use Shell Execute"
                                     IsChecked="{x:Bind ViewModel.UseShellExecute, Mode=TwoWay}"
                                     IsEnabled="{x:Bind ViewModel.CanToggleUseShellExecute, Mode=OneWay}"
-                                    ToolTipService.ToolTip="Use the Operating System to start the executable" />
+                                    ToolTipService.ToolTip="Use the Operating System to start the executable"
+                                    l:Uids.Uid="CreateCmd_UseShellExecute" />
                                 <CheckBox
                                     Content="Create window"
                                     IsChecked="{x:Bind ViewModel.CreateWindow, Mode=TwoWay}"
                                     IsEnabled="False"
-                                    ToolTipService.ToolTip="If checked it will be run in an external window" />
+                                    ToolTipService.ToolTip="If checked it will be run in an external window"
+                                    l:Uids.Uid="CreateCmd_CreateWindow" />
                             </StackPanel>
 
                         </StackPanel>
@@ -112,11 +122,13 @@
             <TextBox
                 Header="Command that will be run:"
                 IsReadOnly="True"
-                Text="{x:Bind ViewModel.CommandPreview, Mode=OneWay}" />
+                Text="{x:Bind ViewModel.CommandPreview, Mode=OneWay}"
+                l:Uids.Uid="CreateCmd_PreviewBox" />
             <Button
                 Command="{x:Bind ViewModel.CreateCommandCommand}"
                 Content="Save Command"
-                Style="{ThemeResource AccentButtonStyle}" />
+                Style="{ThemeResource AccentButtonStyle}"
+                l:Uids.Uid="CreateCmd_SaveButton" />
         </StackPanel>
 
 

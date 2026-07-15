@@ -215,4 +215,145 @@
   <data name="Running" xml:space="preserve">
     <value>运行中</value>
   </data>
+  <data name="CmdSettings_Title.Text" xml:space="preserve">
+    <value>命令设置 </value>
+  </data>
+  <data name="CmdSettings_CreateCard.Header" xml:space="preserve">
+    <value>新建命令</value>
+  </data>
+  <data name="CmdSettings_CreateCard.Description" xml:space="preserve">
+    <value>您可以在此定义 JASM 可为您运行的自定义命令。目前，包含 {{TargetPath}} 的命令只能在 Mod 总览页面运行</value>
+  </data>
+  <data name="CmdSettings_CreateButton.Content" xml:space="preserve">
+    <value>新建命令</value>
+  </data>
+  <data name="CmdSettings_DefinitionsExpander.Header" xml:space="preserve">
+    <value>命令定义</value>
+  </data>
+  <data name="CmdSettings_DefinitionsExpander.Description" xml:space="preserve">
+    <value>您可以在此查看和删除已创建的命令定义</value>
+  </data>
+  <data name="CmdSettings_DisplayNameLabel.Text" xml:space="preserve">
+    <value>显示名称：</value>
+  </data>
+  <data name="CmdSettings_DefIdLabel.Text" xml:space="preserve">
+    <value>命令定义 ID：</value>
+  </data>
+  <data name="CmdSettings_RunButton.Content" xml:space="preserve">
+    <value>运行</value>
+  </data>
+  <data name="CmdSettings_ConfirmRun.Text" xml:space="preserve">
+    <value>确定要运行此命令吗？</value>
+  </data>
+  <data name="CmdSettings_RunConfirmButton.Content" xml:space="preserve">
+    <value>运行</value>
+  </data>
+  <data name="CmdSettings_EditButton.Content" xml:space="preserve">
+    <value>编辑</value>
+  </data>
+  <data name="CmdSettings_DeleteButton.Content" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="CmdSettings_ConfirmDelete.Text" xml:space="preserve">
+    <value>确定要删除此命令吗？</value>
+  </data>
+  <data name="CmdSettings_DeleteConfirmButton.Content" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="CmdSettings_ExecutableLabel.Text" xml:space="preserve">
+    <value>可执行文件：</value>
+  </data>
+  <data name="CmdSettings_WorkingDirLabel.Text" xml:space="preserve">
+    <value>工作目录：</value>
+  </data>
+  <data name="CmdSettings_ArgumentsLabel.Text" xml:space="preserve">
+    <value>参数：</value>
+  </data>
+  <data name="CmdSettings_RunningExpander.Header" xml:space="preserve">
+    <value>当前运行的命令</value>
+  </data>
+  <data name="CmdSettings_RunningExpander.Description" xml:space="preserve">
+    <value>JASM 为当前运行实例启动的命令</value>
+  </data>
+  <data name="CmdSettings_DisplayNameLabel2.Text" xml:space="preserve">
+    <value>显示名称：</value>
+  </data>
+  <data name="CmdSettings_FullCmdLabel.Text" xml:space="preserve">
+    <value>完整命令：</value>
+  </data>
+  <data name="CmdSettings_DefIdLabel2.Text" xml:space="preserve">
+    <value>命令定义 ID：</value>
+  </data>
+  <data name="CmdSettings_KillButton.Content" xml:space="preserve">
+    <value>终止</value>
+  </data>
+  <data name="CreateCmd_Title.Text" xml:space="preserve">
+    <value>创建命令</value>
+  </data>
+  <data name="CreateCmd_NameBox.Header" xml:space="preserve">
+    <value>* 命令名称：</value>
+  </data>
+  <data name="CreateCmd_NameBox.PlaceholderText" xml:space="preserve">
+    <value>命令显示名称（必填）</value>
+  </data>
+  <data name="CreateCmd_CustomCmd.Content" xml:space="preserve">
+    <value>自定义命令</value>
+  </data>
+  <data name="CreateCmd_ChainedCmd.Content" xml:space="preserve">
+    <value>自定义链式命令</value>
+  </data>
+  <data name="CreateCmd_ChainedCmd.ToolTipService.ToolTip" xml:space="preserve">
+    <value>尚未实现</value>
+  </data>
+  <data name="CreateCmd_Executable.Title" xml:space="preserve">
+    <value>* 可执行文件</value>
+  </data>
+  <data name="CreateCmd_Executable.PlaceHolderText" xml:space="preserve">
+    <value>必须位于 $PATH 中，或为可执行文件的绝对路径（必填）</value>
+  </data>
+  <data name="CreateCmd_WorkingDir.Title" xml:space="preserve">
+    <value>工作目录</value>
+  </data>
+  <data name="CreateCmd_WorkingDir.PlaceHolderText" xml:space="preserve">
+    <value>手动指定路径时，该文件夹必须存在</value>
+  </data>
+  <data name="CreateCmd_ArgumentsBox.Header" xml:space="preserve">
+    <value>参数</value>
+  </data>
+  <data name="CreateCmd_ArgumentsBox.PlaceholderText" xml:space="preserve">
+    <value>将传递给可执行文件的参数</value>
+  </data>
+  <data name="CreateCmd_TargetPathNote.Text" xml:space="preserve">
+    <value>当命令针对文件系统对象（即皮肤/Mod 文件夹）运行时，{{TargetPath}} 将被替换为实际路径。</value>
+  </data>
+  <data name="CreateCmd_KillOnExit.Content" xml:space="preserve">
+    <value>JASM 退出时终止进程</value>
+  </data>
+  <data name="CreateCmd_KillOnExit.ToolTipService.ToolTip" xml:space="preserve">
+    <value>勾选后，JASM 退出时将终止该进程</value>
+  </data>
+  <data name="CreateCmd_RunAsAdmin.Content" xml:space="preserve">
+    <value>以管理员身份运行</value>
+  </data>
+  <data name="CreateCmd_RunAsAdmin.ToolTipService.ToolTip" xml:space="preserve">
+    <value>以管理员身份运行该可执行文件</value>
+  </data>
+  <data name="CreateCmd_UseShellExecute.Content" xml:space="preserve">
+    <value>使用 Shell 执行</value>
+  </data>
+  <data name="CreateCmd_UseShellExecute.ToolTipService.ToolTip" xml:space="preserve">
+    <value>使用操作系统来启动该可执行文件</value>
+  </data>
+  <data name="CreateCmd_CreateWindow.Content" xml:space="preserve">
+    <value>创建窗口</value>
+  </data>
+  <data name="CreateCmd_CreateWindow.ToolTipService.ToolTip" xml:space="preserve">
+    <value>勾选后将在外部窗口中运行</value>
+  </data>
+  <data name="CreateCmd_PreviewBox.Header" xml:space="preserve">
+    <value>将运行的命令：</value>
+  </data>
+  <data name="CreateCmd_SaveButton.Content" xml:space="preserve">
+    <value>保存命令</value>
+  </data>
 </root>
