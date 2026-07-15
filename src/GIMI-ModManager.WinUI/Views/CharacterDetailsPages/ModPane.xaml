@@ -6,6 +6,7 @@
     xmlns:controls="using:GIMI_ModManager.WinUI.Views.Controls"
     xmlns:controls1="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:local="using:GIMI_ModManager.WinUI.Views.CharacterDetailsPages"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:subViewModels="using:GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels"
@@ -89,7 +90,8 @@
                 Style="{ThemeResource SubtitleTextBlockStyle}"
                 TextAlignment="Center"
                 ToolTipService.ToolTip="Change mod display name"
-                Text="{x:Bind ViewModel.ModModel.ModDisplayName, Mode=TwoWay}" />
+                Text="{x:Bind ViewModel.ModModel.ModDisplayName, Mode=TwoWay}"
+                l:Uids.Uid="ModPane_ModNameTextBlock" />
 
 
 
@@ -103,12 +105,14 @@
                         <MenuFlyoutItem
                             Command="{x:Bind ViewModel.SetModIniFileCommand}"
                             ToolTipService.ToolTip="Set the mod .ini file to be read by JASM"
-                            Text="Set mod .ini file" />
+                            Text="Set mod .ini file"
+                            l:Uids.Uid="ModPane_SetModIniFile" />
                         <MenuFlyoutItem
                             Command="{x:Bind ViewModel.ClearSetModIniFileCommand}"
                             Icon="Clear"
                             ToolTipService.ToolTip="JASM will not look for merged.ini/Script.ini file and ignore keyswaps for this mod"
-                            Text="Ignore .ini file for this mod" />
+                            Text="Ignore .ini file for this mod"
+                            l:Uids.Uid="ModPane_IgnoreModIniFile" />
                     </MenuFlyout>
                 </SplitButton.Flyout>
 
@@ -124,7 +128,8 @@
                 VerticalAlignment="Center"
                 Header="Mod Url:"
                 IsEnabled="{x:Bind ViewModel.IsNotReadOnly, Mode=OneWay}"
-                Text="{x:Bind ViewModel.ModModel.ModUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                Text="{x:Bind ViewModel.ModModel.ModUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                l:Uids.Uid="ModPane_ModUrlBox" />
 
             <HyperlinkButton
                 Grid.Column="1"
@@ -156,12 +161,13 @@
                                             MinWidth="100"
                                             HorizontalAlignment="Left"
                                             Header="Forward Key"
-                                            Text="{x:Bind ForwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            Text="{x:Bind ForwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            l:Uids.Uid="ModPane_ForwardKeyBox" />
 
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                             <TextBlock HorizontalAlignment="Center" Text="{x:Bind SectionKey}" />
                                             <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                <TextBlock Margin="0,0,4,0" Text="Variations: " />
+                                                <TextBlock Margin="0,0,4,0" Text="Variations: " l:Uids.Uid="ModPane_VariationsLabel" />
                                                 <TextBlock Text="{x:Bind VariationsCount, Mode=OneWay}" />
                                             </StackPanel>
                                         </StackPanel>
@@ -170,7 +176,8 @@
                                             MinWidth="100"
                                             HorizontalAlignment="Right"
                                             Header="Backward Key"
-                                            Text="{x:Bind BackwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            Text="{x:Bind BackwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            l:Uids.Uid="ModPane_BackwardKeyBox" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
@@ -184,7 +191,8 @@
                         HorizontalAlignment="Center"
                         VerticalAlignment="Top"
                         TextWrapping="WrapWholeWords"
-                        Text="Key swap management is disabled for this mod" />
+                        Text="Key swap management is disabled for this mod"
+                        l:Uids.Uid="ModPane_KeySwapDisabled" />
 
                 </controls1:Case>
             </controls1:SwitchPresenter>
@@ -204,7 +212,7 @@
                 <Button.Content>
                     <StackPanel Orientation="Horizontal">
                         <FontIcon Margin="0,0,4,0" Glyph="&#xE74E;" />
-                        <TextBlock Text="Save" />
+                        <TextBlock Text="Save" l:Uids.Uid="ModPane_SaveLabel" />
                     </StackPanel>
                 </Button.Content>
                 <Button.KeyboardAccelerators>
@@ -229,7 +237,8 @@
                         Padding="4,0"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
-                        Text="Mod Enabled" />
+                        Text="Mod Enabled"
+                        l:Uids.Uid="ModPane_ModEnabledLabel" />
                 </Border>
 
             </Grid>
@@ -240,7 +249,8 @@
                 HorizontalAlignment="Right"
                 Command="{x:Bind ViewModel.OpenModFolderCommand}"
                 Content="Open Mod Folder..."
-                IsEnabled="{x:Bind ViewModel.IsNotReadOnly, Mode=OneWay}" />
+                IsEnabled="{x:Bind ViewModel.IsNotReadOnly, Mode=OneWay}"
+                l:Uids.Uid="ModPane_OpenModFolderButton" />
         </Grid>
     </Grid>
 </UserControl>

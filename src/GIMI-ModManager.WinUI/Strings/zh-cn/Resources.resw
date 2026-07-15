@@ -356,4 +356,962 @@
   <data name="CreateCmd_SaveButton.Content" xml:space="preserve">
     <value>保存命令</value>
   </data>
+  <data name="ModPane_ModNameTextBlock.ToolTipService.ToolTip" xml:space="preserve">
+    <value>更改模组显示名称</value>
+  </data>
+  <data name="ModPane_SetModIniFile.Text" xml:space="preserve">
+    <value>设置模组 .ini 文件</value>
+  </data>
+  <data name="ModPane_SetModIniFile.ToolTipService.ToolTip" xml:space="preserve">
+    <value>设置由 JASM 读取的模组 .ini 文件</value>
+  </data>
+  <data name="ModPane_IgnoreModIniFile.Text" xml:space="preserve">
+    <value>忽略此模组的 .ini 文件</value>
+  </data>
+  <data name="ModPane_IgnoreModIniFile.ToolTipService.ToolTip" xml:space="preserve">
+    <value>JASM 将不会查找 merged.ini/Script.ini 文件，并忽略此模组的按键替换</value>
+  </data>
+  <data name="ModPane_ModUrlBox.Header" xml:space="preserve">
+    <value>模组链接：</value>
+  </data>
+  <data name="ModPane_ForwardKeyBox.Header" xml:space="preserve">
+    <value>前进按键</value>
+  </data>
+  <data name="ModPane_VariationsLabel.Text" xml:space="preserve">
+    <value>变体数量：</value>
+  </data>
+  <data name="ModPane_BackwardKeyBox.Header" xml:space="preserve">
+    <value>后退按键</value>
+  </data>
+  <data name="ModPane_KeySwapDisabled.Text" xml:space="preserve">
+    <value>此模组已禁用按键替换管理</value>
+  </data>
+  <data name="ModPane_SaveLabel.Text" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="ModPane_ModEnabledLabel.Text" xml:space="preserve">
+    <value>模组已启用</value>
+  </data>
+  <data name="ModPane_OpenModFolderButton.Content" xml:space="preserve">
+    <value>打开模组文件夹...</value>
+  </data>
+  <data name="ModGrid_MoveModButton.Content" xml:space="preserve">
+    <value>移动模组...</value>
+  </data>
+  <data name="ModGrid_ModDetailsButton.Content" xml:space="preserve">
+    <value>模组详情...</value>
+  </data>
+  <data name="ModGrid_PresetsButton.Content" xml:space="preserve">
+    <value>预设...</value>
+  </data>
+  <data name="ModGrid_CommandsButton.Content" xml:space="preserve">
+    <value>命令...</value>
+  </data>
+  <data name="ModGrid_EnabledColumn.Header" xml:space="preserve">
+    <value>已启用</value>
+  </data>
+  <data name="ModGrid_ModNameColumn.Header" xml:space="preserve">
+    <value>模组名称</value>
+  </data>
+  <data name="ModGrid_ModFolderNameColumn.Header" xml:space="preserve">
+    <value>模组文件夹名称</value>
+  </data>
+  <data name="ModGrid_AuthorColumn.Header" xml:space="preserve">
+    <value>作者</value>
+  </data>
+  <data name="ModGrid_AddedColumn.Header" xml:space="preserve">
+    <value>添加时间</value>
+  </data>
+  <data name="ModGrid_PresetsColumn.Header" xml:space="preserve">
+    <value>预设</value>
+  </data>
+  <data name="ModGrid_NotesColumn.Header" xml:space="preserve">
+    <value>备注</value>
+  </data>
+  <data name="CharDetails_ModsSelectedLabel.Text" xml:space="preserve">
+    <value>已选模组：</value>
+  </data>
+  <data name="CharDetails_MoveButton.Content" xml:space="preserve">
+    <value>移动</value>
+  </data>
+  <data name="CharDetails_MoveModsToLabel.Text" xml:space="preserve">
+    <value>将模组移动到其他角色：</value>
+  </data>
+  <data name="CharDetails_MoveModSearchBox.PlaceholderText" xml:space="preserve">
+    <value>搜索...</value>
+  </data>
+  <data name="CharDetails_MoveModsToSkinExpander.Header" xml:space="preserve">
+    <value>将模组移动到其他皮肤</value>
+  </data>
+  <data name="CharDetails_OverrideLabel.Text" xml:space="preserve">
+    <value>覆盖</value>
+  </data>
+  <data name="CharDetails_OverrideSkinSetToLabel.Text" xml:space="preserve">
+    <value>覆盖皮肤设置为：</value>
+  </data>
+  <data name="CharDetails_LoadingRun.Text" xml:space="preserve">
+    <value>正在加载</value>
+  </data>
+  <data name="CharDetails_LoadingDotsRun.Text" xml:space="preserve">
+    <value>...</value>
+  </data>
+  <data name="CharDetails_ModsMenuItem.Title" xml:space="preserve">
+    <value>模组</value>
+  </data>
+  <data name="CharDetails_AddModItem.Text" xml:space="preserve">
+    <value>添加模组...</value>
+  </data>
+  <data name="CharDetails_AddModItem.ToolTipService.ToolTip" xml:space="preserve">
+    <value>添加一个模组文件夹</value>
+  </data>
+  <data name="CharDetails_AddArchiveItem.Text" xml:space="preserve">
+    <value>添加压缩包...</value>
+  </data>
+  <data name="CharDetails_AddArchiveItem.ToolTipService.ToolTip" xml:space="preserve">
+    <value>添加压缩包内的模组</value>
+  </data>
+  <data name="CharDetails_RefreshModsItem.Text" xml:space="preserve">
+    <value>刷新模组</value>
+  </data>
+  <data name="CharDetails_FoldersMenuItem.Title" xml:space="preserve">
+    <value>文件夹</value>
+  </data>
+  <data name="CharDetails_OpenGimiRootItem.Text" xml:space="preserve">
+    <value>打开 3Dmigoto 根目录文件夹...</value>
+  </data>
+  <data name="CharDetails_OpenCharFolderItem.Text" xml:space="preserve">
+    <value>打开角色模组文件夹...</value>
+  </data>
+  <data name="CharDetails_OpenSelectedModFolderItem.Text" xml:space="preserve">
+    <value>打开所选模组文件夹...</value>
+  </data>
+  <data name="CharDetails_ViewMenuItem.Title" xml:space="preserve">
+    <value>视图</value>
+  </data>
+  <data name="CharDetails_SingleSelectItem.Text" xml:space="preserve">
+    <value>单选</value>
+  </data>
+  <data name="CharDetails_SingleSelectItem.ToolTipService.ToolTip" xml:space="preserve">
+    <value>选择此项将只允许一次启用一个模组。</value>
+  </data>
+  <data name="CharDetails_ShowModFolderNamesItem.Text" xml:space="preserve">
+    <value>显示“模组文件夹名称”列</value>
+  </data>
+  <data name="CharDetails_ModPreferencesMenuItem.Title" xml:space="preserve">
+    <value>模组偏好设置</value>
+  </data>
+  <data name="CharDetails_SavePreferencesItem.Text" xml:space="preserve">
+    <value>保存所选模组的偏好设置</value>
+  </data>
+  <data name="CharDetails_SavePreferencesItem.ToolTipService.ToolTip" xml:space="preserve">
+    <value>读取所选模组的 3Dmigoto 模组偏好设置 (d3dx_user.ini)，并将设置存储在模组的 .JASM_Config.json 文件中</value>
+  </data>
+  <data name="CharDetails_ReadPreferencesItem.Text" xml:space="preserve">
+    <value>读取所选模组的偏好设置</value>
+  </data>
+  <data name="CharDetails_ReadPreferencesItem.ToolTipService.ToolTip" xml:space="preserve">
+    <value>从 .JASM_Config.json 读取当前所选模组的偏好设置，并将其写入 d3dx_user.ini 供 3Dmigoto 读取</value>
+  </data>
+  <data name="CharDetails_SearchModsTextBox.PlaceholderText" xml:space="preserve">
+    <value>搜索模组...</value>
+  </data>
+  <data name="CharCard_GoToModsOverviewButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>在模组总览中跳转到该角色</value>
+  </data>
+  <data name="CharCard_EditCharacterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>编辑角色</value>
+  </data>
+  <data name="CharCard_TrackedModsLabel.Text" xml:space="preserve">
+    <value>已追踪模组：</value>
+  </data>
+  <data name="CharCard_SelectedSkinLabel.Text" xml:space="preserve">
+    <value>已选游戏内皮肤：</value>
+  </data>
+  <data name="CharCard_SelectSkinButton.Content" xml:space="preserve">
+    <value>选择皮肤</value>
+  </data>
+  <data name="CharCard_DisableAllModsButton.Content" xml:space="preserve">
+    <value>禁用所有模组</value>
+  </data>
+  <data name="EditChar_ModFolderPathLabel.Text" xml:space="preserve">
+    <value>模组文件夹路径：</value>
+  </data>
+  <data name="EditChar_ModFolderLink.ToolTipService.ToolTip" xml:space="preserve">
+    <value>打开角色的模组文件夹</value>
+  </data>
+  <data name="EditChar_GoToCharacterButton.Content" xml:space="preserve">
+    <value>前往角色</value>
+  </data>
+  <data name="EditChar_DisableCharacterButton.Content" xml:space="preserve">
+    <value>禁用角色</value>
+  </data>
+  <data name="EditChar_DisableCharacterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>首先会打开一个包含更多信息的弹窗</value>
+  </data>
+  <data name="EditChar_EnableCharacterButton.Content" xml:space="preserve">
+    <value>启用角色</value>
+  </data>
+  <data name="EditChar_EnableCharacterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>首先会打开一个包含更多信息的弹窗</value>
+  </data>
+  <data name="EditChar_DeleteCustomCharacterButton.Content" xml:space="preserve">
+    <value>删除自定义角色</value>
+  </data>
+  <data name="EditChar_DeleteCustomCharacterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>首先会打开一个包含更多信息的弹窗</value>
+  </data>
+  <data name="EditChar_InternalNameLabel.Text" xml:space="preserve">
+    <value>内部名称（Id）：</value>
+  </data>
+  <data name="EditChar_InternalNameHelp.Text" xml:space="preserve">
+    <value>内部名称供 JASM 用于识别角色/模组对象，同时用作模组文件夹的名称。必须唯一。在角色创建后修改此名称，JASM 会将其视为一个新角色。</value>
+  </data>
+  <data name="EditChar_DisplayNameBox.Header" xml:space="preserve">
+    <value>显示名称</value>
+  </data>
+  <data name="EditChar_IsMultiModCheckBox.Content" xml:space="preserve">
+    <value>多模组</value>
+  </data>
+  <data name="EditChar_IsMultiModHelp.Text" xml:space="preserve">
+    <value>勾选后，当此模组对象启用多个模组时，JASM 不会显示警告。</value>
+  </data>
+  <data name="EditChar_TotalModsLabel.Text" xml:space="preserve">
+    <value>模组总数：</value>
+  </data>
+  <data name="EditChar_DateAddedToolTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>添加到 JASM 的日期</value>
+  </data>
+  <data name="EditChar_SearchKeysTitle.Text" xml:space="preserve">
+    <value>角色搜索关键字</value>
+  </data>
+  <data name="EditChar_NewKeyBox.PlaceholderText" xml:space="preserve">
+    <value>新关键字名称…</value>
+  </data>
+  <data name="EditChar_AddSearchKeyButton.Content" xml:space="preserve">
+    <value>添加搜索关键字</value>
+  </data>
+  <data name="EditChar_SearchKeysHelp.Text" xml:space="preserve">
+    <value>JASM 使用关键字来改善搜索功能。某些角色可能有多个名称，因此您可以添加额外的名称或搜索词作为关键字。</value>
+  </data>
+  <data name="EditChar_RemoveKeyButton.Content" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="EditChar_UndoChangesButton.Content" xml:space="preserve">
+    <value>撤销更改</value>
+  </data>
+  <data name="EditChar_UndoChangesButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>撤销未保存的更改</value>
+  </data>
+  <data name="EditChar_SaveChangesButton.Content" xml:space="preserve">
+    <value>保存更改</value>
+  </data>
+  <data name="EditChar_SaveChangesButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>将更改保存到磁盘</value>
+  </data>
+  <data name="EditChar_SaveButton.Content" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="EditChar_ShowDataModelButton.Content" xml:space="preserve">
+    <value>显示角色数据模型…</value>
+  </data>
+  <data name="EditChar_ResetCharacterButton.Content" xml:space="preserve">
+    <value>重置角色</value>
+  </data>
+  <data name="EditChar_ResetCharacterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>将角色值重置为默认值</value>
+  </data>
+  <data name="EditChar_ResetCharacterSettingsButton.Content" xml:space="preserve">
+    <value>重置角色设置</value>
+  </data>
+  <data name="CreateChar_Title.Text" xml:space="preserve">
+    <value>创建角色</value>
+  </data>
+  <data name="CreateChar_ImageLabel.Text" xml:space="preserve">
+    <value>角色图片</value>
+  </data>
+  <data name="CreateChar_InternalNameBox.Header" xml:space="preserve">
+    <value>内部名称（必填）</value>
+  </data>
+  <data name="CreateChar_InternalNameHelp.Text" xml:space="preserve">
+    <value>内部名称供 JASM 用于识别角色/模组对象，同时用作模组文件夹的名称。必须唯一。在角色创建后修改此名称，JASM 会将其视为一个新角色。</value>
+  </data>
+  <data name="CreateChar_DisplayNameBox.Header" xml:space="preserve">
+    <value>显示名称</value>
+  </data>
+  <data name="CreateChar_ModFilesNameBox.Header" xml:space="preserve">
+    <value>模组文件名称</value>
+  </data>
+  <data name="CreateChar_ModFilesNameHelp.Text" xml:space="preserve">
+    <value>在某些情况下，JASM 可以尝试判断模组属于哪个角色。此时会使用 ModFilesName 文本去查找同名模组文件。例如，假设 ModFilesName 为「paimon」，则会匹配名为 PaimonHeadLightMap.dds 的文件。如果不希望 JASM 尝试匹配模组文件，请留空。</value>
+  </data>
+  <data name="CreateChar_ReleaseDatePicker.Header" xml:space="preserve">
+    <value>发布日期</value>
+  </data>
+  <data name="CreateChar_RaritySlider.AutomationProperties.Name" xml:space="preserve">
+    <value>带刻度的滑块</value>
+  </data>
+  <data name="CreateChar_RaritySlider.Header" xml:space="preserve">
+    <value>稀有度</value>
+  </data>
+  <data name="CreateChar_ElementComboBox.Header" xml:space="preserve">
+    <value>元素</value>
+  </data>
+  <data name="CreateChar_IsMultiModCheckBox.Content" xml:space="preserve">
+    <value>多模组</value>
+  </data>
+  <data name="CreateChar_IsMultiModHelp.Text" xml:space="preserve">
+    <value>勾选后，当此模组对象启用多个模组时，JASM 不会显示警告。</value>
+  </data>
+  <data name="CreateChar_SearchKeysTitle.Text" xml:space="preserve">
+    <value>搜索关键字</value>
+  </data>
+  <data name="CreateChar_NewKeyBox.PlaceholderText" xml:space="preserve">
+    <value>新关键字名称…</value>
+  </data>
+  <data name="CreateChar_AddSearchKeyButton.Content" xml:space="preserve">
+    <value>添加搜索关键字</value>
+  </data>
+  <data name="CreateChar_SearchKeysHelp.Text" xml:space="preserve">
+    <value>JASM 使用关键字来改善搜索功能。某些角色可能有多个名称，因此您可以添加额外的名称或搜索词作为关键字。</value>
+  </data>
+  <data name="CreateChar_RemoveKeyButton.Content" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="CreateChar_ExportCharacterButton.Content" xml:space="preserve">
+    <value>导出角色 json</value>
+  </data>
+  <data name="CreateChar_OpenCustomJsonButton.Content" xml:space="preserve">
+    <value>打开自定义角色 json 文件</value>
+  </data>
+  <data name="CreateChar_CreateButton.Content" xml:space="preserve">
+    <value>创建角色</value>
+  </data>
+  <data name="CharMgr_Title.Text" xml:space="preserve">
+    <value>角色管理器</value>
+  </data>
+  <data name="CharMgr_SearchBox.Header" xml:space="preserve">
+    <value>搜索要编辑的角色，或添加新角色</value>
+  </data>
+  <data name="CharMgr_SearchBox.PlaceholderText" xml:space="preserve">
+    <value>开始输入以搜索…</value>
+  </data>
+  <data name="CharMgr_AddCharacterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>添加新角色</value>
+  </data>
+  <data name="Characters_CheckForUpdatesMenuItem.Text" xml:space="preserve">
+    <value>检查更新</value>
+  </data>
+  <data name="Characters_OpenFolderMenuItem.Text" xml:space="preserve">
+    <value>打开文件夹…</value>
+  </data>
+  <data name="Characters_ModsSubItem.Text" xml:space="preserve">
+    <value>模组</value>
+  </data>
+  <data name="Characters_ClearNotificationsMenuItem.Text" xml:space="preserve">
+    <value>清除通知</value>
+  </data>
+  <data name="Characters_DisableAllModsMenuItem.Text" xml:space="preserve">
+    <value>禁用所有模组</value>
+  </data>
+  <data name="Characters_SelectProcessDialog.Title" xml:space="preserve">
+    <value>选择进程路径</value>
+  </data>
+  <data name="Characters_SelectProcessDialog.PrimaryButtonText" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Characters_SelectProcessDialog.SecondaryButtonText" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Characters_SelectProcessDialogText.Text" xml:space="preserve">
+    <value>选择要启动的进程路径。保存后，按下启动按钮时将启动该进程。可在设置页面重置此项。</value>
+  </data>
+  <data name="Characters_CreateAdvancedCommandButton.Content" xml:space="preserve">
+    <value>创建高级命令</value>
+  </data>
+  <data name="Characters_GameBananaLink.Text" xml:space="preserve">
+    <value>GameBanana</value>
+  </data>
+  <data name="Characters_SortByLabel.Text" xml:space="preserve">
+    <value>排序方式：</value>
+  </data>
+  <data name="Characters_SortingComboBox.PlaceholderText" xml:space="preserve">
+    <value>排序角色…</value>
+  </data>
+  <data name="Characters_RefreshModsButton.Content" xml:space="preserve">
+    <value>刷新模组</value>
+  </data>
+  <data name="Characters_Start3DmigotoButton.Content" xml:space="preserve">
+    <value>启动 3Dmigoto</value>
+  </data>
+  <data name="Characters_ModPresetsButton.Label" xml:space="preserve">
+    <value>模组预设</value>
+  </data>
+  <data name="Characters_ApplyPresetLabel.Text" xml:space="preserve">
+    <value>应用预设：</value>
+  </data>
+  <data name="Characters_ConfirmPresetButton.Text" xml:space="preserve">
+    <value>确认</value>
+  </data>
+  <data name="Characters_RandomizeModsButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>打开一个包含更多信息的对话框</value>
+  </data>
+  <data name="Characters_RandomizeModsButtonText.Text" xml:space="preserve">
+    <value>随机模组</value>
+  </data>
+  <data name="Characters_FiltersButton.Label" xml:space="preserve">
+    <value>筛选</value>
+  </data>
+  <data name="Characters_EnabledModsToggle.ToolTipService.ToolTip" xml:space="preserve">
+    <value>仅显示至少启用了一个模组的情况</value>
+  </data>
+  <data name="Characters_DropHereLabel.Text" xml:space="preserve">
+    <value>拖放到此处以自动检测模组…</value>
+  </data>
+  <data name="CharGallery_SelectSkinButton.Content" xml:space="preserve">
+    <value>选择皮肤</value>
+  </data>
+  <data name="CharGallery_SortByLabel.Text" xml:space="preserve">
+    <value>排序方式：</value>
+  </data>
+  <data name="CharGallery_SortingComboBox.PlaceholderText" xml:space="preserve">
+    <value>排序模组…</value>
+  </data>
+  <data name="CharGallery_SortDateAdded.Content" xml:space="preserve">
+    <value>添加日期</value>
+  </data>
+  <data name="CharGallery_SortFolderName.Content" xml:space="preserve">
+    <value>文件夹名称</value>
+  </data>
+  <data name="CharGallery_SortName.Content" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="CharGallery_ViewButton.Text" xml:space="preserve">
+    <value>视图</value>
+  </data>
+  <data name="CharGallery_AdjustHeightLabel.Text" xml:space="preserve">
+    <value>调整高度：</value>
+  </data>
+  <data name="CharGallery_AdjustWidthLabel.Text" xml:space="preserve">
+    <value>调整所需宽度：</value>
+  </data>
+  <data name="CharGallery_SingleSelectCheckBox.Content" xml:space="preserve">
+    <value>单选</value>
+  </data>
+  <data name="CharGallery_SingleSelectCheckBox.ToolTipService.ToolTip" xml:space="preserve">
+    <value>选中此项后，同一时间只允许启用一个模组。</value>
+  </data>
+  <data name="CharGallery_ModSearchBox.PlaceholderText" xml:space="preserve">
+    <value>搜索模组…</value>
+  </data>
+  <data name="CharGallery_SaveImageMenuItem.Text" xml:space="preserve">
+    <value>保存图片</value>
+  </data>
+  <data name="CharGallery_OpenModFolderMenuItem.Text" xml:space="preserve">
+    <value>打开模组文件夹…</value>
+  </data>
+  <data name="CharGallery_OpenModPageMenuItem.Text" xml:space="preserve">
+    <value>打开模组页面…</value>
+  </data>
+  <data name="CharGallery_DeleteModMenuItem.Text" xml:space="preserve">
+    <value>删除模组</value>
+  </data>
+  <data name="CharGallery_AuthorLabel.Text" xml:space="preserve">
+    <value>作者：</value>
+  </data>
+  <data name="CharGallery_AddedLabel.Text" xml:space="preserve">
+    <value>添加于：</value>
+  </data>
+  <data name="CharGallery_LoadingModsLabel.Text" xml:space="preserve">
+    <value>正在加载模组…</value>
+  </data>
+  <data name="ModInstaller_SetModPreviewImageMenuItem.Text" xml:space="preserve">
+    <value>设置模组预览图</value>
+  </data>
+  <data name="ModInstaller_SetRootModFolderMenuItem.Text" xml:space="preserve">
+    <value>设置根模组文件夹</value>
+  </data>
+  <data name="ModInstaller_SetShaderFixesFolderMenuItem.Text" xml:space="preserve">
+    <value>设置 ShaderFixes 文件夹</value>
+  </data>
+  <data name="ModInstaller_DuplicateModDialog.Title" xml:space="preserve">
+    <value>已存在同名文件夹</value>
+  </data>
+  <data name="ModInstaller_DuplicateModDialog.CloseButtonText" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ModInstaller_NewModLabel.Text" xml:space="preserve">
+    <value>新模组：</value>
+  </data>
+  <data name="ModInstaller_NewModCustomNameTextBox.Header" xml:space="preserve">
+    <value>自定义名称</value>
+  </data>
+  <data name="ModInstaller_NewModCustomNameTextBox.PlaceholderText" xml:space="preserve">
+    <value>自定义名称</value>
+  </data>
+  <data name="ModInstaller_NewModFolderNameTextBox.Header" xml:space="preserve">
+    <value>文件夹名称</value>
+  </data>
+  <data name="ModInstaller_NewModFolderNameTextBox.PlaceholderText" xml:space="preserve">
+    <value>文件夹名称</value>
+  </data>
+  <data name="ModInstaller_OtherModLabel.Text" xml:space="preserve">
+    <value>已有模组：</value>
+  </data>
+  <data name="ModInstaller_OtherModCustomNameTextBox.Header" xml:space="preserve">
+    <value>自定义名称</value>
+  </data>
+  <data name="ModInstaller_OtherModCustomNameTextBox.PlaceholderText" xml:space="preserve">
+    <value>自定义名称</value>
+  </data>
+  <data name="ModInstaller_OtherModFolderNameTextBox.Header" xml:space="preserve">
+    <value>文件夹名称</value>
+  </data>
+  <data name="ModInstaller_OtherModFolderNameTextBox.PlaceholderText" xml:space="preserve">
+    <value>文件夹名称</value>
+  </data>
+  <data name="ModInstaller_OpenExistingModFolderLink.Text" xml:space="preserve">
+    <value>打开已有模组文件夹...</value>
+  </data>
+  <data name="ModInstaller_OverwriteExistingModCheckBox.Content" xml:space="preserve">
+    <value>覆盖已有模组</value>
+  </data>
+  <data name="ModInstaller_ReplaceDuplicateModCheckBox.ToolTipService.ToolTip" xml:space="preserve">
+    <value>重复的模组将在预设中被新安装的模组替换。此选项与“在预设中替换旧模组”复选框互斥。</value>
+  </data>
+  <data name="ModInstaller_ReplaceDuplicateModText.Text" xml:space="preserve">
+    <value>在预设中用新模组替换重复模组</value>
+  </data>
+  <data name="ModInstaller_AlwaysOnTopToggleButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>保持窗口置顶</value>
+  </data>
+  <data name="ModInstaller_ReRetrieveModInfoButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>从模组页面获取模组信息</value>
+  </data>
+  <data name="ModInstaller_ModUrlTextBox.Header" xml:space="preserve">
+    <value>模组页面链接</value>
+  </data>
+  <data name="ModInstaller_ModUrlTextBox.PlaceholderText" xml:space="preserve">
+    <value>粘贴链接以自动填充字段（仅限 GameBanana）</value>
+  </data>
+  <data name="ModInstaller_CustomNameTextBox.Header" xml:space="preserve">
+    <value>模组自定义名称</value>
+  </data>
+  <data name="ModInstaller_CustomNameTextBox.PlaceholderText" xml:space="preserve">
+    <value>在 JASM 中显示的自定义名称</value>
+  </data>
+  <data name="ModInstaller_AuthorTextBox.Header" xml:space="preserve">
+    <value>作者</value>
+  </data>
+  <data name="ModInstaller_NoteTextBox.Header" xml:space="preserve">
+    <value>备注</value>
+  </data>
+  <data name="ModInstaller_NoteTextBox.PlaceholderText" xml:space="preserve">
+    <value>自定义文本备注，显示在角色详情页面的网格中</value>
+  </data>
+  <data name="ModInstaller_ModFolderLabel.Text" xml:space="preserve">
+    <value>模组文件夹：</value>
+  </data>
+  <data name="ModInstaller_PreviewImageSourceLabel.Text" xml:space="preserve">
+    <value>预览图来源：</value>
+  </data>
+  <data name="ModInstaller_PreviewSourceAutoCheckBox.Content" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="ModInstaller_PreviewSourceUrlCheckBox.Content" xml:space="preserve">
+    <value>链接</value>
+  </data>
+  <data name="ModInstaller_PreviewSourceModFilesCheckBox.Content" xml:space="preserve">
+    <value>模组文件</value>
+  </data>
+  <data name="ModInstaller_PreviewSourceIgnoreCheckBox.Content" xml:space="preserve">
+    <value>忽略</value>
+  </data>
+  <data name="ModInstaller_SelectRootHelpText1.Text" xml:space="preserve">
+    <value>在此处可以选择模组文件夹的根目录。</value>
+  </data>
+  <data name="ModInstaller_SelectRootHelpText2.Text" xml:space="preserve">
+    <value>这通常是包含 'merged.ini/Script.ini' 或 '.JASM_ModConfig.json' 的文件夹。
+JASM 会自动检测模组文件夹和 merged.ini 文件。如果你想手动选择模组文件夹，可以在上方的概览中右键点击该文件夹。 </value>
+  </data>
+  <data name="ModInstaller_SelectRootHelpText3.Text" xml:space="preserve">
+    <value>你也可以手动选择模组预览图的图片文件。通常直接点击“添加模组”即可</value>
+  </data>
+  <data name="ModInstaller_MergedIniFileFolderLabel.Text" xml:space="preserve">
+    <value>MergedIni 文件夹：</value>
+  </data>
+  <data name="ModInstaller_MergedIniAutoLabel.Text" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="ModInstaller_MergedIniAutoCheckBox.Content" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="ModInstaller_ShaderFixesFolderLabel.Text" xml:space="preserve">
+    <value>ShaderFixes 文件夹：</value>
+  </data>
+  <data name="ModInstaller_ShaderFixesAutoCheckBox.Content" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="ModInstaller_ManualSelectCheckBox.Content" xml:space="preserve">
+    <value>手动选择</value>
+  </data>
+  <data name="ModInstaller_ShaderFixesIgnoreCheckBox.Content" xml:space="preserve">
+    <value>忽略</value>
+  </data>
+  <data name="ModInstaller_EnableThisModCheckBox.Content" xml:space="preserve">
+    <value>仅启用此模组并禁用其他模组？</value>
+  </data>
+  <data name="ModInstaller_EnableThisModCheckBox.ToolTipService.ToolTip" xml:space="preserve">
+    <value>这将启用此模组并禁用所有其他模组。如果是角色模组，则仅禁用该角色的皮肤模组</value>
+  </data>
+  <data name="ModInstaller_ReplaceModToUpdateCheckBox.Content" xml:space="preserve">
+    <value>在预设中用新模组替换要更新的模组</value>
+  </data>
+  <data name="ModInstaller_ReplaceModToUpdateCheckBox.ToolTipService.ToolTip" xml:space="preserve">
+    <value>这将在所有预设中用新安装的模组替换旧模组。此复选框与检测到重复模组时的复选框是分开的</value>
+  </data>
+  <data name="ModInstaller_AddModButton.Content" xml:space="preserve">
+    <value>添加模组</value>
+  </data>
+  <data name="Preset_AutoSyncWarningText.Text" xml:space="preserve">
+    <value>未启用自动同步！进行更改后，请记得按 F10 键手动重新加载 3Dmigoto 配置</value>
+  </data>
+  <data name="Preset_PageTitle.Text" xml:space="preserve">
+    <value>模组预设与模组偏好设置</value>
+  </data>
+  <data name="Preset_NewPresetNameTextBox.Header" xml:space="preserve">
+    <value>新预设名称</value>
+  </data>
+  <data name="Preset_SaveAndCreatePresetButton.Content" xml:space="preserve">
+    <value>保存当前模组偏好设置并创建新预设</value>
+  </data>
+  <data name="Preset_CreateEmptyPresetCheckBox.Content" xml:space="preserve">
+    <value>创建为空预设</value>
+  </data>
+  <data name="Preset_CreateEmptyPresetCheckBox.ToolTipService.ToolTip" xml:space="preserve">
+    <value>如果勾选，新预设将在不启用任何模组的情况下创建。</value>
+  </data>
+  <data name="Preset_AutoSyncCheckBox.Content" xml:space="preserve">
+    <value>切换预设时自动同步模组偏好设置</value>
+  </data>
+  <data name="Preset_AutoSyncCheckBox.ToolTipService.ToolTip" xml:space="preserve">
+    <value>如果勾选，JASM 将在创建预设和切换预设时自动同步偏好设置</value>
+  </data>
+  <data name="Preset_StartElevatorButton.Content" xml:space="preserve">
+    <value>启动 Elevator...</value>
+  </data>
+  <data name="Preset_SaveActivePreferencesButton.Content" xml:space="preserve">
+    <value>将当前模组偏好设置（按键交换）保存到模组</value>
+  </data>
+  <data name="Preset_SaveActivePreferencesButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>读取当前活跃模组的 3Dmigoto 偏好设置（d3dx_user.ini）并将设置存储到每个模组的 .JASM_Config.json 文件中</value>
+  </data>
+  <data name="Preset_ApplySavedPreferencesButton.Content" xml:space="preserve">
+    <value>应用已保存的模组偏好设置（按键交换）</value>
+  </data>
+  <data name="Preset_ApplySavedPreferencesButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>从 .JASM_Config.json 读取当前活跃模组的偏好设置，并写入 d3dx_user.ini 供 3Dmigoto 读取</value>
+  </data>
+  <data name="Preset_ShowManualControlsCheckBox.Content" xml:space="preserve">
+    <value>显示手动控制</value>
+  </data>
+  <data name="Preset_ShowManualControlsCheckBox.ToolTipService.ToolTip" xml:space="preserve">
+    <value>如果你想手动控制偏好设置，而不是让 JASM 通过 Elevator 自动处理</value>
+  </data>
+  <data name="Preset_EnabledModsCountLabel.Text" xml:space="preserve">
+    <value>预设已启用模组数：</value>
+  </data>
+  <data name="Preset_CreatedAtLabel.Text" xml:space="preserve">
+    <value>创建时间：</value>
+  </data>
+  <data name="Preset_GoToPresetDetailsButton.Content" xml:space="preserve">
+    <value>转到预设详情</value>
+  </data>
+  <data name="Preset_ApplyPresetButton.Content" xml:space="preserve">
+    <value>应用预设</value>
+  </data>
+  <data name="Preset_ApplyPresetButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>启用此预设中的所有模组，并将预设的模组偏好设置写入模组</value>
+  </data>
+  <data name="Preset_ApplyPresetConfirmButton.Content" xml:space="preserve">
+    <value>确认</value>
+  </data>
+  <data name="Preset_OptionsDropDownButton.AutomationProperties.Name" xml:space="preserve">
+    <value>选项</value>
+  </data>
+  <data name="Preset_ReadOnlyMenuItem.Text" xml:space="preserve">
+    <value>只读</value>
+  </data>
+  <data name="Preset_DuplicateMenuItem.Text" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="Preset_DeleteMenuItem.Text" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="Preset_DeleteMenuItem.ToolTipService.ToolTip" xml:space="preserve">
+    <value>永久删除此预设</value>
+  </data>
+  <data name="Preset_RandomizeModsButton.Content" xml:space="preserve">
+    <value>随机模组</value>
+  </data>
+  <data name="Preset_RandomizeModsButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>打开包含更多信息的对话框</value>
+  </data>
+  <data name="Preset_ResetModPreferencesButton.Content" xml:space="preserve">
+    <value>重置模组偏好设置</value>
+  </data>
+  <data name="Preset_ResetModPreferencesButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>清除存储在模组 .JASM_ModConfig.json 中的偏好设置</value>
+  </data>
+  <data name="Preset_ResetPreferencesTitle.Text" xml:space="preserve">
+    <value>重置已保存的模组偏好设置</value>
+  </data>
+  <data name="Preset_ResetOnlyEnabledCheckBox.Content" xml:space="preserve">
+    <value>仅重置已启用的模组</value>
+  </data>
+  <data name="Preset_AlsoReset3DmigotoCheckBox.Content" xml:space="preserve">
+    <value>同时清除 3Dmigoto 用户 ini 中的偏好设置</value>
+  </data>
+  <data name="Preset_ResetConfirmButton.Content" xml:space="preserve">
+    <value>确认</value>
+  </data>
+  <data name="PresetDetails_SearchBox.PlaceholderText" xml:space="preserve">
+    <value>搜索模组...</value>
+  </data>
+  <data name="PresetDetails_MoreOptionsDropDownButton.AutomationProperties.Name" xml:space="preserve">
+    <value>更多选项</value>
+  </data>
+  <data name="PresetDetails_FindReplacementModMenuItem.Text" xml:space="preserve">
+    <value>查找替换模组</value>
+  </data>
+  <data name="PresetDetails_ReadAndSavePreferencesMenuItem.Text" xml:space="preserve">
+    <value>读取并保存偏好设置</value>
+  </data>
+  <data name="PresetDetails_ReadAndSavePreferencesMenuItem.ToolTipService.ToolTip" xml:space="preserve">
+    <value>读取此模组当前的 3Dmigoto 用户 ini 并为该预设保存偏好设置</value>
+  </data>
+  <data name="PresetDetails_RemoveModFromPresetMenuItem.Text" xml:space="preserve">
+    <value>从预设中移除模组</value>
+  </data>
+  <data name="PresetDetails_AddedToPresetAtLabel.Text" xml:space="preserve">
+    <value>添加到预设的时间：</value>
+  </data>
+  <data name="PresetDetails_ModNotFoundText.Text" xml:space="preserve">
+    <value>在磁盘上找不到此模组！</value>
+  </data>
+  <data name="PresetDetails_OriginalPathLabel.Text" xml:space="preserve">
+    <value>原始路径：</value>
+  </data>
+  <data name="ModsOverview_RunCommandLabel.Text" xml:space="preserve">
+    <value>在此文件夹上运行命令：</value>
+  </data>
+  <data name="ModsOverview_OpenFolderButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>打开文件夹</value>
+  </data>
+  <data name="ModsOverview_FullCommandLabel.Text" xml:space="preserve">
+    <value>完整命令：</value>
+  </data>
+  <data name="ModsOverview_WorkingDirectoryLabel.Text" xml:space="preserve">
+    <value>工作目录：</value>
+  </data>
+  <data name="ModsOverview_TargetPathLabel.Text" xml:space="preserve">
+    <value>目标路径：{{TargetPath}}</value>
+  </data>
+  <data name="ModsOverview_RunButton.Content" xml:space="preserve">
+    <value>运行</value>
+  </data>
+  <data name="ModsOverview_GoToCharacterButton.Content" xml:space="preserve">
+    <value>前往角色</value>
+  </data>
+  <data name="ModsOverview_OpenSkinFolderToolTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>打开皮肤文件夹</value>
+  </data>
+  <data name="ModsOverview_AddedLabel.Text" xml:space="preserve">
+    <value>添加时间：</value>
+  </data>
+  <data name="ModsOverview_Title.Text" xml:space="preserve">
+    <value>Mod 总览</value>
+  </data>
+  <data name="ModsOverview_OpenAllButton.Content" xml:space="preserve">
+    <value>全部展开</value>
+  </data>
+  <data name="ModsOverview_CloseAllButton.Content" xml:space="preserve">
+    <value>全部折叠</value>
+  </data>
+  <data name="ModsOverview_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>按回车键搜索...</value>
+  </data>
+  <data name="Shell_CharacterManagement.Content" xml:space="preserve">
+    <value>角色管理</value>
+  </data>
+  <data name="Shell_ModsOverview.Content" xml:space="preserve">
+    <value>Mod 总览</value>
+  </data>
+  <data name="Shell_ModPresets.Content" xml:space="preserve">
+    <value>Mod 预设</value>
+  </data>
+  <data name="Shell_Debug.Content" xml:space="preserve">
+    <value>调试</value>
+  </data>
+  <data name="Shell_Notifications.Content" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="GbMod_Title.Text" xml:space="preserve">
+    <value>从 GameBanana 下载 Mod</value>
+  </data>
+  <data name="GbMod_OpenModFolderToolTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>打开 Mod 文件夹...</value>
+  </data>
+  <data name="GbMod_LoadingText.Text" xml:space="preserve">
+    <value>正在从 GameBanana 加载 Mod 信息...</value>
+  </data>
+  <data name="GbMod_DownloadButton.Content" xml:space="preserve">
+    <value>下载</value>
+  </data>
+  <data name="GbMod_InstallButton.Content" xml:space="preserve">
+    <value>安装</value>
+  </data>
+  <data name="GbMod_CloseButton.Content" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="GbMod_CloseButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>关闭窗口</value>
+  </data>
+  <data name="GbMod_ModPageLabel.Text" xml:space="preserve">
+    <value>Mod 页面：</value>
+  </data>
+  <data name="GbMod_OpenInBrowserToolTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>在默认浏览器中打开...</value>
+  </data>
+  <data name="GbMod_DownloadsButton.Content" xml:space="preserve">
+    <value>下载项</value>
+  </data>
+  <data name="ModUpdate_Title.Text" xml:space="preserve">
+    <value>发现新的可下载文件</value>
+  </data>
+  <data name="ModUpdate_OpenModFolderToolTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>打开 Mod 文件夹...</value>
+  </data>
+  <data name="ModUpdate_LoadingText.Text" xml:space="preserve">
+    <value>正在从 GameBanana 加载 Mod 信息...</value>
+  </data>
+  <data name="ModUpdate_NewSinceLastCheck.Text" xml:space="preserve">
+    <value>自上次检查以来新增</value>
+  </data>
+  <data name="ModUpdate_DownloadButton.Content" xml:space="preserve">
+    <value>下载</value>
+  </data>
+  <data name="ModUpdate_InstallButton.Content" xml:space="preserve">
+    <value>安装</value>
+  </data>
+  <data name="ModUpdate_IgnoreAndCloseButton.Content" xml:space="preserve">
+    <value>忽略并关闭</value>
+  </data>
+  <data name="ModUpdate_IgnoreAndCloseButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>移除通知并关闭此窗口</value>
+  </data>
+  <data name="ModUpdate_LastCheckLabel.Text" xml:space="preserve">
+    <value>上次检查：</value>
+  </data>
+  <data name="ModUpdate_ModPageLabel.Text" xml:space="preserve">
+    <value>Mod 页面：</value>
+  </data>
+  <data name="ModUpdate_OpenInBrowserToolTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>在默认浏览器中打开...</value>
+  </data>
+  <data name="ModUpdate_DownloadsButton.Content" xml:space="preserve">
+    <value>下载项</value>
+  </data>
+  <data name="CmdProcess_RunningLabel.Text" xml:space="preserve">
+    <value>运行中：</value>
+  </data>
+  <data name="CmdProcess_AutoScroll.Content" xml:space="preserve">
+    <value>自动滚动</value>
+  </data>
+  <data name="CmdProcess_InputHeader.Header" xml:space="preserve">
+    <value>写入进程，按回车键发送</value>
+  </data>
+  <data name="CmdProcess_KillProcessButton.Content" xml:space="preserve">
+    <value>终止进程</value>
+  </data>
+  <data name="ModSelector_Title.Text" xml:space="preserve">
+    <value>选择 Mod</value>
+  </data>
+  <data name="ModSelector_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>搜索 Mod...</value>
+  </data>
+  <data name="ModSelector_DateAddedLabel.Text" xml:space="preserve">
+    <value>添加日期：</value>
+  </data>
+  <data name="ModSelector_SelectModButton.Content" xml:space="preserve">
+    <value>选择 Mod</value>
+  </data>
+  <data name="ErrorWin_ErrorOccurredLabel.Text" xml:space="preserve">
+    <value>发生错误：</value>
+  </data>
+  <data name="ErrorWin_UnhandledExceptionText.Text" xml:space="preserve">
+    <value>发生未处理的异常。应用程序遇到了不知道如何处理的问题。JASM 可能处于不稳定状态，建议重启 JASM。</value>
+  </data>
+  <data name="ErrorWin_StackTrace1.Text" xml:space="preserve">
+    <value>堆栈跟踪：</value>
+  </data>
+  <data name="ErrorWin_InnerExceptionLabel.Text" xml:space="preserve">
+    <value>内部异常</value>
+  </data>
+  <data name="ErrorWin_StackTrace2.Text" xml:space="preserve">
+    <value>堆栈跟踪：</value>
+  </data>
+  <data name="EasterEgg_HiddenPageText.Text" xml:space="preserve">
+    <value>冲啊！隐藏页面！耶！😎</value>
+  </data>
+  <data name="EasterEgg_GifNotLoadedText.Text" xml:space="preserve">
+    <value>如果你能看到这条文字，说明 gif 没加载出来 sadge...</value>
+  </data>
+  <data name="EasterEgg_BestGirlText.Text" xml:space="preserve">
+    <value>C.C.（C-2）是最棒的女孩，不服来辩</value>
+  </data>
+  <data name="EasterEgg_FurinaText.Text" xml:space="preserve">
+    <value>还有，我芙宁娜 50/50 没歪 ;_;</value>
+  </data>
+  <data name="EasterEgg_DoNotPressButton.Content" xml:space="preserve">
+    <value>⚠️ 不要按这个按钮 ⚠️</value>
+  </data>
+  <data name="Notif_AllNotificationsText.Text" xml:space="preserve">
+    <value>当前应用程序运行期间显示的所有通知</value>
+  </data>
+  <data name="Notif_LogsWrittenToText.Text" xml:space="preserve">
+    <value>通知和日志写入位置：</value>
+  </data>
+  <data name="CustomImage_PasteImage.Text" xml:space="preserve">
+    <value>粘贴图片</value>
+  </data>
+  <data name="CustomImage_CopyImage.Text" xml:space="preserve">
+    <value>复制图片</value>
+  </data>
+  <data name="CustomImage_ClearImage.Text" xml:space="preserve">
+    <value>清除图片</value>
+  </data>
+  <data name="CustomImage_EditButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>选择图片</value>
+  </data>
+  <data name="FolderSelector_Browse.Content" xml:space="preserve">
+    <value>浏览</value>
+  </data>
+  <data name="LinkButton_CopyLink.Text" xml:space="preserve">
+    <value>复制链接</value>
+  </data>
+  <data name="ModListOverview_Mods.Title" xml:space="preserve">
+    <value>模组</value>
+  </data>
+  <data name="ModListOverview_AddMod.Text" xml:space="preserve">
+    <value>添加模组...</value>
+  </data>
+  <data name="ModListOverview_MultiSkinWarning.Message" xml:space="preserve">
+    <value>已选择多个皮肤</value>
+  </data>
+  <data name="ModListOverview_ModEnabled.Header" xml:space="preserve">
+    <value>模组已启用</value>
+  </data>
+  <data name="ModListOverview_ModName.Header" xml:space="preserve">
+    <value>模组名称</value>
+  </data>
 </root>

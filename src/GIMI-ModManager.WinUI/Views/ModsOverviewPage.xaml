@@ -6,6 +6,7 @@
     xmlns:controls="using:GIMI_ModManager.WinUI.Views.Controls"
     xmlns:converters="using:CommunityToolkit.WinUI.UI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:local="using:GIMI_ModManager.WinUI.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:GIMI_ModManager.WinUI.Models"
@@ -35,12 +36,14 @@
                     <TextBlock
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
+                        l:Uids.Uid="ModsOverview_RunCommandLabel"
                         Text="Run Command on this folder:" />
                     <Button
                         Grid.Column="1"
                         HorizontalAlignment="Right"
                         Command="{x:Bind ViewModel.OpenFolderCommand}"
-                        ToolTipService.ToolTip="Open Folder">
+                        ToolTipService.ToolTip="Open Folder"
+                        l:Uids.Uid="ModsOverview_OpenFolderButton">
                         <FontIcon Glyph="&#xE838;" />
                     </Button>
 
@@ -70,7 +73,10 @@
 
 
                                     <StackPanel>
-                                        <TextBlock IsTextSelectionEnabled="True" Text="Full Command:" />
+                                        <TextBlock
+                                            IsTextSelectionEnabled="True"
+                                            l:Uids.Uid="ModsOverview_FullCommandLabel"
+                                            Text="Full Command:" />
                                         <TextBlock
                                             Padding="6,0,0,0"
                                             IsTextSelectionEnabled="True"
@@ -80,7 +86,10 @@
                                     </StackPanel>
 
                                     <StackPanel>
-                                        <TextBlock IsTextSelectionEnabled="True" Text="Working Directory:" />
+                                        <TextBlock
+                                            IsTextSelectionEnabled="True"
+                                            l:Uids.Uid="ModsOverview_WorkingDirectoryLabel"
+                                            Text="Working Directory:" />
                                         <TextBlock
                                             Padding="6,0,0,0"
                                             IsTextSelectionEnabled="True"
@@ -90,7 +99,10 @@
                                     </StackPanel>
 
                                     <StackPanel>
-                                        <TextBlock IsTextSelectionEnabled="True" Text="'{{TargetPath}}:" />
+                                        <TextBlock
+                                            IsTextSelectionEnabled="True"
+                                            l:Uids.Uid="ModsOverview_TargetPathLabel"
+                                            Text="'{{TargetPath}}:" />
                                         <TextBlock
                                             Padding="6,0,0,0"
                                             IsTextSelectionEnabled="True"
@@ -109,6 +121,7 @@
                                     Command="{x:Bind RunCommand}"
                                     CommandParameter="{x:Bind}"
                                     Content="Run"
+                                    l:Uids.Uid="ModsOverview_RunButton"
                                     Style="{ThemeResource AccentButtonStyle}" />
                             </Grid>
 
@@ -163,7 +176,8 @@
                         x:Name="GoToCharacterButton"
                         Grid.Column="1"
                         Click="GoToCharacterButton_OnClick"
-                        Content="Go to Character" />
+                        Content="Go to Character"
+                        l:Uids.Uid="ModsOverview_GoToCharacterButton" />
 
                 </Grid>
 
@@ -186,10 +200,14 @@
                         Grid.Column="1"
                         Link="{x:Bind Mod.FolderPath}"
                         ToolTipService.ToolTip="Open skin folder"
+                        l:Uids.Uid="ModsOverview_OpenSkinFolderToolTip"
                         Text="{x:Bind Mod.FolderName}" />
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal">
-                        <TextBlock Margin="0,0,4,0" Text="Added:" />
+                        <TextBlock
+                            Margin="0,0,4,0"
+                            l:Uids.Uid="ModsOverview_AddedLabel"
+                            Text="Added:" />
                         <TextBlock Text="{x:Bind Mod.DateAdded}" />
                     </StackPanel>
 
@@ -226,6 +244,7 @@
                     FontSize="28"
                     Style="{StaticResource TitleTextBlockStyle}"
                     TextTrimming="CharacterEllipsis"
+                    l:Uids.Uid="ModsOverview_Title"
                     Text="Mods Overview" />
 
 
@@ -233,11 +252,15 @@
                     Orientation="Horizontal"
                     Spacing="16"
                     Visibility="Collapsed">
-                    <Button Command="{x:Bind ViewModel.CloseOpenAllCommand}" Content="Open All" />
+                    <Button
+                        Command="{x:Bind ViewModel.CloseOpenAllCommand}"
+                        Content="Open All"
+                        l:Uids.Uid="ModsOverview_OpenAllButton" />
                     <Button
                         Command="{x:Bind ViewModel.CloseOpenAllCommand}"
                         CommandParameter="Close"
-                        Content="Close All" />
+                        Content="Close All"
+                        l:Uids.Uid="ModsOverview_CloseAllButton" />
                 </StackPanel>
             </StackPanel>
 
@@ -253,6 +276,7 @@
                     MinWidth="200"
                     VerticalAlignment="Center"
                     PlaceholderText="Press Enter to search..."
+                    l:Uids.Uid="ModsOverview_SearchPlaceholder"
                     QuerySubmitted="SearchBox_OnQuerySubmitted" />
             </StackPanel>
 

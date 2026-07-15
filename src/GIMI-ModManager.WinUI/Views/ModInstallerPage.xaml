@@ -6,6 +6,7 @@
     xmlns:controls="using:GIMI_ModManager.WinUI.Views.Controls"
     xmlns:converters="using:CommunityToolkit.WinUI.UI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:local="using:GIMI_ModManager.WinUI.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewModels="using:GIMI_ModManager.WinUI.ViewModels"
@@ -20,20 +21,23 @@
             <MenuFlyoutItem
                 Command="{x:Bind ViewModel.SetModPreviewImageCommand, Mode=OneWay}"
                 CommandParameter="{Binding}"
-                Text="Set mod preview image" />
+                Text="Set mod preview image"
+                l:Uids.Uid="ModInstaller_SetModPreviewImageMenuItem" />
         </MenuFlyout>
 
         <MenuFlyout x:Name="FolderFlyout">
             <MenuFlyoutItem
                 Command="{x:Bind ViewModel.SetRootFolderCommand, Mode=OneWay}"
                 CommandParameter="{Binding}"
-                Text="Set Root Mod Folder" />
+                Text="Set Root Mod Folder"
+                l:Uids.Uid="ModInstaller_SetRootModFolderMenuItem" />
             <!--  TODO: Enable Later  -->
             <MenuFlyoutItem
                 Command="{x:Bind ViewModel.SetShaderFixesFolderCommand}"
                 CommandParameter="{Binding}"
                 Visibility="Collapsed"
-                Text="Set ShaderFixes Folder" />
+                Text="Set ShaderFixes Folder"
+                l:Uids.Uid="ModInstaller_SetShaderFixesFolderMenuItem" />
         </MenuFlyout>
 
         <DataTemplate x:Key="RootFolderTemplate" x:DataType="viewModels:RootFolder">
@@ -92,7 +96,8 @@
             DefaultButton="Primary"
             IsPrimaryButtonEnabled="{x:Bind ViewModel.CanExecuteDialogCommand, Mode=OneWay}"
             PrimaryButtonCommand="{x:Bind ViewModel.AddModDialogCommand, Mode=OneWay}"
-            PrimaryButtonText="{x:Bind ViewModel.PrimaryButtonText, Mode=OneWay}">
+            PrimaryButtonText="{x:Bind ViewModel.PrimaryButtonText, Mode=OneWay}"
+            l:Uids.Uid="ModInstaller_DuplicateModDialog">
             <ContentDialog.Content>
                 <Grid MinWidth="500">
                     <Grid.RowDefinitions>
@@ -115,36 +120,40 @@
 
 
                         <StackPanel Margin="4">
-                            <TextBlock Text="New Mod:" />
+                            <TextBlock Text="New Mod:" l:Uids.Uid="ModInstaller_NewModLabel" />
                             <TextBox
                                 Margin="4"
                                 Header="Custom name"
                                 IsEnabled="{x:Bind ViewModel.OverwriteExistingMod, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
                                 PlaceholderText="CustomName"
-                                Text="{x:Bind ViewModel.CustomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                Text="{x:Bind ViewModel.CustomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                l:Uids.Uid="ModInstaller_NewModCustomNameTextBox" />
                             <TextBox
                                 Margin="4"
                                 Header="Folder name"
                                 IsEnabled="{x:Bind ViewModel.OverwriteExistingMod, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
                                 PlaceholderText="FolderName"
-                                Text="{x:Bind ViewModel.ModFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                Text="{x:Bind ViewModel.ModFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                l:Uids.Uid="ModInstaller_NewModFolderNameTextBox" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Margin="4">
-                            <TextBlock Text="Other Mod:" />
+                            <TextBlock Text="Other Mod:" l:Uids.Uid="ModInstaller_OtherModLabel" />
                             <TextBox
                                 Margin="4"
                                 Header="Custom name"
                                 IsEnabled="{x:Bind ViewModel.OverwriteExistingMod, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
                                 PlaceholderText="CustomName"
-                                Text="{x:Bind ViewModel.DuplicateModCustomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                Text="{x:Bind ViewModel.DuplicateModCustomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                l:Uids.Uid="ModInstaller_OtherModCustomNameTextBox" />
                             <TextBox
                                 Margin="4"
                                 Header="Folder name"
                                 IsEnabled="{x:Bind ViewModel.OverwriteExistingMod, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
                                 PlaceholderText="FolderName"
-                                Text="{x:Bind ViewModel.DuplicateModFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <controls:LinkButton Link="{x:Bind ViewModel.DuplicateModPath, Mode=OneWay}" Text="Open existing mod folder..." />
+                                Text="{x:Bind ViewModel.DuplicateModFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                l:Uids.Uid="ModInstaller_OtherModFolderNameTextBox" />
+                            <controls:LinkButton Link="{x:Bind ViewModel.DuplicateModPath, Mode=OneWay}" Text="Open existing mod folder..." l:Uids.Uid="ModInstaller_OpenExistingModFolderLink" />
                         </StackPanel>
 
                     </Grid>
@@ -153,14 +162,16 @@
                         <CheckBox
                             Margin="4"
                             Content="Overwrite existing mod"
-                            IsChecked="{x:Bind ViewModel.OverwriteExistingMod, Mode=TwoWay}" />
+                            IsChecked="{x:Bind ViewModel.OverwriteExistingMod, Mode=TwoWay}"
+                            l:Uids.Uid="ModInstaller_OverwriteExistingModCheckBox" />
 
                         <CheckBox
                             Margin="4"
                             Command="{x:Bind ViewModel.ToggleReplaceDuplicateModInPresetCommand}"
                             IsChecked="{x:Bind ViewModel.ReplaceDuplicateModInPreset, Mode=OneWay}"
-                            ToolTipService.ToolTip="The duplicate mod will be replaced in presets by the newly installed mod. This is mutually exclusive with the 'replace old mod in presets' checkbox.">
-                            <TextBlock TextWrapping="WrapWholeWords" Text="Replace duplicate mod in presets with new mod" />
+                            ToolTipService.ToolTip="The duplicate mod will be replaced in presets by the newly installed mod. This is mutually exclusive with the 'replace old mod in presets' checkbox."
+                            l:Uids.Uid="ModInstaller_ReplaceDuplicateModCheckBox">
+                            <TextBlock TextWrapping="WrapWholeWords" Text="Replace duplicate mod in presets with new mod" l:Uids.Uid="ModInstaller_ReplaceDuplicateModText" />
                         </CheckBox>
                     </StackPanel>
 
@@ -196,7 +207,8 @@
                     VerticalAlignment="Top"
                     Command="{x:Bind ViewModel.ToggleAlwaysOnTopCommand}"
                     IsChecked="{x:Bind ViewModel.AlwaysOnTop, Mode=TwoWay}"
-                    ToolTipService.ToolTip="Keep window always on top">
+                    ToolTipService.ToolTip="Keep window always on top"
+                    l:Uids.Uid="ModInstaller_AlwaysOnTopToggleButton">
                     <FontIcon Glyph="&#xE718;" />
                 </ToggleButton>
                 <controls:CustomImage
@@ -214,7 +226,8 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Bottom"
                     Command="{x:Bind ViewModel.ReRetrieveModInfoCommand}"
-                    ToolTipService.ToolTip="Retrieve mod info from the mod page">
+                    ToolTipService.ToolTip="Retrieve mod info from the mod page"
+                    l:Uids.Uid="ModInstaller_ReRetrieveModInfoButton">
                     <Button.Content>
                         <FontIcon Glyph="&#xE72C;" />
                     </Button.Content>
@@ -232,25 +245,29 @@
                     IsReadOnly="{x:Bind ViewModel.IsRetrievingModInfo, Mode=OneWay}"
                     KeyDown="UrlTextBox_KeyDown"
                     PlaceholderText="Paste URL to auto populate fields (GameBanana only)"
-                    Text="{x:Bind ViewModel.ModUrl, Mode=TwoWay}" />
+                    Text="{x:Bind ViewModel.ModUrl, Mode=TwoWay}"
+                    l:Uids.Uid="ModInstaller_ModUrlTextBox" />
                 <TextBox
                     Grid.Row="2"
                     Header="Mod Custom Name"
                     IsReadOnly="{x:Bind ViewModel.IsRetrievingModInfo, Mode=OneWay}"
                     PlaceholderText="Custom Name displayed throughout JASM"
-                    Text="{x:Bind ViewModel.CustomName, Mode=TwoWay}" />
+                    Text="{x:Bind ViewModel.CustomName, Mode=TwoWay}"
+                    l:Uids.Uid="ModInstaller_CustomNameTextBox" />
                 <TextBox
                     Grid.Row="3"
                     Header="Author"
                     IsReadOnly="{x:Bind ViewModel.IsRetrievingModInfo, Mode=OneWay}"
-                    Text="{x:Bind ViewModel.Author, Mode=TwoWay}" />
+                    Text="{x:Bind ViewModel.Author, Mode=TwoWay}"
+                    l:Uids.Uid="ModInstaller_AuthorTextBox" />
                 <TextBox
                     Grid.Row="4"
                     Margin="0,0,0,8"
                     AcceptsReturn="False"
                     Header="Note"
                     PlaceholderText="Custom free text note, shown in grid on character details page"
-                    Text="{x:Bind ViewModel.Description, Mode=TwoWay}" />
+                    Text="{x:Bind ViewModel.Description, Mode=TwoWay}"
+                    l:Uids.Uid="ModInstaller_NoteTextBox" />
             </Grid>
 
             <!--</StackPanel>-->
@@ -290,7 +307,7 @@
 
                     <StackPanel Margin="0,8,0,12" Orientation="Horizontal">
                         <FontIcon Margin="4,0" Glyph="{x:Bind ViewModel.RootFolderIcon}" />
-                        <TextBlock Margin="4,0" Text="ModFolder:" />
+                        <TextBlock Margin="4,0" Text="ModFolder:" l:Uids.Uid="ModInstaller_ModFolderLabel" />
                         <TextBlock Text="{x:Bind ViewModel.LastSelectedRootFolder.Name, Mode=OneWay, FallbackValue=Unknown}" />
                         <FontIcon Margin="4,0" Glyph="&#xEA62;" />
                         <TextBlock Text="{x:Bind ViewModel.ModCharacterName, Mode=OneWay}" />
@@ -301,7 +318,7 @@
 
                     <StackPanel Orientation="Horizontal">
                         <FontIcon Margin="4,0" Glyph="{x:Bind ViewModel.SelectedImageIcon}" />
-                        <TextBlock Margin="4,0" Text="Preview Image Source:" />
+                        <TextBlock Margin="4,0" Text="Preview Image Source:" l:Uids.Uid="ModInstaller_PreviewImageSourceLabel" />
                         <TextBlock Text="{x:Bind ViewModel.ImageSource, Mode=OneWay}" />
                     </StackPanel>
                     <StackPanel
@@ -311,29 +328,33 @@
                         <CheckBox
                             Content="Auto"
                             IsChecked="True"
-                            IsEnabled="False" />
-                        <CheckBox Content="Url" IsEnabled="False" />
-                        <CheckBox Content="Mod Files" IsEnabled="False" />
-                        <CheckBox Content="Ignore" IsEnabled="False" />
+                            IsEnabled="False"
+                            l:Uids.Uid="ModInstaller_PreviewSourceAutoCheckBox" />
+                        <CheckBox Content="Url" IsEnabled="False" l:Uids.Uid="ModInstaller_PreviewSourceUrlCheckBox" />
+                        <CheckBox Content="Mod Files" IsEnabled="False" l:Uids.Uid="ModInstaller_PreviewSourceModFilesCheckBox" />
+                        <CheckBox Content="Ignore" IsEnabled="False" l:Uids.Uid="ModInstaller_PreviewSourceIgnoreCheckBox" />
                     </StackPanel>
 
                     <TextBlock
                         Padding="8"
                         HorizontalAlignment="Left"
                         TextWrapping="WrapWholeWords"
-                        Text="Here you can select the root of the mod folder." />
+                        Text="Here you can select the root of the mod folder."
+                        l:Uids.Uid="ModInstaller_SelectRootHelpText1" />
 
                     <TextBlock
                         Padding="8"
                         HorizontalAlignment="Left"
                         TextWrapping="WrapWholeWords"
-                        Text="This is usually the folder that contains the 'merged.ini/Script.ini' or '.JASM_ModConfig.json'.&#x0a;JASM will automatically detect the mod folder and the merged.ini file. If you want to manually select the mod folder, you can do so by right clicking the folder in the overview above. " />
+                        Text="This is usually the folder that contains the 'merged.ini/Script.ini' or '.JASM_ModConfig.json'.&#x0a;JASM will automatically detect the mod folder and the merged.ini file. If you want to manually select the mod folder, you can do so by right clicking the folder in the overview above. "
+                        l:Uids.Uid="ModInstaller_SelectRootHelpText2" />
 
                     <TextBlock
                         Padding="8"
                         HorizontalAlignment="Left"
                         TextWrapping="WrapWholeWords"
-                        Text="You can also manually select image file for the mod preview image. It's usually fine to just press 'Add Mod'" />
+                        Text="You can also manually select image file for the mod preview image. It's usually fine to just press 'Add Mod'"
+                        l:Uids.Uid="ModInstaller_SelectRootHelpText3" />
 
 
 
@@ -341,30 +362,32 @@
 
                         <StackPanel Orientation="Horizontal">
                             <FontIcon Margin="4,0" Glyph="{x:Bind ViewModel.SelectedMergeIniIcon}" />
-                            <TextBlock Margin="4,0" Text="MergedIniFile Folder:" />
-                            <TextBlock Text="Auto" />
+                            <TextBlock Margin="4,0" Text="MergedIniFile Folder:" l:Uids.Uid="ModInstaller_MergedIniFileFolderLabel" />
+                            <TextBlock Text="Auto" l:Uids.Uid="ModInstaller_MergedIniAutoLabel" />
                         </StackPanel>
 
                         <StackPanel Margin="0,0,0,8" Orientation="Horizontal">
                             <CheckBox
                                 Content="Auto"
                                 IsChecked="True"
-                                IsEnabled="False" />
+                                IsEnabled="False"
+                                l:Uids.Uid="ModInstaller_MergedIniAutoCheckBox" />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal">
                             <FontIcon Margin="4,0" Glyph="{x:Bind ViewModel.ShaderFixesFolderIcon}" />
-                            <TextBlock Margin="4,0" Text="ShaderFixes Folder:" />
+                            <TextBlock Margin="4,0" Text="ShaderFixes Folder:" l:Uids.Uid="ModInstaller_ShaderFixesFolderLabel" />
                             <TextBlock Text="{x:Bind ViewModel.LastSelectedShaderFixesFolder.Name, Mode=OneWay, FallbackValue=Unknown}" />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox Content="Auto" IsEnabled="False" />
+                            <CheckBox Content="Auto" IsEnabled="False" l:Uids.Uid="ModInstaller_ShaderFixesAutoCheckBox" />
                             <CheckBox
                                 Content="Manual Select"
                                 IsChecked="True"
-                                IsEnabled="False" />
-                            <CheckBox Content="Ignore" IsEnabled="False" />
+                                IsEnabled="False"
+                                l:Uids.Uid="ModInstaller_ManualSelectCheckBox" />
+                            <CheckBox Content="Ignore" IsEnabled="False" l:Uids.Uid="ModInstaller_ShaderFixesIgnoreCheckBox" />
                         </StackPanel>
 
                     </StackPanel>
@@ -387,7 +410,8 @@
                         Command="{x:Bind ViewModel.EnableOnlyToggleCommand}"
                         Content="Enable this mod and disable others?"
                         IsChecked="{x:Bind ViewModel.EnableThisMod, Mode=OneWay}"
-                        ToolTipService.ToolTip="This will enable this mod and disable all other mods. If a character then it will only disable for that characters skin" />
+                        ToolTipService.ToolTip="This will enable this mod and disable all other mods. If a character then it will only disable for that characters skin"
+                        l:Uids.Uid="ModInstaller_EnableThisModCheckBox" />
 
 
                     <CheckBox
@@ -396,14 +420,16 @@
                         Content="Replace mod to update with new mod in presets"
                         IsChecked="{x:Bind ViewModel.ReplaceModToUpdateInPreset, Mode=OneWay}"
                         ToolTipService.ToolTip="This will replace the old mod with an update with this new installed mod for all presets. This checkbox is separate from the checkbox for when a duplicate mod is detected"
-                        Visibility="{x:Bind ViewModel.IsUpdatingMod, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        Visibility="{x:Bind ViewModel.IsUpdatingMod, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        l:Uids.Uid="ModInstaller_ReplaceModToUpdateCheckBox" />
 
                     <Button
                         Grid.Column="2"
                         Margin="4,0"
                         HorizontalAlignment="Right"
                         Command="{x:Bind ViewModel.AddModCommand}"
-                        Content="Add Mod">
+                        Content="Add Mod"
+                        l:Uids.Uid="ModInstaller_AddModButton">
                         <Button.KeyboardAccelerators>
                             <KeyboardAccelerator Key="S" Modifiers="Control" />
                         </Button.KeyboardAccelerators>

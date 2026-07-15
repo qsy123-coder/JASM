@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:local="using:GIMI_ModManager.WinUI.Views.CharacterDetailsPages"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:GIMI_ModManager.WinUI.Models"
@@ -42,10 +43,10 @@
                     </Grid>
 
                     <StackPanel Grid.Row="1">
-                        <Button>Move Mod...</Button>
-                        <Button>Mod Details...</Button>
-                        <Button>Presets...</Button>
-                        <Button>Commands...</Button>
+                        <Button l:Uids.Uid="ModGrid_MoveModButton">Move Mod...</Button>
+                        <Button l:Uids.Uid="ModGrid_ModDetailsButton">Mod Details...</Button>
+                        <Button l:Uids.Uid="ModGrid_PresetsButton">Presets...</Button>
+                        <Button l:Uids.Uid="ModGrid_CommandsButton">Commands...</Button>
                     </StackPanel>
 
                 </Grid>
@@ -85,7 +86,8 @@
                     CanUserSort="True"
                     ClipboardContentBinding="{Binding IsEnabled, Mode=OneWay}"
                     Header="Enabled"
-                    Tag="IsEnabled">
+                    Tag="IsEnabled"
+                    l:Uids.Uid="ModGrid_EnabledColumn">
 
                     <controls:DataGridTemplateColumn.CellTemplate>
                         <DataTemplate x:DataType="subViewModels:ModRowVM">
@@ -153,7 +155,8 @@
                     CanUserSort="True"
                     Header="Mod Name"
                     IsReadOnly="True"
-                    Tag="DisplayName" />
+                    Tag="DisplayName"
+                    l:Uids.Uid="ModGrid_ModNameColumn" />
 
                 <controls:DataGridTextColumn
                     Width="SizeToCells"
@@ -162,6 +165,7 @@
                     Header="Mod Folder Name"
                     IsReadOnly="True"
                     Tag="FolderName"
+                    l:Uids.Uid="ModGrid_ModFolderNameColumn"
                     Visibility="{x:Bind ViewModel.IsModFolderNameColumnVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                 <controls:DataGridTextColumn
@@ -169,7 +173,8 @@
                     Binding="{Binding Author, Mode=OneWay}"
                     CanUserSort="True"
                     Header="Author"
-                    Tag="Author" />
+                    Tag="Author"
+                    l:Uids.Uid="ModGrid_AuthorColumn" />
 
                 <controls:DataGridTemplateColumn
                     Width="SizeToCells"
@@ -177,7 +182,8 @@
                     ClipboardContentBinding="{Binding DateAddedFormated, Mode=OneTime}"
                     Header="Added"
                     IsReadOnly="True"
-                    Tag="DateAdded">
+                    Tag="DateAdded"
+                    l:Uids.Uid="ModGrid_AddedColumn">
                     <controls:DataGridTemplateColumn.CellTemplate>
                         <DataTemplate x:DataType="subViewModels:ModRowVM">
                             <Grid
@@ -199,7 +205,8 @@
                     CanUserSort="True"
                     Header="Presets"
                     IsReadOnly="True"
-                    Tag="Presets" />
+                    Tag="Presets"
+                    l:Uids.Uid="ModGrid_PresetsColumn" />
 
                 <controls:DataGridTextColumn
                     x:Name="NotesColumn"
@@ -208,7 +215,8 @@
                     CanUserSort="False"
                     Header="Notes"
                     IsReadOnly="False"
-                    Tag="Description" />
+                    Tag="Description"
+                    l:Uids.Uid="ModGrid_NotesColumn" />
 
             </controls:DataGrid.Columns>
 

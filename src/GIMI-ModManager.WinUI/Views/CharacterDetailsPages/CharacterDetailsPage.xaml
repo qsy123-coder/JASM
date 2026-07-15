@@ -8,6 +8,7 @@
     xmlns:controls1="using:GIMI_ModManager.WinUI.Views.Controls"
     xmlns:converters="using:CommunityToolkit.WinUI.UI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:GIMI_ModManager.WinUI.Models"
     xmlns:notifications="using:GIMI_ModManager.WinUI.Services.Notifications"
@@ -40,7 +41,8 @@
                                 <TextBlock
                                     Margin="0,0,4,0"
                                     HorizontalAlignment="Left"
-                                    Text="Mods Selected:" />
+                                    Text="Mods Selected:"
+                                    l:Uids.Uid="CharDetails_ModsSelectedLabel" />
                                 <TextBlock HorizontalAlignment="Left" Text="{x:Bind ViewModel.ContextMenuVM.SelectedModsCount, Mode=OneWay}" />
                             </StackPanel>
                             <Button
@@ -62,9 +64,10 @@
                             x:Name="MoveModsButton"
                             Margin="0,8,16,0"
                             Command="{x:Bind ViewModel.ContextMenuVM.MoveModsCommand}"
-                            Content="Move" />
+                            Content="Move"
+                            l:Uids.Uid="CharDetails_MoveButton" />
                         <StackPanel>
-                            <TextBlock Text="Move Mods To Another Character: " />
+                            <TextBlock Text="Move Mods To Another Character: " l:Uids.Uid="CharDetails_MoveModsToLabel" />
                             <AutoSuggestBox
                                 x:Name="MoveModSearchBox"
                                 IsEnabled="{x:Bind ViewModel.IsNotHardBusy, Mode=OneWay}"
@@ -72,7 +75,8 @@
                                 PlaceholderText="Search..."
                                 QuerySubmitted="MoveModSearch_OnQuerySubmitted"
                                 TextChanged="MoveModSearch_OnTextChanged"
-                                Text="{x:Bind ViewModel.ContextMenuVM.MoveModsSearchText, Mode=TwoWay}">
+                                Text="{x:Bind ViewModel.ContextMenuVM.MoveModsSearchText, Mode=TwoWay}"
+                                l:Uids.Uid="CharDetails_MoveModSearchBox">
                                 <AutoSuggestBox.ItemTemplate>
                                     <DataTemplate x:DataType="subViewModels:SuggestedModObject">
                                         <TextBlock FontFamily="{StaticResource GenshinFont}" Text="{x:Bind DisplayName}" />
@@ -95,7 +99,8 @@
                             ExpandDirection="Down"
                             Header="Move Mods to another Skin"
                             IsEnabled="{x:Bind ViewModel.ContextMenuVM.MultipleSkins, Mode=OneWay}"
-                            IsExpanded="False">
+                            IsExpanded="False"
+                            l:Uids.Uid="CharDetails_MoveModsToSkinExpander">
                             <Expander.Content>
                                 <StackPanel>
                                     <controls1:SelectCharacterFromGrid GridSource="{x:Bind ViewModel.ContextMenuVM.SelectableCharacterSkins, Mode=OneWay}" ItemClickedCommand="{x:Bind ViewModel.ContextMenuVM.SelectNewCharacterSkinCommand}" />
@@ -105,13 +110,13 @@
                                             <Button.Content>
                                                 <StackPanel Orientation="Horizontal">
                                                     <FontIcon Margin="0,0,4,0" Glyph="&#xE74E;" />
-                                                    <TextBlock Text="Override" />
+                                                    <TextBlock Text="Override" l:Uids.Uid="CharDetails_OverrideLabel" />
                                                 </StackPanel>
                                             </Button.Content>
                                         </Button>
 
                                         <StackPanel Margin="4,0,0,0" Visibility="{x:Bind ViewModel.ContextMenuVM.ModHasCharacterSkinOverride, Mode=OneWay}">
-                                            <TextBlock Text="Override Skin Set To: " />
+                                            <TextBlock Text="Override Skin Set To: " l:Uids.Uid="CharDetails_OverrideSkinSetToLabel" />
                                             <TextBlock HorizontalAlignment="Center" Text="{x:Bind ViewModel.ContextMenuVM.ModCharacterSkinOverride.DisplayName, FallbackValue='', Mode=OneWay}" />
                                         </StackPanel>
                                     </StackPanel>
@@ -141,9 +146,9 @@
                     Visibility="Visible">
                     <ProgressRing />
                     <TextBlock>
-                        <Run Text="Loading" />
+                        <Run l:Uids.Uid="CharDetails_LoadingRun" Text="Loading" />
                         <Run Text="{x:Bind ViewModel.LoadingItemText, Mode=OneWay}" />
-                        <Run Text="..." />
+                        <Run l:Uids.Uid="CharDetails_LoadingDotsRun" Text="..." />
 
                     </TextBlock>
                 </StackPanel>
@@ -174,24 +179,26 @@
 
                         <StackPanel Orientation="Horizontal">
                             <MenuBar IsEnabled="{x:Bind ViewModel.IsNotHardBusy, Mode=OneWay}">
-                                <MenuBarItem Title="Mods">
+                                <MenuBarItem Title="Mods" l:Uids.Uid="CharDetails_ModsMenuItem">
                                     <MenuBarItem.Items>
                                         <MenuFlyoutItem
                                             Command="{x:Bind ViewModel.AddModFolderCommand}"
                                             ToolTipService.ToolTip="Add a mod folder"
-                                            Text="Add Mod..." />
+                                            Text="Add Mod..."
+                                            l:Uids.Uid="CharDetails_AddModItem" />
 
                                         <MenuFlyoutItem
                                             Command="{x:Bind ViewModel.AddModArchiveCommand}"
                                             ToolTipService.ToolTip="Add a mod inside a compressed archive"
-                                            Text="Add Archive...">
+                                            Text="Add Archive..."
+                                            l:Uids.Uid="CharDetails_AddArchiveItem">
                                             <MenuFlyoutItem.KeyboardAccelerators>
                                                 <KeyboardAccelerator Key="O" Modifiers="Control" />
                                             </MenuFlyoutItem.KeyboardAccelerators>
                                         </MenuFlyoutItem>
 
                                         <MenuFlyoutSeparator />
-                                        <MenuFlyoutItem Command="{x:Bind ViewModel.RefreshAllModsCommand}" Text="Refresh Mods">
+                                        <MenuFlyoutItem Command="{x:Bind ViewModel.RefreshAllModsCommand}" Text="Refresh Mods" l:Uids.Uid="CharDetails_RefreshModsItem">
                                             <MenuFlyoutItem.KeyboardAccelerators>
                                                 <KeyboardAccelerator Key="F5" />
                                             </MenuFlyoutItem.KeyboardAccelerators>
@@ -199,36 +206,40 @@
                                     </MenuBarItem.Items>
                                 </MenuBarItem>
 
-                                <MenuBarItem Title="Folders">
-                                    <MenuFlyoutItem Command="{x:Bind ViewModel.OpenGIMIRootFolderCommand}" Text="Open 3Dmigoto Root folder..." />
+                                <MenuBarItem Title="Folders" l:Uids.Uid="CharDetails_FoldersMenuItem">
+                                    <MenuFlyoutItem Command="{x:Bind ViewModel.OpenGIMIRootFolderCommand}" Text="Open 3Dmigoto Root folder..." l:Uids.Uid="CharDetails_OpenGimiRootItem" />
                                     <MenuFlyoutSeparator />
-                                    <MenuFlyoutItem Command="{x:Bind ViewModel.OpenCharacterFolderCommand}" Text="Open Character's Mod folder..." />
+                                    <MenuFlyoutItem Command="{x:Bind ViewModel.OpenCharacterFolderCommand}" Text="Open Character's Mod folder..." l:Uids.Uid="CharDetails_OpenCharFolderItem" />
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
                                         Command="{x:Bind ViewModel.OpenModFolderCommand}"
                                         IsEnabled="{x:Bind ViewModel.ModGridVM.IsSingleModSelected, Mode=OneWay}"
-                                        Text="Open Selected Mod folder..." />
+                                        Text="Open Selected Mod folder..."
+                                        l:Uids.Uid="CharDetails_OpenSelectedModFolderItem" />
                                 </MenuBarItem>
 
-                                <MenuBarItem Title="View">
+                                <MenuBarItem Title="View" l:Uids.Uid="CharDetails_ViewMenuItem">
                                     <ToggleMenuFlyoutItem
                                         Command="{x:Bind ViewModel.ToggleSingleSelectCommand}"
                                         IsChecked="{x:Bind ViewModel.IsSingleSelectEnabled, Mode=OneWay}"
                                         ToolTipService.ToolTip="Selecting this will only allow one mod to be enabled at a time."
-                                        Text="Single Select" />
+                                        Text="Single Select"
+                                        l:Uids.Uid="CharDetails_SingleSelectItem" />
                                     <ToggleMenuFlyoutItem
                                         Command="{x:Bind ViewModel.ToggleHideModFolderColumnCommand}"
                                         IsChecked="{x:Bind ViewModel.IsModFolderNameColumnVisible, Mode=OneWay}"
-                                        Text="Show 'Mod Folder Names' column" />
+                                        Text="Show 'Mod Folder Names' column"
+                                        l:Uids.Uid="CharDetails_ShowModFolderNamesItem" />
                                 </MenuBarItem>
 
                                 <MenuBarItem
                                     Title="Mod Preferences"
                                     IsEnabled="{x:Bind ViewModel.IsSingleModSelected, Mode=OneWay}"
-                                    Visibility="Collapsed">
-                                    <ToggleMenuFlyoutItem ToolTipService.ToolTip="Reads 3Dmigoto mod preferences (d3dx_user.ini) for the selected mod and stores the settings in the Mod's .JASM_Config.json file" Text="Save preferences for selected mod" />
+                                    Visibility="Collapsed"
+                                    l:Uids.Uid="CharDetails_ModPreferencesMenuItem">
+                                    <ToggleMenuFlyoutItem ToolTipService.ToolTip="Reads 3Dmigoto mod preferences (d3dx_user.ini) for the selected mod and stores the settings in the Mod's .JASM_Config.json file" Text="Save preferences for selected mod" l:Uids.Uid="CharDetails_SavePreferencesItem" />
                                     <MenuFlyoutSeparator />
-                                    <ToggleMenuFlyoutItem ToolTipService.ToolTip="Reads the currently selected mod's preferences from .JASM_Config.json and writes them to d3dx_user.ini for 3Dmigoto to read" Text="Read preferences for selected mod" />
+                                    <ToggleMenuFlyoutItem ToolTipService.ToolTip="Reads the currently selected mod's preferences from .JASM_Config.json and writes them to d3dx_user.ini for 3Dmigoto to read" Text="Read preferences for selected mod" l:Uids.Uid="CharDetails_ReadPreferencesItem" />
                                 </MenuBarItem>
                             </MenuBar>
 
@@ -271,7 +282,8 @@
                                 IsEnabled="{x:Bind ViewModel.IsNotHardBusy, Mode=OneWay}"
                                 PlaceholderText="Search Mods..."
                                 TextChanged="SearchModsTextBox_OnTextChanged"
-                                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                l:Uids.Uid="CharDetails_SearchModsTextBox">
 
                                 <TextBox.KeyboardAccelerators>
                                     <KeyboardAccelerator

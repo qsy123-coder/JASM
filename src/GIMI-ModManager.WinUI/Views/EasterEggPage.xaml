@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:GIMI_ModManager.WinUI.Views"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
@@ -16,7 +17,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <StackPanel>
-            <TextBlock Text="Let's GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO HIDDEN PAGE YESSSSSSSSSSSSSSSSSS 😎" />
+            <TextBlock Text="Let's GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO HIDDEN PAGE YESSSSSSSSSSSSSSSSSS 😎" l:Uids.Uid="EasterEgg_HiddenPageText" />
         </StackPanel>
 
 
@@ -24,7 +25,8 @@
             <TextBlock
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Text="If you can see this then the gif didn't load sadge..." />
+                Text="If you can see this then the gif didn't load sadge..."
+                l:Uids.Uid="EasterEgg_GifNotLoadedText" />
             <Image
                 x:Name="Image"
                 HorizontalAlignment="Center"
@@ -35,7 +37,7 @@
 
 
         <StackPanel Grid.Row="2">
-            <TextBlock Text="C.C. (C-2) is Best girl fight me" />
+            <TextBlock Text="C.C. (C-2) is Best girl fight me" l:Uids.Uid="EasterEgg_BestGirlText" />
         </StackPanel>
 
         <Grid Grid.Row="3">
@@ -43,7 +45,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock HorizontalAlignment="Left" Text="Also, I lost Furina 50/50 ;_;" />
+            <TextBlock HorizontalAlignment="Left" Text="Also, I lost Furina 50/50 ;_;" l:Uids.Uid="EasterEgg_FurinaText" />
 
 
             <Button
@@ -51,6 +53,7 @@
                 HorizontalAlignment="Right"
                 Click="ButtonBase_OnClick"
                 Content="⚠️ DO NOT PRESS THIS BUTTON ⚠️"
+                l:Uids.Uid="EasterEgg_DoNotPressButton"
                 PointerEntered="UIElement_OnPointerEntered"
                 PointerExited="UIElement_OnPointerExited" />
 

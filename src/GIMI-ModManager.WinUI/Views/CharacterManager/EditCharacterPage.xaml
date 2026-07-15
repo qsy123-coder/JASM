@@ -7,6 +7,7 @@
     xmlns:controls="using:GIMI_ModManager.WinUI.Views.Controls"
     xmlns:controls1="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:local="using:GIMI_ModManager.WinUI.Views.CharacterManager"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewModels="using:GIMI_ModManager.WinUI.ViewModels"
@@ -31,13 +32,14 @@
                 <ColumnDefinition />
             </Grid.ColumnDefinitions>
             <StackPanel HorizontalAlignment="Stretch" Orientation="Horizontal">
-                <TextBlock VerticalAlignment="Center" Text="Mod Folder Path:" />
+                <TextBlock VerticalAlignment="Center" Text="Mod Folder Path:" l:Uids.Uid="EditChar_ModFolderPathLabel" />
                 <controls:LinkButton
                     Link="{x:Bind ViewModel.ModFolderUri, Mode=TwoWay}"
                     ToolTipService.ToolTip="Open Character's mod folder"
-                    Text="{x:Bind ViewModel.ModFolderString, Mode=TwoWay}" />
+                    Text="{x:Bind ViewModel.ModFolderString, Mode=TwoWay}"
+                    l:Uids.Uid="EditChar_ModFolderLink" />
 
-                <Button Command="{x:Bind ViewModel.GoToCharacterCommand}">Go to character</Button>
+                <Button Command="{x:Bind ViewModel.GoToCharacterCommand}" l:Uids.Uid="EditChar_GoToCharacterButton">Go to character</Button>
             </StackPanel>
 
 
@@ -48,7 +50,8 @@
                 Content="Disable Character"
                 IsEnabled="{x:Bind ViewModel.CharacterStatus.IsEnabledAndNotCustomCharacter, Mode=OneWay}"
                 ToolTipService.ToolTip="Opens a popup first with more information"
-                Visibility="{x:Bind ViewModel.CharacterStatus.IsEnabledAndNotCustomCharacter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                Visibility="{x:Bind ViewModel.CharacterStatus.IsEnabledAndNotCustomCharacter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                l:Uids.Uid="EditChar_DisableCharacterButton" />
 
             <Button
                 Grid.Column="1"
@@ -57,7 +60,8 @@
                 Content="Enable Character"
                 IsEnabled="{x:Bind ViewModel.CharacterStatus.IsDisabledAndNotCustomCharacter, Mode=OneWay}"
                 ToolTipService.ToolTip="Opens a popup first with more information"
-                Visibility="{x:Bind ViewModel.CharacterStatus.IsDisabledAndNotCustomCharacter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                Visibility="{x:Bind ViewModel.CharacterStatus.IsDisabledAndNotCustomCharacter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                l:Uids.Uid="EditChar_EnableCharacterButton" />
 
             <Button
                 Grid.Column="1"
@@ -66,7 +70,8 @@
                 Content="Delete Custom Character"
                 IsEnabled="{x:Bind ViewModel.CharacterStatus.IsCustomCharacter, Mode=OneWay}"
                 ToolTipService.ToolTip="Opens a popup first with more information"
-                Visibility="{x:Bind ViewModel.CharacterStatus.IsCustomCharacter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                Visibility="{x:Bind ViewModel.CharacterStatus.IsCustomCharacter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                l:Uids.Uid="EditChar_DeleteCustomCharacterButton" />
 
 
 
@@ -112,7 +117,7 @@
                             Background="{ThemeResource ControlFillColorSecondaryBrush}"
                             Orientation="Horizontal"
                             Spacing="8">
-                            <TextBlock Text="Internal Name (Id): " />
+                            <TextBlock Text="Internal Name (Id): " l:Uids.Uid="EditChar_InternalNameLabel" />
                             <TextBlock
                                 IsTextSelectionEnabled="True"
                                 Style="{ThemeResource BodyStrongTextBlockStyle}"
@@ -125,7 +130,8 @@
                                     <TextBlock
                                         MaxWidth="300"
                                         IsTextSelectionEnabled="True"
-                                        TextWrapping="WrapWholeWords">
+                                        TextWrapping="WrapWholeWords"
+                                        l:Uids.Uid="EditChar_InternalNameHelp">
                                         The Internal Name is used by JASM to identify characters/ModObjects. It is also used as the name of mod folder. Must be unique.
                                         Changing this after character has been created means JASM will identify this as a new character.
                                     </TextBlock>
@@ -144,17 +150,18 @@
                                     MinWidth="200"
                                     Header="Display Name"
                                     PlaceholderText="{x:Bind ViewModel.Form.DisplayName.PlaceHolderText, Mode=OneWay}"
-                                    Text="{x:Bind ViewModel.Form.DisplayName.Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    Text="{x:Bind ViewModel.Form.DisplayName.Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    l:Uids.Uid="EditChar_DisplayNameBox" />
                             </local:InputWrapper.Input>
                         </local:InputWrapper>
 
                         <local:InputWrapper InputField="{x:Bind ViewModel.Form.IsMultiMod}">
                             <local:InputWrapper.Input>
-                                <CheckBox Content="Is Multi Mod" IsChecked="{x:Bind ViewModel.Form.IsMultiMod.Value, Mode=TwoWay}" />
+                                <CheckBox Content="Is Multi Mod" IsChecked="{x:Bind ViewModel.Form.IsMultiMod.Value, Mode=TwoWay}" l:Uids.Uid="EditChar_IsMultiModCheckBox" />
                             </local:InputWrapper.Input>
 
                             <local:InputWrapper.HelpInfo>
-                                <TextBlock IsTextSelectionEnabled="True" TextWrapping="WrapWholeWords">
+                                <TextBlock IsTextSelectionEnabled="True" TextWrapping="WrapWholeWords" l:Uids.Uid="EditChar_IsMultiModHelp">
                                     If Checked JASM won't show a warning when multiple mods are enabled for this mod object.
                                 </TextBlock>
                             </local:InputWrapper.HelpInfo>
@@ -171,7 +178,7 @@
                     Margin="8,0"
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">
-                    <TextBlock Text="Total Mods:" />
+                    <TextBlock Text="Total Mods:" l:Uids.Uid="EditChar_TotalModsLabel" />
                     <TextBlock
                         Margin="8,0,0,0"
                         FontSize="20"
@@ -194,7 +201,8 @@
                                         HorizontalAlignment="Right"
                                         IsTextSelectionEnabled="True"
                                         ToolTipService.ToolTip="Date Added to JASM"
-                                        Text="{x:Bind DateAdded}" />
+                                        Text="{x:Bind DateAdded}"
+                                        l:Uids.Uid="EditChar_DateAddedToolTip" />
 
                                     <TextBlock
                                         Grid.Column="0"
@@ -235,17 +243,19 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock FontSize="16" Text="Character Search Keys" />
+                    <TextBlock FontSize="16" Text="Character Search Keys" l:Uids.Uid="EditChar_SearchKeysTitle" />
                     <TextBox
                         Grid.Column="1"
                         PlaceholderText="New Key Name..."
-                        Text="{x:Bind ViewModel.KeyToAddInput, Mode=TwoWay}" />
+                        Text="{x:Bind ViewModel.KeyToAddInput, Mode=TwoWay}"
+                        l:Uids.Uid="EditChar_NewKeyBox" />
                     <Button
                         Grid.Column="2"
                         Margin="0,0,10,0"
                         HorizontalAlignment="Right"
                         Command="{x:Bind ViewModel.AddKeyCommand}"
-                        Content="Add Search Key" />
+                        Content="Add Search Key"
+                        l:Uids.Uid="EditChar_AddSearchKeyButton" />
 
                     <Button
                         Grid.Column="3"
@@ -257,7 +267,8 @@
                                     <TextBlock
                                         IsTextSelectionEnabled="True"
                                         TextWrapping="WrapWholeWords"
-                                        Text="JASM uses keys to help improve search functionality. Some characters may have multiple names, so you can add additional name or search terms as Keys." />
+                                        Text="JASM uses keys to help improve search functionality. Some characters may have multiple names, so you can add additional name or search terms as Keys."
+                                        l:Uids.Uid="EditChar_SearchKeysHelp" />
                                 </Grid>
                             </Flyout>
                         </Button.Flyout>
@@ -288,7 +299,8 @@
                                         HorizontalAlignment="Right"
                                         Command="{Binding ElementName=EditCharacterPageRoot, Path=ViewModel.RemoveKeyCommand, Mode=OneTime}"
                                         CommandParameter="{Binding Mode=OneTime}"
-                                        Content="Remove" />
+                                        Content="Remove"
+                                        l:Uids.Uid="EditChar_RemoveKeyButton" />
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -318,7 +330,8 @@
                     HorizontalAlignment="Center"
                     Command="{x:Bind ViewModel.RevertChangesCommand}"
                     Content="Undo changes"
-                    ToolTipService.ToolTip="Reverts changes not saved" />
+                    ToolTipService.ToolTip="Reverts changes not saved"
+                    l:Uids.Uid="EditChar_UndoChangesButton" />
                 <Button
                     Grid.Row="1"
                     HorizontalAlignment="Center"
@@ -326,10 +339,11 @@
                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                     Command="{x:Bind ViewModel.DummySaveCommand}"
                     Content="Save changes"
-                    ToolTipService.ToolTip="Saves changes to disk">
+                    ToolTipService.ToolTip="Saves changes to disk"
+                    l:Uids.Uid="EditChar_SaveChangesButton">
                     <Button.Flyout>
                         <Flyout Placement="Bottom">
-                            <Button Command="{x:Bind ViewModel.SaveChangesCommand}" Content="Save" />
+                            <Button Command="{x:Bind ViewModel.SaveChangesCommand}" Content="Save" l:Uids.Uid="EditChar_SaveButton" />
                         </Flyout>
                     </Button.Flyout>
                 </Button>
@@ -338,7 +352,8 @@
                 <Button
                     Grid.Row="3"
                     HorizontalAlignment="Stretch"
-                    Command="{x:Bind ViewModel.ShowCharacterModelCommand}">
+                    Command="{x:Bind ViewModel.ShowCharacterModelCommand}"
+                    l:Uids.Uid="EditChar_ShowDataModelButton">
                     <Button.Content>
                         <TextBlock TextWrapping="WrapWholeWords" Text="Show Character Data Model..." />
                     </Button.Content>
@@ -355,10 +370,11 @@
                 VerticalAlignment="Bottom"
                 Content="Reset Character"
                 ToolTipService.ToolTip="Resets Character values to their default"
-                Visibility="{x:Bind ViewModel.IsNotCustomCharacter, Converter={StaticResource BoolToVisibilityConverter}}">
+                Visibility="{x:Bind ViewModel.IsNotCustomCharacter, Converter={StaticResource BoolToVisibilityConverter}}"
+                l:Uids.Uid="EditChar_ResetCharacterButton">
                 <Button.Flyout>
                     <Flyout>
-                        <Button Command="{x:Bind ViewModel.ResetCharacterToDefaultCommand}" Content="Reset Character Settings" />
+                        <Button Command="{x:Bind ViewModel.ResetCharacterToDefaultCommand}" Content="Reset Character Settings" l:Uids.Uid="EditChar_ResetCharacterSettingsButton" />
                     </Flyout>
                 </Button.Flyout>
             </Button>
