@@ -1128,6 +1128,9 @@ JASM 会自动检测模组文件夹和 merged.ini 文件。如果你想手动选
   <data name="ModsOverview_AddedLabel.Text" xml:space="preserve">
     <value>添加时间：</value>
   </data>
+  <data name="Overview" xml:space="preserve">
+    <value>概览</value>
+  </data>
   <data name="ModsOverview_Title.Text" xml:space="preserve">
     <value>Mod 总览</value>
   </data>
