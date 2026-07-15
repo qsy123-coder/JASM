@@ -2173,4 +2173,28 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="SettingsVM_SwitchToGameBtn" xml:space="preserve">
     <value>切换到 {0}</value>
   </data>
+  <data name="Shell_ModMarket.Content" xml:space="preserve">
+    <value>Mod 市场</value>
+  </data>
+  <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
+    <value>分类</value>
+  </data>
+  <data name="ModMarket_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>搜索模组...</value>
+  </data>
+  <data name="ModMarket_CharacterFilter.PlaceholderText" xml:space="preserve">
+    <value>角色筛选</value>
+  </data>
+  <data name="ModMarket_ContentFilter.PlaceholderText" xml:space="preserve">
+    <value>内容过滤</value>
+  </data>
+  <data name="ModMarket_SortBy.PlaceholderText" xml:space="preserve">
+    <value>排序规则</value>
+  </data>
+  <data name="ModMarket_DownloadManager.ToolTipService.ToolTip" xml:space="preserve">
+    <value>下载管理</value>
+  </data>
+  <data name="ModMarket_LoadMore.Content" xml:space="preserve">
+    <value>加载更多</value>
+  </data>
 </root>

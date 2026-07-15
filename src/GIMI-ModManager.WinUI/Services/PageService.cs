@@ -5,6 +5,7 @@ using GIMI_ModManager.WinUI.ViewModels.CharacterGalleryViewModels;
 using GIMI_ModManager.WinUI.ViewModels.CharacterManagerViewModels;
 using GIMI_ModManager.WinUI.ViewModels.SettingsViewModels;
 using GIMI_ModManager.WinUI.Views;
+using GIMI_ModManager.WinUI.ViewModels;
 using GIMI_ModManager.WinUI.Views.CharacterManager;
 using GIMI_ModManager.WinUI.Views.Settings;
 using Microsoft.UI.Xaml.Controls;
@@ -35,6 +36,7 @@ public class PageService : IPageService
         Configure<CharacterGalleryViewModel, CharacterGalleryPage>();
         Configure<CommandsSettingsViewModel, CommandsSettingsPage>();
         Configure<CreateCharacterViewModel, CreateCharacterPage>();
+        Configure<ModMarketViewModel, ModMarketPage>();
     }
 
     public Type GetPageType(string key)

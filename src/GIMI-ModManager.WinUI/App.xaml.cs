@@ -10,6 +10,7 @@ using GIMI_ModManager.Core.Services.ModPresetService;
 using GIMI_ModManager.WinUI.Activation;
 using GIMI_ModManager.WinUI.Configuration;
 using GIMI_ModManager.WinUI.Contracts.Services;
+using GIMI_ModManager.WinUI.Models;
 using GIMI_ModManager.WinUI.Models.Options;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
@@ -27,6 +28,7 @@ using GIMI_ModManager.WinUI.Views.CharacterManager;
 using GIMI_ModManager.WinUI.Views.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Options;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -216,6 +218,22 @@ public partial class App : Application
                 services.AddSingleton<ModUpdateAvailableChecker>();
                 services.AddSingleton<ModInstallerService>();
 
+                // Supabase HttpClient for ModMarket
+                services.AddHttpClient("Supabase", (sp, client) =>
+                {
+                    var options = sp.GetRequiredService<IOptions<ModMarketOptions>>().Value;
+                    client.BaseAddress = new Uri($"{options.Url}/rest/v1/");
+                    client.DefaultRequestHeaders.Add("apikey", options.AnonKey);
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.AnonKey}");
+                    client.DefaultRequestHeaders.Add("Accept", "application/json");
+                })
+                .AddHttpMessageHandler<HttpLoggerHandler>()
+                .AddPolicyHandler(
+                    HttpPolicyExtensions.HandleTransientHttpError()
+                        .WaitAndRetryAsync(Backoff.DecorrelatedJitterBackoffV2(
+                            TimeSpan.FromMilliseconds(500), 3, null, true))
+                );
+
 
                 services.AddHttpClient(Options.DefaultName, (client) =>
                     {
@@ -273,7 +291,14 @@ public partial class App : Application
                 services.AddTransient<CreateCharacterPage>();
                 services.AddTransient<CreateCharacterViewModel>();
 
+                // Mod Market
+                services.AddTransient<ModMarketViewModel>();
+                services.AddTransient<ModMarketPage>();
+                services.AddSingleton<ModMarketService>();
+
                 // Configuration
+                services.Configure<ModMarketOptions>(
+                    context.Configuration.GetSection(ModMarketOptions.SectionName));
                 services.Configure<LocalSettingsOptions>(
                     context.Configuration.GetSection(nameof(LocalSettingsOptions)));
 

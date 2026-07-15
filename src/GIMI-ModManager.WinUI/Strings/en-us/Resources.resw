@@ -275,4 +275,28 @@
   <data name="Shell_Debug.Content" xml:space="preserve">
     <value>Debug</value>
   </data>
+  <data name="Shell_ModMarket.Content" xml:space="preserve">
+    <value>Mod Market</value>
+  </data>
+  <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
+    <value>Categories</value>
+  </data>
+  <data name="ModMarket_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>Search mods...</value>
+  </data>
+  <data name="ModMarket_CharacterFilter.PlaceholderText" xml:space="preserve">
+    <value>Character Filter</value>
+  </data>
+  <data name="ModMarket_ContentFilter.PlaceholderText" xml:space="preserve">
+    <value>Content Filter</value>
+  </data>
+  <data name="ModMarket_SortBy.PlaceholderText" xml:space="preserve">
+    <value>Sort By</value>
+  </data>
+  <data name="ModMarket_DownloadManager.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Download Manager</value>
+  </data>
+  <data name="ModMarket_LoadMore.Content" xml:space="preserve">
+    <value>Load More</value>
+  </data>
 </root>

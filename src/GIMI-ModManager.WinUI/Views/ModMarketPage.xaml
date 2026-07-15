@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="GIMI_ModManager.WinUI.Views.ModMarketPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
+    xmlns:converters="using:CommunityToolkit.WinUI.UI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:GIMI_ModManager.WinUI.Views.Controls"
+    xmlns:models="using:GIMI_ModManager.WinUI.Models"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter
+            x:Key="BoolToVisibilityConverter"
+            TrueValue="Visible"
+            FalseValue="Collapsed" />
+
+        <DataTemplate x:Key="CategoryItemTemplate" x:DataType="models:ModMarketCategory">
+            <Grid Padding="12,10" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Width="16" Height="16" CornerRadius="8"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="13"
+                           Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="{x:Bind ModCount}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ModCardTemplate">
+            <Border Width="210" Margin="8" Background="#FFFFFF"
+                    CornerRadius="8" BorderBrush="#E0E0E0" BorderThickness="1">
+                <StackPanel>
+                    <Grid>
+                        <Border Height="120" CornerRadius="8,8,0,0" Background="#F0F0F0">
+                            <Grid>
+                                <TextBlock Text="🖼" FontSize="28"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="#CCCCCC" />
+                                <Image Source="{Binding PreviewImageUrl}"
+                                       Stretch="UniformToFill"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="0,6,6,0" Padding="6,2" Background="#FF4D4F"
+                                CornerRadius="8"
+                                Visibility="{Binding Nsfw, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Foreground="White" FontSize="10"
+                                       FontWeight="SemiBold" Text="NSFW" />
+                        </Border>
+                    </Grid>
+                    <TextBlock Margin="8,8,8,4" Foreground="Black"
+                               FontWeight="SemiBold" FontSize="13"
+                               MaxLines="2" Text="{Binding Title}"
+                               TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                    <StackPanel Margin="8,4,8,4" Orientation="Horizontal" Spacing="6">
+                        <Border Width="16" Height="16" CornerRadius="8"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <TextBlock VerticalAlignment="Center" FontSize="11"
+                                   Foreground="#666666" Text="{Binding Character}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock VerticalAlignment="Center" FontSize="11"
+                                   Foreground="#666666" Text="{Binding RelativeTime}" />
+                    </StackPanel>
+                    <StackPanel Margin="8,4,8,8" Orientation="Horizontal" Spacing="16">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <FontIcon FontSize="11" Foreground="#999999" Glyph="&#xE890;" />
+                            <TextBlock FontSize="11" Foreground="#999999" Text="{Binding Views}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <FontIcon FontSize="11" Foreground="#999999" Glyph="&#xEB52;" />
+                            <TextBlock FontSize="11" Foreground="#999999" Text="{Binding LikesCount}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <FontIcon FontSize="11" Foreground="#999999" Glyph="&#xE8F2;" />
+                            <TextBlock FontSize="11" Foreground="#999999" Text="{Binding CommentsCount}" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="190" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Sidebar -->
+        <Grid Grid.Column="0"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+              BorderThickness="0,0,1,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Margin="16,16,16,8" FontSize="18" FontWeight="Bold"
+                       l:Uids.Uid="ModMarket_CategoriesTitle" Text="分类" />
+            <ListView x:Name="CategoryListView" Grid.Row="1"
+                      ItemTemplate="{StaticResource CategoryItemTemplate}"
+                      ItemsSource="{x:Bind ViewModel.Categories}"
+                      SelectionMode="Single"
+                      SelectionChanged="CategoryListView_SelectionChanged">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="4,0" />
+                        <Setter Property="CornerRadius" Value="6" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </Grid>
+
+        <!-- Right Main Panel -->
+        <Grid Grid.Column="1" Background="#F5F7FA">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Toolbar -->
+            <Grid Grid.Row="0" MinHeight="50" Padding="12,8" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="SearchBox" Grid.Column="0"
+                         VerticalAlignment="Center" PlaceholderText="搜索模组..."
+                         l:Uids.Uid="ModMarket_SearchPlaceholder"
+                         Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}"
+                         CornerRadius="6" Margin="0,0,8,0">
+                    <TextBox.Resources>
+                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
+                        <SolidColorBrush x:Key="TextControlBackground" Color="White" />
+                    </TextBox.Resources>
+                </TextBox>
+
+                <ComboBox Grid.Column="1" Width="110" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White" Margin="0,0,8,0"
+                          ItemsSource="{x:Bind ViewModel.CategoryFilterOptions}"
+                          SelectedItem="{x:Bind ViewModel.SelectedCategoryFilter, Mode=TwoWay}" />
+
+                <ComboBox Grid.Column="2" Width="120" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White" Margin="0,0,8,0"
+                          ItemsSource="{x:Bind ViewModel.ContentFilterOptions}"
+                          SelectedItem="{x:Bind ViewModel.SelectedContentFilter, Mode=TwoWay}" />
+
+                <ComboBox Grid.Column="3" Width="100" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White" Margin="0,0,8,0"
+                          ItemsSource="{x:Bind ViewModel.SortOptions}"
+                          SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}" />
+
+                <Button Grid.Column="4" Width="36" Height="36" VerticalAlignment="Center"
+                        ToolTipService.ToolTip="下载管理" l:Uids.Uid="ModMarket_DownloadManager"
+                        Background="Transparent" BorderThickness="0" CornerRadius="6">
+                    <FontIcon FontSize="16" Glyph="&#xE896;" />
+                </Button>
+            </Grid>
+
+            <!-- Content Area -->
+            <Grid Grid.Row="1">
+                <ScrollViewer x:Name="CardScrollViewer"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalContentAlignment="Top"
+                              ViewChanged="ScrollViewer_ViewChanged">
+                    <local:WrapGridPanel x:Name="ModCardsPanel" VerticalAlignment="Top" />
+                </ScrollViewer>
+
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"
+                            Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                    <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                               HorizontalAlignment="Center" Margin="0,4" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <Grid Background="#F5F7FA"
+                      Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="没有找到 Mod" />
+                </Grid>
+
+                <!-- Debug overlay -->
+                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Margin="8" Padding="8,4" CornerRadius="4" Background="#DD000000">
+                    <TextBlock x:Name="DebugText" Foreground="#FF0" FontSize="11"
+                               FontFamily="Consolas" IsTextSelectionEnabled="True"
+                               Text="等待加载..." />
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>
