@@ -239,4 +239,40 @@
   <data name="Settings_Language_TexBlock.Text" xml:space="preserve">
     <value>Language options are currently limited. It is a work in progress.</value>
   </data>
+  <data name="Overview" xml:space="preserve">
+    <value>Overview</value>
+  </data>
+  <data name="Sort_Alphabetical" xml:space="preserve">
+    <value>Alphabetical</value>
+  </data>
+  <data name="Sort_ModCount" xml:space="preserve">
+    <value>Mod Count</value>
+  </data>
+  <data name="Sort_RecentlyAddedMods" xml:space="preserve">
+    <value>Recently Added Mods</value>
+  </data>
+  <data name="Sort_ReleaseDate" xml:space="preserve">
+    <value>Release Date</value>
+  </data>
+  <data name="Sort_Rarity" xml:space="preserve">
+    <value>Rarity</value>
+  </data>
+  <data name="ModsOverview_Title.Text" xml:space="preserve">
+    <value>Mods Overview</value>
+  </data>
+  <data name="Shell_ModsOverview.Content" xml:space="preserve">
+    <value>Mods Overview</value>
+  </data>
+  <data name="Shell_ModPresets.Content" xml:space="preserve">
+    <value>Mod Presets</value>
+  </data>
+  <data name="Shell_Notifications.Content" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="Shell_CharacterManagement.Content" xml:space="preserve">
+    <value>Character Management</value>
+  </data>
+  <data name="Shell_Debug.Content" xml:space="preserve">
+    <value>Debug</value>
+  </data>
 </root>
