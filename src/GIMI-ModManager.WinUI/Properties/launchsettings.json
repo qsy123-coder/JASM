@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "GIMI-ModManager.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    },
+    "JASM Start ZZZ": {
+      "commandName": "Project",
+      "commandLineArgs": "--game zzz --switch"
+    }
+  }
+}
