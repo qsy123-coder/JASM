@@ -1947,4 +1947,212 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="App_UnstableStateMessage" xml:space="preserve">
     <value>JASM 可能处于不稳定状态，随时可能崩溃。建议重启应用。</value>
   </data>
+  <data name="ModInstallerVM_RenameAndAddMod" xml:space="preserve">
+    <value>重命名并添加模组</value>
+  </data>
+  <data name="ModInstallerVM_OverwriteOldMod" xml:space="preserve">
+    <value>覆盖旧模组</value>
+  </data>
+  <data name="ModInstallerVM_ImageSourceAuto" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="ModInstallerVM_ImageSourceManual" xml:space="preserve">
+    <value>手动</value>
+  </data>
+  <data name="ModInstallerVM_ImageSourceFromExistingMod" xml:space="preserve">
+    <value>来自现有模组的图片</value>
+  </data>
+  <data name="ModInstallerVM_ImageSourceLocalFound" xml:space="preserve">
+    <value>在新模组中找到的本地图片</value>
+  </data>
+  <data name="ModInstallerVM_ImageSourceLocalSelected" xml:space="preserve">
+    <value>从新模组中选择的本地图片</value>
+  </data>
+  <data name="ModInstallerVM_ImageSourceGbThumbnail" xml:space="preserve">
+    <value>GameBanana 模组缩略图</value>
+  </data>
+  <data name="ModInstallerVM_ModInstalledTitle" xml:space="preserve">
+    <value>模组“{0}”已安装</value>
+  </data>
+  <data name="ModInstallerVM_ModInstalledMessage" xml:space="preserve">
+    <value>模组“{0}”（{1}）已成功添加到 {2} 模组列表</value>
+  </data>
+  <data name="ModInstallerVM_ModSuccessfullyAdded" xml:space="preserve">
+    <value>模组已成功添加</value>
+  </data>
+  <data name="ModInstallerVM_FailedRetrieveImageClipboardTitle" xml:space="preserve">
+    <value>从剪贴板检索图片失败</value>
+  </data>
+  <data name="ModInstallerVM_FailedDownloadImageTitle" xml:space="preserve">
+    <value>从模组链接下载图片失败</value>
+  </data>
+  <data name="ModInstallerVM_FailedGetPresetsTitle" xml:space="preserve">
+    <value>获取预设失败，无法自动更新预设中的模组条目</value>
+  </data>
+  <data name="ModInstallerVM_FailedUpdatePresetTitle" xml:space="preserve">
+    <value>更新预设 {0} 失败，无法自动更新预设中的模组条目。请手动检查你的预设</value>
+  </data>
+  <data name="ModInstallerVM_ModNotUpdatedForPresets" xml:space="preserve">
+    <value>未对任何预设更新模组</value>
+  </data>
+  <data name="ModInstallerVM_ModUpdatedForPresets" xml:space="preserve">
+    <value>已为预设更新模组</value>
+  </data>
+  <data name="ModInstallerVM_ErrorOccurredTitle" xml:space="preserve">
+    <value>发生错误</value>
+  </data>
+  <data name="ModInstallerVM_ErrorOccurredMessage" xml:space="preserve">
+    <value>添加模组时发生错误。详情请见日志</value>
+  </data>
+  <data name="ModInstallerVM_CouldNotDetermineSkinTitle" xml:space="preserve">
+    <value>无法确定新模组对应的皮肤</value>
+  </data>
+  <data name="ModInstallerVM_CouldNotDetermineSkinMessage" xml:space="preserve">
+    <value>JASM 无法确定此模组对应哪个游戏内皮肤，因此无法确定要禁用哪些模组。</value>
+  </data>
+  <data name="ModPageVM_DownloadModFilesTitle" xml:space="preserve">
+    <value>下载模组文件</value>
+  </data>
+  <data name="ModPageVM_DownloadsForTitle" xml:space="preserve">
+    <value>下载项：{0}</value>
+  </data>
+  <data name="ModPageVM_FailedGetModUpdateInfoTitle" xml:space="preserve">
+    <value>获取模组更新信息失败</value>
+  </data>
+  <data name="ModPageVM_FailedDownloadModFileTitle" xml:space="preserve">
+    <value>下载模组文件失败</value>
+  </data>
+  <data name="ModPageVM_FailedInstallModFileTitle" xml:space="preserve">
+    <value>安装模组文件失败</value>
+  </data>
+  <data name="DropdownCmd_DoNotAskAgain" xml:space="preserve">
+    <value>不再询问</value>
+  </data>
+  <data name="DropdownCmd_DeleteConfirmText" xml:space="preserve">
+    <value>确定要删除 {0} 吗？</value>
+  </data>
+  <data name="DropdownCmd_DeleteModTitle" xml:space="preserve">
+    <value>删除模组</value>
+  </data>
+  <data name="DropdownCmd_DeleteBtn" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="DropdownCmd_CancelBtn" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="DropdownCmd_FailedDeleteModTitle" xml:space="preserve">
+    <value>删除模组失败</value>
+  </data>
+  <data name="DropdownCmd_ModDeletedTitle" xml:space="preserve">
+    <value>模组已删除</value>
+  </data>
+  <data name="DropdownCmd_ModDeletedMessage" xml:space="preserve">
+    <value>{0} 已被删除</value>
+  </data>
+  <data name="StartupVM_StartupSettingsSavedTitle" xml:space="preserve">
+    <value>启动设置已保存</value>
+  </data>
+  <data name="StartupVM_StartupSettingsSavedMessage" xml:space="preserve">
+    <value>启动设置已成功保存到“{0}”</value>
+  </data>
+  <data name="StartupVM_StillInAlphaTitle" xml:space="preserve">
+    <value>JASM 仍处于 Alpha 阶段</value>
+  </data>
+  <data name="StartupVM_StillInAlphaMessage" xml:space="preserve">
+    <value>会有 bug，而且很多东西可能会出错。不过，希望你喜欢使用 Just Another Skin Manager！</value>
+  </data>
+  <data name="SettingsVM_RestartRequiredTitle" xml:space="preserve">
+    <value>需要重启</value>
+  </data>
+  <data name="SettingsVM_SwitchThemeText" xml:space="preserve">
+    <value>你需要重启应用程序才能使主题生效，否则应用程序将变得不稳定。</value>
+  </data>
+  <data name="SettingsVM_RestartBtn" xml:space="preserve">
+    <value>重启</value>
+  </data>
+  <data name="SettingsVM_CancelBtn" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="SettingsVM_RestartingTitle" xml:space="preserve">
+    <value>正在重启...</value>
+  </data>
+  <data name="SettingsVM_RestartingMessage" xml:space="preserve">
+    <value>应用程序将立即重启。</value>
+  </data>
+  <data name="SettingsVM_UpdateFolderPathsTitle" xml:space="preserve">
+    <value>更新文件夹路径？</value>
+  </data>
+  <data name="SettingsVM_SaveBtn" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="SettingsVM_UpdateFolderPathsContent" xml:space="preserve">
+    <value>是否要保存新的文件夹路径？应用随后将重启。</value>
+  </data>
+  <data name="SettingsVM_SettingsSavedRestartingTitle" xml:space="preserve">
+    <value>设置已保存。正在重启应用...</value>
+  </data>
+  <data name="SettingsVM_ReorganizeModsTitle" xml:space="preserve">
+    <value>重新整理模组？</value>
+  </data>
+  <data name="SettingsVM_ReorganizeModsText" xml:space="preserve">
+    <value>是否要重新整理 Mods 文件夹？
+</value>
+  </data>
+  <data name="SettingsVM_YesBtn" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="SettingsVM_ReorgFailedTitle" xml:space="preserve">
+    <value>模组重新整理失败。</value>
+  </data>
+  <data name="SettingsVM_ReorgFailedMessage" xml:space="preserve">
+    <value>详情请见日志。</value>
+  </data>
+  <data name="SettingsVM_ReorganizedTitle" xml:space="preserve">
+    <value>模组已重新整理。</value>
+  </data>
+  <data name="SettingsVM_ReorganizedMessage" xml:space="preserve">
+    <value>已移动 {0} 个模组到角色文件夹</value>
+  </data>
+  <data name="SettingsVM_StartBtn" xml:space="preserve">
+    <value>开始</value>
+  </data>
+  <data name="SettingsVM_UnableStartElevatorTitle" xml:space="preserve">
+    <value>无法启动 Elevator</value>
+  </data>
+  <data name="SettingsVM_ExportBtn" xml:space="preserve">
+    <value>导出</value>
+  </data>
+  <data name="SettingsVM_ExportModsTitle" xml:space="preserve">
+    <value>导出模组</value>
+  </data>
+  <data name="SettingsVM_ModsExportedTitle" xml:space="preserve">
+    <value>模组已导出</value>
+  </data>
+  <data name="SettingsVM_ModsExportedMessage" xml:space="preserve">
+    <value>模组已导出到 {0}</value>
+  </data>
+  <data name="SettingsVM_ErrorExportingModsTitle" xml:space="preserve">
+    <value>导出模组出错</value>
+  </data>
+  <data name="SettingsVM_LanguageRestartRequiredTitle" xml:space="preserve">
+    <value>需要重启</value>
+  </data>
+  <data name="SettingsVM_ChangeLanguageRestartBtn" xml:space="preserve">
+    <value>更改语言并重启</value>
+  </data>
+  <data name="SettingsVM_ErrorStartingUpdateTitle" xml:space="preserve">
+    <value>启动更新进程出错</value>
+  </data>
+  <data name="SettingsVM_CouldNotStartUpdateTitle" xml:space="preserve">
+    <value>无法启动更新进程</value>
+  </data>
+  <data name="SettingsVM_SwitchGameTitle" xml:space="preserve">
+    <value>切换游戏</value>
+  </data>
+  <data name="SettingsVM_SwitchGameText" xml:space="preserve">
+    <value>切换游戏将重启应用程序。</value>
+  </data>
+  <data name="SettingsVM_SwitchToGameBtn" xml:space="preserve">
+    <value>切换到 {0}</value>
+  </data>
 </root>
