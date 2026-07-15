@@ -767,6 +767,25 @@
   },
   {
     "Keys": [
+      "feixue",
+      "hiyuki",
+      "绯雪"
+    ],
+    "ReleaseDate": "2026-04-30T00:00:00",
+    "Image": "Feixue.png",
+    "Rarity": 5,
+    "Element": "Glacio",
+    "Class": "Sword",
+    "Region": [
+      "Rinascita"
+    ],
+    "ModFilesName": "Feixue",
+    "InGameSkins": [],
+    "InternalName": "Feixue",
+    "DisplayName": "绯雪"
+  },
+  {
+    "Keys": [
       "Sigrika"
     ],
     "ReleaseDate": "2026-12-11T00:00:00",

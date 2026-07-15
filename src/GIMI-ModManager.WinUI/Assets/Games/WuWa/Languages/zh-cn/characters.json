@@ -397,5 +397,41 @@
     "InGameSkins": [],
     "InternalName": "Youhu",
     "DisplayName": "釉瑚"
+  },
+  {
+    "Keys": [
+      "Zani"
+    ],
+    "ReleaseDate": "2025-04-29T00:00:00",
+    "Image": "Zani.png",
+    "Rarity": 5,
+    "Element": "Spectro",
+    "Class": "Gauntlets",
+    "Region": [
+      "Rinascita"
+    ],
+    "ModFilesName": "Zani",
+    "InGameSkins": [],
+    "InternalName": "Zani",
+    "DisplayName": "赞妮"
+  },
+  {
+    "Keys": [
+      "feixue",
+      "hiyuki",
+      "绯雪"
+    ],
+    "ReleaseDate": "2026-04-30T00:00:00",
+    "Image": "Feixue.png",
+    "Rarity": 5,
+    "Element": "Glacio",
+    "Class": "Sword",
+    "Region": [
+      "Rinascita"
+    ],
+    "ModFilesName": "Feixue",
+    "InGameSkins": [],
+    "InternalName": "Feixue",
+    "DisplayName": "绯雪"
   }
 ]
