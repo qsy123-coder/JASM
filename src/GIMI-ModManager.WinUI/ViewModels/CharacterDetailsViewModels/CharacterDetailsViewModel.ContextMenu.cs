@@ -42,13 +42,13 @@ public partial class CharacterDetailsViewModel
 
         var moveToRecycleBinCheckBox = new CheckBox()
         {
-            Content = "Move to Recycle Bin?",
+            Content = _localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_MoveToRecycleBin", defaultValue: "Move to Recycle Bin?"),
             IsChecked = _moveToRecycleBinCheckBox
         };
 
         var removeFromPresetsCheckBox = new CheckBox()
         {
-            Content = "Remove from Presets?",
+            Content = _localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_RemoveFromPresets", defaultValue: "Remove from Presets?"),
             IsChecked = _removeFromPresetCheckBox
         };
 
@@ -87,10 +87,10 @@ public partial class CharacterDetailsViewModel
 
         var dialog = new ContentDialog()
         {
-            Title = $"Delete These {selectedModsCount} Mods?",
+            Title = string.Format(_localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_DeleteModsTitle", defaultValue: "Delete These {0} Mods?"), selectedModsCount),
             Content = contentWrapper,
-            PrimaryButtonText = "Delete",
-            SecondaryButtonText = "Cancel",
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_Delete", defaultValue: "Delete"),
+            SecondaryButtonText = _localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_Cancel", defaultValue: "Cancel"),
             DefaultButton = ContentDialogButton.Primary
         };
 
@@ -160,12 +160,12 @@ public partial class CharacterDetailsViewModel
             {
                 var content = new StringBuilder();
 
-                content.AppendLine("Error deleting mods:");
+                content.AppendLine(_localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_ErrorDeletingMods", defaultValue: "Error deleting mods:"));
 
 
                 if (modsToDeletePresetError.Count > 0)
                 {
-                    content.AppendLine("Preset error Mods:");
+                    content.AppendLine(_localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_PresetErrorMods", defaultValue: "Preset error Mods:"));
                     foreach (var mod in modsToDeletePresetError)
                     {
                         content.AppendLine($"- {mod.DisplayName}");
@@ -176,7 +176,7 @@ public partial class CharacterDetailsViewModel
 
                 if (modsToDeleteErrored.Count > 0)
                 {
-                    content.AppendLine("Delete error Mods:");
+                    content.AppendLine(_localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_DeleteErrorMods", defaultValue: "Delete error Mods:"));
                     foreach (var mod in modsToDeleteErrored)
                     {
                         content.AppendLine($"- {mod.DisplayName}");
@@ -184,13 +184,13 @@ public partial class CharacterDetailsViewModel
                     }
                 }
 
-                _notificationService.ShowNotification("Error Deleting Mods", content.ToString(), TimeSpan.FromSeconds(10));
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_ErrorDeletingModsTitle", defaultValue: "Error Deleting Mods"), content.ToString(), TimeSpan.FromSeconds(10));
                 return;
             }
 
 
-            _notificationService.ShowNotification($"{modsDeleted.Count} Mods Deleted",
-                $"Successfully deleted {string.Join(", ", selectedMods.Select(m => m.DisplayName))} in {shownCharacterName} Mods Folder",
+            _notificationService.ShowNotification(string.Format(_localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_ModsDeletedTitle", defaultValue: "{0} Mods Deleted"), modsDeleted.Count),
+                string.Format(_localizer.GetLocalizedStringOrDefault("CharDetailsCtxVM_ModsDeletedMessage", defaultValue: "Successfully deleted {0} in {1} Mods Folder"), string.Join(", ", selectedMods.Select(m => m.DisplayName)), shownCharacterName),
                 TimeSpan.FromSeconds(5));
         }).ConfigureAwait(false);
     }

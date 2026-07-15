@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using CommunityToolkit.Mvvm.ComponentModel;
+using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Services.CommandService;
 using GIMI_ModManager.Core.Services.CommandService.Models;
 using GIMI_ModManager.WinUI.Models.Options;
@@ -17,6 +18,7 @@ public abstract partial class BaseProcessManager<TProcessOptions> : ObservableOb
     private readonly CommandService _commandService;
     private readonly CommandHandlerService _commandHandler;
     private readonly NotificationManager _notificationManager;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
     private CommandDefinition? _commandDefinition;
     private ProcessCommand? _process;
 
@@ -111,20 +113,18 @@ public abstract partial class BaseProcessManager<TProcessOptions> : ObservableOb
         {
             if (result.Exception is Win32Exception e)
             {
-                var message = $"Failed to start {ProcessName}";
+                var message = string.Format(_localizer.GetLocalizedStringOrDefault("ProcMgr_FailedToStartMessage", defaultValue: "Failed to start {0}"), ProcessName);
 
                 if (e.NativeErrorCode == 1223)
                 {
-                    message =
-                        $"Failed to start {ProcessName}, this can happen due to the user cancelling the UAC (admin) prompt";
+                    message = string.Format(_localizer.GetLocalizedStringOrDefault("ProcMgr_FailedToStartUacCancelledMessage", defaultValue: "Failed to start {0}, this can happen due to the user cancelling the UAC (admin) prompt"), ProcessName);
                 }
                 else if (e.NativeErrorCode == 740)
                 {
-                    message =
-                        $"Failed to start {ProcessName}, this can happen if the exe has the 'Run as administrator' option enabled in the exe properties";
+                    message = string.Format(_localizer.GetLocalizedStringOrDefault("ProcMgr_FailedToStartRunAsAdminMessage", defaultValue: "Failed to start {0}, this can happen if the exe has the 'Run as administrator' option enabled in the exe properties"), ProcessName);
                 }
 
-                _notificationManager.ShowNotification("Could not start process", message, null);
+                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ProcMgr_CouldNotStartProcessTitle", defaultValue: "Could not start process"), message, null);
                 return;
             }
 
@@ -135,7 +135,7 @@ public abstract partial class BaseProcessManager<TProcessOptions> : ObservableOb
                 return;
             }
 
-            _notificationManager.ShowNotification("Could not start process", "An unknown error occurred", null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ProcMgr_CouldNotStartProcessTitle", defaultValue: "Could not start process"), _localizer.GetLocalizedStringOrDefault("ProcMgr_UnknownErrorMessage", defaultValue: "An unknown error occurred"), null);
             return;
         }
 

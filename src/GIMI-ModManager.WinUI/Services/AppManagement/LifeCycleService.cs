@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
 using CommunityToolkitWrapper;
+using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services.CommandService;
 using GIMI_ModManager.WinUI.Contracts.Services;
@@ -33,6 +34,7 @@ public class LifeCycleService(
     private readonly UpdateChecker _updateChecker = updateChecker;
     private readonly ModUpdateAvailableChecker _modUpdateAvailableChecker = modUpdateAvailableChecker;
     private readonly CommandService _commandService = commandService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     /// <summary>
     /// This method will try to restart the app using the suggested method from Microsoft.
@@ -54,10 +56,10 @@ public class LifeCycleService(
 
         if (notifyOnError)
         {
-            _notificationManager.ShowNotification("Error restarting app",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("LifeCycle_ErrorRestartingTitle", defaultValue: "Error restarting app"),
                 useLegacyRestartOnError
-                    ? $"Trying legacy restart method. Reason: {error}"
-                    : $"Please restart manually. Reason: {error}",
+                    ? string.Format(_localizer.GetLocalizedStringOrDefault("LifeCycle_TryingLegacyRestartMessage", defaultValue: "Trying legacy restart method. Reason: {0}"), error)
+                    : string.Format(_localizer.GetLocalizedStringOrDefault("LifeCycle_PleaseRestartManuallyMessage", defaultValue: "Please restart manually. Reason: {0}"), error),
                 TimeSpan.FromSeconds(4));
         }
 
@@ -110,7 +112,7 @@ public class LifeCycleService(
         catch (Exception e)
         {
             _logger.Error(e, "Error restarting app");
-            _notificationManager.ShowNotification("Error restarting app", "Please restart manually",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("LifeCycle_ErrorRestartingTitle", defaultValue: "Error restarting app"), _localizer.GetLocalizedStringOrDefault("LifeCycle_PleaseRestartManuallyShortMessage", defaultValue: "Please restart manually"),
                 TimeSpan.FromSeconds(4));
             await Task.Delay(TimeSpan.FromSeconds(3));
             await StartShutdownAsync();

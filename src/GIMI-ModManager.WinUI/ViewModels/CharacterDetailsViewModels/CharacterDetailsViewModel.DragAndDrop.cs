@@ -37,8 +37,8 @@ public partial class CharacterDetailsViewModel
     {
         if (!CanDragDropMod(items))
         {
-            _notificationService.ShowNotification("Drag And Drop operation failed",
-                "The operation failed because the selected item is not a valid mod file or folder.",
+            _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsDndVM_DragDropFailedTitle", defaultValue: "Drag And Drop operation failed"),
+                _localizer.GetLocalizedStringOrDefault("CharDetailsDndVM_DragDropInvalidItem", defaultValue: "The operation failed because the selected item is not a valid mod file or folder."),
                 TimeSpan.FromSeconds(5));
             return;
         }
@@ -56,8 +56,8 @@ public partial class CharacterDetailsViewModel
             catch (Exception e)
             {
                 _logger.Error(e, "Error while adding storage items.");
-                _notificationService.ShowNotification("Drag And Drop operation failed",
-                    $"An error occurred while adding the storage items. Reason:\n{e.Message}",
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsDndVM_DragDropFailedTitle", defaultValue: "Drag And Drop operation failed"),
+                    string.Format(_localizer.GetLocalizedStringOrDefault("CharDetailsDndVM_DragDropAddStorageError", defaultValue: "An error occurred while adding the storage items. Reason:\n{0}"), e.Message),
                     TimeSpan.FromSeconds(5));
             }
         }).ConfigureAwait(false);
@@ -87,8 +87,8 @@ public partial class CharacterDetailsViewModel
     {
         if (!CanDragDropModUrl(uri))
         {
-            _notificationService.ShowNotification("Drag And Drop operation failed",
-                "The operation failed because the selected item is not a valid https GameBanana mod URL.",
+            _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsDndVM_DragDropFailedTitle", defaultValue: "Drag And Drop operation failed"),
+                _localizer.GetLocalizedStringOrDefault("CharDetailsDndVM_DragDropInvalidUrl", defaultValue: "The operation failed because the selected item is not a valid https GameBanana mod URL."),
                 TimeSpan.FromSeconds(5));
             return;
         }
@@ -102,7 +102,7 @@ public partial class CharacterDetailsViewModel
             catch (Exception e)
             {
                 _logger.Error(e, "Error opening mod page window");
-                _notificationService.ShowNotification("Error opening mod page window", e.Message, TimeSpan.FromSeconds(10));
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsDndVM_ErrorOpeningModPageTitle", defaultValue: "Error opening mod page window"), e.Message, TimeSpan.FromSeconds(10));
             }
         }).ConfigureAwait(false);
     }

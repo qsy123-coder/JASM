@@ -1314,4 +1314,637 @@ JASM 会自动检测模组文件夹和 merged.ini 文件。如果你想手动选
   <data name="ModListOverview_ModName.Header" xml:space="preserve">
     <value>模组名称</value>
   </data>
+  <data name="DisableAllMods_Title" xml:space="preserve">
+    <value>禁用模组</value>
+  </data>
+  <data name="DisableAllMods_PrimaryButtonText" xml:space="preserve">
+    <value>按分类禁用模组</value>
+  </data>
+  <data name="DisableAllMods_CloseButtonText" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="DisableAllMods_SelectCategoriesText" xml:space="preserve">
+    <value>选择要禁用模组的分类：</value>
+  </data>
+  <data name="DisableAllMods_SuggestionText" xml:space="preserve">
+    <value>如果你启用了大量模组，建议在禁用模组前创建一个预设（或备份）。
+
+只有 JASM 跟踪的模组会在所选分类中被禁用</value>
+  </data>
+  <data name="DisableAllMods_NoCategoriesSelectedTitle" xml:space="preserve">
+    <value>未选择分类</value>
+  </data>
+  <data name="DisableAllMods_NoCategoriesSelectedMessage" xml:space="preserve">
+    <value>未选择要禁用模组的分类。</value>
+  </data>
+  <data name="DisableAllMods_ModsDisabledTitle" xml:space="preserve">
+    <value>模组已禁用</value>
+  </data>
+  <data name="DisableAllMods_ModsDisabledMessage" xml:space="preserve">
+    <value>所选分类中所有被跟踪的模组均已禁用：{0}</value>
+  </data>
+  <data name="DisableAllMods_ErrorOccuredMessage" xml:space="preserve">
+    <value>以下模组发生了错误：</value>
+  </data>
+  <data name="DisableAllMods_ErrorsWhileDisablingTitle" xml:space="preserve">
+    <value>禁用模组时发生错误</value>
+  </data>
+  <data name="CharSkins_EnableTitle" xml:space="preserve">
+    <value>启用将角色皮肤作为独立角色？</value>
+  </data>
+  <data name="CharSkins_EnableContent" xml:space="preserve">
+    <value>启用后，JASM 会将游戏内的皮肤视为角色概览中的独立角色。
+这有可能在未来成为 JASM 的默认设置。
+JASM 不会移动你的任何模组，也不会删除任何模组。
+
+你确定要启用将角色皮肤作为独立角色吗？JASM 将随后重启...</value>
+  </data>
+  <data name="CharSkins_EnablePrimaryButtonText" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="CharSkins_DisableTitle" xml:space="preserve">
+    <value>禁用将角色皮肤作为独立角色？</value>
+  </data>
+  <data name="CharSkins_DisableContent" xml:space="preserve">
+    <value>禁用后，JASM 会将游戏内的皮肤视为角色概览中基础角色的皮肤。
+这目前是 JASM 的默认设置。
+JASM 不会移动你的任何模组，也不会删除任何模组。
+
+你确定要禁用将角色皮肤作为独立角色吗？JASM 将随后重启...</value>
+  </data>
+  <data name="CharSkins_DisablePrimaryButtonText" xml:space="preserve">
+    <value>禁用</value>
+  </data>
+  <data name="CharSkins_CloseButtonText" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="CmdSettingsVM_FriendlyWarningTitle" xml:space="preserve">
+    <value>友情提醒</value>
+  </data>
+  <data name="CmdSettingsVM_CommandWarningText" xml:space="preserve">
+    <value>创建命令时请小心。命令可用于运行你系统上的任何可执行文件。请仅从可信来源创建命令。
+JASM 并非完美无缺，无法保护你免受恶意脚本或 JASM 故障/缺陷的影响。
+
+点击“我已了解”即表示你知悉相关风险。</value>
+  </data>
+  <data name="CmdSettingsVM_IUnderstand" xml:space="preserve">
+    <value>我已了解</value>
+  </data>
+  <data name="CmdSettingsVM_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="CmdSettingsVM_FailedToKillProcessTitle" xml:space="preserve">
+    <value>终止进程失败</value>
+  </data>
+  <data name="CmdSettingsVM_ProcessNotRunningTitle" xml:space="preserve">
+    <value>进程未运行</value>
+  </data>
+  <data name="CmdSettingsVM_ProcessKilledTitle" xml:space="preserve">
+    <value>进程已成功终止</value>
+  </data>
+  <data name="CmdSettingsVM_FailedToGetCommandTitle" xml:space="preserve">
+    <value>获取命令失败</value>
+  </data>
+  <data name="CmdSettingsVM_CommandNotFoundMessage" xml:space="preserve">
+    <value>未找到命令</value>
+  </data>
+  <data name="CmdSettingsVM_FailedToDeleteCommandTitle" xml:space="preserve">
+    <value>删除命令失败</value>
+  </data>
+  <data name="CmdSettingsVM_CommandDeletedTitle" xml:space="preserve">
+    <value>命令“{0}”已成功删除</value>
+  </data>
+  <data name="ClearEmpty_Title" xml:space="preserve">
+    <value>清理空文件夹</value>
+  </data>
+  <data name="ClearEmpty_Content" xml:space="preserve">
+    <value>这将删除角色模组列表中所有空文件夹，即文件夹为空或仅包含 .JASM_ 文件/文件夹的情况
+如果角色文件夹为空，则也会被删除。
+Mods 文件夹根目录下的空文件夹也将被删除</value>
+  </data>
+  <data name="ClearEmpty_PrimaryButtonText" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="ClearEmpty_CloseButtonText" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ClearEmpty_DeletedFoldersMessage" xml:space="preserve">
+    <value>已删除的文件夹：</value>
+  </data>
+  <data name="ClearEmpty_EmptyFoldersDeletedTitle" xml:space="preserve">
+    <value>空文件夹已删除</value>
+  </data>
+  <data name="CharDetailsVM_LoadingItemCharacter" xml:space="preserve">
+    <value>角色</value>
+  </data>
+  <data name="CharDetailsVM_LoadingItemMods" xml:space="preserve">
+    <value>模组</value>
+  </data>
+  <data name="CharDetailsVM_LoadingItemModPane" xml:space="preserve">
+    <value>模组面板</value>
+  </data>
+  <data name="CharDetailsVM_LoadingItemToolbar" xml:space="preserve">
+    <value>工具栏</value>
+  </data>
+  <data name="CharDetailsVM_LoadingItemContextMenu" xml:space="preserve">
+    <value>上下文菜单</value>
+  </data>
+  <data name="CharDetailsVM_LoadingItemGrid" xml:space="preserve">
+    <value>列表</value>
+  </data>
+  <data name="CharDetailsVM_ErrorLoadingCharacterDetailsTitle" xml:space="preserve">
+    <value>加载角色详情页面时发生错误。</value>
+  </data>
+  <data name="CharDetailsVM_UnknownErrorExecutingCommandTitle" xml:space="preserve">
+    <value>执行命令时发生未知错误</value>
+  </data>
+  <data name="CharDetailsCtxVM_MoveToRecycleBin" xml:space="preserve">
+    <value>移至回收站？</value>
+  </data>
+  <data name="CharDetailsCtxVM_RemoveFromPresets" xml:space="preserve">
+    <value>从预设中移除？</value>
+  </data>
+  <data name="CharDetailsCtxVM_DeleteModsTitle" xml:space="preserve">
+    <value>删除这 {0} 个模组？</value>
+  </data>
+  <data name="CharDetailsCtxVM_Delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="CharDetailsCtxVM_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="CharDetailsCtxVM_ErrorDeletingMods" xml:space="preserve">
+    <value>删除模组时出错：</value>
+  </data>
+  <data name="CharDetailsCtxVM_PresetErrorMods" xml:space="preserve">
+    <value>预设错误模组：</value>
+  </data>
+  <data name="CharDetailsCtxVM_DeleteErrorMods" xml:space="preserve">
+    <value>删除错误模组：</value>
+  </data>
+  <data name="CharDetailsCtxVM_ErrorDeletingModsTitle" xml:space="preserve">
+    <value>删除模组出错</value>
+  </data>
+  <data name="CharDetailsCtxVM_ModsDeletedTitle" xml:space="preserve">
+    <value>已删除 {0} 个模组</value>
+  </data>
+  <data name="CharDetailsCtxVM_ModsDeletedMessage" xml:space="preserve">
+    <value>已在 {1} 模组文件夹中成功删除 {0}</value>
+  </data>
+  <data name="CharDetailsDndVM_DragDropFailedTitle" xml:space="preserve">
+    <value>拖放操作失败</value>
+  </data>
+  <data name="CharDetailsDndVM_DragDropInvalidItem" xml:space="preserve">
+    <value>操作失败，因为所选项目不是有效的模组文件或文件夹。</value>
+  </data>
+  <data name="CharDetailsDndVM_DragDropAddStorageError" xml:space="preserve">
+    <value>添加存储项目时发生错误。原因：\n{0}</value>
+  </data>
+  <data name="CharDetailsDndVM_DragDropInvalidUrl" xml:space="preserve">
+    <value>操作失败，因为所选项目不是有效的 https GameBanana 模组 URL。</value>
+  </data>
+  <data name="CharDetailsDndVM_ErrorOpeningModPageTitle" xml:space="preserve">
+    <value>打开模组页面窗口时出错</value>
+  </data>
+  <data name="CharDetailsTbVM_ErrorAddingStorageItemsTitle" xml:space="preserve">
+    <value>添加存储项目时出错。</value>
+  </data>
+  <data name="CharDetailsTbVM_ErrorAddingStorageItemsMessage" xml:space="preserve">
+    <value>添加存储项目时发生错误。\n{0}</value>
+  </data>
+  <data name="CharDetailsCardVM_ErrorSwitchingSkinTitle" xml:space="preserve">
+    <value>切换角色皮肤时出错。</value>
+  </data>
+  <data name="CharDetailsCardVM_ErrorDisablingModsTitle" xml:space="preserve">
+    <value>禁用模组时出错</value>
+  </data>
+  <data name="CharDetailsCardVM_CouldNotDisableAllMods" xml:space="preserve">
+    <value>无法禁用所有模组。</value>
+  </data>
+  <data name="ModGridVM_ErrorRefreshingModsTitle" xml:space="preserve">
+    <value>刷新模组时出错</value>
+  </data>
+  <data name="ModGridVM_DuplicateModsDetected" xml:space="preserve">
+    <value>在 {0} 的模组文件夹中检测到重复模组。\n</value>
+  </data>
+  <data name="ModGridVM_DuplicateModRenamed" xml:space="preserve">
+    <value>模组：“{0}”已重命名为“{1}”以避免冲突。\n</value>
+  </data>
+  <data name="ModGridVM_DuplicateModsDetectedTitle" xml:space="preserve">
+    <value>检测到重复模组</value>
+  </data>
+  <data name="ModGridVM_ErrorDisablingModTitle" xml:space="preserve">
+    <value>禁用模组时发生错误</value>
+  </data>
+  <data name="ModGridVM_ErrorTogglingModTitle" xml:space="preserve">
+    <value>切换模组状态时发生错误</value>
+  </data>
+  <data name="ModGridVM_ErrorSavingModSettingsTitle" xml:space="preserve">
+    <value>保存模组设置时发生错误</value>
+  </data>
+  <data name="ModGridVM_ModSettingsSavedTitle" xml:space="preserve">
+    <value>模组设置已保存</value>
+  </data>
+  <data name="ModGridVM_NewModFilesAvailableTitle" xml:space="preserve">
+    <value>有新的模组文件可用：{0}</value>
+  </data>
+  <data name="ModGridVM_FolderActivityDetectedTitle" xml:space="preserve">
+    <value>在 {0} 的模组文件夹中检测到文件夹活动</value>
+  </data>
+  <data name="ModGridVM_FolderActivityDetectedMessage" xml:space="preserve">
+    <value>角色模组文件夹中的文件/文件夹已更改，模组已刷新。</value>
+  </data>
+  <data name="ModPaneVM_ErrorLoadingModTitle" xml:space="preserve">
+    <value>加载模组时出错</value>
+  </data>
+  <data name="ModPaneVM_FailedToLoadKeyswapsTitle" xml:space="preserve">
+    <value>加载模组 {0} 的按键替换失败</value>
+  </data>
+  <data name="ModPaneVM_ModFolderPathCopiedTitle" xml:space="preserve">
+    <value>模组文件夹路径已复制到剪贴板</value>
+  </data>
+  <data name="ModPaneVM_Set" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="ModPaneVM_SetImage" xml:space="preserve">
+    <value>设置图片</value>
+  </data>
+  <data name="ModPaneVM_ClipboardNoValidImageTitle" xml:space="preserve">
+    <value>剪贴板不包含有效图片</value>
+  </data>
+  <data name="ModPaneVM_CouldNotRetrieveImageTitle" xml:space="preserve">
+    <value>无法从剪贴板检索图片</value>
+  </data>
+  <data name="ModPaneVM_FailedToSaveKeySwapsTitle" xml:space="preserve">
+    <value>保存按键替换失败</value>
+  </data>
+  <data name="ModPaneVM_ErrorRunningCommandTitle" xml:space="preserve">
+    <value>运行命令 {0} 时发生错误</value>
+  </data>
+  <data name="ContextMenuVM_DestinationModListNotFoundTitle" xml:space="preserve">
+    <value>未找到目标模组列表</value>
+  </data>
+  <data name="ContextMenuVM_DestinationModListNotFoundMessage" xml:space="preserve">
+    <value>未找到目标模组列表</value>
+  </data>
+  <data name="ContextMenuVM_InvalidOperationExceptionTitle" xml:space="preserve">
+    <value>无效操作异常</value>
+  </data>
+  <data name="ContextMenuVM_CannotMoveModsMessage" xml:space="preserve">
+    <value>无法移动模组\n{0}，详情请见日志。</value>
+  </data>
+  <data name="ContextMenuVM_ModsMovedTitle" xml:space="preserve">
+    <value>已移动 {0} 个模组</value>
+  </data>
+  <data name="ContextMenuVM_ModsMovedMessage" xml:space="preserve">
+    <value>已成功移动 {0} 个模组到 {1}</value>
+  </data>
+  <data name="ContextMenuVM_ChangedSkinOverrideTitle" xml:space="preserve">
+    <value>已更改模组皮肤覆盖</value>
+  </data>
+  <data name="ContextMenuVM_SetSkinOverrideMessage" xml:space="preserve">
+    <value>已将模组“{0}”的皮肤覆盖设置为 {1}</value>
+  </data>
+  <data name="ContextMenuVM_FailedOverrideSkinTitle" xml:space="preserve">
+    <value>为模组 {0} 覆盖角色皮肤失败</value>
+  </data>
+  <data name="ContextMenuVM_OverrideSkinErrorMessage" xml:space="preserve">
+    <value>发生错误。原因：{0}</value>
+  </data>
+  <data name="EditCharVM_PasteImageFailedTitle" xml:space="preserve">
+    <value>粘贴图片失败</value>
+  </data>
+  <data name="EditCharVM_PasteImageNoImageMessage" xml:space="preserve">
+    <value>剪贴板中未找到图片</value>
+  </data>
+  <data name="EditCharVM_DisableDeleteFolderContent" xml:space="preserve">
+    <value>删除角色文件夹及其内容/模组？\n文件将被永久删除！</value>
+  </data>
+  <data name="EditCharVM_DisableCharacterMessage" xml:space="preserve">
+    <value>确定要禁用此角色吗？这不会移除角色，但 JASM 将不再识别此角色。角色可以稍后重新激活。按下“是”后将立即执行</value>
+  </data>
+  <data name="EditCharVM_DisableCharacterTitle" xml:space="preserve">
+    <value>禁用角色</value>
+  </data>
+  <data name="EditCharVM_DisableCharacterPrimary" xml:space="preserve">
+    <value>是，禁用此角色</value>
+  </data>
+  <data name="EditCharVM_NoButton" xml:space="preserve">
+    <value>否</value>
+  </data>
+  <data name="EditCharVM_DeleteCustomDeleteFolderContent" xml:space="preserve">
+    <value>删除自定义角色文件夹及其内容/模组？\n文件将被永久删除！</value>
+  </data>
+  <data name="EditCharVM_DeleteCustomCharacterMessage" xml:space="preserve">
+    <value>确定要删除此自定义角色吗？这将移除角色，JASM 将不再识别此角色。按下“是”后将立即执行</value>
+  </data>
+  <data name="EditCharVM_DeleteCustomCharacterTitle" xml:space="preserve">
+    <value>删除自定义角色</value>
+  </data>
+  <data name="EditCharVM_DeleteCustomCharacterPrimary" xml:space="preserve">
+    <value>是，删除此自定义角色</value>
+  </data>
+  <data name="EditCharVM_CustomCharacterDeletedTitle" xml:space="preserve">
+    <value>自定义角色已删除</value>
+  </data>
+  <data name="EditCharVM_CustomCharacterDeletedMessage" xml:space="preserve">
+    <value>自定义角色“{0}”已成功删除</value>
+  </data>
+  <data name="EditCharVM_EnableCharacterMessage" xml:space="preserve">
+    <value>确定要启用此角色吗？按下“是”后将立即执行</value>
+  </data>
+  <data name="EditCharVM_EnableCharacterTitle" xml:space="preserve">
+    <value>启用角色</value>
+  </data>
+  <data name="EditCharVM_EnableCharacterPrimary" xml:space="preserve">
+    <value>是，启用此角色</value>
+  </data>
+  <data name="EditCharVM_SaveChangesFailedTitle" xml:space="preserve">
+    <value>保存角色更改失败</value>
+  </data>
+  <data name="EditCharVM_CharacterModelTitle" xml:space="preserve">
+    <value>角色模型</value>
+  </data>
+  <data name="EditCharVM_CloseButton" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="CreateCharVM_CreateCharacterFailedTitle" xml:space="preserve">
+    <value>创建角色失败</value>
+  </data>
+  <data name="CreateCharVM_EnableModListFailedTitle" xml:space="preserve">
+    <value>角色已创建，但启用角色模组列表失败</value>
+  </data>
+  <data name="CreateCharVM_CharacterCreatedTitle" xml:space="preserve">
+    <value>角色已创建</value>
+  </data>
+  <data name="CreateCharVM_CharacterCreatedMessage" xml:space="preserve">
+    <value>角色“{0}”已成功创建</value>
+  </data>
+  <data name="CreateCharVM_PasteImageFailedTitle" xml:space="preserve">
+    <value>粘贴图片失败</value>
+  </data>
+  <data name="CreateCharVM_PasteImageNoImageMessage" xml:space="preserve">
+    <value>剪贴板中未找到图片</value>
+  </data>
+  <data name="CreateCharVM_JsonExportFailedTitle" xml:space="preserve">
+    <value>创建 JSON 导出失败</value>
+  </data>
+  <data name="CreateCharVM_JsonExportTitle" xml:space="preserve">
+    <value>角色模型 JSON 导出</value>
+  </data>
+  <data name="CreateCharVM_JsonExportPrimary" xml:space="preserve">
+    <value>复制到剪贴板并关闭</value>
+  </data>
+  <data name="CreateCharVM_CloseButton" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="CreateCharVM_JsonCopiedTitle" xml:space="preserve">
+    <value>角色 JSON 已复制到剪贴板</value>
+  </data>
+  <data name="PresetVM_CreatePresetFailedTitle" xml:space="preserve">
+    <value>创建预设失败</value>
+  </data>
+  <data name="PresetVM_DuplicatePresetFailedTitle" xml:space="preserve">
+    <value>复制预设失败</value>
+  </data>
+  <data name="PresetVM_DeletePresetFailedTitle" xml:space="preserve">
+    <value>删除预设失败</value>
+  </data>
+  <data name="PresetVM_PresetAppliedTitle" xml:space="preserve">
+    <value>预设已应用</value>
+  </data>
+  <data name="PresetVM_PresetAppliedMessage" xml:space="preserve">
+    <value>预设“{0}”已应用</value>
+  </data>
+  <data name="PresetVM_ApplyPresetFailedTitle" xml:space="preserve">
+    <value>应用预设失败</value>
+  </data>
+  <data name="PresetVM_RenamePresetFailedTitle" xml:space="preserve">
+    <value>重命名预设失败</value>
+  </data>
+  <data name="PresetVM_SavePresetOrderFailedTitle" xml:space="preserve">
+    <value>保存预设顺序失败</value>
+  </data>
+  <data name="PresetVM_ToggleReadOnlyFailedTitle" xml:space="preserve">
+    <value>切换只读状态失败</value>
+  </data>
+  <data name="PresetVM_StartElevatorFailedTitle" xml:space="preserve">
+    <value>启动 Elevator 失败</value>
+  </data>
+  <data name="PresetVM_StartElevatorFailedMessage" xml:space="preserve">
+    <value>Elevator 启动失败</value>
+  </data>
+  <data name="PresetVM_ModPreferencesResetTitle" xml:space="preserve">
+    <value>模组偏好已重置</value>
+  </data>
+  <data name="PresetVM_ResetModPreferencesFailedTitle" xml:space="preserve">
+    <value>重置模组偏好失败</value>
+  </data>
+  <data name="PresetDetailsVM_ModsCount" xml:space="preserve">
+    <value>{0} 个模组</value>
+  </data>
+  <data name="PresetDetailsVM_ReadOnlySuffix" xml:space="preserve">
+    <value>（只读）</value>
+  </data>
+  <data name="PresetDetailsVM_PageTitle" xml:space="preserve">
+    <value>预设详情：{0}（{1}）{2}</value>
+  </data>
+  <data name="PresetDetailsVM_ModRemovedTitle" xml:space="preserve">
+    <value>模组已从预设移除</value>
+  </data>
+  <data name="PresetDetailsVM_RemoveModFailedTitle" xml:space="preserve">
+    <value>从预设移除模组失败</value>
+  </data>
+  <data name="PresetDetailsVM_ModAddedTitle" xml:space="preserve">
+    <value>模组已添加到预设</value>
+  </data>
+  <data name="PresetDetailsVM_ModAddedMessage" xml:space="preserve">
+    <value>已将模组“{0}”添加到预设 {1}</value>
+  </data>
+  <data name="PresetDetailsVM_AddModFailedTitle" xml:space="preserve">
+    <value>添加模组到预设失败</value>
+  </data>
+  <data name="PresetDetailsVM_PreferencesSavedTitle" xml:space="preserve">
+    <value>模组偏好已保存</value>
+  </data>
+  <data name="PresetDetailsVM_PreferencesSavedMessage" xml:space="preserve">
+    <value>已成功保存模组 {0} 的偏好</value>
+  </data>
+  <data name="PresetDetailsVM_SavePreferencesFailedTitle" xml:space="preserve">
+    <value>保存模组偏好失败</value>
+  </data>
+  <data name="PresetDetailsVM_SelectModsTitle" xml:space="preserve">
+    <value>选择模组</value>
+  </data>
+  <data name="PresetDetailsVM_GoToText" xml:space="preserve">
+    <value>前往 {0}</value>
+  </data>
+  <data name="ActivationSvc_AdminWarningText" xml:space="preserve">
+    <value>您正在以管理员身份运行 JASM。这不被推荐。
+JASM 并非为以管理员权限运行而设计。
+简单的小错误，虽然不太可能，但有可能对您的文件系统造成严重损害。
+
+请考虑在不使用管理员权限的情况下运行 JASM。
+
+风险自负，已警告过您</value>
+  </data>
+  <data name="ActivationSvc_AdminWarningDoNotShowAgain" xml:space="preserve">
+    <value>不再显示此警告</value>
+  </data>
+  <data name="ActivationSvc_AdminWarningTitle" xml:space="preserve">
+    <value>以管理员身份运行警告</value>
+  </data>
+  <data name="ActivationSvc_AdminWarningUnderstandBtn" xml:space="preserve">
+    <value>我已了解</value>
+  </data>
+  <data name="ActivationSvc_AdminWarningExitBtn" xml:space="preserve">
+    <value>退出</value>
+  </data>
+  <data name="ActivationSvc_NewFolderStructureText" xml:space="preserve">
+    <value>此版本的 JASM 采用了新的文件夹结构。
+
+现在角色按类别进行组织，每个类别都有自己的文件夹。新格式如下：
+Mods/Category/Character/&lt;Mod 文件夹&gt;
+因此，在重新整理之前，JASM 将无法看到您的任何模组。
+这是一次性操作，您也可以手动完成。
+
+此外，角色文件夹现在会按需创建，并且可以在设置页面上清理空文件夹。
+</value>
+  </data>
+  <data name="ActivationSvc_NewFolderStructureBackupText" xml:space="preserve">
+    <value>如果您对此不确定，请先备份您的模组。我已经在自己的模组上测试过。</value>
+  </data>
+  <data name="ActivationSvc_NewFolderStructurePopupText" xml:space="preserve">
+    <value>
+
+在您选择下方某个选项之前，此弹窗将一直显示。您也可以使用设置页面上的重新整理按钮。
+如果您想了解发生了什么，请查看日志。
+</value>
+  </data>
+  <data name="ActivationSvc_NewFolderStructureTitle" xml:space="preserve">
+    <value>新文件夹结构</value>
+  </data>
+  <data name="ActivationSvc_NewFolderStructureReorganizeBtn" xml:space="preserve">
+    <value>重新整理我的模组</value>
+  </data>
+  <data name="ActivationSvc_NewFolderStructureDoItMyselfBtn" xml:space="preserve">
+    <value>我自己来整理</value>
+  </data>
+  <data name="ActivationSvc_NewFolderStructureCancelBtn" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ActivationSvc_ReorganizeFailedTitle" xml:space="preserve">
+    <value>模组重新整理失败。</value>
+  </data>
+  <data name="ActivationSvc_ReorganizeFailedMessage" xml:space="preserve">
+    <value>查看日志以获取更多详情。</value>
+  </data>
+  <data name="ActivationSvc_ReorganizeSuccessTitle" xml:space="preserve">
+    <value>模组已重新整理。</value>
+  </data>
+  <data name="ActivationSvc_ReorganizeSuccessMessage" xml:space="preserve">
+    <value>已移动 {0} 个模组到新的角色文件夹</value>
+  </data>
+  <data name="ModRandom_Title" xml:space="preserve">
+    <value>随机模组</value>
+  </data>
+  <data name="ModRandom_RandomizeBtn" xml:space="preserve">
+    <value>随机</value>
+  </data>
+  <data name="ModRandom_CancelBtn" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ModRandom_SelectCategoriesText" xml:space="preserve">
+    <value>选择您想要随机模组的类别：</value>
+  </data>
+  <data name="ModRandom_NoteText" xml:space="preserve">
+    <value>注意：这只会随机化那些只允许启用一个模组的模组文件夹。所以 "Others __" 文件夹不会被随机化。每个游戏内角色皮肤将只启用一个模组</value>
+  </data>
+  <data name="ModRandom_AllowNoModsText" xml:space="preserve">
+    <value>允许结果为没有模组。这意味着某个模组文件夹可能不会启用任何模组</value>
+  </data>
+  <data name="ModRandom_SuggestionText" xml:space="preserve">
+    <value>如果您启用了大量模组，建议在随机化之前创建一个预设（或备份）</value>
+  </data>
+  <data name="ModRandom_NoCategoriesSelectedTitle" xml:space="preserve">
+    <value>未选择类别</value>
+  </data>
+  <data name="ModRandom_NoCategoriesSelectedMessage" xml:space="preserve">
+    <value>未选择要随机化的类别。</value>
+  </data>
+  <data name="ModRandom_FailedTitle" xml:space="preserve">
+    <value>随机化模组失败</value>
+  </data>
+  <data name="ModRandom_ModsRandomizedTitle" xml:space="preserve">
+    <value>模组已随机化</value>
+  </data>
+  <data name="ModRandom_ModsRandomizedMessage" xml:space="preserve">
+    <value>已为以下类别随机化模组：{0}</value>
+  </data>
+  <data name="ModUpdateChk_ErrorTitle" xml:space="preserve">
+    <value>模组更新后台检查器发生错误</value>
+  </data>
+  <data name="ModUpdateChk_ErrorMessage" xml:space="preserve">
+    <value>后台检查器发生致命错误（{0} : {1}）。这意味着 JASM 无法再在后台或手动检查模组更新。错误：{2}</value>
+  </data>
+  <data name="ModUpdateChk_CheckErrorTitle" xml:space="preserve">
+    <value>检查模组更新时发生错误。</value>
+  </data>
+  <data name="ModUpdateChk_CheckErrorMessage" xml:space="preserve">
+    <value>正在停止后台模组更新检查器...</value>
+  </data>
+  <data name="ModUpdateChk_NoModsToCheckTitle" xml:space="preserve">
+    <value>没有可检查更新的模组</value>
+  </data>
+  <data name="ModUpdateChk_NoModsToCheckMessage" xml:space="preserve">
+    <value>没有有效的模组，因此未执行任何检查</value>
+  </data>
+  <data name="ModUpdateChk_FinishedCheckingTitle" xml:space="preserve">
+    <value>模组更新检查完成</value>
+  </data>
+  <data name="ModUpdateChk_FinishedCheckingForCharacterMessage" xml:space="preserve">
+    <value>已为 {1} 检查了 {0} 个模组的更新</value>
+  </data>
+  <data name="ModUpdateChk_FinishedCheckingMessage" xml:space="preserve">
+    <value>模组更新检查完成</value>
+  </data>
+  <data name="ModUpdateChk_NewModsAvailableMessage" xml:space="preserve">
+    <value>{0} 有可用的新模组或更新的模组</value>
+  </data>
+  <data name="ProcMgr_FailedToStartMessage" xml:space="preserve">
+    <value>启动 {0} 失败</value>
+  </data>
+  <data name="ProcMgr_FailedToStartUacCancelledMessage" xml:space="preserve">
+    <value>启动 {0} 失败，这可能是由于用户取消了 UAC（管理员）提示</value>
+  </data>
+  <data name="ProcMgr_FailedToStartRunAsAdminMessage" xml:space="preserve">
+    <value>启动 {0} 失败，这可能是由于该 exe 在其属性中启用了“以管理员身份运行”选项</value>
+  </data>
+  <data name="ProcMgr_CouldNotStartProcessTitle" xml:space="preserve">
+    <value>无法启动进程</value>
+  </data>
+  <data name="ProcMgr_UnknownErrorMessage" xml:space="preserve">
+    <value>发生未知错误</value>
+  </data>
+  <data name="LifeCycle_ErrorRestartingTitle" xml:space="preserve">
+    <value>重启应用时出错</value>
+  </data>
+  <data name="LifeCycle_TryingLegacyRestartMessage" xml:space="preserve">
+    <value>正在尝试旧版重启方法。原因：{0}</value>
+  </data>
+  <data name="LifeCycle_PleaseRestartManuallyMessage" xml:space="preserve">
+    <value>请手动重启。原因：{0}</value>
+  </data>
+  <data name="LifeCycle_PleaseRestartManuallyShortMessage" xml:space="preserve">
+    <value>请手动重启</value>
+  </data>
+  <data name="App_UnhandledExceptionTitle" xml:space="preserve">
+    <value>JASM - 未处理的异常</value>
+  </data>
+  <data name="App_ErrorOccuredTitle" xml:space="preserve">
+    <value>发生错误！</value>
+  </data>
+  <data name="App_UnstableStateMessage" xml:space="preserve">
+    <value>JASM 可能处于不稳定状态，随时可能崩溃。建议重启应用。</value>
+  </data>
 </root>

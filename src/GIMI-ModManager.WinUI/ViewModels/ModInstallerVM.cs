@@ -44,6 +44,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
     private readonly ModSettingsService _modSettingsService;
     private readonly Uri _placeholderImageUri;
     private readonly ModPresetService _modPresetService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     private ICharacterModList _characterModList = null!;
     private ICharacterSkin? _inGameSkin = null;
@@ -142,6 +143,8 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
         _modPresetService = modPresetService;
         _skinManagerService = skinManagerService;
         PropertyChanged += OnPropertyChanged;
+        PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_RenameAndAddMod", defaultValue: AddRenameText);
+        ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceAuto", defaultValue: "Auto");
     }
 
     public async Task InitializeAsync(ICharacterModList characterModList, DirectoryInfo modToInstall,
@@ -220,7 +223,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                         {
                             ClearModPreviewImage();
                             ModPreviewImagePath = new Uri(imageFile.Path);
-                            ImageSource = "Image from existing Mod";
+                            ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceFromExistingMod", defaultValue: "Image from existing Mod");
                         }
 
                         CustomName = oldModSettings.CustomName ?? string.Empty;
@@ -242,7 +245,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                     var fileSystemItem = RootFolder.FirstOrDefault()
                         ?.GetByPath(autoFoundImages.FirstOrDefault()?.LocalPath ?? "");
                     SetModPreviewImage(fileSystemItem);
-                    ImageSource = "Local image found in new Mod";
+                    ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceLocalFound", defaultValue: "Local image found in new Mod");
                 });
 
             if (options?.ModUrl is not null)
@@ -291,8 +294,8 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
         InstallerFinished?.Invoke(this, EventArgs.Empty);
         _logger.Debug("Mod {newModPath} was added to {modListPath}", newMod.FullPath,
             _characterModList.AbsModsFolderPath);
-        _notificationManager.ShowNotification($"Mod '{modName}' installed",
-            $"Mod '{modName}' ({newMod.Name}), was successfully added to {_characterModList.Character.DisplayName} ModList",
+        _notificationManager.ShowNotification(string.Format(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_ModInstalledTitle", defaultValue: "Mod '{0}' installed"), modName),
+            string.Format(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_ModInstalledMessage", defaultValue: "Mod '{0}' ({1}), was successfully added to {2} ModList"), modName, newMod.Name, _characterModList.Character.DisplayName),
             TimeSpan.FromSeconds(5));
 
         if (EnableThisMod)
@@ -329,7 +332,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                 ModFolderName = newMod.Name,
                 ShowOnOverview = true,
                 AttentionType = AttentionType.Added,
-                Message = "Mod was successfully added"
+                Message = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ModSuccessfullyAdded", defaultValue: "Mod was successfully added")
             }));
     }
 
@@ -451,7 +454,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
         }
 
         LastSelectedImageFile = fileSystemItem;
-        ImageSource = "Local image selected from new Mod";
+        ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceLocalSelected", defaultValue: "Local image selected from new Mod");
     }
 
     [RelayCommand]
@@ -464,7 +467,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
             LastSelectedImageFile = null;
         }
 
-        ImageSource = "Manual";
+        ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceManual", defaultValue: "Manual");
     }
 
     private bool _canCopyImage()
@@ -505,12 +508,12 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
         try
         {
             imageUri = await _imageHandlerService.GetImageFromClipboardAsync();
-            ImageSource = "Manual";
+            ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceManual", defaultValue: "Manual");
         }
         catch (Exception e)
         {
             _logger.Error(e, "Failed retrieve image from clipboard");
-            _notificationManager.ShowNotification("Failed retrieve image from clipboard", e.Message,
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_FailedRetrieveImageClipboardTitle", defaultValue: "Failed retrieve image from clipboard"), e.Message,
                 TimeSpan.FromSeconds(5));
             return;
         }
@@ -536,7 +539,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
 
 
         ModPreviewImagePath = new Uri(imageUri.Path);
-        ImageSource = "Manual";
+        ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceManual", defaultValue: "Manual");
         if (LastSelectedImageFile is not null)
         {
             LastSelectedImageFile.RightIcon = null;
@@ -686,7 +689,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
             _logger.Error(e, "Failed to get presets");
 
             _notificationManager.ShowNotification(
-                "Failed to get presets, could not automatically update mod entries in presets", e.Message,
+                _localizer.GetLocalizedStringOrDefault("ModInstallerVM_FailedGetPresetsTitle", defaultValue: "Failed to get presets, could not automatically update mod entries in presets"), e.Message,
                 TimeSpan.FromSeconds(5));
 
             return;
@@ -713,7 +716,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                 _logger.Error(e, "Failed to update preset {presetName}", modPreset.Name);
 
                 _notificationManager.ShowNotification(
-                    $"Failed to update preset {modPreset.Name}, could not automatically update mod entries in preset. Please check your presets manually",
+                    string.Format(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_FailedUpdatePresetTitle", defaultValue: "Failed to update preset {0}, could not automatically update mod entries in preset. Please check your presets manually"), modPreset.Name),
                     e.Message, TimeSpan.FromSeconds(5));
                 return;
             }
@@ -741,7 +744,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
               readOnlyPresetsMessage;
 
         var notification = new SimpleNotification(
-            title: presetsUpdated.Count == 0 ? "Mod was not updated for any presets" : "Mod was updated for presets",
+            title: presetsUpdated.Count == 0 ? _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ModNotUpdatedForPresets", defaultValue: "Mod was not updated for any presets") : _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ModUpdatedForPresets", defaultValue: "Mod was updated for presets"),
             message: presetsUpdatedMessage,
             notificationDuration);
 
@@ -864,7 +867,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                         var newImage = await Task.Run(() => _imageHandlerService.DownloadImageAsync(newImageUrl, ct),
                             ct);
                         ModPreviewImagePath = new Uri(newImage.Path);
-                        ImageSource = "GB Mod Thumbnail";
+                        ImageSource = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ImageSourceGbThumbnail", defaultValue: "GB Mod Thumbnail");
                         if (LastSelectedImageFile is not null)
                         {
                             LastSelectedImageFile.RightIcon = null;
@@ -875,7 +878,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                 catch (Exception e)
                 {
                     _logger.Error(e, "Failed to download image");
-                    _notificationManager.ShowNotification("Failed to download image from modUrl", e.Message,
+                    _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_FailedDownloadImageTitle", defaultValue: "Failed to download image from modUrl"), e.Message,
                         TimeSpan.FromSeconds(5));
                 }
             }
@@ -894,13 +897,13 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
     {
         if (OverwriteExistingMod)
         {
-            PrimaryButtonText = AddReplaceText;
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_OverwriteOldMod", defaultValue: AddReplaceText);
             AddModDialogCommand = new AsyncRelayCommand(AddModAndReplaceAsync);
             CanExecuteDialogCommand = true;
         }
         else
         {
-            PrimaryButtonText = AddRenameText;
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_RenameAndAddMod", defaultValue: AddRenameText);
             AddModDialogCommand = new AsyncRelayCommand(AddModAndRenameAsync, canExecute: canAddModAndRename);
             CanExecuteDialogCommand = canAddModAndRename();
         }
@@ -935,8 +938,8 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
         PInvoke.PlaySound("SystemAsterisk", null,
             SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_ALIAS | SND_FLAGS.SND_NODEFAULT);
 
-        _notificationManager.ShowNotification("An error occurred",
-            "An error occurred while adding the mod. See logs for more details",
+        _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_ErrorOccurredTitle", defaultValue: "An error occurred"),
+            _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ErrorOccurredMessage", defaultValue: "An error occurred while adding the mod. See logs for more details"),
             TimeSpan.FromSeconds(10));
 
         CloseRequested?.Invoke(this, new CloseRequestedArgs(CloseReasons.Error, e));
@@ -1002,8 +1005,8 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
             }
             else
             {
-                _notificationManager.QueueNotification("Could not determine skin for new mod",
-                    "JASM could not determine what ingame skin this mod is for, therefore it can't determine what mods to disable.");
+                _notificationManager.QueueNotification(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_CouldNotDetermineSkinTitle", defaultValue: "Could not determine skin for new mod"),
+                    _localizer.GetLocalizedStringOrDefault("ModInstallerVM_CouldNotDetermineSkinMessage", defaultValue: "JASM could not determine what ingame skin this mod is for, therefore it can't determine what mods to disable."));
                 return;
             }
         }

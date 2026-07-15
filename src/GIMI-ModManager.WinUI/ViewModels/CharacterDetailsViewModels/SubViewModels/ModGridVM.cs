@@ -43,6 +43,7 @@ public partial class ModGridVM(
     private readonly ModNotificationManager _modNotificationManager = modNotificationManager;
     private readonly ModSettingsService _modSettingsService = modSettingsService;
     private readonly IWindowManagerService _windowManagerService = windowManagerService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
     private readonly ILogger _logger = Log.ForContext<ModGridVM>();
 
     private DispatcherQueue _dispatcherQueue = null!;
@@ -113,7 +114,7 @@ public partial class ModGridVM(
             }
             catch (Exception e)
             {
-                _notificationService.ShowNotification("Error refreshing mods", e.Message, null);
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModGridVM_ErrorRefreshingModsTitle", defaultValue: "Error refreshing mods"), e.Message, null);
             }
         }
     }
@@ -171,14 +172,14 @@ public partial class ModGridVM(
 
             if (refreshResult.ModsDuplicate.Any())
             {
-                var message = $"Duplicate mods were detected in {_context.ModObjectDisplayName}'s mod folder.\n";
+                var message = string.Format(_localizer.GetLocalizedStringOrDefault("ModGridVM_DuplicateModsDetected", defaultValue: "Duplicate mods were detected in {0}'s mod folder.\n"), _context.ModObjectDisplayName);
 
                 message = refreshResult.ModsDuplicate.Aggregate(message,
                     (current, duplicateMod) =>
                         current +
-                        $"Mod: '{duplicateMod.ExistingFolderName}' was renamed to '{duplicateMod.RenamedFolderName}' to avoid conflicts.\n");
+                        string.Format(_localizer.GetLocalizedStringOrDefault("ModGridVM_DuplicateModRenamed", defaultValue: "Mod: '{0}' was renamed to '{1}' to avoid conflicts.\n"), duplicateMod.ExistingFolderName, duplicateMod.RenamedFolderName));
 
-                _notificationService.ShowNotification("Duplicate Mods Detected",
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModGridVM_DuplicateModsDetectedTitle", defaultValue: "Duplicate Mods Detected"),
                     message,
                     TimeSpan.FromSeconds(10));
             }
@@ -383,7 +384,7 @@ public partial class ModGridVM(
                 }
                 catch (Exception e)
                 {
-                    _notificationService.ShowNotification("An error occured disabling mod", e.Message, TimeSpan.FromSeconds(5));
+                    _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModGridVM_ErrorDisablingModTitle", defaultValue: "An error occured disabling mod"), e.Message, TimeSpan.FromSeconds(5));
                 }
 
 
@@ -400,7 +401,7 @@ public partial class ModGridVM(
         }
         catch (Exception e)
         {
-            _notificationService.ShowNotification("An error occured toggling mod", e.Message, TimeSpan.FromSeconds(5));
+            _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModGridVM_ErrorTogglingModTitle", defaultValue: "An error occured toggling mod"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         RefreshMultipleModsActiveWarning();
@@ -430,13 +431,13 @@ public partial class ModGridVM(
             if (result.HasNotification)
                 _notificationService.ShowNotification(result.Notification);
             else
-                _notificationService.ShowNotification("An error occured saving mod settings", result.Exception?.ToString() ?? result.ErrorMessage ?? "",
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModGridVM_ErrorSavingModSettingsTitle", defaultValue: "An error occured saving mod settings"), result.Exception?.ToString() ?? result.ErrorMessage ?? "",
                     TimeSpan.FromSeconds(6));
         }
 
         if (result.IsSuccess)
         {
-            _notificationService.ShowNotification("Mod settings saved", messageBody, TimeSpan.FromSeconds(3));
+            _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModGridVM_ModSettingsSavedTitle", defaultValue: "Mod settings saved"), messageBody, TimeSpan.FromSeconds(3));
         }
 
         await UpdateModVmAsync(mod, true, CancellationToken.None);
@@ -480,7 +481,7 @@ public partial class ModGridVM(
         var modWindow = new ModUpdateAvailableWindow(notification.Id)
         {
             Title =
-                $"New Mod Files Available: {ModFolderHelpers.GetFolderNameWithoutDisabledPrefix(skinEntry.Mod.Name)}"
+                string.Format(_localizer.GetLocalizedStringOrDefault("ModGridVM_NewModFilesAvailableTitle", defaultValue: "New Mod Files Available: {0}"), ModFolderHelpers.GetFolderNameWithoutDisabledPrefix(skinEntry.Mod.Name))
         };
         _windowManagerService.CreateWindow(modWindow, identifier: notification.Id);
         await Task.Delay(100);
@@ -493,8 +494,8 @@ public partial class ModGridVM(
             return;
 
         _notificationService.ShowNotification(
-            $"Folder Activity Detected in {_context.ShownModObject.DisplayName}'s Mod Folder",
-            "Files/Folders were changed in the characters mod folder and mods have been refreshed.",
+            string.Format(_localizer.GetLocalizedStringOrDefault("ModGridVM_FolderActivityDetectedTitle", defaultValue: "Folder Activity Detected in {0}'s Mod Folder"), _context.ShownModObject.DisplayName),
+            _localizer.GetLocalizedStringOrDefault("ModGridVM_FolderActivityDetectedMessage", defaultValue: "Files/Folders were changed in the characters mod folder and mods have been refreshed."),
             TimeSpan.FromSeconds(5));
 
 

@@ -12,25 +12,26 @@ internal class ClearEmptyFoldersDialog
     private readonly ISkinManagerService _skinManagerService = App.GetService<ISkinManagerService>();
     private readonly NotificationManager _notificationManager = App.GetService<NotificationManager>();
     private readonly IWindowManagerService _windowManagerService = App.GetService<IWindowManagerService>();
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
 
     public async Task ShowDialogAsync()
     {
         var dialog = new ContentDialog()
         {
-            Title = "Clear Empty Folders",
+            Title = _localizer.GetLocalizedStringOrDefault("ClearEmpty_Title", defaultValue: "Clear Empty Folders"),
             Content = new TextBlock()
             {
-                Text =
+                Text = _localizer.GetLocalizedStringOrDefault("ClearEmpty_Content", defaultValue:
                     "This will delete all empty folders in a character's modList if the folder is empty or only contains .JASM_ files/folders\n" +
                     "If a character folder is empty then it will be deleted as well.\n" +
-                    "Empty folders in the root of the Mods folder will also be deleted",
+                    "Empty folders in the root of the Mods folder will also be deleted"),
                 TextWrapping = TextWrapping.WrapWholeWords,
                 IsTextSelectionEnabled = true
             },
             DefaultButton = ContentDialogButton.Primary,
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel"
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("ClearEmpty_PrimaryButtonText", defaultValue: "Delete"),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("ClearEmpty_CloseButtonText", defaultValue: "Cancel")
         };
 
 
@@ -40,7 +41,7 @@ internal class ClearEmptyFoldersDialog
         {
             var deletedFolders = await Task.Run(() => _skinManagerService.CleanCharacterFolders());
             var sb = new StringBuilder();
-            sb.AppendLine("Deleted folders:");
+            sb.AppendLine(_localizer.GetLocalizedStringOrDefault("ClearEmpty_DeletedFoldersMessage", defaultValue: "Deleted folders:"));
             foreach (var folder in deletedFolders)
             {
                 sb.AppendLine(folder.FullName);
@@ -48,7 +49,7 @@ internal class ClearEmptyFoldersDialog
 
             var message = sb.ToString();
 
-            _notificationManager.ShowNotification("Empty folders deleted", message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ClearEmpty_EmptyFoldersDeletedTitle", defaultValue: "Empty folders deleted"), message, TimeSpan.FromSeconds(5));
         }
     }
 }

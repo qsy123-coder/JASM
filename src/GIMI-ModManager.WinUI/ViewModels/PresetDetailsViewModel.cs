@@ -40,6 +40,7 @@ public sealed partial class PresetDetailsViewModel(
     private readonly BusyService _busyService = busyService;
     private readonly ElevatorService _elevatorService = elevatorService;
     private readonly UserPreferencesService _userPreferencesService = userPreferencesService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     private const string SelectModsWindowKey = "SelectModsWindow";
 
@@ -69,13 +70,13 @@ public sealed partial class PresetDetailsViewModel(
     {
         var preset = _modPresetService.GetPresets().FirstOrDefault(p => p.Name == PresetName);
 
-        var modCountText = $"{preset?.Mods.Count ?? 0} mods";
+        var modCountText = string.Format(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_ModsCount", defaultValue: "{0} mods"), preset?.Mods.Count ?? 0);
 
         var isReadOnly = preset?.IsReadOnly ?? false;
 
-        var readOnlyText = isReadOnly ? " (Read-Only)" : string.Empty;
+        var readOnlyText = isReadOnly ? _localizer.GetLocalizedStringOrDefault("PresetDetailsVM_ReadOnlySuffix", defaultValue: " (Read-Only)") : string.Empty;
 
-        return $"Preset Details: {PresetName} ({modCountText}){readOnlyText}";
+        return string.Format(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_PageTitle", defaultValue: "Preset Details: {0} ({1}){2}"), PresetName, modCountText, readOnlyText);
     }
 
     public async void OnNavigatedTo(object parameter)
@@ -188,13 +189,13 @@ public sealed partial class PresetDetailsViewModel(
 
             ModEntries.Remove(modPresetEntryVm);
 
-            _notificationManager.ShowNotification("Mod removed from preset",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_ModRemovedTitle", defaultValue: "Mod removed from preset"),
                 $"Removed {(modPresetEntryVm.IsMissing ? "missing" : "")} mod '{modPresetEntryVm.Name}' from preset {PresetName}",
                 null);
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to remove mod from preset", e.Message, null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_RemoveModFailedTitle", defaultValue: "Failed to remove mod from preset"), e.Message, null);
         }
         finally
         {
@@ -238,13 +239,13 @@ public sealed partial class PresetDetailsViewModel(
             ModEntries.Insert(0, modEntryVm);
             _backendModEntries.Insert(0, modEntryVm);
 
-            _notificationManager.ShowNotification("Mod added to preset",
-                $"Added mod '{modEntryVm.Name}' to preset {PresetName}",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_ModAddedTitle", defaultValue: "Mod added to preset"),
+                string.Format(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_ModAddedMessage", defaultValue: "Added mod '{0}' to preset {1}"), modEntryVm.Name, PresetName),
                 null);
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to add mod to preset", e.Message, null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_AddModFailedTitle", defaultValue: "Failed to add mod to preset"), e.Message, null);
         }
         finally
         {
@@ -302,13 +303,13 @@ public sealed partial class PresetDetailsViewModel(
 
             await Task.Run(() => _modPresetService.DeleteModEntryAsync(PresetName, vm.ModId));
 
-            _notificationManager.ShowNotification("Mod added to preset",
-                $"Added mod '{modEntryVm.Name}' to preset {PresetName}",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_ModAddedTitle", defaultValue: "Mod added to preset"),
+                string.Format(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_ModAddedMessage", defaultValue: "Added mod '{0}' to preset {1}"), modEntryVm.Name, PresetName),
                 null);
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to add mod to preset", e.Message, null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_AddModFailedTitle", defaultValue: "Failed to add mod to preset"), e.Message, null);
         }
         finally
         {
@@ -351,12 +352,12 @@ public sealed partial class PresetDetailsViewModel(
             _backendModEntries[backendIndex] = updatedModEntry;
 
 
-            _notificationManager.ShowNotification("Preferences saved for mod",
-                $"Preferences saved successfully for mod {presetEntryDetailedVm.Name}", null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_PreferencesSavedTitle", defaultValue: "Preferences saved for mod"),
+                string.Format(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_PreferencesSavedMessage", defaultValue: "Preferences saved successfully for mod {0}"), presetEntryDetailedVm.Name), null);
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to save mod preferences", e.Message, null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_SavePreferencesFailedTitle", defaultValue: "Failed to save mod preferences"), e.Message, null);
         }
         finally
         {
@@ -405,7 +406,7 @@ public sealed partial class PresetDetailsViewModel(
         var window = new WindowEx()
         {
             SystemBackdrop = new MicaBackdrop(),
-            Title = "Select Mods",
+            Title = _localizer.GetLocalizedStringOrDefault("PresetDetailsVM_SelectModsTitle", defaultValue: "Select Mods"),
             Content = modSelector,
             Width = 1200,
             Height = 750,
@@ -483,6 +484,8 @@ public record PresetDetailsNavigationParameter(string PresetName);
 
 public partial class ModPresetEntryDetailedVm : ModPresetEntryVm
 {
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
+
     [ObservableProperty] private Uri _imageUri;
 
 
@@ -500,7 +503,7 @@ public partial class ModPresetEntryDetailedVm : ModPresetEntryVm
 
     public bool HasSourceUrl => SourceUrl is not null;
 
-    public string GoToText => $"Go to {ModdableObject?.ModCategory.DisplayName ?? string.Empty}";
+    public string GoToText => string.Format(_localizer.GetLocalizedStringOrDefault("PresetDetailsVM_GoToText", defaultValue: "Go to {0}"), ModdableObject?.ModCategory.DisplayName ?? string.Empty);
 
     public ModPresetEntryDetailedVm(ModPresetEntry modEntry, Uri imageUri) : base(modEntry)
     {

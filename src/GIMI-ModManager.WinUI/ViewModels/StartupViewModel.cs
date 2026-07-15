@@ -34,6 +34,7 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     private readonly SelectedGameService _selectedGameService;
     private readonly ModArchiveRepository _modArchiveRepository;
     private readonly CommandService _commandService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
 
     public PathPicker PathToGIMIFolderPicker { get; }
@@ -138,16 +139,16 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         _navigationService.NavigateTo(typeof(CharactersViewModel).FullName!, null, true);
         _windowManagerService.ResizeWindowPercent(_windowManagerService.MainWindow, 80, 80);
         _windowManagerService.MainWindow.CenterOnScreen();
-        App.GetService<NotificationManager>().ShowNotification("Startup settings saved",
-            $"Startup settings saved successfully to '{_localSettingsService.GameScopedSettingsLocation}'",
+        App.GetService<NotificationManager>().ShowNotification(_localizer.GetLocalizedStringOrDefault("StartupVM_StartupSettingsSavedTitle", defaultValue: "Startup settings saved"),
+            string.Format(_localizer.GetLocalizedStringOrDefault("StartupVM_StartupSettingsSavedMessage", defaultValue: "Startup settings saved successfully to '{0}'"), _localSettingsService.GameScopedSettingsLocation),
             TimeSpan.FromSeconds(7));
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
         Task.Run(async () =>
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
         {
             await Task.Delay(TimeSpan.FromSeconds(7));
-            App.GetService<NotificationManager>().ShowNotification("JASM is still in alpha",
-                "There will be bugs and things will most likely break. Anyway, hope you enjoy using Just Another Skin Manager!",
+            App.GetService<NotificationManager>().ShowNotification(_localizer.GetLocalizedStringOrDefault("StartupVM_StillInAlphaTitle", defaultValue: "JASM is still in alpha"),
+                _localizer.GetLocalizedStringOrDefault("StartupVM_StillInAlphaMessage", defaultValue: "There will be bugs and things will most likely break. Anyway, hope you enjoy using Just Another Skin Manager!"),
                 TimeSpan.FromSeconds(20));
         });
     }

@@ -24,6 +24,7 @@ public class ModRandomizationService
     private readonly ElevatorService _elevatorService;
     private readonly NotificationManager _notificationManager;
     private readonly ILogger _logger;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
     private static readonly Random Random = new();
 
     public ModRandomizationService(
@@ -48,9 +49,9 @@ public class ModRandomizationService
     {
         var dialog = new ContentDialog
         {
-            Title = "Randomize Mods",
-            PrimaryButtonText = "Randomize",
-            CloseButtonText = "Cancel",
+            Title = _localizer.GetLocalizedStringOrDefault("ModRandom_Title", defaultValue: "Randomize Mods"),
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("ModRandom_RandomizeBtn", defaultValue: "Randomize"),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("ModRandom_CancelBtn", defaultValue: "Cancel"),
             DefaultButton = ContentDialogButton.Primary
         };
 
@@ -59,12 +60,12 @@ public class ModRandomizationService
 
         stackPanel.Children.Add(new TextBlock
         {
-            Text = "Select the categories you want to randomize mods for:"
+            Text = _localizer.GetLocalizedStringOrDefault("ModRandom_SelectCategoriesText", defaultValue: "Select the categories you want to randomize mods for:")
         });
 
         stackPanel.Children.Add(new TextBlock
         {
-            Text = "Note: This will only randomize mod folders that are meant to only have one mod active. So 'Others __' folders will not be randomized. While only one mod wil be enabled per in game character skin",
+            Text = _localizer.GetLocalizedStringOrDefault("ModRandom_NoteText", defaultValue: "Note: This will only randomize mod folders that are meant to only have one mod active. So 'Others __' folders will not be randomized. While only one mod wil be enabled per in game character skin"),
             TextWrapping = TextWrapping.WrapWholeWords,
             Margin = new Thickness(0, 0, 0, 10)
         });
@@ -82,13 +83,13 @@ public class ModRandomizationService
         stackPanel.Children.Add(new CheckBox
         {
             Margin = new Thickness(0, 10, 0, 0),
-            Content = "Allow no mods as a result. This means it is possible for no mods to be enabled for a mod folder",
+            Content = _localizer.GetLocalizedStringOrDefault("ModRandom_AllowNoModsText", defaultValue: "Allow no mods as a result. This means it is possible for no mods to be enabled for a mod folder"),
             IsChecked = false
         });
 
         stackPanel.Children.Add(new TextBlock
         {
-            Text = "I suggest creating a preset (or a backup) of your mods before randomizing if you have a lot of enabled mods",
+            Text = _localizer.GetLocalizedStringOrDefault("ModRandom_SuggestionText", defaultValue: "I suggest creating a preset (or a backup) of your mods before randomizing if you have a lot of enabled mods"),
             TextWrapping = TextWrapping.WrapWholeWords,
             Margin = new Thickness(0, 10, 0, 0)
         });
@@ -115,7 +116,7 @@ public class ModRandomizationService
 
         if (selectedCategories.Count == 0)
         {
-            _notificationManager.ShowNotification("No categories selected", "No categories were selected to randomize.",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModRandom_NoCategoriesSelectedTitle", defaultValue: "No categories selected"), _localizer.GetLocalizedStringOrDefault("ModRandom_NoCategoriesSelectedMessage", defaultValue: "No categories were selected to randomize."),
                 TimeSpan.FromSeconds(5));
             return;
         }
@@ -184,7 +185,7 @@ public class ModRandomizationService
         catch (Exception e)
         {
             _logger.Error(e, "Failed to randomize mods");
-            _notificationManager.ShowNotification("Failed to randomize mods", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModRandom_FailedTitle", defaultValue: "Failed to randomize mods"), e.Message, TimeSpan.FromSeconds(5));
             return;
         }
 
@@ -193,9 +194,9 @@ public class ModRandomizationService
             await Task.Run(() => _elevatorService.RefreshGenshinMods());
         }
 
-        _notificationManager.ShowNotification("Mods randomized",
-            "Mods have been randomized for the categories: " +
-            string.Join(", ", selectedCategories.Select(c => c.DisplayNamePlural)),
+        _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModRandom_ModsRandomizedTitle", defaultValue: "Mods randomized"),
+            string.Format(_localizer.GetLocalizedStringOrDefault("ModRandom_ModsRandomizedMessage", defaultValue: "Mods have been randomized for the categories: {0}"),
+                string.Join(", ", selectedCategories.Select(c => c.DisplayNamePlural))),
             TimeSpan.FromSeconds(5));
     }
 }

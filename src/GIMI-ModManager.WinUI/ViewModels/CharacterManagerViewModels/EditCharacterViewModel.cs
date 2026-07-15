@@ -30,6 +30,7 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
     private readonly NotificationManager _notificationManager;
     private readonly ImageHandlerService _imageHandlerService;
     private readonly INavigationService _navigationService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     private ICharacter _character = null!;
 
@@ -164,12 +165,12 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
             if (image is not null)
                 Form.Image.Value = image;
             else
-                _notificationManager.ShowNotification("Failed to paste image", "No image found in clipboard", null);
+                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("EditCharVM_PasteImageFailedTitle", defaultValue: "Failed to paste image"), _localizer.GetLocalizedStringOrDefault("EditCharVM_PasteImageNoImageMessage", defaultValue: "No image found in clipboard"), null);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to paste image");
-            _notificationManager.ShowNotification("Failed to paste image", ex.Message, null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("EditCharVM_PasteImageFailedTitle", defaultValue: "Failed to paste image"), ex.Message, null);
         }
     }
 
@@ -193,8 +194,7 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
     {
         var deleteFolderCheckBox = new CheckBox()
         {
-            Content = "Delete Character folder and its contents/Mods?\n" +
-                      "Files will be permanently deleted!",
+            Content = _localizer.GetLocalizedStringOrDefault("EditCharVM_DisableDeleteFolderContent", defaultValue: "Delete Character folder and its contents/Mods?\nFiles will be permanently deleted!"),
             IsChecked = false
         };
 
@@ -205,10 +205,7 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
                 new TextBlock()
                 {
                     Text =
-                        "Are you sure you want to disable this character? " +
-                        "This will not remove the character, but JASM will no longer recognize the character. " +
-                        "Character can be reactivated later. " +
-                        "This will be executed immediately on pressing yes",
+                        _localizer.GetLocalizedStringOrDefault("EditCharVM_DisableCharacterMessage", defaultValue: "Are you sure you want to disable this character? This will not remove the character, but JASM will no longer recognize the character. Character can be reactivated later. This will be executed immediately on pressing yes"),
                     TextWrapping = TextWrapping.WrapWholeWords,
                     Margin = new Thickness(0, 0, 0, 8)
                 },
@@ -219,10 +216,10 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
 
         var disableDialog = new ContentDialog
         {
-            Title = "Disable Character",
+            Title = _localizer.GetLocalizedStringOrDefault("EditCharVM_DisableCharacterTitle", defaultValue: "Disable Character"),
             Content = dialogContent,
-            PrimaryButtonText = "Yes, disable this character",
-            CloseButtonText = "No",
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("EditCharVM_DisableCharacterPrimary", defaultValue: "Yes, disable this character"),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("EditCharVM_NoButton", defaultValue: "No"),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = App.MainWindow.Content.XamlRoot
         };
@@ -251,8 +248,7 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
     {
         var deleteFolderCheckBox = new CheckBox()
         {
-            Content = "Delete Custom Character folder and its contents/Mods?\n" +
-                      "Files will be permanently deleted!",
+            Content = _localizer.GetLocalizedStringOrDefault("EditCharVM_DeleteCustomDeleteFolderContent", defaultValue: "Delete Custom Character folder and its contents/Mods?\nFiles will be permanently deleted!"),
             IsChecked = false
         };
 
@@ -263,9 +259,7 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
                 new TextBlock()
                 {
                     Text =
-                        "Are you sure you want to delete this custom character? " +
-                        "This will remove the character, and JASM will no longer recognize the character. " +
-                        "This will be executed immediately on pressing yes",
+                        _localizer.GetLocalizedStringOrDefault("EditCharVM_DeleteCustomCharacterMessage", defaultValue: "Are you sure you want to delete this custom character? This will remove the character, and JASM will no longer recognize the character. This will be executed immediately on pressing yes"),
                     TextWrapping = TextWrapping.WrapWholeWords,
                     Margin = new Thickness(0, 0, 0, 8)
                 },
@@ -276,10 +270,10 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
 
         var disableDialog = new ContentDialog
         {
-            Title = "Delete Custom Character",
+            Title = _localizer.GetLocalizedStringOrDefault("EditCharVM_DeleteCustomCharacterTitle", defaultValue: "Delete Custom Character"),
             Content = dialogContent,
-            PrimaryButtonText = "Yes, delete this custom character",
-            CloseButtonText = "No",
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("EditCharVM_DeleteCustomCharacterPrimary", defaultValue: "Yes, delete this custom character"),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("EditCharVM_NoButton", defaultValue: "No"),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = App.MainWindow.Content.XamlRoot
         };
@@ -299,7 +293,7 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
         });
 
         _navigationService.NavigateTo(typeof(CharacterManagerViewModel).FullName!, new object(), clearNavigation: true);
-        _notificationManager.ShowNotification("Custom Character Deleted", $"Custom Character '{_character.DisplayName}' was deleted successfully", null);
+        _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("EditCharVM_CustomCharacterDeletedTitle", defaultValue: "Custom Character Deleted"), string.Format(_localizer.GetLocalizedStringOrDefault("EditCharVM_CustomCharacterDeletedMessage", defaultValue: "Custom Character '{0}' was deleted successfully"), _character.DisplayName), null);
     }
 
     private bool CanEnableCharacter() => !_character.IsCustomModObject && CharacterStatus.IsDisabled && !AnyChanges();
@@ -310,18 +304,17 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
         var dialogContent = new TextBlock()
         {
             Text =
-                "Are you sure you want to enable this character? " +
-                "This will be executed immediately on pressing yes",
+                _localizer.GetLocalizedStringOrDefault("EditCharVM_EnableCharacterMessage", defaultValue: "Are you sure you want to enable this character? This will be executed immediately on pressing yes"),
             TextWrapping = TextWrapping.WrapWholeWords,
             Margin = new Thickness(0, 0, 0, 8)
         };
 
         var enableDialog = new ContentDialog
         {
-            Title = "Enable Character",
+            Title = _localizer.GetLocalizedStringOrDefault("EditCharVM_EnableCharacterTitle", defaultValue: "Enable Character"),
             Content = dialogContent,
-            PrimaryButtonText = "Yes, enable this character",
-            CloseButtonText = "No",
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("EditCharVM_EnableCharacterPrimary", defaultValue: "Yes, enable this character"),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("EditCharVM_NoButton", defaultValue: "No"),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = App.MainWindow.Content.XamlRoot
         };
@@ -367,7 +360,7 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
         catch (Exception e)
         {
             _logger.Error(e, "Failed to save changes to character");
-            _notificationManager.ShowNotification("Failed to save changes to character", e.Message, null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("EditCharVM_SaveChangesFailedTitle", defaultValue: "Failed to save changes to character"), e.Message, null);
             return;
         }
 
@@ -522,9 +515,9 @@ public partial class EditCharacterViewModel : ObservableRecipient, INavigationAw
 
         var characterModelDialog = new ContentDialog
         {
-            Title = "Character Model",
+            Title = _localizer.GetLocalizedStringOrDefault("EditCharVM_CharacterModelTitle", defaultValue: "Character Model"),
             Content = contentWrapper,
-            CloseButtonText = "Close",
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("EditCharVM_CloseButton", defaultValue: "Close"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = App.MainWindow.Content.XamlRoot,
             Resources =

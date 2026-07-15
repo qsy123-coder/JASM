@@ -53,6 +53,7 @@ public partial class PresetViewModel(
     private readonly ILocalSettingsService _localSettingsService = localSettingsService;
     private readonly ModPresetHandlerService _modPresetHandlerService = modPresetHandlerService;
     private readonly ModRandomizationService _modRandomizationService = modRandomizationService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
     private static readonly Random Random = new();
 
 
@@ -116,7 +117,7 @@ public partial class PresetViewModel(
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to create preset", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_CreatePresetFailedTitle", defaultValue: "Failed to create preset"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         ReloadPresets();
@@ -138,7 +139,7 @@ public partial class PresetViewModel(
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to duplicate preset", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_DuplicatePresetFailedTitle", defaultValue: "Failed to duplicate preset"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         ReloadPresets();
@@ -158,7 +159,7 @@ public partial class PresetViewModel(
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to delete preset", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_DeletePresetFailedTitle", defaultValue: "Failed to delete preset"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         ReloadPresets();
@@ -210,12 +211,12 @@ public partial class PresetViewModel(
                 }
             });
 
-            _notificationManager.ShowNotification("Preset applied", $"Preset '{preset.Name}' has been applied",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_PresetAppliedTitle", defaultValue: "Preset applied"), string.Format(_localizer.GetLocalizedStringOrDefault("PresetVM_PresetAppliedMessage", defaultValue: "Preset '{0}' has been applied"), preset.Name),
                 TimeSpan.FromSeconds(5));
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to apply preset", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_ApplyPresetFailedTitle", defaultValue: "Failed to apply preset"), e.Message, TimeSpan.FromSeconds(5));
         }
         finally
         {
@@ -240,7 +241,7 @@ public partial class PresetViewModel(
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to rename preset", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_RenamePresetFailedTitle", defaultValue: "Failed to rename preset"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         ReloadPresets();
@@ -258,7 +259,7 @@ public partial class PresetViewModel(
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to save preset order", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_SavePresetOrderFailedTitle", defaultValue: "Failed to save preset order"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         ReloadPresets();
@@ -301,7 +302,7 @@ public partial class PresetViewModel(
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to toggle read only", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_ToggleReadOnlyFailedTitle", defaultValue: "Failed to toggle read only"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         ReloadPresets();
@@ -321,8 +322,8 @@ public partial class PresetViewModel(
             var isStarted = await Task.Run(() => ElevatorService.StartElevator());
 
             if (!isStarted)
-                _notificationManager.ShowNotification("Failed to start elevator",
-                    "Elevator failed to start",
+                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_StartElevatorFailedTitle", defaultValue: "Failed to start elevator"),
+                    _localizer.GetLocalizedStringOrDefault("PresetVM_StartElevatorFailedMessage", defaultValue: "Elevator failed to start"),
                     TimeSpan.FromSeconds(5));
 
             AutoSync3DMigotoConfig = ElevatorService.ElevatorStatus == ElevatorStatus.Running &&
@@ -331,7 +332,7 @@ public partial class PresetViewModel(
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to start elevator", e.Message, TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_StartElevatorFailedTitle", defaultValue: "Failed to start elevator"), e.Message, TimeSpan.FromSeconds(5));
         }
 
         IsBusy = false;
@@ -352,14 +353,14 @@ public partial class PresetViewModel(
                     await _userPreferencesService.Clear3DMigotoModPreferencesAsync(ResetOnlyEnabledMods)
                         .ConfigureAwait(false);
 
-                _notificationManager.ShowNotification("Mod preferences reset",
+                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_ModPreferencesResetTitle", defaultValue: "Mod preferences reset"),
                     $"Mod preferences have been removed{(AlsoReset3DmigotoConfig ? $" and {Constants.UserIniFileName} have been cleared" : "")}",
                     TimeSpan.FromSeconds(5));
             });
         }
         catch (Exception e)
         {
-            _notificationManager.ShowNotification("Failed to reset mod preferences", e.Message,
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("PresetVM_ResetModPreferencesFailedTitle", defaultValue: "Failed to reset mod preferences"), e.Message,
                 TimeSpan.FromSeconds(5));
         }
     }

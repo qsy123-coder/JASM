@@ -32,6 +32,7 @@ public partial class ContextMenuVM(
     private readonly NotificationManager _notificationManager = notificationManager;
     private readonly ILogger _logger = logger.ForContext<ContextMenuVM>();
     private readonly ModSettingsService _modSettingsService = modSettingsService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     private DispatcherQueue _dispatcherQueue = null!;
     private CancellationToken _navigationCt = default;
@@ -145,8 +146,8 @@ public partial class ContextMenuVM(
         if (destinationModList is null)
         {
             _logger.Warning("Destination mod list not found");
-            _notificationManager.ShowNotification("Destination Mod List Not Found",
-                "Destination mod list not found", TimeSpan.FromSeconds(5));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_DestinationModListNotFoundTitle", defaultValue: "Destination Mod List Not Found"),
+                _localizer.GetLocalizedStringOrDefault("ContextMenuVM_DestinationModListNotFoundMessage", defaultValue: "Destination mod list not found"), TimeSpan.FromSeconds(5));
             return;
         }
 
@@ -161,13 +162,13 @@ public partial class ContextMenuVM(
         {
             _logger.Error(e, "Error moving mods");
             _notificationManager
-                .ShowNotification("Invalid Operation Exception",
-                    $"Cannot move mods\n{e.Message}, see logs for details.", TimeSpan.FromSeconds(10));
+                .ShowNotification(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_InvalidOperationExceptionTitle", defaultValue: "Invalid Operation Exception"),
+                    string.Format(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_CannotMoveModsMessage", defaultValue: "Cannot move mods\n{0}, see logs for details."), e.Message), TimeSpan.FromSeconds(10));
             return;
         }
 
-        _notificationManager.ShowNotification($"{SelectedModsCount} Mods Moved",
-            $"Successfully moved {string.Join(",", selectedMods.Select(m => m.Mod.GetDisplayName()))} mods to {destinationModList.Character.DisplayName}",
+        _notificationManager.ShowNotification(string.Format(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_ModsMovedTitle", defaultValue: "{0} Mods Moved"), SelectedModsCount),
+            string.Format(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_ModsMovedMessage", defaultValue: "Successfully moved {0} mods to {1}"), string.Join(",", selectedMods.Select(m => m.Mod.GetDisplayName())), destinationModList.Character.DisplayName),
             TimeSpan.FromSeconds(5));
 
         ModsMoved?.Invoke(this, EventArgs.Empty);
@@ -236,16 +237,16 @@ public partial class ContextMenuVM(
 
         if (result.IsT0)
         {
-            _notificationManager.ShowNotification("Changed skin override for mod",
-                $"Set skin override for mod '{modEntry.Mod.GetDisplayName()}' to {characterSkinToSet.DisplayName}", null);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_ChangedSkinOverrideTitle", defaultValue: "Changed skin override for mod"),
+                string.Format(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_SetSkinOverrideMessage", defaultValue: "Set skin override for mod '{0}' to {1}"), modEntry.Mod.GetDisplayName(), characterSkinToSet.DisplayName), null);
         }
         else
         {
             var error = result.IsT1 ? result.AsT1.ToString() : result.AsT2.ToString();
             _logger.Error("Failed to override character skin for mod {modName}", modEntry.Mod.GetDisplayName());
             _notificationManager.ShowNotification(
-                $"Failed to override character skin for mod {modEntry.Mod.GetDisplayName()}",
-                $"An Error Occurred. Reason: {error}",
+                string.Format(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_FailedOverrideSkinTitle", defaultValue: "Failed to override character skin for mod {0}"), modEntry.Mod.GetDisplayName()),
+                string.Format(_localizer.GetLocalizedStringOrDefault("ContextMenuVM_OverrideSkinErrorMessage", defaultValue: "An Error Occurred. Reason: {0}"), error),
                 TimeSpan.FromSeconds(5));
         }
 

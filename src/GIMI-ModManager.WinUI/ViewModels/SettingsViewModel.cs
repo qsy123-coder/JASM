@@ -236,17 +236,17 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         {
             var result = await _windowManagerService.ShowDialogAsync(new ContentDialog()
             {
-                Title = "Restart required",
+                Title = _localizer.GetLocalizedStringOrDefault("SettingsVM_RestartRequiredTitle", defaultValue: "Restart required"),
                 Content = new TextBlock()
                 {
                     Text =
-                        "You'll need to restart the application for the theme to take effect or else the application will become unstable. " +
+                        _localizer.GetLocalizedStringOrDefault("SettingsVM_SwitchThemeText", defaultValue: "You'll need to restart the application for the theme to take effect or else the application will become unstable. " +
                         "This is most likely me not configuring the theming correctly. Dark Mode is the recommended theme.\n\n" +
-                        "Sorry for the inconvenience.",
+                        "Sorry for the inconvenience."),
                     TextWrapping = TextWrapping.Wrap
                 },
-                PrimaryButtonText = "Restart",
-                CloseButtonText = "Cancel",
+                PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_RestartBtn", defaultValue: "Restart"),
+                CloseButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_CancelBtn", defaultValue: "Cancel"),
                 DefaultButton = ContentDialogButton.Primary
             });
 
@@ -254,7 +254,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
             ElementTheme = param;
             await _themeSelectorService.SetThemeAsync(param);
-            _notificationManager.ShowNotification("Restarting...", "The application will restart now.",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_RestartingTitle", defaultValue: "Restarting..."), _localizer.GetLocalizedStringOrDefault("SettingsVM_RestartingMessage", defaultValue: "The application will restart now."),
                 null);
             await RestartAppAsync();
         }
@@ -306,11 +306,11 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         var dialog = new ContentDialog();
         dialog.XamlRoot = App.MainWindow.Content.XamlRoot;
         dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
-        dialog.Title = "Update Folder Paths?";
-        dialog.CloseButtonText = "Cancel";
-        dialog.PrimaryButtonText = "Save";
+        dialog.Title = _localizer.GetLocalizedStringOrDefault("SettingsVM_UpdateFolderPathsTitle", defaultValue: "Update Folder Paths?");
+        dialog.CloseButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_CancelBtn", defaultValue: "Cancel");
+        dialog.PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_SaveBtn", defaultValue: "Save");
         dialog.DefaultButton = ContentDialogButton.Primary;
-        dialog.Content = "Do you want to save the new folder paths? The App will restart afterwards.";
+        dialog.Content = _localizer.GetLocalizedStringOrDefault("SettingsVM_UpdateFolderPathsContent", defaultValue: "Do you want to save the new folder paths? The App will restart afterwards.");
 
         var result = await dialog.ShowAsync();
 
@@ -325,7 +325,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             await _localSettingsService.SaveSettingAsync(ModManagerOptions.Section,
                 modManagerOptions);
             _logger.Information("Saved startup settings: {@ModManagerOptions}", modManagerOptions);
-            _notificationManager.ShowNotification("Settings saved. Restarting App...", "", TimeSpan.FromSeconds(2));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_SettingsSavedRestartingTitle", defaultValue: "Settings saved. Restarting App..."), "", TimeSpan.FromSeconds(2));
 
 
             await RestartAppAsync();
@@ -353,19 +353,19 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         var result = await _windowManagerService.ShowDialogAsync(new ContentDialog()
         {
-            Title = "Reorganize Mods?",
+            Title = _localizer.GetLocalizedStringOrDefault("SettingsVM_ReorganizeModsTitle", defaultValue: "Reorganize Mods?"),
             Content = new TextBlock()
             {
                 Text =
-                    "Do you want to reorganize the Mods folder?\n" +
+                    _localizer.GetLocalizedStringOrDefault("SettingsVM_ReorganizeModsText", defaultValue: "Do you want to reorganize the Mods folder?\n" +
                     "This will prompt the application to sort existing mods that are directly in the Mods folder and Others folder, into folders assigned to their respective characters.\n\n" +
-                    "Any mods that can't be reasonably matched will be placed in an 'Others' folder. While the mods already in 'Others' folder will remain there.",
+                    "Any mods that can't be reasonably matched will be placed in an 'Others' folder. While the mods already in 'Others' folder will remain there."),
                 TextWrapping = TextWrapping.WrapWholeWords,
                 IsTextSelectionEnabled = true
             },
-            PrimaryButtonText = "Yes",
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_YesBtn", defaultValue: "Yes"),
             DefaultButton = ContentDialogButton.Primary,
-            CloseButtonText = "Cancel",
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_CancelBtn", defaultValue: "Cancel"),
             Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style
         });
 
@@ -386,12 +386,12 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
                 await _skinManagerService.RefreshModsAsync();
 
                 if (movedModsCount == -1)
-                    _notificationManager.ShowNotification("Mods reorganization failed.",
-                        "See logs for more details.", TimeSpan.FromSeconds(5));
+                    _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ReorgFailedTitle", defaultValue: "Mods reorganization failed."),
+                        _localizer.GetLocalizedStringOrDefault("SettingsVM_ReorgFailedMessage", defaultValue: "See logs for more details."), TimeSpan.FromSeconds(5));
 
                 else
-                    _notificationManager.ShowNotification("Mods reorganized.",
-                        $"Moved {movedModsCount} mods to character folders", TimeSpan.FromSeconds(5));
+                    _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ReorganizedTitle", defaultValue: "Mods reorganized."),
+                        string.Format(_localizer.GetLocalizedStringOrDefault("SettingsVM_ReorganizedMessage", defaultValue: "Moved {0} mods to character folders"), movedModsCount), TimeSpan.FromSeconds(5));
             }
             finally
             {
@@ -457,8 +457,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
                     "Start Elevator Process?",
             Content = stackPanel,
             DefaultButton = ContentDialogButton.Primary,
-            CloseButtonText = "Cancel",
-            PrimaryButtonText = "Start",
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_CancelBtn", defaultValue: "Cancel"),
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_StartBtn", defaultValue: "Start"),
             XamlRoot = App.MainWindow.Content.XamlRoot
         };
 
@@ -479,7 +479,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             }
             catch (Win32Exception e)
             {
-                _notificationManager.ShowNotification("Unable to start Elevator", e.Message, TimeSpan.FromSeconds(10));
+                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_UnableStartElevatorTitle", defaultValue: "Unable to start Elevator"), e.Message, TimeSpan.FromSeconds(10));
                 _showElevatorStartDialog = true;
             }
     }
@@ -541,13 +541,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         var dialog = new ContentDialog()
         {
-            PrimaryButtonText = "Export",
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_ExportBtn", defaultValue: "Export"),
             IsPrimaryButtonEnabled = true,
-            CloseButtonText = "Cancel",
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_CancelBtn", defaultValue: "Cancel"),
             DefaultButton = ContentDialogButton.Primary
         };
 
-        dialog.Title = "Export Mods";
+        dialog.Title = _localizer.GetLocalizedStringOrDefault("SettingsVM_ExportModsTitle", defaultValue: "Export Mods");
 
         dialog.ContentTemplate = contentDialog.ContentTemplate;
 
@@ -584,13 +584,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
                     removeLocalJasmSettings: model.RemoveJasmSettings, zip: false,
                     keepCharacterFolderStructure: model.KeepFolderStructure, setModStatus: model.SetModStatus);
             });
-            _notificationManager.ShowNotification("Mods exported", $"Mods exported to {folder.Path}",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ModsExportedTitle", defaultValue: "Mods exported"), string.Format(_localizer.GetLocalizedStringOrDefault("SettingsVM_ModsExportedMessage", defaultValue: "Mods exported to {0}"), folder.Path),
                 TimeSpan.FromSeconds(5));
         }
         catch (Exception e)
         {
             _logger.Error(e, "Error exporting mods");
-            _notificationManager.ShowNotification("Error exporting mods", e.Message, TimeSpan.FromSeconds(10));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ErrorExportingModsTitle", defaultValue: "Error exporting mods"), e.Message, TimeSpan.FromSeconds(10));
         }
         finally
         {
@@ -621,7 +621,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
             var restartDialog = new ContentDialog()
             {
-                Title = "Restart Required",
+                Title = _localizer.GetLocalizedStringOrDefault("SettingsVM_LanguageRestartRequiredTitle", defaultValue: "Restart Required"),
                 Content = new TextBlock()
                 {
                     Text = _localizer.GetLocalizedStringOrDefault("/Settings/ChangeLanguageDialogText",
@@ -632,8 +632,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
                     TextWrapping = TextWrapping.WrapWholeWords,
                     IsTextSelectionEnabled = true
                 },
-                PrimaryButtonText = "Change Language and restart",
-                CloseButtonText = "Cancel",
+                PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_ChangeLanguageRestartBtn", defaultValue: "Change Language and restart"),
+                CloseButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_CancelBtn", defaultValue: "Cancel"),
                 DefaultButton = ContentDialogButton.Primary
             };
 
@@ -669,13 +669,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         catch (Exception e)
         {
             _logger.Error(e, "Error starting update process");
-            _notificationManager.ShowNotification("Error starting update process", e.Message, TimeSpan.FromSeconds(10));
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ErrorStartingUpdateTitle", defaultValue: "Error starting update process"), e.Message, TimeSpan.FromSeconds(10));
         }
 
         if (errors is not null && errors.Any())
         {
             var errorMessages = errors.Select(e => e.Description).ToArray();
-            _notificationManager.ShowNotification("Could not start update process", string.Join('\n', errorMessages),
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_CouldNotStartUpdateTitle", defaultValue: "Could not start update process"), string.Join('\n', errorMessages),
                 TimeSpan.FromSeconds(10));
         }
     }
@@ -691,18 +691,18 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
         var switchGameDialog = new ContentDialog()
         {
-            Title = "Switch Game",
+            Title = _localizer.GetLocalizedStringOrDefault("SettingsVM_SwitchGameTitle", defaultValue: "Switch Game"),
             Content = new TextBlock()
             {
                 Text =
-                    "Switching games will restart the application. " +
+                    _localizer.GetLocalizedStringOrDefault("SettingsVM_SwitchGameText", defaultValue: "Switching games will restart the application. " +
                     "This is required to ensure that the application is configured correctly for the selected game.\n\n" +
-                    "Do you want to switch games?",
+                    "Do you want to switch games?"),
                 TextWrapping = TextWrapping.WrapWholeWords
             },
 
-            PrimaryButtonText = $"Switch to {game}",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = string.Format(_localizer.GetLocalizedStringOrDefault("SettingsVM_SwitchToGameBtn", defaultValue: "Switch to {0}"), game),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("SettingsVM_CancelBtn", defaultValue: "Cancel"),
             DefaultButton = ContentDialogButton.Primary
         };
 

@@ -36,6 +36,7 @@ public sealed partial class ModPaneVM(
     private readonly NotificationManager _notificationService = notificationService;
     private readonly ModSettingsService _modSettingsService = modSettingsService;
     private readonly ImageHandlerService _imageHandlerService = imageHandlerService;
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     private readonly AsyncLock _loadModLock = new();
     private CancellationToken _cancellationToken = new();
@@ -102,7 +103,7 @@ public sealed partial class ModPaneVM(
             }
             catch (Exception e)
             {
-                _notificationService.ShowNotification("Error loading mod", e.Message, null);
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModPaneVM_ErrorLoadingModTitle", defaultValue: "Error loading mod"), e.Message, null);
             }
         }
     }
@@ -138,7 +139,7 @@ public sealed partial class ModPaneVM(
             }
             catch (Exception e)
             {
-                _notificationService.ShowNotification($"Failed to load keyswaps for mod {mod.GetDisplayName()}", e.Message, null);
+                _notificationService.ShowNotification(string.Format(_localizer.GetLocalizedStringOrDefault("ModPaneVM_FailedToLoadKeyswapsTitle", defaultValue: "Failed to load keyswaps for mod {0}"), mod.GetDisplayName()), e.Message, null);
             }
 
             return new { modEntry, modSettings, keySwaps };
@@ -232,7 +233,7 @@ public sealed partial class ModPaneVM(
             dataPackage.SetText(modFolderPath);
             Clipboard.SetContent(dataPackage);
 
-            _notificationService.ShowNotification("Mod folder path copied to clipboard", "", TimeSpan.FromSeconds(3));
+            _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModPaneVM_ModFolderPathCopiedTitle", defaultValue: "Mod folder path copied to clipboard"), "", TimeSpan.FromSeconds(3));
         }
         catch (Exception e)
         {
@@ -243,7 +244,7 @@ public sealed partial class ModPaneVM(
         var filePicker = new FileOpenPicker();
         filePicker.SettingsIdentifier = "IniFilerPicker";
         filePicker.FileTypeFilter.Add(".ini");
-        filePicker.CommitButtonText = "Set";
+        filePicker.CommitButtonText = _localizer.GetLocalizedStringOrDefault("ModPaneVM_Set", defaultValue: "Set");
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
         WinRT.Interop.InitializeWithWindow.Initialize(filePicker, hwnd);
         var file = await filePicker.PickSingleFileAsync();
@@ -297,7 +298,7 @@ public sealed partial class ModPaneVM(
     {
         if (!IsModLoaded) return;
         var filePicker = new FileOpenPicker();
-        filePicker.CommitButtonText = "Set Image";
+        filePicker.CommitButtonText = _localizer.GetLocalizedStringOrDefault("ModPaneVM_SetImage", defaultValue: "Set Image");
         filePicker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
         filePicker.SettingsIdentifier = "ImagePicker";
         foreach (var supportedImageExtension in Constants.SupportedImageExtensions)
@@ -327,7 +328,7 @@ public sealed partial class ModPaneVM(
 
             if (!clipboardHasValidImageResult.Result)
             {
-                _notificationService.ShowNotification("Clipboard does not contain a valid image", "", null);
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModPaneVM_ClipboardNoValidImageTitle", defaultValue: "Clipboard does not contain a valid image"), "", null);
                 return;
             }
 
@@ -335,7 +336,7 @@ public sealed partial class ModPaneVM(
 
             if (imagePath == null)
             {
-                _notificationService.ShowNotification("Could not retrieve image from clipboard", "", null);
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModPaneVM_CouldNotRetrieveImageTitle", defaultValue: "Could not retrieve image from clipboard"), "", null);
                 return;
             }
 
@@ -446,7 +447,7 @@ public sealed partial class ModPaneVM(
                 _notificationService.ShowNotification(result.Notification);
 
             if (savingKeySwapException is not null)
-                _notificationService.ShowNotification("Failed to save key swaps", savingKeySwapException.Message, null);
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("ModPaneVM_FailedToSaveKeySwapsTitle", defaultValue: "Failed to save key swaps"), savingKeySwapException.Message, null);
 
             _cancellationToken.ThrowIfCancellationRequested();
 
@@ -554,7 +555,7 @@ public sealed partial class ModPaneVM(
             if (useDefaultExceptionHandler)
             {
                 _logger.Error(e, "An error occured while executing command {CommandName}", commandName);
-                _notificationService.ShowNotification($"An error occured running command {commandName}", e.Message, null);
+                _notificationService.ShowNotification(string.Format(_localizer.GetLocalizedStringOrDefault("ModPaneVM_ErrorRunningCommandTitle", defaultValue: "An error occured running command {0}"), commandName), e.Message, null);
                 return;
             }
 

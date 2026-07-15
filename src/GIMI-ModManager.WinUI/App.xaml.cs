@@ -317,7 +317,7 @@ public partial class App : Application
         var window = new ErrorWindow(e.Exception, () => _ErrorWindowsOpen--)
         {
             IsAlwaysOnTop = true,
-            Title = "JASM - Unhandled Exception",
+            Title = GetService<ILanguageLocalizer>().GetLocalizedStringOrDefault("App_UnhandledExceptionTitle", defaultValue: "JASM - Unhandled Exception"),
             SystemBackdrop = new MicaBackdrop()
         };
 
@@ -326,8 +326,8 @@ public partial class App : Application
         window.CenterOnScreen();
 
         GetService<NotificationManager>()
-            .ShowNotification("An error occured!",
-                "JASM may be in an unstable state could crash at any moment. It is suggested to restart the app.",
+            .ShowNotification(GetService<ILanguageLocalizer>().GetLocalizedStringOrDefault("App_ErrorOccuredTitle", defaultValue: "An error occured!"),
+                GetService<ILanguageLocalizer>().GetLocalizedStringOrDefault("App_UnstableStateMessage", defaultValue: "JASM may be in an unstable state could crash at any moment. It is suggested to restart the app."),
                 TimeSpan.FromMinutes(60));
 
         if (_ErrorWindowsOpen > 4)

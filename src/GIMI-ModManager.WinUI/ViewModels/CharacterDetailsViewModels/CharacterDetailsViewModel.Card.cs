@@ -107,7 +107,7 @@ public partial class CharacterDetailsViewModel
             {
                 _logger.Error("Could not find character skin {SkinName} for character {CharacterName}",
                     characterTemplate.DisplayName, ShownModObject.DisplayName);
-                _notificationService.ShowNotification("Error while switching character skin.", "",
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsCardVM_ErrorSwitchingSkinTitle", defaultValue: "Error while switching character skin."), "",
                     TimeSpan.FromSeconds(5));
                 return;
             }
@@ -171,7 +171,7 @@ public partial class CharacterDetailsViewModel
 
         if (!canDisableAllMods)
         {
-            _notificationService.ShowNotification("Error while disabling mods", "Could not disable all mods.",
+            _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsCardVM_ErrorDisablingModsTitle", defaultValue: "Error while disabling mods"), _localizer.GetLocalizedStringOrDefault("CharDetailsCardVM_CouldNotDisableAllMods", defaultValue: "Could not disable all mods."),
                 TimeSpan.FromSeconds(5));
             return;
         }

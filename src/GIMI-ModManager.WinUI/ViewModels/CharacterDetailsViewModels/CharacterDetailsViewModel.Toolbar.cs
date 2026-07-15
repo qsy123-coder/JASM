@@ -207,8 +207,8 @@ public partial class CharacterDetailsViewModel
             catch (Exception e)
             {
                 _logger.Error(e, "Error while adding archive.");
-                _notificationService.ShowNotification("Error while adding storage items.",
-                    $"An error occurred while adding the storage items.\n{e.Message}",
+                _notificationService.ShowNotification(_localizer.GetLocalizedStringOrDefault("CharDetailsTbVM_ErrorAddingStorageItemsTitle", defaultValue: "Error while adding storage items."),
+                    string.Format(_localizer.GetLocalizedStringOrDefault("CharDetailsTbVM_ErrorAddingStorageItemsMessage", defaultValue: "An error occurred while adding the storage items.\n{0}"), e.Message),
                     TimeSpan.FromSeconds(5));
             }
             finally

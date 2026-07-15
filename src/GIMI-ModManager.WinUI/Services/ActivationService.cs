@@ -412,11 +412,11 @@ public class ActivationService : IActivationService
         var stackPanel = new StackPanel();
         var textWarning = new TextBlock()
         {
-            Text = "You are running JASM as an administrator. This is not recommended.\n" +
+            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningText", defaultValue: "You are running JASM as an administrator. This is not recommended.\n" +
                    "JASM was NOT designed to run with administrator privileges.\n" +
                    "Simple bugs, though unlikely, can potentially cause serious damage to your file system.\n\n" +
                    "Please consider running JASM without administrator privileges.\n\n" +
-                   "Use at your own risk, you have been warned",
+                   "Use at your own risk, you have been warned"),
             TextWrapping = TextWrapping.WrapWholeWords
         };
         stackPanel.Children.Add(textWarning);
@@ -424,7 +424,7 @@ public class ActivationService : IActivationService
         var doNotShowAgain = new CheckBox()
         {
             IsChecked = false,
-            Content = "Do not show this warning again",
+            Content = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningDoNotShowAgain", defaultValue: "Do not show this warning again"),
             Margin = new Thickness(0, 10, 0, 0)
         };
 
@@ -433,10 +433,10 @@ public class ActivationService : IActivationService
 
         var dialog = new ContentDialog
         {
-            Title = "Running as Administrator Warning",
+            Title = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningTitle", defaultValue: "Running as Administrator Warning"),
             Content = stackPanel,
-            PrimaryButtonText = "I understand",
-            SecondaryButtonText = "Exit",
+            PrimaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningUnderstandBtn", defaultValue: "I understand"),
+            SecondaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningExitBtn", defaultValue: "Exit"),
             DefaultButton = ContentDialogButton.Primary
         };
 
@@ -464,7 +464,7 @@ public class ActivationService : IActivationService
         var stackPanel = new StackPanel();
         var textWarning = new TextBlock()
         {
-            Text = """
+            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_NewFolderStructureText", defaultValue: """
                    This version of JASM has a new folder structure.
 
                    Now Characters are organized by category, and each category has its own folder. So new format is as follows:
@@ -473,7 +473,7 @@ public class ActivationService : IActivationService
                    This is a one time thing, and you can do it manually if you want.
 
                    Also character folders are now created on demand and it is possible to clean up empty folders on the settings page.
-                   """,
+                   """),
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.WrapWholeWords
         };
@@ -481,7 +481,7 @@ public class ActivationService : IActivationService
 
         var textWarning2 = new TextBlock()
         {
-            Text = "If you're uncertain about this then back up your mods first. I've tested this on my own mods.",
+            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_NewFolderStructureBackupText", defaultValue: "If you're uncertain about this then back up your mods first. I've tested this on my own mods."),
             FontWeight = FontWeights.Bold,
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.WrapWholeWords
@@ -492,11 +492,11 @@ public class ActivationService : IActivationService
 
         var textWarning3 = new TextBlock()
         {
-            Text = """
+            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_NewFolderStructurePopupText", defaultValue: """
 
                    This popup will be shown until you chose an option below. You can also use the reorganize button on the settings page.
                    Check the logs if you want to see what's happening.
-                   """,
+                   """),
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.WrapWholeWords
         };
@@ -506,11 +506,11 @@ public class ActivationService : IActivationService
 
         var dialog = new ContentDialog
         {
-            Title = "New Folder structure",
+            Title = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_NewFolderStructureTitle", defaultValue: "New Folder structure"),
             Content = stackPanel,
-            PrimaryButtonText = "Reorganize my mods",
-            SecondaryButtonText = "I will do it myself",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_NewFolderStructureReorganizeBtn", defaultValue: "Reorganize my mods"),
+            SecondaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_NewFolderStructureDoItMyselfBtn", defaultValue: "I will do it myself"),
+            CloseButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_NewFolderStructureCancelBtn", defaultValue: "Cancel"),
             DefaultButton = ContentDialogButton.Primary
         };
 
@@ -528,12 +528,12 @@ public class ActivationService : IActivationService
                 await _skinManagerService.RefreshModsAsync();
 
                 if (movedModsCount == -1)
-                    _notificationManager.ShowNotification("Mods reorganization failed.",
-                        "See logs for more details.", TimeSpan.FromSeconds(5));
+                    _notificationManager.ShowNotification(_languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_ReorganizeFailedTitle", defaultValue: "Mods reorganization failed."),
+                        _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_ReorganizeFailedMessage", defaultValue: "See logs for more details."), TimeSpan.FromSeconds(5));
 
                 else
-                    _notificationManager.ShowNotification("Mods reorganized.",
-                        $"Moved {movedModsCount} mods to new character folders", TimeSpan.FromSeconds(5));
+                    _notificationManager.ShowNotification(_languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_ReorganizeSuccessTitle", defaultValue: "Mods reorganized."),
+                        string.Format(_languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_ReorganizeSuccessMessage", defaultValue: "Moved {0} mods to new character folders"), movedModsCount), TimeSpan.FromSeconds(5));
             }
             finally
             {

@@ -1,5 +1,6 @@
 ﻿using Windows.System;
 using CommunityToolkit.Mvvm.Input;
+using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Helpers;
 using Microsoft.UI.Xaml.Controls;
 using GIMI_ModManager.WinUI.Services.Notifications;
@@ -13,6 +14,8 @@ namespace GIMI_ModManager.WinUI.ViewModels.CharacterGalleryViewModels;
 
 public partial class CharacterGalleryViewModel
 {
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
+
     private bool CanOpenModFolder(ModGridItemVm? vm) =>
         vm is not null && !IsNavigating && !IsBusy && !vm.FolderPath.IsNullOrEmpty() && Directory.Exists(vm.FolderPath);
 
@@ -40,7 +43,7 @@ public partial class CharacterGalleryViewModel
 
         var doNotAskAgainCheckBox = new CheckBox()
         {
-            Content = "Do not ask again",
+            Content = _localizer.GetLocalizedStringOrDefault("DropdownCmd_DoNotAskAgain", defaultValue: "Do not ask again"),
             IsChecked = false,
         };
         var stackPanel = new StackPanel()
@@ -49,7 +52,7 @@ public partial class CharacterGalleryViewModel
             {
                 new TextBlock()
                 {
-                    Text = $"Are you sure you want to delete {vm.Name}?",
+                    Text = string.Format(_localizer.GetLocalizedStringOrDefault("DropdownCmd_DeleteConfirmText", defaultValue: "Are you sure you want to delete {0}?"), vm.Name),
                     TextWrapping = Microsoft.UI.Xaml.TextWrapping.WrapWholeWords,
                 },
                 doNotAskAgainCheckBox
@@ -58,10 +61,10 @@ public partial class CharacterGalleryViewModel
 
         var dialog = new ContentDialog()
         {
-            Title = "Delete mod",
+            Title = _localizer.GetLocalizedStringOrDefault("DropdownCmd_DeleteModTitle", defaultValue: "Delete mod"),
             Content = stackPanel,
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("DropdownCmd_DeleteBtn", defaultValue: "Delete"),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("DropdownCmd_CancelBtn", defaultValue: "Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
 
@@ -105,10 +108,10 @@ public partial class CharacterGalleryViewModel
         catch (Exception e)
         {
             _logger.Error(e, "Failed to delete mod");
-            notificationManager.ShowNotification("Failed to delete mod", e.Message, TimeSpan.FromSeconds(10));
+            notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("DropdownCmd_FailedDeleteModTitle", defaultValue: "Failed to delete mod"), e.Message, TimeSpan.FromSeconds(10));
             return;
         }
 
-        notificationManager.ShowNotification("Mod deleted", $"{vm.Name} has been deleted", TimeSpan.FromSeconds(5));
+        notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("DropdownCmd_ModDeletedTitle", defaultValue: "Mod deleted"), string.Format(_localizer.GetLocalizedStringOrDefault("DropdownCmd_ModDeletedMessage", defaultValue: "{0} has been deleted"), vm.Name), TimeSpan.FromSeconds(5));
     }
 }

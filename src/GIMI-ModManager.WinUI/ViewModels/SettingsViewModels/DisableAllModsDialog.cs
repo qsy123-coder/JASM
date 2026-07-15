@@ -16,14 +16,15 @@ public class DisableAllModsDialog
     private readonly NotificationManager _notificationManager = App.GetService<NotificationManager>();
     private readonly IWindowManagerService _windowManagerService = App.GetService<IWindowManagerService>();
     private readonly ILogger _logger = App.GetService<ILogger>().ForContext<DisableAllModsDialog>();
+    private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     public async Task ShowDialogAsync()
     {
         var dialog = new ContentDialog
         {
-            Title = "Disable Mods",
-            PrimaryButtonText = "Disable Mods in Categories",
-            CloseButtonText = "Cancel",
+            Title = _localizer.GetLocalizedStringOrDefault("DisableAllMods_Title", defaultValue: "Disable Mods"),
+            PrimaryButtonText = _localizer.GetLocalizedStringOrDefault("DisableAllMods_PrimaryButtonText", defaultValue: "Disable Mods in Categories"),
+            CloseButtonText = _localizer.GetLocalizedStringOrDefault("DisableAllMods_CloseButtonText", defaultValue: "Cancel"),
             DefaultButton = ContentDialogButton.Primary
         };
 
@@ -34,7 +35,7 @@ public class DisableAllModsDialog
 
         stackPanel.Children.Add(new TextBlock
         {
-            Text = "Select the categories you want to disable mods for:",
+            Text = _localizer.GetLocalizedStringOrDefault("DisableAllMods_SelectCategoriesText", defaultValue: "Select the categories you want to disable mods for:"),
             IsTextSelectionEnabled = true
         });
 
@@ -53,8 +54,8 @@ public class DisableAllModsDialog
 
         stackPanel.Children.Add(new TextBlock
         {
-            Text = "I suggest creating a preset (or a backup) of your mods before disabling mods if you have a lot of enabled mods.\n\n" +
-                   "Only mods tracked by JASM will be disabled within the selected categories",
+            Text = _localizer.GetLocalizedStringOrDefault("DisableAllMods_SuggestionText", defaultValue: "I suggest creating a preset (or a backup) of your mods before disabling mods if you have a lot of enabled mods.\n\n" +
+                   "Only mods tracked by JASM will be disabled within the selected categories"),
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.WrapWholeWords,
             Margin = new Thickness(0, 10, 0, 0)
@@ -80,7 +81,7 @@ public class DisableAllModsDialog
 
         if (selectedCategories.Count == 0)
         {
-            _notificationManager.ShowNotification("No categories selected", "No categories were selected to disable mods.",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("DisableAllMods_NoCategoriesSelectedTitle", defaultValue: "No categories selected"), _localizer.GetLocalizedStringOrDefault("DisableAllMods_NoCategoriesSelectedMessage", defaultValue: "No categories were selected to disable mods."),
                 TimeSpan.FromSeconds(5));
             return;
         }
@@ -121,15 +122,15 @@ public class DisableAllModsDialog
 
         if (errors.Length == 0)
         {
-            _notificationManager.ShowNotification("Mods disabled",
-                $"All tracked mods have been disabled for the selected categories: {string.Join(',', selectedCategories.Select(c => c.DisplayNamePlural))}",
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("DisableAllMods_ModsDisabledTitle", defaultValue: "Mods disabled"),
+                string.Format(_localizer.GetLocalizedStringOrDefault("DisableAllMods_ModsDisabledMessage", defaultValue: "All tracked mods have been disabled for the selected categories: {0}"), string.Join(',', selectedCategories.Select(c => c.DisplayNamePlural))),
                 TimeSpan.FromSeconds(5));
             return;
         }
 
 
         var sb = new StringBuilder();
-        sb.AppendLine("An error occured for the following mods:");
+        sb.AppendLine(_localizer.GetLocalizedStringOrDefault("DisableAllMods_ErrorOccuredMessage", defaultValue: "An error occured for the following mods:"));
 
         foreach (var error in errors)
         {
@@ -137,6 +138,6 @@ public class DisableAllModsDialog
         }
 
 
-        _notificationManager.ShowNotification("Errors while disabling mods", sb.ToString(), TimeSpan.FromSeconds(10));
+        _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("DisableAllMods_ErrorsWhileDisablingTitle", defaultValue: "Errors while disabling mods"), sb.ToString(), TimeSpan.FromSeconds(10));
     }
 }
