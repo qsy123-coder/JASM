@@ -56,8 +56,10 @@ public abstract class SortingMethod<T> where T : class
     {
     }
 
+    public string? DisplayName { get; set; }
+
     public override string ToString()
     {
-        return SortingMethodType;
+        return DisplayName ?? SortingMethodType;
     }
 }

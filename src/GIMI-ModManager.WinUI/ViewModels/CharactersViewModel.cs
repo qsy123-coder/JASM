@@ -1058,24 +1058,30 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
             ch.Character.InternalName.Id.Contains("Others", StringComparison.OrdinalIgnoreCase));
 
         var alphabetical = new GridItemSortingMethod(GridItemSorter.Alphabetical, othersCharacter, lastCharacters);
+        alphabetical.DisplayName = _localizer.GetLocalizedStringOrDefault("Sort_Alphabetical", defaultValue: "Alphabetical");
         SortingMethods.Add(alphabetical);
 
         var byModCount = new GridItemSortingMethod(GridItemSorter.ModCount, othersCharacter, lastCharacters);
+        byModCount.DisplayName = _localizer.GetLocalizedStringOrDefault("Sort_ModCount", defaultValue: "Mod Count");
         SortingMethods.Add(byModCount);
 
 
         var byModRecentlyAdded = new GridItemSortingMethod(GridItemSorter.ModRecentlyAdded, othersCharacter, lastCharacters);
+        byModRecentlyAdded.DisplayName = _localizer.GetLocalizedStringOrDefault("Sort_RecentlyAddedMods", defaultValue: "Recently Added Mods");
         SortingMethods.Add(byModRecentlyAdded);
 
         if (_category.ModCategory == ModCategory.Character)
         {
-            SortingMethods.Add(new GridItemSortingMethod(GridItemSorter.ReleaseDate, othersCharacter, lastCharacters));
-            SortingMethods.Add(new GridItemSortingMethod(GridItemSorter.Rarity, othersCharacter, lastCharacters));
+            SortingMethods.Add(new GridItemSortingMethod(GridItemSorter.ReleaseDate, othersCharacter, lastCharacters)
+                { DisplayName = _localizer.GetLocalizedStringOrDefault("Sort_ReleaseDate", defaultValue: "Release Date") });
+            SortingMethods.Add(new GridItemSortingMethod(GridItemSorter.Rarity, othersCharacter, lastCharacters)
+                { DisplayName = _localizer.GetLocalizedStringOrDefault("Sort_Rarity", defaultValue: "Rarity") });
         }
 
         if (_category.ModCategory == ModCategory.Weapons)
         {
-            SortingMethods.Add(new GridItemSortingMethod(GridItemSorter.Rarity, othersCharacter, lastCharacters));
+            SortingMethods.Add(new GridItemSortingMethod(GridItemSorter.Rarity, othersCharacter, lastCharacters)
+                { DisplayName = _localizer.GetLocalizedStringOrDefault("Sort_Rarity", defaultValue: "Rarity") });
         }
     }
 

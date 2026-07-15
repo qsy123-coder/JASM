@@ -1131,6 +1131,21 @@ JASM 会自动检测模组文件夹和 merged.ini 文件。如果你想手动选
   <data name="Overview" xml:space="preserve">
     <value>概览</value>
   </data>
+  <data name="Sort_Alphabetical" xml:space="preserve">
+    <value>按字母顺序</value>
+  </data>
+  <data name="Sort_ModCount" xml:space="preserve">
+    <value>按Mod数量</value>
+  </data>
+  <data name="Sort_RecentlyAddedMods" xml:space="preserve">
+    <value>最近添加的Mod</value>
+  </data>
+  <data name="Sort_ReleaseDate" xml:space="preserve">
+    <value>按上线日期</value>
+  </data>
+  <data name="Sort_Rarity" xml:space="preserve">
+    <value>按稀有度</value>
+  </data>
   <data name="ModsOverview_Title.Text" xml:space="preserve">
     <value>Mod 总览</value>
   </data>
