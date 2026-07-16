@@ -28,6 +28,14 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private bool _isLoading;
 
+    /// <summary>首次加载/重新加载(列表为空时),指示器显示在内容区顶部</summary>
+    [ObservableProperty]
+    private bool _isInitialLoading;
+
+    /// <summary>滚动加载更多,指示器显示在卡片流末尾</summary>
+    [ObservableProperty]
+    private bool _isLoadingMore;
+
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
@@ -66,6 +74,26 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private string _debugInfo = "等待加载...";
 
+    /// <summary>底部调试面板是否显示(隐藏后留一个"调试"小按钮可再显示)</summary>
+    [ObservableProperty]
+    private bool _isDebugPanelVisible = true;
+
+    [RelayCommand]
+    private void ToggleDebugPanel() => IsDebugPanelVisible = !IsDebugPanelVisible;
+
+    private const int MaxDebugLines = 200;
+
+    /// <summary>追加一行到调试面板(限制行数防止无限增长),同时写 Serilog</summary>
+    public void AppendDebugLog(string msg)
+    {
+        _logger.Information("[Debug] " + msg);
+        var text = (DebugInfo ?? "") + "\n" + msg;
+        var lines = text.Split('\n');
+        if (lines.Length > MaxDebugLines)
+            text = string.Join("\n", lines[^MaxDebugLines..]);
+        DebugInfo = text;
+    }
+
     public ModMarketViewModel(ILogger logger, ModMarketService modMarketService)
     {
         _logger = logger.ForContext<ModMarketViewModel>();
@@ -76,6 +104,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 
     public async void OnNavigatedTo(object parameter)
     {
+        IsInitialLoading = true;
         IsLoading = true;
         StatusMessage = "正在加载...";
 
@@ -94,6 +123,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
         finally
         {
             IsLoading = false;
+            IsInitialLoading = false;
         }
 
         // Select "全部" after loading and IsLoading is false
@@ -162,8 +192,16 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 
     private async Task LoadModsAsync(bool append)
     {
-        if (IsLoading) return;
+        if (IsLoading)
+        {
+            AppendDebugLog($"[Load] 跳过: 已在加载中 (append={append})");
+            return;
+        }
         IsLoading = true;
+        // 首次/重载 vs 加载更多,分别控制不同位置的指示器
+        IsInitialLoading = !append;
+        IsLoadingMore = append;
+        AppendDebugLog($"[Load] 开始: append={append} → 顶部指示器={IsInitialLoading}, 底部指示器={IsLoadingMore}");
 
         // Only increment page when appending (load-more). Must be done after
         // the IsLoading guard to prevent races from LayoutUpdated / ViewChanged.
@@ -238,16 +276,21 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
                 }
             }
 
-            DebugInfo = sb.ToString().TrimEnd();
+            // 追加而非覆盖,保留之前的点击/滚动日志
+            AppendDebugLog(sb.ToString().TrimEnd());
+            AppendDebugLog($"[Load] 完成: 本页={mods.Count} 累计={Mods.Count} HasMore={HasMorePages}");
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to load mods");
             StatusMessage = $"加载失败：{ex.Message}";
+            AppendDebugLog($"[Load] 失败: {ex.Message}");
         }
         finally
         {
             IsLoading = false;
+            IsInitialLoading = false;
+            IsLoadingMore = false;
         }
     }
 }
