@@ -11,9 +11,6 @@ public class ModMarketResult
     public int RawResponseCount { get; init; }
     public string? ContentRange { get; init; }
     public string? RequestUrl { get; init; }
-
-    public string DebugSummary =>
-        $"URL: {RequestUrl ?? "?"}\n" +
-        $"Content-Range: {ContentRange ?? "missing"}\n" +
-        $"Raw resp rows: {RawResponseCount}  Deserialized: {Mods.Count}  Total(count=exact): {TotalCount}";
+    public string[] DroppedEntries { get; init; } = [];
+    public bool UsedCountFallback { get; init; }
 }
