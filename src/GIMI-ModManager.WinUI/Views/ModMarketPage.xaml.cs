@@ -24,6 +24,17 @@ public sealed partial class ModMarketPage : Page
             if (e.PropertyName == nameof(ModMarketViewModel.SelectedMod))
                 OnSelectedModChanged();
         };
+        // 详情面板内部日志转发到底部调试面板
+        DetailPanel.DebugLog += DebugLog;
+        // 关闭请求经 ViewModel 重置 SelectedMod=null,保证下次点同一 mod 时 PropertyChanged 能触发
+        DetailPanel.Closed += (_, _) => ViewModel.CloseDetailPanelCommand.Execute(null);
+    }
+
+    /// <summary>追加一行日志到底部调试面板(同时写 Serilog)</summary>
+    private void DebugLog(string msg)
+    {
+        ViewModel.DebugInfo = (ViewModel.DebugInfo ?? "") + "\n" + msg;
+        Log.ForContext<ModMarketPage>().Information("[ModMarketPage] " + msg);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -43,6 +54,7 @@ public sealed partial class ModMarketPage : Page
 
     private void OnSelectedModChanged()
     {
+        DebugLog($"[Page] SelectedMod变更: {ViewModel.SelectedMod?.Title ?? "null"}");
         if (ViewModel.SelectedMod is { } mod)
             DetailPanel.Show(mod);
         else
@@ -94,7 +106,11 @@ public sealed partial class ModMarketPage : Page
         if (card is null) return;
         card.DataContext = mod;
         // Wire click to show detail panel
-        card.Tapped += (s, e) => ViewModel.OpenModDetailCommand.Execute(mod);
+        card.Tapped += (s, e) =>
+        {
+            DebugLog($"[Page] 点击卡片: {mod.Title}, 当前SelectedMod: {ViewModel.SelectedMod?.Title ?? "null"}");
+            ViewModel.OpenModDetailCommand.Execute(mod);
+        };
         card.IsTapEnabled = true;
         ModCardsPanel.Children.Add(card);
     }
