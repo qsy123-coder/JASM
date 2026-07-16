@@ -3,11 +3,13 @@ using GIMI_ModManager.WinUI.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Serilog;
 
 namespace GIMI_ModManager.WinUI.Views;
 
 public sealed partial class ModDetailPanel : UserControl
 {
+    private readonly ILogger _logger = Log.ForContext<ModDetailPanel>();
     private ModMarketMod? _currentMod;
 
     public ModDetailPanel()
@@ -15,25 +17,25 @@ public sealed partial class ModDetailPanel : UserControl
         InitializeComponent();
         SlideOutStoryboard.Completed += (_, _) =>
         {
+            _logger.Information("SlideOut completed, hiding panel");
             PanelRoot.Visibility = Visibility.Collapsed;
             _currentMod = null;
         };
+        _logger.Information("ModDetailPanel constructed");
     }
 
     public void Show(ModMarketMod mod)
     {
-        if (_currentMod == mod)
+        _logger.Information("Show called, current mod: {Current}, new mod: {New}, visible: {Vis}",
+            _currentMod?.Title, mod.Title, PanelRoot.Visibility);
+
+        if (_currentMod == mod && PanelRoot.Visibility == Visibility.Visible)
         {
-            // Same mod clicked again — give a subtle visual hint
-            // by briefly resetting the transform and sliding in again
-            if (PanelRoot.Visibility == Visibility.Visible)
-            {
-                // Already visible with same mod: quick re-slide
-                SlideOutStoryboard.Stop();
-                SlideInStoryboard.Stop();
-                DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
-                SlideInStoryboard.Begin();
-            }
+            _logger.Information("Same mod, re-sliding");
+            SlideOutStoryboard.Stop();
+            SlideInStoryboard.Stop();
+            DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
+            SlideInStoryboard.Begin();
             return;
         }
 
@@ -45,11 +47,14 @@ public sealed partial class ModDetailPanel : UserControl
 
         DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
         PanelRoot.Visibility = Visibility.Visible;
+        _logger.Information("PanelRoot visible={Vis}, opacity={Op}",
+            PanelRoot.Visibility, PanelRoot.Opacity);
         SlideInStoryboard.Begin();
     }
 
     public void Hide()
     {
+        _logger.Information("Hide called, visible={Vis}", PanelRoot.Visibility);
         if (PanelRoot.Visibility != Visibility.Visible) return;
         SlideOutStoryboard.Begin();
     }
@@ -127,8 +132,17 @@ public sealed partial class ModDetailPanel : UserControl
 
     // ── Event handlers ──────────────────────────────────
 
-    private void TapCloseArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => Hide();
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => Hide();
+    private void TapCloseArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        _logger.Information("TapCloseArea tapped!");
+        Hide();
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        _logger.Information("CloseButton clicked");
+        Hide();
+    }
 
     private void OpenInBrowser_Click(object sender, RoutedEventArgs e)
     {
