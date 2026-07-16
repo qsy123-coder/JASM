@@ -36,15 +36,21 @@
     </UserControl.Resources>
 
     <Grid x:Name="PanelRoot" Visibility="Collapsed" Opacity="0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="360" />
+        </Grid.ColumnDefinitions>
 
-        <!-- Transparent tap-to-close area behind the drawer -->
-        <Grid x:Name="TapCloseArea"
+        <!-- Transparent tap-to-close area (column 0) -->
+        <Grid Grid.Column="0"
               IsTapEnabled="True"
               Tapped="TapCloseArea_Tapped" />
 
+        <!-- Drawer (column 1) -->
         <Border x:Name="DrawerBorder"
-                HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                Width="360" BorderBrush="#30000000" BorderThickness="1,0,0,0"
+                Grid.Column="1"
+                VerticalAlignment="Stretch"
+                BorderBrush="#30000000" BorderThickness="1,0,0,0"
                 Background="#F8F8F8">
             <Border.RenderTransform>
                 <TranslateTransform X="360" />
