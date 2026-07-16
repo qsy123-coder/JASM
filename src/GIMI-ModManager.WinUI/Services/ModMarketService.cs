@@ -16,7 +16,8 @@ public class ModMarketService
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Converters = { new NullValueTypeConverter() }
     };
 
     public ModMarketService(
