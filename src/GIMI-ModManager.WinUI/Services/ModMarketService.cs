@@ -160,7 +160,7 @@ public class ModMarketService
         }
     }
 
-    public async Task<(IReadOnlyList<ModMarketMod> Mods, int TotalCount)> GetModsAsync(
+    public async Task<ModMarketResult> GetModsAsync(
         string? character = null,
         string? search = null,
         string? contentFilter = null,
@@ -209,12 +209,15 @@ public class ModMarketService
                 rawJson.Length,
                 rawJson.Length > 200 ? rawJson[..200] : rawJson);
 
+            // Count raw JSON array elements before deserialization
+            int rawCount = 0;
             var mods = new List<ModMarketMod>();
             if (!string.IsNullOrWhiteSpace(rawJson) && rawJson != "[]")
             {
                 using var doc = JsonDocument.Parse(rawJson);
                 foreach (var el in doc.RootElement.EnumerateArray())
                 {
+                    rawCount++;
                     try
                     {
                         var m = el.Deserialize<ModMarketMod>(JsonOptions);
@@ -222,32 +225,43 @@ public class ModMarketService
                     }
                     catch (JsonException jex)
                     {
-                        _logger.Warning(jex, "Failed to deserialize mod entry: {Raw}",
+                        _logger.Warning(jex, "Failed to deserialize mod entry (#{Index}): {Raw}",
+                            rawCount,
                             el.ToString().Length > 500 ? el.ToString()[..500] : el.ToString());
                     }
                 }
             }
 
             var totalCount = mods.Count;
+            string? contentRange = null;
             if (response.Headers.TryGetValues("Content-Range", out var rangeValues))
             {
-                var rangeValue = rangeValues.FirstOrDefault();
-                if (rangeValue != null && rangeValue.Contains('/'))
+                contentRange = rangeValues.FirstOrDefault();
+                if (contentRange != null && contentRange.Contains('/'))
                 {
-                    var parts = rangeValue.Split('/');
+                    var parts = contentRange.Split('/');
                     if (parts.Length == 2 && int.TryParse(parts[1], out var total))
                         totalCount = total;
                 }
             }
 
-            _logger.Information("Returning {Count} mods (total: {Total})", mods.Count, totalCount);
-            return (mods, totalCount);
+            _logger.Information("Returning {Count} mods (raw: {Raw}, total: {Total})",
+                mods.Count, rawCount, totalCount);
+
+            return new ModMarketResult
+            {
+                Mods = mods,
+                TotalCount = totalCount,
+                RawResponseCount = rawCount,
+                ContentRange = contentRange,
+                RequestUrl = url
+            };
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "GetModsAsync failed. Type: {Type}, Message: {Msg}, Inner: {Inner}",
                 ex.GetType().Name, ex.Message, ex.InnerException?.Message);
-            return ([], 0);
+            return new ModMarketResult();
         }
     }
 }
