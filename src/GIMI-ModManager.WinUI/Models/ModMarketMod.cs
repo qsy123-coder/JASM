@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace GIMI_ModManager.WinUI.Models;
@@ -84,7 +85,7 @@ public class ModMarketMod
     public string GameKey { get; set; } = string.Empty;
 
     [JsonPropertyName("drive_links")]
-    public List<DriveLinkEntry>? DriveLinks { get; set; }
+    public JsonElement? DriveLinks { get; set; }
 
     /// <summary>
     /// Gets the first preview image URL, or null if no images are available.
