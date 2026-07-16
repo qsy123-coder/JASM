@@ -209,8 +209,10 @@ public class ModMarketService
                 rawJson.Length,
                 rawJson.Length > 200 ? rawJson[..200] : rawJson);
 
-            // Count raw JSON array elements before deserialization
+            // Count raw JSON array elements before deserialization.
+            // Also capture the first few dropped entries for the debug overlay.
             int rawCount = 0;
+            var droppedEntries = new List<string>();
             var mods = new List<ModMarketMod>();
             if (!string.IsNullOrWhiteSpace(rawJson) && rawJson != "[]")
             {
@@ -225,15 +227,19 @@ public class ModMarketService
                     }
                     catch (JsonException jex)
                     {
+                        var raw = el.ToString();
+                        var snippet = raw.Length > 300 ? raw[..300] : raw;
+                        droppedEntries.Add(snippet);
                         _logger.Warning(jex, "Failed to deserialize mod entry (#{Index}): {Raw}",
-                            rawCount,
-                            el.ToString().Length > 500 ? el.ToString()[..500] : el.ToString());
+                            rawCount, snippet);
                     }
                 }
             }
 
             var totalCount = mods.Count;
             string? contentRange = null;
+            bool usedCountFallback = false;
+
             if (response.Headers.TryGetValues("Content-Range", out var rangeValues))
             {
                 contentRange = rangeValues.FirstOrDefault();
@@ -245,8 +251,46 @@ public class ModMarketService
                 }
             }
 
-            _logger.Information("Returning {Count} mods (raw: {Raw}, total: {Total})",
-                mods.Count, rawCount, totalCount);
+            // Fallback: if Content-Range header is missing, make a lightweight
+            // count query with limit=0 to get the exact total.
+            if (contentRange == null && rawCount > 0)
+            {
+                try
+                {
+                    var countFilters = new List<string>(filters);
+                    var countUrl = $"mods?{string.Join("&", countFilters)}&limit=0";
+                    var countRequest = new HttpRequestMessage(HttpMethod.Get, countUrl);
+                    countRequest.Headers.Add("Prefer", "count=exact");
+
+                    var countResponse = await client.SendAsync(countRequest, ct);
+                    if (countResponse.Headers.TryGetValues("Content-Range", out var crValues))
+                    {
+                        var cr = crValues.FirstOrDefault();
+                        if (cr != null && cr.Contains('/'))
+                        {
+                            var parts = cr.Split('/');
+                            if (parts.Length == 2 && int.TryParse(parts[1], out var ctTotal))
+                            {
+                                totalCount = ctTotal;
+                                contentRange = cr + " (fallback)";
+                                usedCountFallback = true;
+                                _logger.Information("Count fallback succeeded: {Range}", cr);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Count fallback query failed");
+                }
+            }
+
+            // If still no total, guess from page fullness
+            if (totalCount == mods.Count && rawCount >= pageSize)
+                totalCount = int.MaxValue; // sentinel: more pages exist
+
+            _logger.Information("Returning {Count} mods (raw: {Raw}, total: {Total}, dropped: {Dropped})",
+                mods.Count, rawCount, totalCount, droppedEntries.Count);
 
             return new ModMarketResult
             {
@@ -254,7 +298,9 @@ public class ModMarketService
                 TotalCount = totalCount,
                 RawResponseCount = rawCount,
                 ContentRange = contentRange,
-                RequestUrl = url
+                RequestUrl = url,
+                DroppedEntries = droppedEntries.ToArray(),
+                UsedCountFallback = usedCountFallback
             };
         }
         catch (Exception ex)
