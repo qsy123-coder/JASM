@@ -228,10 +228,12 @@ public class ModMarketService
                     catch (JsonException jex)
                     {
                         var raw = el.ToString();
-                        var snippet = raw.Length > 300 ? raw[..300] : raw;
-                        droppedEntries.Add(snippet);
-                        _logger.Warning(jex, "Failed to deserialize mod entry (#{Index}): {Raw}",
-                            rawCount, snippet);
+                        // Capture the specific error path and a longer snippet for the overlay
+                        var msg = $"[{jex.Path ?? "(root)"}] {jex.Message}";
+                        var snippet = raw.Length > 600 ? raw[..600] : raw;
+                        droppedEntries.Add($"{msg}\n{snippet}");
+                        _logger.Warning(jex, "Failed to deserialize mod entry (#{Index}) at {Path}: {Raw}",
+                            rawCount, jex.Path, snippet);
                     }
                 }
             }

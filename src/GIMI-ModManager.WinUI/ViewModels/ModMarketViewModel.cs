@@ -223,12 +223,10 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             if (result.DroppedEntries.Length > 0)
             {
                 sb.AppendLine();
-                sb.AppendLine("── Dropped entries (first 3) ──");
-                for (int i = 0; i < Math.Min(result.DroppedEntries.Length, 3); i++)
+                sb.AppendLine($"── Dropped entries: {result.DroppedEntries.Length} ──");
+                for (int i = 0; i < Math.Min(result.DroppedEntries.Length, 2); i++)
                 {
-                    var entry = result.DroppedEntries[i];
-                    var truncated = entry.Length > 200 ? entry[..200] + "…" : entry;
-                    sb.AppendLine($"  [{i + 1}] {truncated}");
+                    sb.AppendLine($"  [{i + 1}] {result.DroppedEntries[i]}");
                 }
             }
 
