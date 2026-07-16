@@ -126,4 +126,12 @@ public sealed partial class ModMarketPage : Page
         if (CategoryListView.SelectedItem is ModMarketCategory cat)
             ViewModel.SelectedCategory = cat;
     }
+
+    /// <summary>点击 NSFW 模糊遮罩后移除遮罩，显示原图</summary>
+    private void NsfwOverlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is Border overlay)
+            overlay.Visibility = Visibility.Collapsed;
+        e.Handled = true;
+    }
 }
