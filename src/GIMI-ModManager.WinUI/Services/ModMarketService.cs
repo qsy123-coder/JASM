@@ -181,7 +181,7 @@ public class ModMarketService
             var characterCategories = categories
                 .Where(kvp => !specialKeys.Contains(kvp.Key))
                 .Select(kvp => new ModMarketCategory(kvp.Key, kvp.Key, kvp.Value, ResolveImage(kvp.Key)))
-                .OrderBy(c => c.Key, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(c => c.Key, StringComparer.Create(new System.Globalization.CultureInfo("zh-CN"), ignoreCase: true))
                 .ToList();
 
             // Assemble final list
