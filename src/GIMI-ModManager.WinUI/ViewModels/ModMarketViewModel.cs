@@ -60,6 +60,9 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private bool _hasMorePages = true;
 
+    [ObservableProperty]
+    private ModMarketMod? _selectedMod;
+
     public ModMarketViewModel(ILogger logger, ModMarketService modMarketService)
     {
         _logger = logger.ForContext<ModMarketViewModel>();
@@ -136,8 +139,13 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [RelayCommand]
     private void OpenModDetail(ModMarketMod? mod)
     {
-        if (mod?.DownloadUrl is not null)
-            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(mod.DownloadUrl));
+        SelectedMod = mod;
+    }
+
+    [RelayCommand]
+    private void CloseDetailPanel()
+    {
+        SelectedMod = null;
     }
 
     // ─── Data Loading ──────────────────────────────────────────
