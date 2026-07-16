@@ -83,7 +83,7 @@ public class ModMarketService
         {
             var client = CreateClient();
             var response = await client.GetAsync(
-                "mods?select=character&is_published=eq.true&is_available=eq.true", ct);
+                "mods?select=character&is_published=eq.true&is_available=eq.true&limit=10000", ct);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -215,8 +215,16 @@ public class ModMarketService
                 using var doc = JsonDocument.Parse(rawJson);
                 foreach (var el in doc.RootElement.EnumerateArray())
                 {
-                    try { var m = el.Deserialize<ModMarketMod>(JsonOptions); if (m != null) mods.Add(m); }
-                    catch (JsonException) { /* skip bad entry */ }
+                    try
+                    {
+                        var m = el.Deserialize<ModMarketMod>(JsonOptions);
+                        if (m != null) mods.Add(m);
+                    }
+                    catch (JsonException jex)
+                    {
+                        _logger.Warning(jex, "Failed to deserialize mod entry: {Raw}",
+                            el.ToString().Length > 500 ? el.ToString()[..500] : el.ToString());
+                    }
                 }
             }
 
