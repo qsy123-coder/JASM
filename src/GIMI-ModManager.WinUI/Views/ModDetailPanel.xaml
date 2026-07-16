@@ -37,6 +37,11 @@
 
     <Grid x:Name="PanelRoot" Visibility="Collapsed" Opacity="0">
 
+        <!-- Transparent tap-to-close area behind the drawer -->
+        <Grid x:Name="TapCloseArea"
+              IsTapEnabled="True"
+              Tapped="TapCloseArea_Tapped" />
+
         <Border x:Name="DrawerBorder"
                 HorizontalAlignment="Right" VerticalAlignment="Stretch"
                 Width="360" BorderBrush="#30000000" BorderThickness="1,0,0,0"

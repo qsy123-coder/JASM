@@ -22,13 +22,27 @@ public sealed partial class ModDetailPanel : UserControl
 
     public void Show(ModMarketMod mod)
     {
+        if (_currentMod == mod)
+        {
+            // Same mod clicked again — give a subtle visual hint
+            // by briefly resetting the transform and sliding in again
+            if (PanelRoot.Visibility == Visibility.Visible)
+            {
+                // Already visible with same mod: quick re-slide
+                SlideOutStoryboard.Stop();
+                SlideInStoryboard.Stop();
+                DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
+                SlideInStoryboard.Begin();
+            }
+            return;
+        }
+
         _currentMod = mod;
         DataContext = mod;
         BuildGallery(mod);
         BuildDriveLinks(mod);
         SelectTab(overview: true);
 
-        // Reset to off-screen position for the slide-in animation
         DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
         PanelRoot.Visibility = Visibility.Visible;
         SlideInStoryboard.Begin();
@@ -36,6 +50,7 @@ public sealed partial class ModDetailPanel : UserControl
 
     public void Hide()
     {
+        if (PanelRoot.Visibility != Visibility.Visible) return;
         SlideOutStoryboard.Begin();
     }
 
@@ -112,6 +127,7 @@ public sealed partial class ModDetailPanel : UserControl
 
     // ── Event handlers ──────────────────────────────────
 
+    private void TapCloseArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => Hide();
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Hide();
 
     private void OpenInBrowser_Click(object sender, RoutedEventArgs e)
