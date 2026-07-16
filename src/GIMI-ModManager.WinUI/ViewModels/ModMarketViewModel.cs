@@ -189,11 +189,13 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             if (!append) Mods.Clear();
             foreach (var m in mods) Mods.Add(m);
 
-            // If we got a full page but total == returned count,
-            // the Content-Range header might be missing. Assume more.
+            // When Content-Range is available (total != returned count),
+            // trust it: there are more pages as long as we haven't
+            // accumulated everything. When Content-Range is missing
+            // (total == returned count), guess by page fullness.
             HasMorePages = total == mods.Count
                 ? mods.Count >= PageSize
-                : mods.Count >= PageSize && Mods.Count < total;
+                : Mods.Count < total;
 
             IsEmpty = Mods.Count == 0;
             StatusMessage = IsEmpty ? "没有找到 Mod" : string.Empty;
