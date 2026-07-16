@@ -7,14 +7,44 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid x:Name="PanelRoot" Visibility="Collapsed">
-        <Grid x:Name="BackdropOverlay" Background="#40000000"
-              IsTapEnabled="True"
-              Tapped="BackdropOverlay_Tapped" />
+    <UserControl.Resources>
+        <Storyboard x:Name="SlideInStoryboard">
+            <DoubleAnimation Storyboard.TargetName="DrawerBorder"
+                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                             From="360" To="0" Duration="0:0:0.30">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="PanelRoot"
+                             Storyboard.TargetProperty="Opacity"
+                             From="0" To="1" Duration="0:0:0.25" />
+        </Storyboard>
 
-        <Border HorizontalAlignment="Right" VerticalAlignment="Stretch"
+        <Storyboard x:Name="SlideOutStoryboard">
+            <DoubleAnimation Storyboard.TargetName="DrawerBorder"
+                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                             From="0" To="360" Duration="0:0:0.25">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseIn" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="PanelRoot"
+                             Storyboard.TargetProperty="Opacity"
+                             From="1" To="0" Duration="0:0:0.20" />
+        </Storyboard>
+    </UserControl.Resources>
+
+    <Grid x:Name="PanelRoot" Visibility="Collapsed" Opacity="0">
+
+        <Border x:Name="DrawerBorder"
+                HorizontalAlignment="Right" VerticalAlignment="Stretch"
                 Width="360" BorderBrush="#30000000" BorderThickness="1,0,0,0"
                 Background="#F8F8F8">
+            <Border.RenderTransform>
+                <TranslateTransform X="360" />
+            </Border.RenderTransform>
+
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="20,0,20,20">
 

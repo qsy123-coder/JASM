@@ -2,7 +2,6 @@ using System.Text.Json;
 using GIMI_ModManager.WinUI.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace GIMI_ModManager.WinUI.Views;
@@ -14,6 +13,11 @@ public sealed partial class ModDetailPanel : UserControl
     public ModDetailPanel()
     {
         InitializeComponent();
+        SlideOutStoryboard.Completed += (_, _) =>
+        {
+            PanelRoot.Visibility = Visibility.Collapsed;
+            _currentMod = null;
+        };
     }
 
     public void Show(ModMarketMod mod)
@@ -23,16 +27,19 @@ public sealed partial class ModDetailPanel : UserControl
         BuildGallery(mod);
         BuildDriveLinks(mod);
         SelectTab(overview: true);
+
+        // Reset to off-screen position for the slide-in animation
+        DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
         PanelRoot.Visibility = Visibility.Visible;
+        SlideInStoryboard.Begin();
     }
 
     public void Hide()
     {
-        PanelRoot.Visibility = Visibility.Collapsed;
-        _currentMod = null;
+        SlideOutStoryboard.Begin();
     }
 
-    public bool IsVisible => PanelRoot.Visibility == Visibility.Visible;
+    // ── Tab switching ───────────────────────────────────
 
     private void SelectTab(bool overview)
     {
@@ -48,6 +55,8 @@ public sealed partial class ModDetailPanel : UserControl
 
     private void OverviewTab_Click(object sender, RoutedEventArgs e) => SelectTab(true);
     private void DescriptionTab_Click(object sender, RoutedEventArgs e) => SelectTab(false);
+
+    // ── Gallery ─────────────────────────────────────────
 
     private void BuildGallery(ModMarketMod mod)
     {
@@ -72,6 +81,8 @@ public sealed partial class ModDetailPanel : UserControl
             GalleryPanel.Children.Add(border);
         }
     }
+
+    // ── Drive links ─────────────────────────────────────
 
     private void BuildDriveLinks(ModMarketMod mod)
     {
@@ -99,7 +110,8 @@ public sealed partial class ModDetailPanel : UserControl
         }
     }
 
-    private void BackdropOverlay_Tapped(object sender, TappedRoutedEventArgs e) => Hide();
+    // ── Event handlers ──────────────────────────────────
+
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Hide();
 
     private void OpenInBrowser_Click(object sender, RoutedEventArgs e)
