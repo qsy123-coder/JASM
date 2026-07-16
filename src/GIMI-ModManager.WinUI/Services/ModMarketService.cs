@@ -57,8 +57,11 @@ public class ModMarketService
                     filters.Add($"character=eq.{Uri.EscapeDataString(character)}");
                 }
             }
-            if (!string.IsNullOrWhiteSpace(contentFilter) && contentFilter != "All")
-                filters.Add(contentFilter == "NSFW" ? "nsfw=eq.true" : "nsfw=eq.false");
+            if (contentFilter == "SFW")
+                filters.Add("nsfw=eq.false");
+            else if (contentFilter == "NSFW")
+                filters.Add("nsfw=eq.true");
+            // "All" and "Blur" → no nsfw filter
 
             var request = new HttpRequestMessage(HttpMethod.Get,
                 $"mods?{string.Join("&", filters)}&limit=0");
@@ -206,6 +209,8 @@ public class ModMarketService
         string? contentFilter = null,
         string? sortBy = null,
         bool modsOnly = false,
+        bool? nsfwOnly = null,
+        bool directDownloadOnly = false,
         int page = 1,
         int pageSize = 24,
         CancellationToken ct = default)
@@ -232,15 +237,34 @@ public class ModMarketService
                 filters.Add("character=not.is.null");
             if (!string.IsNullOrWhiteSpace(search))
                 filters.Add($"title=ilike.*{Uri.EscapeDataString(search)}*");
-            if (!string.IsNullOrWhiteSpace(contentFilter) && contentFilter != "All")
-                filters.Add(contentFilter == "NSFW" ? "nsfw=eq.true" : "nsfw=eq.false");
+
+            // Category-level NSFW filter takes precedence over content-level
+            if (nsfwOnly.HasValue)
+            {
+                filters.Add(nsfwOnly.Value ? "nsfw=eq.true" : "nsfw=eq.false");
+            }
+            else if (contentFilter == "SFW")
+            {
+                // "隐藏 NSFW": exclude NSFW at API level
+                filters.Add("nsfw=eq.false");
+            }
+            else if (contentFilter == "NSFW")
+            {
+                // "仅 NSFW" (if set via content filter directly)
+                filters.Add("nsfw=eq.true");
+            }
+            // "All" and "Blur" → no nsfw filter; blur is applied client-side
+
+            if (directDownloadOnly)
+                filters.Add("download_url=not.is.null");
 
             var order = sortBy switch
             {
-                "RecentlyUpdated" => "updated_at.desc",
-                "Most Downloaded" => "downloads_count.desc",
-                "Most Liked" => "likes_count.desc",
-                _ => "created_at.desc"
+                "RecentlyUpdated"  => "updated_at.desc",
+                "Most Downloaded"  => "downloads_count.desc",
+                "Most Liked"       => "likes_count.desc",
+                "Most Viewed"      => "views.desc",
+                _                  => "title.asc"
             };
 
             var offset = (page - 1) * pageSize;
