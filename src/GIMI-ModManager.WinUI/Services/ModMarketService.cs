@@ -46,7 +46,17 @@ public class ModMarketService
             var filters = new List<string> { "is_published=eq.true", "is_available=eq.true" };
 
             if (!string.IsNullOrWhiteSpace(character) && character != "all")
-                filters.Add($"character=eq.{Uri.EscapeDataString(character)}");
+            {
+                if (character == "Skins")
+                {
+                    filters.Add("character=not.eq.UI");
+                    filters.Add("character=not.eq.Other/Misc");
+                }
+                else
+                {
+                    filters.Add($"character=eq.{Uri.EscapeDataString(character)}");
+                }
+            }
             if (!string.IsNullOrWhiteSpace(contentFilter) && contentFilter != "All")
                 filters.Add(contentFilter == "NSFW" ? "nsfw=eq.true" : "nsfw=eq.false");
 
@@ -132,7 +142,28 @@ public class ModMarketService
                 ["UI"] = "ui.png",
             };
 
-            var result = categories
+            var total = categories.Values.Sum();
+
+            // "Skins" = everything except UI and Other/Misc (catch-all category)
+            var uiCount = categories.GetValueOrDefault("UI", 0);
+            var otherMiscCount = categories.GetValueOrDefault("Other/Misc", 0);
+            var skinsCount = total - uiCount - otherMiscCount;
+            categories["Skins"] = skinsCount;
+
+            // Build image for Skins
+            Uri? skinsImg = null;
+            imageLookup.TryGetValue("Skins", out skinsImg);
+            if (skinsImg is null && specialIcons.TryGetValue("Skins", out var skinsIconFile))
+            {
+                var path = Path.Combine(iconDir, skinsIconFile);
+                if (File.Exists(path)) skinsImg = new Uri(path);
+            }
+
+            // Build result list, putting Skins right after "全部"
+            var skinsCategory = new ModMarketCategory("Skins", "Skins", skinsCount, skinsImg);
+
+            var otherCategories = categories
+                .Where(kvp => kvp.Key != "Skins")
                 .Select(kvp =>
                 {
                     Uri? img = null;
@@ -147,11 +178,12 @@ public class ModMarketService
                 .OrderByDescending(c => c.ModCount)
                 .ToList();
 
-            var total = result.Sum(c => c.ModCount);
-            result.Insert(0, ModMarketCategory.CreateAll(total));
+            otherCategories.Insert(0, skinsCategory);
+            otherCategories.Insert(0, ModMarketCategory.CreateAll(total));
 
-            _logger.Information("Loaded {Count} character categories, total mods: {Total}", result.Count - 1, total);
-            return result;
+            _logger.Information("Loaded {Count} character categories, total mods: {Total}, skins: {Skins}",
+                otherCategories.Count - 1, total, skinsCount);
+            return otherCategories;
         }
         catch (Exception ex)
         {
@@ -176,7 +208,18 @@ public class ModMarketService
             var filters = new List<string> { "is_published=eq.true", "is_available=eq.true" };
 
             if (!string.IsNullOrWhiteSpace(character) && character != "all")
-                filters.Add($"character=eq.{Uri.EscapeDataString(character)}");
+            {
+                if (character == "Skins")
+                {
+                    // Skins = everything except UI and Other/Misc
+                    filters.Add("character=not.eq.UI");
+                    filters.Add("character=not.eq.Other/Misc");
+                }
+                else
+                {
+                    filters.Add($"character=eq.{Uri.EscapeDataString(character)}");
+                }
+            }
             if (modsOnly)
                 filters.Add("character=not.is.null");
             if (!string.IsNullOrWhiteSpace(search))
