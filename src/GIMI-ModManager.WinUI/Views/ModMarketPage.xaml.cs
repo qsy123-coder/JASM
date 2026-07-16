@@ -5,7 +5,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Serilog;
 
 namespace GIMI_ModManager.WinUI.Views;
 
@@ -30,12 +29,8 @@ public sealed partial class ModMarketPage : Page
         DetailPanel.Closed += (_, _) => ViewModel.CloseDetailPanelCommand.Execute(null);
     }
 
-    /// <summary>追加一行日志到底部调试面板(同时写 Serilog)</summary>
-    private void DebugLog(string msg)
-    {
-        ViewModel.DebugInfo = (ViewModel.DebugInfo ?? "") + "\n" + msg;
-        Log.ForContext<ModMarketPage>().Information("[ModMarketPage] " + msg);
-    }
+    /// <summary>追加一行日志到底部调试面板(经 VM 统一限行数并写 Serilog)</summary>
+    private void DebugLog(string msg) => ViewModel.AppendDebugLog(msg);
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -85,14 +80,14 @@ public sealed partial class ModMarketPage : Page
             // Append viewport stats to the VM debug overlay
             var sv = CardScrollViewer;
             var vp = $"V={sv.ViewportHeight:F0} E={sv.ExtentHeight:F0} SH={sv.ScrollableHeight:F0} | Cards={ModCardsPanel.Children.Count} Mods={ViewModel.Mods.Count}";
-            ViewModel.DebugInfo = (ViewModel.DebugInfo ?? "") + "\n" + vp;
-            Log.ForContext<ModMarketPage>().Information("[ModMarketPage] " + vp);
+            DebugLog(vp);
 
             // If content fits viewport, auto-load more
             if (CardScrollViewer.ScrollableHeight <= 0
                 && ViewModel.HasMorePages && !ViewModel.IsLoading
                 && ModCardsPanel.Children.Count > 0)
             {
+                DebugLog("[Scroll] 内容不满一屏,自动加载更多");
                 _ = ViewModel.LoadMoreCommand.ExecuteAsync(null);
             }
         });
@@ -121,6 +116,7 @@ public sealed partial class ModMarketPage : Page
         if (CardScrollViewer.VerticalOffset >= CardScrollViewer.ScrollableHeight - 200
             && !ViewModel.IsLoading && ViewModel.HasMorePages)
         {
+            DebugLog($"[Scroll] 触底加载更多: offset={CardScrollViewer.VerticalOffset:F0}/{CardScrollViewer.ScrollableHeight:F0}");
             _ = ViewModel.LoadMoreCommand.ExecuteAsync(null);
         }
     }
