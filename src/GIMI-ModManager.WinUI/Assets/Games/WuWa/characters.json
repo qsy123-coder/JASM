@@ -786,6 +786,40 @@
   },
   {
     "Keys": [
+      "Rebecca"
+    ],
+    "ReleaseDate": "2026-06-08T00:00:00",
+    "Image": "rebecca.jpeg",
+    "Rarity": 5,
+    "Element": "Conductive",
+    "Class": "Pistols",
+    "Region": [
+      "NightCity"
+    ],
+    "ModFilesName": "Rebecca",
+    "InGameSkins": [],
+    "InternalName": "Rebecca",
+    "DisplayName": "丽贝卡"
+  },
+  {
+    "Keys": [
+      "Lucy"
+    ],
+    "ReleaseDate": "2026-06-08T00:00:00",
+    "Image": "lucy.jpeg",
+    "Rarity": 5,
+    "Element": "Spectro",
+    "Class": "Pistols",
+    "Region": [
+      "NightCity"
+    ],
+    "ModFilesName": "Lucy",
+    "InGameSkins": [],
+    "InternalName": "Lucy",
+    "DisplayName": "露西"
+  },
+  {
+    "Keys": [
       "xuanling",
       "秧秧玄翎",
       "秧秧·玄翎",
