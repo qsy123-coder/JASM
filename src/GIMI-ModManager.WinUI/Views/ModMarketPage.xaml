@@ -25,8 +25,18 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Border Width="16" Height="16" CornerRadius="8"
-                        Background="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Border Width="28" Height="28" CornerRadius="14">
+                    <Grid>
+                        <FontIcon FontSize="15" Glyph="&#xE8FD;"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Image Width="28" Height="28" Stretch="UniformToFill">
+                            <Image.Source>
+                                <BitmapImage DecodePixelWidth="28" UriSource="{x:Bind ImageUri}" />
+                            </Image.Source>
+                        </Image>
+                    </Grid>
+                </Border>
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="13"
                            Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
                 <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
