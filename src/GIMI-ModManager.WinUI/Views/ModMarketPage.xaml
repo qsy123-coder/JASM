@@ -18,6 +18,10 @@
             x:Key="BoolToVisibilityConverter"
             TrueValue="Visible"
             FalseValue="Collapsed" />
+        <converters:BoolToVisibilityConverter
+            x:Key="InverseBoolToVisibilityConverter"
+            TrueValue="Collapsed"
+            FalseValue="Visible" />
 
         <DataTemplate x:Key="CategoryItemTemplate" x:DataType="models:ModMarketCategory">
             <Grid Padding="12,10" ColumnSpacing="10">
@@ -191,11 +195,28 @@
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalContentAlignment="Top"
                               ViewChanged="ScrollViewer_ViewChanged">
-                    <local:WrapGridPanel x:Name="ModCardsPanel" VerticalAlignment="Top" />
+                    <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <local:WrapGridPanel x:Name="ModCardsPanel" Grid.Row="0"
+                                                 VerticalAlignment="Top" />
+                            <!-- 滚动加载更多指示器:ScrollViewer 内部最底部,作为内容流末尾,Collapsed 时不占位 -->
+                            <StackPanel Grid.Row="1" HorizontalAlignment="Center"
+                                        Margin="0,8,0,16"
+                                        Visibility="{x:Bind ViewModel.IsLoadingMore, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                                <TextBlock Text="正在加载更多..." HorizontalAlignment="Center"
+                                           Margin="0,4" FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Grid>
                 </ScrollViewer>
 
+                <!-- 首次加载/重载指示器:仅初始加载时显示在顶部 -->
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"
-                            Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            Visibility="{x:Bind ViewModel.IsInitialLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                     <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
                     <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                                HorizontalAlignment="Center" Margin="0,4" FontSize="12"
@@ -209,17 +230,41 @@
                                Text="没有找到 Mod" />
                 </Grid>
 
-                <!-- Debug overlay -->
+                <!-- Debug overlay(可隐藏/显示) -->
                 <Border HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
                         Margin="8" Padding="8,6" CornerRadius="4" Background="#DD000000"
-                        MaxHeight="160">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <TextBlock x:Name="DebugText" Foreground="#FF0" FontSize="11"
-                                   FontFamily="Consolas" IsTextSelectionEnabled="True"
-                                   Text="{x:Bind ViewModel.DebugInfo, Mode=OneWay}"
-                                   TextWrapping="Wrap" />
-                    </ScrollViewer>
+                        MaxHeight="160"
+                        Visibility="{x:Bind ViewModel.IsDebugPanelVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <TextBlock Text="调试日志" Foreground="#AAA" FontSize="11"
+                                       FontFamily="Consolas" VerticalAlignment="Center" />
+                            <Button HorizontalAlignment="Right" Padding="8,2"
+                                    Background="Transparent" BorderThickness="0"
+                                    Command="{x:Bind ViewModel.ToggleDebugPanelCommand}">
+                                <TextBlock Text="隐藏 ✕" Foreground="#AAA" FontSize="11" />
+                            </Button>
+                        </Grid>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="DebugText" Foreground="#FF0" FontSize="11"
+                                       FontFamily="Consolas" IsTextSelectionEnabled="True"
+                                       Text="{x:Bind ViewModel.DebugInfo, Mode=OneWay}"
+                                       TextWrapping="Wrap" />
+                        </ScrollViewer>
+                    </Grid>
                 </Border>
+
+                <!-- 调试面板隐藏后的重新显示按钮 -->
+                <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8"
+                        Padding="10,4" CornerRadius="4" Background="#DD000000" BorderThickness="0"
+                        Visibility="{x:Bind ViewModel.IsDebugPanelVisible, Converter={StaticResource InverseBoolToVisibilityConverter}, Mode=OneWay}"
+                        Command="{x:Bind ViewModel.ToggleDebugPanelCommand}">
+                    <TextBlock Text="调试" Foreground="#FF0" FontSize="11" FontFamily="Consolas" />
+                </Button>
             </Grid>
         </Grid>
 
