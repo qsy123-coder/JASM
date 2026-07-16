@@ -148,42 +148,50 @@ public class ModMarketService
             var uiCount = categories.GetValueOrDefault("UI", 0);
             var otherMiscCount = categories.GetValueOrDefault("Other/Misc", 0);
             var skinsCount = total - uiCount - otherMiscCount;
-            categories["Skins"] = skinsCount;
 
-            // Build image for Skins
-            Uri? skinsImg = null;
-            imageLookup.TryGetValue("Skins", out skinsImg);
-            if (skinsImg is null && specialIcons.TryGetValue("Skins", out var skinsIconFile))
+            // Helper to resolve an image for a category key
+            Uri? ResolveImage(string key)
             {
-                var path = Path.Combine(iconDir, skinsIconFile);
-                if (File.Exists(path)) skinsImg = new Uri(path);
+                Uri? img = null;
+                imageLookup.TryGetValue(key, out img);
+                if (img is null && specialIcons.TryGetValue(key, out var iconFile))
+                {
+                    var path = Path.Combine(iconDir, iconFile);
+                    if (File.Exists(path)) img = new Uri(path);
+                }
+                return img;
             }
 
-            // Build result list, putting Skins right after "全部"
-            var skinsCategory = new ModMarketCategory("Skins", "Skins", skinsCount, skinsImg);
-
-            var otherCategories = categories
-                .Where(kvp => kvp.Key != "Skins")
-                .Select(kvp =>
+            // Fixed-order special categories
+            var specialKeys = new[] { "Skins", "Other/Misc", "UI" };
+            var specialCategories = new List<ModMarketCategory>();
+            foreach (var key in specialKeys)
+            {
+                var count = key switch
                 {
-                    Uri? img = null;
-                    imageLookup.TryGetValue(kvp.Key, out img);
-                    if (img is null && specialIcons.TryGetValue(kvp.Key, out var iconFile))
-                    {
-                        var path = Path.Combine(iconDir, iconFile);
-                        if (File.Exists(path)) img = new Uri(path);
-                    }
-                    return new ModMarketCategory(kvp.Key, kvp.Key, kvp.Value, img);
-                })
-                .OrderByDescending(c => c.ModCount)
+                    "Skins" => skinsCount,
+                    "Other/Misc" => otherMiscCount,
+                    "UI" => uiCount,
+                    _ => categories.GetValueOrDefault(key, 0)
+                };
+                specialCategories.Add(new ModMarketCategory(key, key, count, ResolveImage(key)));
+            }
+
+            // Character categories: alphabetical by key
+            var characterCategories = categories
+                .Where(kvp => !specialKeys.Contains(kvp.Key))
+                .Select(kvp => new ModMarketCategory(kvp.Key, kvp.Key, kvp.Value, ResolveImage(kvp.Key)))
+                .OrderBy(c => c.Key, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            otherCategories.Insert(0, skinsCategory);
-            otherCategories.Insert(0, ModMarketCategory.CreateAll(total));
+            // Assemble final list
+            var result = new List<ModMarketCategory> { ModMarketCategory.CreateAll(total) };
+            result.AddRange(specialCategories);
+            result.AddRange(characterCategories);
 
             _logger.Information("Loaded {Count} character categories, total mods: {Total}, skins: {Skins}",
-                otherCategories.Count - 1, total, skinsCount);
-            return otherCategories;
+                characterCategories.Count, total, skinsCount);
+            return result;
         }
         catch (Exception ex)
         {
