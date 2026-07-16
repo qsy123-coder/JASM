@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.WinUI.Contracts.ViewModels;
 using GIMI_ModManager.WinUI.Models;
 using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.Services.Notifications;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.ViewModels;
@@ -12,6 +13,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 {
     private readonly ILogger _logger;
     private readonly ModMarketService _modMarketService;
+    private readonly NotificationManager _notificationManager;
     private CancellationTokenSource? _searchCts;
 
     // ─── Sidebar: Characters from Supabase ─────────────────────
@@ -48,17 +50,18 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     private string _searchText = string.Empty;
 
     [ObservableProperty]
-    private string _selectedCategoryFilter = "仅Mods";
+    private string _selectedCategoryFilter = "全部分类";
 
     [ObservableProperty]
     private string _selectedContentFilter = "显示 NSFW";
 
     [ObservableProperty]
-    private string _selectedSortOption = "最新";
+    private string _selectedSortOption = "默认";
 
-    public IReadOnlyList<string> CategoryFilterOptions { get; } = ["仅Mods", "全部分类"];
+    public IReadOnlyList<string> CategoryFilterOptions { get; } =
+        ["全部分类", "仅Mods", "仅NSFW", "仅非NSFW", "含直链下载"];
     public IReadOnlyList<string> ContentFilterOptions { get; } = ["显示 NSFW", "模糊 NSFW", "隐藏 NSFW"];
-    public IReadOnlyList<string> SortOptions { get; } = ["最新", "最近更新", "默认"];
+    public IReadOnlyList<string> SortOptions { get; } = ["默认", "最新", "最近更新", "最多点赞", "最多浏览"];
 
     // ─── Pagination ────────────────────────────────────────────
 
@@ -81,6 +84,14 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [RelayCommand]
     private void ToggleDebugPanel() => IsDebugPanelVisible = !IsDebugPanelVisible;
 
+    [RelayCommand]
+    private void OpenDownloadManager()
+    {
+        _notificationManager.ShowNotification("下载管理",
+            "下载管理功能即将推出，敬请期待。",
+            TimeSpan.FromSeconds(4));
+    }
+
     private const int MaxDebugLines = 200;
 
     /// <summary>追加一行到调试面板(限制行数防止无限增长),同时写 Serilog</summary>
@@ -94,10 +105,12 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
         DebugInfo = text;
     }
 
-    public ModMarketViewModel(ILogger logger, ModMarketService modMarketService)
+    public ModMarketViewModel(ILogger logger, ModMarketService modMarketService,
+        NotificationManager notificationManager)
     {
         _logger = logger.ForContext<ModMarketViewModel>();
         _modMarketService = modMarketService;
+        _notificationManager = notificationManager;
     }
 
     // ─── Navigation ────────────────────────────────────────────
@@ -154,9 +167,17 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
         }, token);
     }
 
-    partial void OnSelectedCategoryFilterChanged(string value) => _ = ReloadModsAsync();
-    partial void OnSelectedContentFilterChanged(string value) => _ = ReloadModsAsync();
-    partial void OnSelectedSortOptionChanged(string value) => _ = ReloadModsAsync();
+    private bool _reloadPending;
+
+    partial void OnSelectedCategoryFilterChanged(string value) => RequestReload();
+    partial void OnSelectedContentFilterChanged(string value) => RequestReload();
+    partial void OnSelectedSortOptionChanged(string value) => RequestReload();
+
+    private void RequestReload()
+    {
+        if (IsLoading) { _reloadPending = true; return; }
+        _ = ReloadModsAsync();
+    }
 
     // ─── Commands ──────────────────────────────────────────────
 
@@ -221,10 +242,22 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             var sortBy = SelectedSortOption switch
             {
                 "最近更新" => "RecentlyUpdated",
-                "默认" => "Newest",
-                _ => "Newest"
+                "最新" => "Newest",
+                "最多点赞" => "Most Liked",
+                "最多浏览" => "Most Viewed",
+                _ => "Default"
             };
             var categoryFilter = SelectedCategoryFilter == "仅Mods";
+
+            // Category-level NSFW / direct-download filters
+            // nsfwOnly takes precedence over contentFilter to avoid contradictory nsfw params
+            bool? nsfwOnly = SelectedCategoryFilter switch
+            {
+                "仅NSFW" => true,
+                "仅非NSFW" => false,
+                _ => null
+            };
+            var directDownloadOnly = SelectedCategoryFilter == "含直链下载";
 
             var result = await _modMarketService.GetModsAsync(
                 character: SelectedCategory?.Key,
@@ -232,6 +265,8 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
                 contentFilter: contentFilter,
                 sortBy: sortBy,
                 modsOnly: categoryFilter,
+                nsfwOnly: nsfwOnly,
+                directDownloadOnly: directDownloadOnly,
                 page: _currentPage,
                 pageSize: PageSize);
 
@@ -239,7 +274,11 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             var total = result.TotalCount;
 
             if (!append) Mods.Clear();
-            foreach (var m in mods) Mods.Add(m);
+            foreach (var m in mods)
+            {
+                m.IsNsfwBlurred = m.Nsfw && SelectedContentFilter == "模糊 NSFW";
+                Mods.Add(m);
+            }
 
             // When Content-Range is available (total != returned count),
             // trust it: there are more pages as long as we haven't
@@ -291,6 +330,12 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             IsLoading = false;
             IsInitialLoading = false;
             IsLoadingMore = false;
+
+            if (_reloadPending)
+            {
+                _reloadPending = false;
+                _ = ReloadModsAsync();
+            }
         }
     }
 }
