@@ -60,6 +60,9 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private bool _hasMorePages = true;
 
+    [ObservableProperty]
+    private string _debugInfo = "等待加载...";
+
     public ModMarketViewModel(ILogger logger, ModMarketService modMarketService)
     {
         _logger = logger.ForContext<ModMarketViewModel>();
@@ -177,7 +180,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             };
             var categoryFilter = SelectedCategoryFilter == "仅Mods";
 
-            var (mods, total) = await _modMarketService.GetModsAsync(
+            var result = await _modMarketService.GetModsAsync(
                 character: SelectedCategory?.Key,
                 search: string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
                 contentFilter: contentFilter,
@@ -185,6 +188,9 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
                 modsOnly: categoryFilter,
                 page: _currentPage,
                 pageSize: PageSize);
+
+            var mods = result.Mods;
+            var total = result.TotalCount;
 
             if (!append) Mods.Clear();
             foreach (var m in mods) Mods.Add(m);
@@ -199,6 +205,16 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 
             IsEmpty = Mods.Count == 0;
             StatusMessage = IsEmpty ? "没有找到 Mod" : string.Empty;
+
+            // ── Debug overlay ──────────────────────────────────
+            var dropped = result.RawResponseCount - mods.Count;
+            DebugInfo =
+                $"Pg={_currentPage} cat={SelectedCategory?.Key ?? "?"} modsOnly={categoryFilter} search={SearchText ?? ""}\n" +
+                $"{result.RequestUrl}\n" +
+                $"Content-Range: {result.ContentRange ?? "MISSING"}\n" +
+                $"Raw JSON rows: {result.RawResponseCount}  Deserialized: {mods.Count}" +
+                (dropped > 0 ? $"  DROPPED: {dropped}" : "") +
+                $"\nTotal (count=exact): {total}  Accumulated: {Mods.Count}  HasMore={HasMorePages}";
         }
         catch (Exception ex)
         {
