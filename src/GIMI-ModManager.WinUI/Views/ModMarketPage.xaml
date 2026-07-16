@@ -210,11 +210,15 @@
                 </Grid>
 
                 <!-- Debug overlay -->
-                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                        Margin="8" Padding="8,4" CornerRadius="4" Background="#DD000000">
-                    <TextBlock x:Name="DebugText" Foreground="#FF0" FontSize="11"
-                               FontFamily="Consolas" IsTextSelectionEnabled="True"
-                               Text="等待加载..." />
+                <Border HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                        Margin="8" Padding="8,6" CornerRadius="4" Background="#DD000000"
+                        MaxHeight="160">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <TextBlock x:Name="DebugText" Foreground="#FF0" FontSize="11"
+                                   FontFamily="Consolas" IsTextSelectionEnabled="True"
+                                   Text="{x:Bind ViewModel.DebugInfo, Mode=OneWay}"
+                                   TextWrapping="Wrap" />
+                    </ScrollViewer>
                 </Border>
             </Grid>
         </Grid>

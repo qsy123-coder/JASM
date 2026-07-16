@@ -70,11 +70,11 @@ public sealed partial class ModMarketPage : Page
             ModCardsPanel.InvalidateMeasure();
             ModCardsPanel.UpdateLayout();
 
-            // Show debug info
+            // Append viewport stats to the VM debug overlay
             var sv = CardScrollViewer;
-            var msg = $"V={sv.ViewportHeight:F0} E={sv.ExtentHeight:F0} SH={sv.ScrollableHeight:F0} | Cards={ModCardsPanel.Children.Count} Mods={ViewModel.Mods.Count}";
-            DebugText.Text = msg;
-            Log.ForContext<ModMarketPage>().Information("[ModMarketPage] " + msg);
+            var vp = $"V={sv.ViewportHeight:F0} E={sv.ExtentHeight:F0} SH={sv.ScrollableHeight:F0} | Cards={ModCardsPanel.Children.Count} Mods={ViewModel.Mods.Count}";
+            ViewModel.DebugInfo = (ViewModel.DebugInfo ?? "") + "\n" + vp;
+            Log.ForContext<ModMarketPage>().Information("[ModMarketPage] " + vp);
 
             // If content fits viewport, auto-load more
             if (CardScrollViewer.ScrollableHeight <= 0

@@ -64,7 +64,7 @@ public class ModMarketMod
     public bool IsAvailable { get; set; }
 
     [JsonPropertyName("created_by")]
-    public Guid CreatedBy { get; set; }
+    public Guid? CreatedBy { get; set; }
 
     [JsonPropertyName("created_at")]
     public DateTime CreatedAt { get; set; }

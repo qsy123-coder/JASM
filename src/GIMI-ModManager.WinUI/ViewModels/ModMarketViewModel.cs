@@ -63,6 +63,9 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private ModMarketMod? _selectedMod;
 
+    [ObservableProperty]
+    private string _debugInfo = "等待加载...";
+
     public ModMarketViewModel(ILogger logger, ModMarketService modMarketService)
     {
         _logger = logger.ForContext<ModMarketViewModel>();
@@ -185,7 +188,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             };
             var categoryFilter = SelectedCategoryFilter == "仅Mods";
 
-            var (mods, total) = await _modMarketService.GetModsAsync(
+            var result = await _modMarketService.GetModsAsync(
                 character: SelectedCategory?.Key,
                 search: string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
                 contentFilter: contentFilter,
@@ -194,17 +197,48 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
                 page: _currentPage,
                 pageSize: PageSize);
 
+            var mods = result.Mods;
+            var total = result.TotalCount;
+
             if (!append) Mods.Clear();
             foreach (var m in mods) Mods.Add(m);
 
-            // If we got a full page but total == returned count,
-            // the Content-Range header might be missing. Assume more.
+            // When Content-Range is available (total != returned count),
+            // trust it: there are more pages as long as we haven't
+            // accumulated everything. When Content-Range is missing
+            // (total == returned count), guess by page fullness.
             HasMorePages = total == mods.Count
                 ? mods.Count >= PageSize
-                : mods.Count >= PageSize && Mods.Count < total;
+                : Mods.Count < total;
 
             IsEmpty = Mods.Count == 0;
             StatusMessage = IsEmpty ? "没有找到 Mod" : string.Empty;
+
+            // ── Debug overlay ──────────────────────────────────
+            var dropped = result.RawResponseCount - mods.Count;
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Pg={_currentPage} cat={SelectedCategory?.Key ?? "?"} modsOnly={categoryFilter} search={SearchText ?? ""}");
+            sb.AppendLine(result.RequestUrl ?? "?");
+            sb.Append($"Content-Range: {result.ContentRange ?? "MISSING"}");
+            if (result.UsedCountFallback) sb.Append(" (count fallback used)");
+            sb.AppendLine();
+            sb.Append($"Raw JSON rows: {result.RawResponseCount}  Deserialized: {mods.Count}");
+            if (dropped > 0) sb.Append($"  DROPPED: {dropped}");
+            sb.AppendLine();
+            sb.Append($"Total: {result.TotalCount}  Accumulated: {Mods.Count}  HasMore={HasMorePages}");
+
+            // Show first few dropped entries so we can debug schema mismatches
+            if (result.DroppedEntries.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"── Dropped entries: {result.DroppedEntries.Length} ──");
+                for (int i = 0; i < Math.Min(result.DroppedEntries.Length, 2); i++)
+                {
+                    sb.AppendLine($"  [{i + 1}] {result.DroppedEntries[i]}");
+                }
+            }
+
+            DebugInfo = sb.ToString().TrimEnd();
         }
         catch (Exception ex)
         {
