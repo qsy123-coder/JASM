@@ -25,11 +25,14 @@ public partial class ModMarketCategory : ObservableObject
     [ObservableProperty]
     private int _modCount;
 
-    public ModMarketCategory(string key, string name, int modCount = 0)
+    public Uri? ImageUri { get; init; }
+
+    public ModMarketCategory(string key, string name, int modCount = 0, Uri? imageUri = null)
     {
         Key = key;
         Name = name;
         _modCount = modCount;
+        ImageUri = imageUri;
     }
 
     public static ModMarketCategory CreateAll(int modCount = 0)
