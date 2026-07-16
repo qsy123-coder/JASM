@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using GIMI_ModManager.Core.GamesService;
+using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.WinUI.Models;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -10,16 +12,22 @@ public class ModMarketService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger _logger;
+    private readonly IGameService _gameService;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public ModMarketService(IHttpClientFactory httpClientFactory, IOptions<ModMarketOptions> options, ILogger logger)
+    public ModMarketService(
+        IHttpClientFactory httpClientFactory,
+        IOptions<ModMarketOptions> options,
+        ILogger logger,
+        IGameService gameService)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger.ForContext<ModMarketService>();
+        _gameService = gameService;
     }
 
     private HttpClient CreateClient()
@@ -95,8 +103,47 @@ public class ModMarketService
                 }
             }
 
+            // Build multi-key image lookup from local characters
+            Dictionary<string, Uri> imageLookup;
+            try
+            {
+                var chars = _gameService.GetAllModdableObjectsAsCategory<ICharacter>(GetOnly.Both);
+                imageLookup = new(StringComparer.OrdinalIgnoreCase);
+                foreach (var c in chars)
+                {
+                    if (c.ImageUri is null) continue;
+                    imageLookup.TryAdd(c.InternalName.Id, c.ImageUri);
+                    imageLookup.TryAdd(c.DisplayName, c.ImageUri);
+                    if (c is ICharacter ch)
+                        foreach (var key in ch.Keys)
+                            imageLookup.TryAdd(key, c.ImageUri);
+                }
+            }
+            catch { imageLookup = new(); }
+
+            // Icons for special Supabase-only categories
+            var iconDir = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "Assets", "Games", "WuWa", "Images", "Characters");
+            var specialIcons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Other/Misc"] = "other.png",
+                ["Skins"] = "skins.png",
+                ["UI"] = "ui.png",
+            };
+
             var result = categories
-                .Select(kvp => new ModMarketCategory(kvp.Key, kvp.Key, kvp.Value))
+                .Select(kvp =>
+                {
+                    Uri? img = null;
+                    imageLookup.TryGetValue(kvp.Key, out img);
+                    if (img is null && specialIcons.TryGetValue(kvp.Key, out var iconFile))
+                    {
+                        var path = Path.Combine(iconDir, iconFile);
+                        if (File.Exists(path)) img = new Uri(path);
+                    }
+                    return new ModMarketCategory(kvp.Key, kvp.Key, kvp.Value, img);
+                })
                 .OrderByDescending(c => c.ModCount)
                 .ToList();
 
@@ -165,7 +212,12 @@ public class ModMarketService
             var mods = new List<ModMarketMod>();
             if (!string.IsNullOrWhiteSpace(rawJson) && rawJson != "[]")
             {
-                mods = JsonSerializer.Deserialize<List<ModMarketMod>>(rawJson, JsonOptions) ?? [];
+                using var doc = JsonDocument.Parse(rawJson);
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    try { var m = el.Deserialize<ModMarketMod>(JsonOptions); if (m != null) mods.Add(m); }
+                    catch (JsonException) { /* skip bad entry */ }
+                }
             }
 
             var totalCount = mods.Count;
