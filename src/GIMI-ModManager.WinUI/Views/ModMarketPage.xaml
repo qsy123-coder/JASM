@@ -9,6 +9,7 @@
     xmlns:l="using:WinUI3Localizer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:GIMI_ModManager.WinUI.Views.Controls"
+    xmlns:views="using:GIMI_ModManager.WinUI.Views"
     xmlns:models="using:GIMI_ModManager.WinUI.Models"
     mc:Ignorable="d">
 
@@ -217,5 +218,8 @@
                 </Border>
             </Grid>
         </Grid>
+
+        <!-- Mod Detail Panel overlay (spans sidebar + main) -->
+        <views:ModDetailPanel x:Name="DetailPanel" Grid.ColumnSpan="2" />
     </Grid>
 </Page>

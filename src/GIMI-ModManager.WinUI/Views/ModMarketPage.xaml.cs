@@ -4,6 +4,7 @@ using GIMI_ModManager.WinUI.ViewModels;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Views;
@@ -18,6 +19,11 @@ public sealed partial class ModMarketPage : Page
         InitializeComponent();
         Loaded += OnLoaded;
         ViewModel.Mods.CollectionChanged += OnModsCollectionChanged;
+        ViewModel.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(ModMarketViewModel.SelectedMod))
+                OnSelectedModChanged();
+        };
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -33,6 +39,14 @@ public sealed partial class ModMarketPage : Page
             }
         };
         timer.Start();
+    }
+
+    private void OnSelectedModChanged()
+    {
+        if (ViewModel.SelectedMod is { } mod)
+            DetailPanel.Show(mod);
+        else
+            DetailPanel.Hide();
     }
 
     private void OnModsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -79,6 +93,9 @@ public sealed partial class ModMarketPage : Page
         var card = tpl.LoadContent() as FrameworkElement;
         if (card is null) return;
         card.DataContext = mod;
+        // Wire click to show detail panel
+        card.Tapped += (s, e) => ViewModel.OpenModDetailCommand.Execute(mod);
+        card.IsTapEnabled = true;
         ModCardsPanel.Children.Add(card);
     }
 
