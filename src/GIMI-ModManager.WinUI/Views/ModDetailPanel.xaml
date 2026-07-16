@@ -52,7 +52,7 @@
                 Grid.Column="1"
                 VerticalAlignment="Stretch"
                 BorderBrush="#30000000" BorderThickness="1,0,0,0"
-                Background="#F8F8F8">
+                Background="{ThemeResource SystemControlAcrylicWindowBrush}">
             <Border.RenderTransform>
                 <TranslateTransform X="360" />
             </Border.RenderTransform>
