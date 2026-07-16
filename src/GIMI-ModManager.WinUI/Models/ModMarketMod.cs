@@ -39,6 +39,10 @@ public class ModMarketMod
     [JsonPropertyName("nsfw")]
     public bool Nsfw { get; set; }
 
+    /// <summary>是否需要在卡片上显示模糊遮罩(由 Nsfw + 内容筛选决定)</summary>
+    [JsonIgnore]
+    public bool IsNsfwBlurred { get; set; }
+
     [JsonPropertyName("mod_author_url")]
     public string? ModAuthorUrl { get; set; }
 
