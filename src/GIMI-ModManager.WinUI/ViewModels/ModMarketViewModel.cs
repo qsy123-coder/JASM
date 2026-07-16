@@ -208,13 +208,31 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 
             // ── Debug overlay ──────────────────────────────────
             var dropped = result.RawResponseCount - mods.Count;
-            DebugInfo =
-                $"Pg={_currentPage} cat={SelectedCategory?.Key ?? "?"} modsOnly={categoryFilter} search={SearchText ?? ""}\n" +
-                $"{result.RequestUrl}\n" +
-                $"Content-Range: {result.ContentRange ?? "MISSING"}\n" +
-                $"Raw JSON rows: {result.RawResponseCount}  Deserialized: {mods.Count}" +
-                (dropped > 0 ? $"  DROPPED: {dropped}" : "") +
-                $"\nTotal (count=exact): {total}  Accumulated: {Mods.Count}  HasMore={HasMorePages}";
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Pg={_currentPage} cat={SelectedCategory?.Key ?? "?"} modsOnly={categoryFilter} search={SearchText ?? ""}");
+            sb.AppendLine(result.RequestUrl ?? "?");
+            sb.Append($"Content-Range: {result.ContentRange ?? "MISSING"}");
+            if (result.UsedCountFallback) sb.Append(" (count fallback used)");
+            sb.AppendLine();
+            sb.Append($"Raw JSON rows: {result.RawResponseCount}  Deserialized: {mods.Count}");
+            if (dropped > 0) sb.Append($"  DROPPED: {dropped}");
+            sb.AppendLine();
+            sb.Append($"Total: {result.TotalCount}  Accumulated: {Mods.Count}  HasMore={HasMorePages}");
+
+            // Show first few dropped entries so we can debug schema mismatches
+            if (result.DroppedEntries.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("── Dropped entries (first 3) ──");
+                for (int i = 0; i < Math.Min(result.DroppedEntries.Length, 3); i++)
+                {
+                    var entry = result.DroppedEntries[i];
+                    var truncated = entry.Length > 200 ? entry[..200] + "…" : entry;
+                    sb.AppendLine($"  [{i + 1}] {truncated}");
+                }
+            }
+
+            DebugInfo = sb.ToString().TrimEnd();
         }
         catch (Exception ex)
         {
