@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="GIMI_ModManager.WinUI.Views.ModDetailPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid x:Name="PanelRoot" Visibility="Collapsed">
+        <Grid x:Name="BackdropOverlay" Background="#40000000"
+              IsTapEnabled="True"
+              Tapped="BackdropOverlay_Tapped" />
+
+        <Border HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                Width="360" BorderBrush="#30000000" BorderThickness="1,0,0,0"
+                Background="#F8F8F8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="20,0,20,20">
+
+                    <!-- Header -->
+                    <Grid Margin="0,20,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding Title}"
+                                   FontSize="16" FontWeight="Bold"
+                                   TextWrapping="Wrap" MaxLines="3" />
+                        <Button Grid.Column="1" Width="32" Height="32" Padding="0"
+                                Background="Transparent" BorderThickness="0"
+                                CornerRadius="16" Click="CloseButton_Click">
+                            <FontIcon FontSize="12" Glyph="&#xE711;" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Author + Stats -->
+                    <StackPanel Margin="0,0,0,16" Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Width="28" Height="28" CornerRadius="14"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                <FontIcon FontSize="14" Glyph="&#xE77B;"
+                                          Foreground="White" HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Character}"
+                                           FontSize="12" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding RelativeTime}" FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <TextBlock FontSize="11"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="{Binding LikesCount}" />
+                            <TextBlock FontSize="11"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="{Binding Views}" />
+                            <TextBlock FontSize="11"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="{Binding DownloadsCount}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Tab Bar -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" x:Name="OverviewTabBtn"
+                                Content="总览与文件" FontSize="13" FontWeight="SemiBold"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                Click="OverviewTab_Click" HorizontalAlignment="Stretch" Height="36" />
+                        <Button Grid.Column="1" x:Name="DescriptionTabBtn"
+                                Content="图文描述" FontSize="13"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Click="DescriptionTab_Click" HorizontalAlignment="Stretch" Height="36" />
+                    </Grid>
+
+                    <!-- Overview -->
+                    <StackPanel x:Name="OverviewContent" Spacing="16">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="GalleryPanel" Orientation="Horizontal" Spacing="8" />
+                        </ScrollViewer>
+                        <Button HorizontalAlignment="Stretch" Height="38"
+                                CornerRadius="8" Background="#10000000"
+                                BorderThickness="0" Click="OpenInBrowser_Click">
+                            <TextBlock Text="在浏览器中查看" FontSize="13" />
+                        </Button>
+                        <TextBlock Text="可下载文件" FontSize="14" FontWeight="SemiBold" />
+                        <ItemsControl x:Name="FilesList" />
+                    </StackPanel>
+
+                    <!-- Description -->
+                    <ScrollViewer x:Name="DescriptionContent" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto">
+                        <TextBlock Text="{Binding Description}" FontSize="13"
+                                   TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </ScrollViewer>
+
+                    <Rectangle Height="20" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>
