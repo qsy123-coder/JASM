@@ -64,6 +64,27 @@
                                        Stretch="UniformToFill"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
+                                <!-- NSFW 安全遮罩: 毛玻璃图片 + 暗色叠加 + 点击揭开 -->
+                                <Border CornerRadius="8,8,0,0"
+                                        Visibility="{Binding IsNsfwBlurred, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        Tapped="NsfwOverlay_Tapped" IsTapEnabled="True">
+                                    <Grid>
+                                        <!-- 静态毛玻璃纹理 -->
+                                        <Image Source="ms-appx:///Assets/66d9ecdd7558593ef412e76fc3582eb4.jpg"
+       Stretch="UniformToFill" Opacity="0.92" />
+                                        <!-- 暗色叠加层 -->
+                                        <Border Background="#40000000">
+                                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <TextBlock Text="&#x1F51E;" FontSize="28"
+                                                           HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                                <TextBlock Text="NSFW 内容已隐藏" Foreground="White" FontSize="12"
+                                                           FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                                <TextBlock Text="点击查看" Foreground="#CCCCCC" FontSize="10"
+                                                           Margin="0,4,0,0" HorizontalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
                             </Grid>
                         </Border>
                         <Border HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -158,7 +179,7 @@
                 <TextBox x:Name="SearchBox" Grid.Column="0"
                          VerticalAlignment="Center" PlaceholderText="搜索模组..."
                          l:Uids.Uid="ModMarket_SearchPlaceholder"
-                         Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}"
+                         Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          CornerRadius="6" Margin="0,0,8,0">
                     <TextBox.Resources>
                         <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
@@ -183,7 +204,8 @@
 
                 <Button Grid.Column="4" Width="36" Height="36" VerticalAlignment="Center"
                         ToolTipService.ToolTip="下载管理" l:Uids.Uid="ModMarket_DownloadManager"
-                        Background="Transparent" BorderThickness="0" CornerRadius="6">
+                        Background="Transparent" BorderThickness="0" CornerRadius="6"
+                        Command="{x:Bind ViewModel.OpenDownloadManagerCommand}">
                     <FontIcon FontSize="16" Glyph="&#xE896;" />
                 </Button>
             </Grid>
