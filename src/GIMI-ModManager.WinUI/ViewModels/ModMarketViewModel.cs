@@ -241,7 +241,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             };
             var sortBy = SelectedSortOption switch
             {
-                "最近更新" => "RecentlyUpdated",
+                "最近更新" => "Newest",
                 "最新" => "Newest",
                 "最多点赞" => "Most Liked",
                 "最多浏览" => "Most Viewed",
@@ -259,6 +259,11 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             };
             var directDownloadOnly = SelectedCategoryFilter == "含直链下载";
 
+            // "最近更新": 只显示 3 天内更新的内容
+            DateTime? updatedAfter = SelectedSortOption == "最近更新"
+                ? DateTime.UtcNow.AddDays(-3) : null;
+            AppendDebugLog($"[Filter] sort={SelectedSortOption} sortBy={sortBy} updatedAfter={updatedAfter:yyyy-MM-dd}");
+
             var result = await _modMarketService.GetModsAsync(
                 character: SelectedCategory?.Key,
                 search: string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
@@ -267,6 +272,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
                 modsOnly: categoryFilter,
                 nsfwOnly: nsfwOnly,
                 directDownloadOnly: directDownloadOnly,
+                updatedAfter: updatedAfter,
                 page: _currentPage,
                 pageSize: PageSize);
 
