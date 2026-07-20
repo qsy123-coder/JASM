@@ -51,88 +51,78 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ModCardTemplate">
-            <Border MaxWidth="250" MinWidth="160" Margin="6" CornerRadius="8"
-                    BorderBrush="#E0E0E0" BorderThickness="0.5">
-                <Grid MinHeight="120">
-                    <!-- 层0: 无图片时的占位背景 -->
-                    <Grid Background="#2A2A2A" MinHeight="120">
-                        <TextBlock Text="&#x1F5BC;" FontSize="32"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Foreground="#555555" />
+            <Border Width="210" Margin="8" Background="#FFFFFF"
+                    CornerRadius="8" BorderBrush="#E0E0E0" BorderThickness="1">
+                <StackPanel>
+                    <Grid>
+                        <Border Height="120" CornerRadius="8,8,0,0" Background="#F0F0F0">
+                            <Grid>
+                                <TextBlock Text="🖼" FontSize="28"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="#CCCCCC" />
+                                <Image Source="{Binding PreviewImageUrl}"
+                                       Stretch="UniformToFill"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                                <!-- NSFW 安全遮罩: 毛玻璃图片 + 暗色叠加 + 点击揭开 -->
+                                <Border CornerRadius="8,8,0,0"
+                                        Visibility="{Binding IsNsfwBlurred, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        Tapped="NsfwOverlay_Tapped" IsTapEnabled="True">
+                                    <Grid>
+                                        <!-- 静态毛玻璃纹理 -->
+                                        <Image Source="ms-appx:///Assets/66d9ecdd7558593ef412e76fc3582eb4.jpg"
+       Stretch="UniformToFill" Opacity="0.92" />
+                                        <!-- 暗色叠加层 -->
+                                        <Border Background="#40000000">
+                                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <TextBlock Text="&#x1F51E;" FontSize="28"
+                                                           HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                                <TextBlock Text="NSFW 内容已隐藏" Foreground="White" FontSize="12"
+                                                           FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                                <TextBlock Text="点击查看" Foreground="#CCCCCC" FontSize="10"
+                                                           Margin="0,4,0,0" HorizontalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="0,6,6,0" Padding="6,2" Background="#FF4D4F"
+                                CornerRadius="8"
+                                Visibility="{Binding Nsfw, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Foreground="White" FontSize="10"
+                                       FontWeight="SemiBold" Text="NSFW" />
+                        </Border>
                     </Grid>
-                    <!-- 层1: 图片（Uniform 保持原始宽高比，宽度上限250） -->
-                    <Image Source="{Binding PreviewImageUrl}"
-                           Stretch="Uniform"
-                           MaxWidth="250"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Tapped="CardImage_Tapped" IsTapEnabled="True" />
-                    <!-- 层2: NSFW 遮罩覆盖整卡 -->
-                    <Border CornerRadius="8"
-                            Visibility="{Binding IsNsfwBlurred, Converter={StaticResource BoolToVisibilityConverter}}"
-                            Tapped="NsfwOverlay_Tapped" IsTapEnabled="True">
-                        <Grid>
-                            <Image Source="ms-appx:///Assets/66d9ecdd7558593ef412e76fc3582eb4.jpg"
-                                   Stretch="UniformToFill" Opacity="0.92" />
-                            <Border Background="#40000000">
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock Text="&#x1F51E;" FontSize="28"
-                                               HorizontalAlignment="Center" Margin="0,0,0,4" />
-                                    <TextBlock Text="NSFW 内容已隐藏" Foreground="White" FontSize="12"
-                                               FontWeight="SemiBold" HorizontalAlignment="Center" />
-                                    <TextBlock Text="点击查看" Foreground="#CCCCCC" FontSize="10"
-                                               Margin="0,4,0,0" HorizontalAlignment="Center" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </Border>
-                    <!-- 层3: 底部渐变条 -->
-                    <Border VerticalAlignment="Bottom" Height="80">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="Transparent" Offset="0" />
-                                <GradientStop Color="#B0000000" Offset="1" />
-                            </LinearGradientBrush>
-                        </Border.Background>
-                    </Border>
-                    <!-- 层4: 信息叠在底部 -->
-                    <StackPanel VerticalAlignment="Bottom" Padding="8,0,8,6" Spacing="2">
-                        <TextBlock Foreground="White" FontWeight="SemiBold" FontSize="13"
-                                   MaxLines="2" Text="{Binding Title}"
-                                   TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Border Width="16" Height="16" CornerRadius="8"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}" />
-                            <TextBlock VerticalAlignment="Center" FontSize="11"
-                                       Foreground="#CCCCCC" Text="{Binding Character}"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock VerticalAlignment="Center" FontSize="11"
-                                       Foreground="#AAAAAA" Text="{Binding RelativeTime}" />
+                    <TextBlock Margin="8,8,8,4" Foreground="Black"
+                               FontWeight="SemiBold" FontSize="13"
+                               MaxLines="2" Text="{Binding Title}"
+                               TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                    <StackPanel Margin="8,4,8,4" Orientation="Horizontal" Spacing="6">
+                        <Border Width="16" Height="16" CornerRadius="8"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <TextBlock VerticalAlignment="Center" FontSize="11"
+                                   Foreground="#666666" Text="{Binding Character}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock VerticalAlignment="Center" FontSize="11"
+                                   Foreground="#666666" Text="{Binding RelativeTime}" />
+                    </StackPanel>
+                    <StackPanel Margin="8,4,8,8" Orientation="Horizontal" Spacing="16">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <FontIcon FontSize="11" Foreground="#999999" Glyph="&#xE890;" />
+                            <TextBlock FontSize="11" Foreground="#999999" Text="{Binding Views}" />
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="14">
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xE890;" />
-                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding Views}" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xEB52;" />
-                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding LikesCount}" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xE8F2;" />
-                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding CommentsCount}" />
-                            </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <FontIcon FontSize="11" Foreground="#999999" Glyph="&#xEB52;" />
+                            <TextBlock FontSize="11" Foreground="#999999" Text="{Binding LikesCount}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <FontIcon FontSize="11" Foreground="#999999" Glyph="&#xE8F2;" />
+                            <TextBlock FontSize="11" Foreground="#999999" Text="{Binding CommentsCount}" />
                         </StackPanel>
                     </StackPanel>
-                    <!-- 层5: NSFW 角标(右上) -->
-                    <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                            Margin="4" Padding="6,2" Background="#FF4D4F"
-                            CornerRadius="6"
-                            Visibility="{Binding Nsfw, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Foreground="White" FontSize="10"
-                                   FontWeight="SemiBold" Text="NSFW" />
-                    </Border>
-                </Grid>
+                </StackPanel>
             </Border>
         </DataTemplate>
     </Page.Resources>
@@ -302,18 +292,5 @@
 
         <!-- Mod Detail Panel overlay (spans sidebar + main) -->
         <views:ModDetailPanel x:Name="DetailPanel" Grid.ColumnSpan="2" />
-
-        <!-- 灯箱预览: 全屏暗色遮罩 + 居中大图 -->
-        <Grid x:Name="Lightbox" Grid.ColumnSpan="2" Visibility="Collapsed"
-              Background="#E0000000" Tapped="Lightbox_Tapped">
-            <Button HorizontalAlignment="Right" VerticalAlignment="Top"
-                    Margin="16" Padding="8,4" Background="#40000000"
-                    BorderThickness="0" Click="Lightbox_Close">
-                <FontIcon FontSize="16" Glyph="&#xE711;" Foreground="White" />
-            </Button>
-            <Image x:Name="LightboxImage" MaxWidth="900" MaxHeight="700"
-                   Stretch="Uniform" HorizontalAlignment="Center"
-                   VerticalAlignment="Center" />
-        </Grid>
     </Grid>
 </Page>

@@ -134,34 +134,4 @@ public sealed partial class ModMarketPage : Page
             overlay.Visibility = Visibility.Collapsed;
         e.Handled = true;
     }
-
-    // ── 灯箱预览 ──────────────────────────────────────
-
-    public void ShowLightbox(Uri imageUri)
-    {
-        LightboxImage.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(imageUri);
-        Lightbox.Visibility = Visibility.Visible;
-    }
-
-    private void Lightbox_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        // 点击背景遮罩关闭
-        if (e.OriginalSource is Grid)
-            Lightbox.Visibility = Visibility.Collapsed;
-    }
-
-    private void Lightbox_Close(object sender, RoutedEventArgs e)
-    {
-        Lightbox.Visibility = Visibility.Collapsed;
-    }
-
-    private void CardImage_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: ModMarketMod mod }
-            && mod.PreviewImageUrl is { } url)
-        {
-            ShowLightbox(new Uri(url));
-            e.Handled = true;
-        }
-    }
 }
