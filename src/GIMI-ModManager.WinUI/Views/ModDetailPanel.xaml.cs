@@ -54,7 +54,7 @@ public sealed partial class ModDetailPanel : UserControl
             _isClosing = false;
             SlideOutStoryboard.Stop();
             SlideInStoryboard.Stop();
-            DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
+            DrawerBorder.RenderTransform = new TranslateTransform { X = 420 };
             SlideInStoryboard.Begin();
             return;
         }
@@ -62,13 +62,13 @@ public sealed partial class ModDetailPanel : UserControl
         _currentMod = mod;
         DataContext = mod;
         BuildGallery(mod);
-        BuildDriveLinks(mod);
+        BuildDownloadSection(mod);
         SelectTab(overview: true);
 
         // 防御:若关闭动画进行中被打断,停止它并清除关闭标记,避免其 Completed 稍后触发把面板错误 Collapse
         _isClosing = false;
         SlideOutStoryboard.Stop();
-        DrawerBorder.RenderTransform = new TranslateTransform { X = 360 };
+        DrawerBorder.RenderTransform = new TranslateTransform { X = 420 };
         PanelRoot.Visibility = Visibility.Visible;
         _logger.Information("PanelRoot visible={Vis}, opacity={Op}",
             PanelRoot.Visibility, PanelRoot.Opacity);
@@ -126,32 +126,111 @@ public sealed partial class ModDetailPanel : UserControl
         }
     }
 
-    // ── Drive links ─────────────────────────────────────
+    // ── Download section ────────────────────────────────
 
-    private void BuildDriveLinks(ModMarketMod mod)
+    private string? _directDownloadUrl;
+
+    private void BuildDownloadSection(ModMarketMod mod)
     {
+        // ── Direct download ──
+        if (!string.IsNullOrWhiteSpace(mod.DownloadUrl))
+        {
+            _directDownloadUrl = mod.DownloadUrl;
+            DirectDownloadCard.Visibility = Visibility.Visible;
+            DirectDownloadLabel.Text = $"{mod.DownloadsCount} 次下载";
+        }
+        else
+        {
+            _directDownloadUrl = null;
+            DirectDownloadCard.Visibility = Visibility.Collapsed;
+        }
+
+        // ── Drive links ──
+        DrivePanel.Children.Clear();
         try
         {
             var raw = mod.DriveLinks;
-            if (raw is not { ValueKind: JsonValueKind.Array })
+            if (raw is { ValueKind: JsonValueKind.Array })
             {
-                FilesList.Visibility = Visibility.Collapsed;
-                return;
+                var links = raw.Value.Deserialize<List<DriveLinkEntry>>();
+                if (links is { Count: > 0 })
+                {
+                    foreach (var link in links)
+                        DrivePanel.Children.Add(BuildDriveCard(link.Name, link.Url));
+                }
             }
-            var links = raw.Value.Deserialize<List<DriveLinkEntry>>();
-            if (links is not { Count: > 0 })
-            {
-                FilesList.Visibility = Visibility.Collapsed;
-                return;
-            }
-            var displayLinks = links.Select(l => new { l.Name, l.Url }).ToList();
-            FilesList.ItemsSource = displayLinks;
-            FilesList.Visibility = Visibility.Visible;
         }
-        catch
+        catch { }
+    }
+
+    private void DirectDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if (_directDownloadUrl is not null)
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(_directDownloadUrl));
+    }
+
+    private FrameworkElement BuildDriveCard(string name, string url)
+    {
+        var border = new Border
         {
-            FilesList.Visibility = Visibility.Collapsed;
-        }
+            Padding = new Thickness(12, 10, 12, 10),
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+            CornerRadius = new CornerRadius(8),
+            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+            BorderThickness = new Thickness(0.5)
+        };
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var leftStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+        leftStack.Children.Add(new TextBlock
+        {
+            Text = name,
+            FontSize = 13,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        leftStack.Children.Add(new TextBlock
+        {
+            Text = "点击下载",
+            FontSize = 10,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
+        });
+        Grid.SetColumn(leftStack, 0);
+
+        var btn = new Button
+        {
+            Width = 36, Height = 36,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4)),
+            BorderThickness = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            Tag = url
+        };
+        btn.Click += DriveDownload_Click;
+        btn.Content = new FontIcon
+        {
+            FontSize = 14,
+            Glyph = "",
+            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(btn, 1);
+
+        grid.Children.Add(leftStack);
+        grid.Children.Add(btn);
+        border.Child = grid;
+        return border;
+    }
+
+    private void DriveDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string url })
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
     }
 
     // ── Event handlers ──────────────────────────────────
@@ -168,9 +247,4 @@ public sealed partial class ModDetailPanel : UserControl
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OpenInBrowser_Click(object sender, RoutedEventArgs e)
-    {
-        if (_currentMod?.DownloadUrl is not null)
-            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(_currentMod.DownloadUrl));
-    }
 }
