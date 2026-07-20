@@ -51,20 +51,22 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ModCardTemplate">
-            <Border Width="250" Margin="6" CornerRadius="8"
+            <Border MaxWidth="250" MinWidth="160" Margin="6" CornerRadius="8"
                     BorderBrush="#E0E0E0" BorderThickness="0.5">
-                <Grid Height="340">
+                <Grid MinHeight="120">
                     <!-- 层0: 无图片时的占位背景 -->
-                    <Grid Background="#2A2A2A">
+                    <Grid Background="#2A2A2A" MinHeight="120">
                         <TextBlock Text="&#x1F5BC;" FontSize="32"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Foreground="#555555" />
                     </Grid>
-                    <!-- 层1: 图片铺满 -->
+                    <!-- 层1: 图片（Uniform 保持原始宽高比，宽度上限250） -->
                     <Image Source="{Binding PreviewImageUrl}"
-                           Stretch="UniformToFill"
+                           Stretch="Uniform"
+                           MaxWidth="250"
                            HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
+                           VerticalAlignment="Center"
+                           Tapped="CardImage_Tapped" IsTapEnabled="True" />
                     <!-- 层2: NSFW 遮罩覆盖整卡 -->
                     <Border CornerRadius="8"
                             Visibility="{Binding IsNsfwBlurred, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -300,5 +302,18 @@
 
         <!-- Mod Detail Panel overlay (spans sidebar + main) -->
         <views:ModDetailPanel x:Name="DetailPanel" Grid.ColumnSpan="2" />
+
+        <!-- 灯箱预览: 全屏暗色遮罩 + 居中大图 -->
+        <Grid x:Name="Lightbox" Grid.ColumnSpan="2" Visibility="Collapsed"
+              Background="#E0000000" Tapped="Lightbox_Tapped">
+            <Button HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="16" Padding="8,4" Background="#40000000"
+                    BorderThickness="0" Click="Lightbox_Close">
+                <FontIcon FontSize="16" Glyph="&#xE711;" Foreground="White" />
+            </Button>
+            <Image x:Name="LightboxImage" MaxWidth="900" MaxHeight="700"
+                   Stretch="Uniform" HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+        </Grid>
     </Grid>
 </Page>
