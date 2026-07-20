@@ -51,9 +51,15 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ModCardTemplate">
-            <Border MaxWidth="250" Margin="6" CornerRadius="8"
+            <Border Width="250" Margin="6" CornerRadius="8"
                     BorderBrush="#E0E0E0" BorderThickness="0.5">
                 <Grid Height="340">
+                    <!-- 层0: 无图片时的占位背景 -->
+                    <Grid Background="#2A2A2A">
+                        <TextBlock Text="&#x1F5BC;" FontSize="32"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="#555555" />
+                    </Grid>
                     <!-- 层1: 图片铺满 -->
                     <Image Source="{Binding PreviewImageUrl}"
                            Stretch="UniformToFill"
