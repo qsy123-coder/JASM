@@ -205,5 +205,19 @@
                 </StackPanel>
             </ScrollViewer>
         </Border>
+
+        <!-- 灯箱预览：全屏暗色遮罩 + 居中大图 -->
+        <Grid x:Name="Lightbox" Grid.ColumnSpan="2" Visibility="Collapsed"
+              Background="#E0000000" Tapped="LightboxBg_Tapped">
+            <Button HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="16" Padding="8,4" Background="#40000000"
+                    BorderThickness="0" CornerRadius="4"
+                    Click="LightboxClose_Click">
+                <FontIcon FontSize="16" Glyph="&#xE711;" Foreground="White" />
+            </Button>
+            <Image x:Name="LightboxImage" MaxWidth="1000" MaxHeight="750"
+                   Stretch="Uniform" HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+        </Grid>
     </Grid>
 </UserControl>

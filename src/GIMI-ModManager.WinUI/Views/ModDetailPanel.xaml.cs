@@ -2,6 +2,7 @@ using System.Text.Json;
 using GIMI_ModManager.WinUI.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
 
@@ -110,20 +111,46 @@ public sealed partial class ModDetailPanel : UserControl
         foreach (var url in images)
         {
             if (string.IsNullOrWhiteSpace(url)) continue;
+            var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(url));
+            var img = new Image
+            {
+                Source = bmp,
+                Stretch = Stretch.Uniform,
+                MaxWidth = 320,
+                MaxHeight = 200
+            };
             var border = new Border
             {
-                Width = 280, Height = 160,
-                CornerRadius = new CornerRadius(8)
+                CornerRadius = new CornerRadius(8),
+                Child = img,
+                IsTapEnabled = true
             };
-            border.Child = new Image
+            border.Tapped += (s, e) =>
             {
-                Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(url)),
-                Stretch = Stretch.UniformToFill,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center
+                ShowLightbox(new Uri(url));
+                e.Handled = true;
             };
             GalleryPanel.Children.Add(border);
         }
+    }
+
+    // ── 灯箱预览 ──────────────────────────────────────
+
+    private void ShowLightbox(Uri imageUri)
+    {
+        LightboxImage.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(imageUri);
+        Lightbox.Visibility = Visibility.Visible;
+    }
+
+    private void LightboxBg_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is Grid)
+            Lightbox.Visibility = Visibility.Collapsed;
+    }
+
+    private void LightboxClose_Click(object sender, RoutedEventArgs e)
+    {
+        Lightbox.Visibility = Visibility.Collapsed;
     }
 
     // ── Download section ────────────────────────────────
