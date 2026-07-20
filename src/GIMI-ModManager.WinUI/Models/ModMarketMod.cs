@@ -122,7 +122,7 @@ public class ModMarketMod
 /// </summary>
 public class DriveLinkEntry
 {
-    [JsonPropertyName("name")]
+    [JsonPropertyName("platform")]
     public string Name { get; set; } = string.Empty;
 
     [JsonPropertyName("url")]
