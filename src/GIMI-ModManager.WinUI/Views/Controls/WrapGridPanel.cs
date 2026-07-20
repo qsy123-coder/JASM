@@ -15,8 +15,8 @@ public class WrapGridPanel : Panel
         double x = 0, y = 0, rowHeight = 0;
         foreach (UIElement child in Children)
         {
-            // Measure child with known card dimensions so it reports real height
-            child.Measure(new Size(226, 300));
+            // 竖屏卡片: 262 = 250 宽 + 12 margin, 6 个/行
+            child.Measure(new Size(262, double.PositiveInfinity));
             var cw = child.DesiredSize.Width;
             var ch = child.DesiredSize.Height;
 
