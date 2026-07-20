@@ -211,6 +211,7 @@ public class ModMarketService
         bool modsOnly = false,
         bool? nsfwOnly = null,
         bool directDownloadOnly = false,
+        DateTime? updatedAfter = null,
         int page = 1,
         int pageSize = 24,
         CancellationToken ct = default)
@@ -257,9 +258,15 @@ public class ModMarketService
 
             if (directDownloadOnly)
                 filters.Add("download_url=not.is.null");
+            if (updatedAfter.HasValue)
+            {
+                var dateStr = updatedAfter.Value.ToUniversalTime().ToString("yyyy-MM-dd");
+                filters.Add($"created_at=gte.{dateStr}");
+            }
 
             var order = sortBy switch
             {
+                "Newest"           => "created_at.desc",
                 "RecentlyUpdated"  => "updated_at.desc",
                 "Most Downloaded"  => "downloads_count.desc",
                 "Most Liked"       => "likes_count.desc",
