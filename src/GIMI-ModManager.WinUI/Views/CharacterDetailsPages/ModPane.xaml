@@ -11,11 +11,15 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:subViewModels="using:GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels"
     xmlns:xaml="using:GIMI_ModManager.WinUI.Helpers.Xaml"
+    xmlns:coreHelpers="using:GIMI_ModManager.Core.Entities.Mods.Helpers"
     IsEnabled="{x:Bind ViewModel.IsNotReadOnly, Mode=OneWay}"
     mc:Ignorable="d">
 
     <UserControl.Resources>
         <xaml:StringToUri x:Name="StringToUri" />
+        <xaml:KeyToArrowGlyphConverter x:Key="KeyToArrowGlyphConverter" />
+        <xaml:ArrowKeyToVisibilityConverter x:Key="ArrowKeyToVisibilityConverter" />
+        <xaml:ArrowKeyToIconVisibilityConverter x:Key="ArrowKeyToIconVisibilityConverter" />
     </UserControl.Resources>
 
     <Grid
@@ -28,10 +32,11 @@
 
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="3*" />
+            <RowDefinition Height="5.5*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="4.5*" />
             <RowDefinition Height="Auto" />
 
         </Grid.RowDefinitions>
@@ -66,6 +71,13 @@
                 <FontIcon Glyph="&#xE70F;" />
             </Button>-->
 
+            <!-- 背景模糊放大效果 -->
+            <Image Stretch="UniformToFill" Opacity="0.15">
+                <Image.Source>
+                    <BitmapImage CreateOptions="IgnoreImageCache"
+                                 UriSource="{x:Bind ViewModel.ModModel.ImageUri, Mode=OneWay}" />
+                </Image.Source>
+            </Image>
             <controls:CustomImage
                 x:Name="ModDetailsPaneImage"
                 ButtonHorizontalAlignment="Right"
@@ -142,64 +154,205 @@
         </Grid>
 
 
+        <!-- Key Swaps (Row 3) - 可折叠，默认收起 -->
+        <StackPanel Grid.Row="3" Margin="0,6,0,0" Spacing="6"
+                    Visibility="{x:Bind ViewModel.IsModLoaded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <!-- 折叠标题行 -->
+            <Button Background="Transparent" BorderThickness="0" Padding="0"
+                    HorizontalAlignment="Left"
+                    Click="KeySwapToggle_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon FontSize="14" Glyph="&#xE785;"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              VerticalAlignment="Center" />
+                    <TextBlock FontSize="20" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Text="前进 / 后退按键" />
+                    <FontIcon x:Name="KeySwapChevron" FontSize="10"
+                              Glyph="&#xE70D;"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <!-- 可折叠内容（默认收起）+ 滚动 -->
+            <StackPanel x:Name="KeySwapContent" Visibility="Collapsed">
+                <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto">
+                    <controls1:SwitchPresenter Value="{x:Bind ViewModel.ModModel.IsKeySwapManagementEnabled, Mode=OneWay}">
+                        <controls1:Case Value="true">
+                            <StackPanel>
+                                <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModModel.KeySwaps, Mode=OneWay}">
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="subViewModels:ModPaneFieldsKeySwapVm">
+                                            <Grid Margin="0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox
+                                                    MinWidth="100"
+                                                    HorizontalAlignment="Left"
+                                                    Header="Forward Key"
+                                                    Text="{x:Bind ForwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    l:Uids.Uid="ModPane_ForwardKeyBox" />
 
-        <ScrollViewer Grid.Row="3">
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock HorizontalAlignment="Center" Text="{x:Bind SectionKey}" />
+                                                    <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                                        <TextBlock Margin="0,0,4,0" Text="Variations: " l:Uids.Uid="ModPane_VariationsLabel" />
+                                                        <TextBlock Text="{x:Bind VariationsCount, Mode=OneWay}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <TextBox
+                                                    Grid.Column="2"
+                                                    MinWidth="100"
+                                                    HorizontalAlignment="Right"
+                                                    Header="Backward Key"
+                                                    Text="{x:Bind BackwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    l:Uids.Uid="ModPane_BackwardKeyBox" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+                        </controls1:Case>
 
-            <controls1:SwitchPresenter Visibility="{x:Bind ViewModel.IsModLoaded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" Value="{x:Bind ViewModel.ModModel.IsKeySwapManagementEnabled, Mode=OneWay}">
-                <controls1:Case Value="true">
-                    <StackPanel>
-                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModModel.KeySwaps, Mode=OneWay}">
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="subViewModels:ModPaneFieldsKeySwapVm">
-                                    <Grid Margin="0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox
-                                            MinWidth="100"
-                                            HorizontalAlignment="Left"
-                                            Header="Forward Key"
-                                            Text="{x:Bind ForwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                            l:Uids.Uid="ModPane_ForwardKeyBox" />
+                        <controls1:Case Value="false">
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Top"
+                                TextWrapping="WrapWholeWords"
+                                Text="Key swap management is disabled for this mod"
+                                l:Uids.Uid="ModPane_KeySwapDisabled" />
+                        </controls1:Case>
+                    </controls1:SwitchPresenter>
+                </ScrollViewer>
+            </StackPanel>
+        </StackPanel>
 
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock HorizontalAlignment="Center" Text="{x:Bind SectionKey}" />
-                                            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                <TextBlock Margin="0,0,4,0" Text="Variations: " l:Uids.Uid="ModPane_VariationsLabel" />
-                                                <TextBlock Text="{x:Bind VariationsCount, Mode=OneWay}" />
+        <!-- Key Binding Hints (Row 4) - 标题固定，按ini文件夹折叠，内容填满下方 -->
+        <Grid Grid.Row="4" Margin="0,6,0,0"
+              Visibility="{x:Bind ViewModel.ModModel.HasKeyBindings, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <!-- 标题行（固定不动） -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6">
+                <FontIcon FontSize="14" Glyph="&#xEDA4;"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" Spacing="0">
+                    <TextBlock FontSize="20" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Text="{x:Bind ViewModel.ModModel.ModDisplayName, Mode=OneWay}" />
+                    <TextBlock FontSize="14" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Text=" 按键映射" />
+                </StackPanel>
+            </StackPanel>
+            <!-- 内容：填满剩余空间 -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden"
+                          VerticalAlignment="Stretch">
+                <StackPanel x:Name="KeyBindingHintPanel" Spacing="10">
+                    <!-- 按 ini 文件分组，点击文件夹名折叠 -->
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModModel.KeyBindingGroups, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Orientation="Vertical" Spacing="12" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="coreHelpers:ModIniKeyBindingGroup">
+                                <StackPanel Spacing="4">
+                                    <!-- ini 文件路径（可点击折叠）+ 打开文件 -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <Button Background="Transparent" BorderThickness="0"
+                                                Padding="0" HorizontalAlignment="Left"
+                                                Click="{x:Bind ToggleExpanded}">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <TextBlock FontSize="18" FontWeight="Bold"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           VerticalAlignment="Center"
+                                                           Text="{x:Bind ShortPath}" />
+                                                <FontIcon FontSize="10"
+                                                          Glyph="{x:Bind IsExpandedGlyph, Mode=OneWay}"
+                                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                          VerticalAlignment="Center" />
                                             </StackPanel>
-                                        </StackPanel>
-                                        <TextBox
-                                            Grid.Column="2"
-                                            MinWidth="100"
-                                            HorizontalAlignment="Right"
-                                            Header="Backward Key"
-                                            Text="{x:Bind BackwardHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                            l:Uids.Uid="ModPane_BackwardKeyBox" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                        </ItemsRepeater>
+                                        </Button>
+                                        <Button Background="Transparent" BorderThickness="0"
+                                                Padding="0" Width="20" Height="20"
+                                                VerticalAlignment="Center"
+                                                ToolTipService.ToolTip="打开 ini 文件"
+                                                Click="{x:Bind OpenIniFile}">
+                                            <FontIcon FontSize="12" Glyph="&#xE8A7;"
+                                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        </Button>
+                                    </StackPanel>
+                                    <!-- 按键绑定条目（可折叠） -->
+                                    <ItemsRepeater ItemsSource="{x:Bind Bindings}"
+                                                   Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <ItemsRepeater.Layout>
+                                            <StackLayout Orientation="Vertical" Spacing="6" />
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="coreHelpers:ModIniKeyBindingEntry">
+                                                <StackPanel Spacing="2">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" FontSize="13"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                                   Text="{x:Bind DisplayLabel}" />
+                                                        <!-- 箭头按键 → 圆角徽章 -->
+                                                        <Border Grid.Column="1" Padding="6,2" CornerRadius="4"
+                                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="0.5"
+                                                                Visibility="{x:Bind IsArrowKey, Converter={StaticResource ArrowKeyToIconVisibilityConverter}}">
+                                                            <TextBlock FontSize="16"
+                                                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                                       VerticalAlignment="Center"
+                                                                       Text="{x:Bind KeyValue}" />
+                                                        </Border>
+                                                        <!-- 普通按键 → 圆角徽章 -->
+                                                        <Border Grid.Column="1" Padding="8,3" CornerRadius="4"
+                                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="0.5"
+                                                                Visibility="{x:Bind IsArrowKey, Converter={StaticResource ArrowKeyToVisibilityConverter}}">
+                                                            <TextBlock FontSize="13" FontFamily="Consolas"
+                                                                       FontWeight="SemiBold"
+                                                                       Text="{x:Bind KeyValue}" />
+                                                        </Border>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
 
-                    </StackPanel>
-                </controls1:Case>
-
-                <controls1:Case Value="false">
-                    <TextBlock
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Top"
-                        TextWrapping="WrapWholeWords"
-                        Text="Key swap management is disabled for this mod"
-                        l:Uids.Uid="ModPane_KeySwapDisabled" />
-
-                </controls1:Case>
-            </controls1:SwitchPresenter>
-        </ScrollViewer>
+        <!-- 无按键绑定时显示 -->
+        <StackPanel Grid.Row="4" Margin="0,8,0,0" Orientation="Horizontal" Spacing="6"
+                    Visibility="{x:Bind ViewModel.ModModel.HasNoKeyBindings, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <FontIcon FontSize="14" Glyph="&#xEDA4;"
+                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                      VerticalAlignment="Center" />
+            <TextBlock Text="此模组无按键绑定" FontSize="12"
+                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
 
 
-        <Grid Grid.Row="4" Padding="0,12">
+        <Grid Grid.Row="5" Padding="0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition />
