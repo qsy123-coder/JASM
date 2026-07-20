@@ -11,7 +11,7 @@
         <Storyboard x:Name="SlideInStoryboard">
             <DoubleAnimation Storyboard.TargetName="DrawerBorder"
                              Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
-                             From="360" To="0" Duration="0:0:0.30">
+                             From="420" To="0" Duration="0:0:0.30">
                 <DoubleAnimation.EasingFunction>
                     <CubicEase EasingMode="EaseOut" />
                 </DoubleAnimation.EasingFunction>
@@ -24,7 +24,7 @@
         <Storyboard x:Name="SlideOutStoryboard">
             <DoubleAnimation Storyboard.TargetName="DrawerBorder"
                              Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
-                             From="0" To="360" Duration="0:0:0.25">
+                             From="0" To="420" Duration="0:0:0.25">
                 <DoubleAnimation.EasingFunction>
                     <CubicEase EasingMode="EaseIn" />
                 </DoubleAnimation.EasingFunction>
@@ -38,7 +38,7 @@
     <Grid x:Name="PanelRoot" Visibility="Collapsed" Opacity="0.01">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="360" />
+            <ColumnDefinition Width="420" />
         </Grid.ColumnDefinitions>
 
         <!-- Transparent tap-to-close area (column 0) -->
@@ -54,10 +54,12 @@
                 BorderBrush="#30000000" BorderThickness="1,0,0,0"
                 Background="{ThemeResource SystemControlAcrylicWindowBrush}">
             <Border.RenderTransform>
-                <TranslateTransform X="360" />
+                <TranslateTransform X="420" />
             </Border.RenderTransform>
 
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollMode="Disabled"
+                          HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="20,0,20,20">
 
                     <!-- Header -->
@@ -78,30 +80,55 @@
 
                     <!-- Author + Stats -->
                     <StackPanel Margin="0,0,0,16" Spacing="6">
+                        <!-- Author row -->
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Width="28" Height="28" CornerRadius="14"
+                            <Border Width="32" Height="32" CornerRadius="16"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}">
-                                <FontIcon FontSize="14" Glyph="&#xE77B;"
+                                <FontIcon FontSize="16" Glyph="&#xE77B;"
                                           Foreground="White" HorizontalAlignment="Center"
                                           VerticalAlignment="Center" />
                             </Border>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Character}"
-                                           FontSize="12" FontWeight="SemiBold" />
+                                           FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding RelativeTime}" FontSize="11"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="16">
-                            <TextBlock FontSize="11"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Text="{Binding LikesCount}" />
-                            <TextBlock FontSize="11"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Text="{Binding Views}" />
-                            <TextBlock FontSize="11"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Text="{Binding DownloadsCount}" />
+                        <!-- Stats row -->
+                        <StackPanel Orientation="Horizontal" Spacing="20">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon FontSize="12" Glyph="&#xEB52;"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="{Binding LikesCount}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon FontSize="12" Glyph="&#xE890;"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="{Binding Views}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon FontSize="12" Glyph="&#xE896;"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="{Binding DownloadsCount}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon FontSize="12" Glyph="&#xE8F2;"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="{Binding CommentsCount}" />
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
 
@@ -125,17 +152,45 @@
 
                     <!-- Overview -->
                     <StackPanel x:Name="OverviewContent" Spacing="16">
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                      VerticalScrollBarVisibility="Disabled">
+                        <ScrollViewer HorizontalScrollMode="Enabled"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      VerticalScrollMode="Disabled">
                             <StackPanel x:Name="GalleryPanel" Orientation="Horizontal" Spacing="8" />
                         </ScrollViewer>
-                        <Button HorizontalAlignment="Stretch" Height="38"
-                                CornerRadius="8" Background="#10000000"
-                                BorderThickness="0" Click="OpenInBrowser_Click">
-                            <TextBlock Text="在浏览器中查看" FontSize="13" />
-                        </Button>
-                        <TextBlock Text="可下载文件" FontSize="14" FontWeight="SemiBold" />
-                        <ItemsControl x:Name="FilesList" />
+                        <!-- 下载方式 -->
+                        <TextBlock Text="下载方式" FontSize="14" FontWeight="SemiBold"
+                                   Margin="0,0,0,8" />
+                        <!-- 直链下载(有 DownloadUrl 时显示) -->
+                        <Border x:Name="DirectDownloadCard" Margin="0,0,0,8"
+                                Visibility="Collapsed" Padding="12,10"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                CornerRadius="8" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="0.5">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="直链下载" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="DirectDownloadLabel" FontSize="10"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Width="36" Height="36"
+                                        Padding="0" CornerRadius="8"
+                                        Background="#0078D4" BorderThickness="0"
+                                        VerticalAlignment="Center" Margin="8,0,0,0"
+                                        Click="DirectDownload_Click">
+                                    <FontIcon FontSize="14" Glyph="&#xE896;"
+                                              Foreground="White"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                                </Button>
+                            </Grid>
+                        </Border>
+                        <!-- 网盘下载(DriveLinks) -->
+                        <StackPanel x:Name="DrivePanel" Spacing="8" />
                     </StackPanel>
 
                     <!-- Description -->
