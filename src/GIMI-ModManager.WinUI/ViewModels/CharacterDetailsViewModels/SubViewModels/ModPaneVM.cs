@@ -142,7 +142,16 @@ public sealed partial class ModPaneVM(
                 _notificationService.ShowNotification(string.Format(_localizer.GetLocalizedStringOrDefault("ModPaneVM_FailedToLoadKeyswapsTitle", defaultValue: "Failed to load keyswaps for mod {0}"), mod.GetDisplayName()), e.Message, null);
             }
 
-            return new { modEntry, modSettings, keySwaps };
+            // 扫描所有 ini 文件提取按键绑定
+            var keyBindingGroups = Core.Entities.Mods.Helpers.ModIniKeyBindingParser.ParseAllKeyBindings(mod.FullPath);
+            _logger.Information("[ModPaneVM] 按键绑定解析完成: {Groups} 个文件, {Total} 条绑定",
+                keyBindingGroups.Count, keyBindingGroups.Sum(g => g.Bindings.Count));
+            foreach (var g in keyBindingGroups)
+            foreach (var b in g.Bindings)
+                _logger.Information("[ModPaneVM]   [{File}] {Section} → '{Key}' (arrow={Arrow})",
+                    g.IniFileRelativePath, b.SectionName, b.KeyValue, b.IsArrowKey);
+
+            return new { modEntry, modSettings, keySwaps, keyBindingGroups };
         }, _cancellationToken);
 
         if (modPaneData is null)
@@ -150,7 +159,8 @@ public sealed partial class ModPaneVM(
 
 
         _loadedMod = modPaneData.modEntry;
-        ModModel = ModPaneFieldsVm.FromModEntry(modPaneData.modEntry, modPaneData.modSettings, modPaneData.keySwaps ?? []);
+        ModModel = ModPaneFieldsVm.FromModEntry(modPaneData.modEntry, modPaneData.modSettings,
+            modPaneData.keySwaps ?? [], modPaneData.keyBindingGroups);
         ModModel.PropertyChanged += ModModel_PropertyChanged;
         _loadedModId = modId;
         IsReadOnly = false;
@@ -629,9 +639,23 @@ public partial class ModPaneFieldsVm : ObservableObject
     public ObservableCollection<ModPaneFieldsKeySwapVm> KeySwaps { get; } = new();
     public bool IsKeySwapsChanged => AnyKeySwapChanges();
 
+    /// <summary>所有 ini 文件中的按键绑定（非 KeySwap 段落），按文件分组</summary>
+    public ObservableCollection<Core.Entities.Mods.Helpers.ModIniKeyBindingGroup> KeyBindingGroups { get; } = new();
+
+    /// <summary>True if this mod has any key bindings to display (either KeyBindingGroups or KeySwaps)</summary>
+    public bool HasKeyBindings => KeyBindingGroups.Any(g => g.Bindings.Count > 0)
+                                  || (KeySwaps.Count > 0
+                                      && KeySwaps.Any(k => !string.IsNullOrWhiteSpace(k.ForwardHotkey)
+                                                           || !string.IsNullOrWhiteSpace(k.BackwardHotkey)));
+
+    /// <summary>True if this mod has NO key bindings at all</summary>
+    public bool HasNoKeyBindings => !HasKeyBindings;
+
     public string IsKeySwapManagementEnabled => (!IgnoreMergedIni).ToString().ToLower();
 
-    private ModPaneFieldsVm(CharacterSkinEntry modEntry, ModSettings modSettings, IEnumerable<KeySwapSection> keySwaps)
+    private ModPaneFieldsVm(CharacterSkinEntry modEntry, ModSettings modSettings,
+        IEnumerable<KeySwapSection> keySwaps,
+        List<Core.Entities.Mods.Helpers.ModIniKeyBindingGroup> keyBindingGroups)
     {
         IsEnabled = modEntry.IsEnabled;
         ImageUri = modSettings.ImagePath ?? ImageHandlerService.StaticPlaceholderImageUri;
@@ -651,8 +675,15 @@ public partial class ModPaneFieldsVm : ObservableObject
                 VariationsCount = keySwap.Variants?.ToString() ?? "Unknown"
             });
 
-            KeySwaps.Last().PropertyChanged += (_, e) => { OnPropertyChanged(nameof(KeySwaps)); };
+            KeySwaps.Last().PropertyChanged += (_, e) =>
+            {
+                OnPropertyChanged(nameof(KeySwaps));
+                OnPropertyChanged(nameof(HasKeyBindings));
+            };
         }
+
+        foreach (var group in keyBindingGroups)
+            KeyBindingGroups.Add(group);
 
         PropertyChanged += (_, e) =>
         {
@@ -665,11 +696,13 @@ public partial class ModPaneFieldsVm : ObservableObject
     {
     }
 
-    public static ModPaneFieldsVm FromModEntry(CharacterSkinEntry modEntry, ModSettings modSettings, ICollection<KeySwapSection> keySwaps)
+    public static ModPaneFieldsVm FromModEntry(CharacterSkinEntry modEntry, ModSettings modSettings,
+        ICollection<KeySwapSection> keySwaps,
+        List<Core.Entities.Mods.Helpers.ModIniKeyBindingGroup> keyBindingGroups)
     {
-        return new ModPaneFieldsVm(modEntry, modSettings, keySwaps)
+        return new ModPaneFieldsVm(modEntry, modSettings, keySwaps, keyBindingGroups)
         {
-            UnchangedValue = new ModPaneFieldsVm(modEntry, modSettings, keySwaps),
+            UnchangedValue = new ModPaneFieldsVm(modEntry, modSettings, keySwaps, keyBindingGroups),
             IsLoaded = true
         };
     }
