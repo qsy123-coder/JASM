@@ -18,11 +18,6 @@
             x:Key="BoolToVisibilityConverter"
             TrueValue="Visible"
             FalseValue="Collapsed" />
-        <converters:BoolToVisibilityConverter
-            x:Key="InverseBoolToVisibilityConverter"
-            TrueValue="Collapsed"
-            FalseValue="Visible" />
-
         <DataTemplate x:Key="CategoryItemTemplate" x:DataType="models:ModMarketCategory">
             <Grid Padding="12,10" ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
@@ -260,41 +255,6 @@
                                Text="没有找到 Mod" />
                 </Grid>
 
-                <!-- Debug overlay(可隐藏/显示) -->
-                <Border HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
-                        Margin="8" Padding="8,6" CornerRadius="4" Background="#DD000000"
-                        MaxHeight="160"
-                        Visibility="{x:Bind ViewModel.IsDebugPanelVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <Grid Grid.Row="0">
-                            <TextBlock Text="调试日志" Foreground="#AAA" FontSize="11"
-                                       FontFamily="Consolas" VerticalAlignment="Center" />
-                            <Button HorizontalAlignment="Right" Padding="8,2"
-                                    Background="Transparent" BorderThickness="0"
-                                    Command="{x:Bind ViewModel.ToggleDebugPanelCommand}">
-                                <TextBlock Text="隐藏 ✕" Foreground="#AAA" FontSize="11" />
-                            </Button>
-                        </Grid>
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                            <TextBlock x:Name="DebugText" Foreground="#FF0" FontSize="11"
-                                       FontFamily="Consolas" IsTextSelectionEnabled="True"
-                                       Text="{x:Bind ViewModel.DebugInfo, Mode=OneWay}"
-                                       TextWrapping="Wrap" />
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
-
-                <!-- 调试面板隐藏后的重新显示按钮 -->
-                <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8"
-                        Padding="10,4" CornerRadius="4" Background="#DD000000" BorderThickness="0"
-                        Visibility="{x:Bind ViewModel.IsDebugPanelVisible, Converter={StaticResource InverseBoolToVisibilityConverter}, Mode=OneWay}"
-                        Command="{x:Bind ViewModel.ToggleDebugPanelCommand}">
-                    <TextBlock Text="调试" Foreground="#FF0" FontSize="11" FontFamily="Consolas" />
-                </Button>
             </Grid>
         </Grid>
 
