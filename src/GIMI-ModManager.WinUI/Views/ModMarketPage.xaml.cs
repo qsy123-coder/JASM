@@ -23,14 +23,9 @@ public sealed partial class ModMarketPage : Page
             if (e.PropertyName == nameof(ModMarketViewModel.SelectedMod))
                 OnSelectedModChanged();
         };
-        // 详情面板内部日志转发到底部调试面板
-        DetailPanel.DebugLog += DebugLog;
         // 关闭请求经 ViewModel 重置 SelectedMod=null,保证下次点同一 mod 时 PropertyChanged 能触发
         DetailPanel.Closed += (_, _) => ViewModel.CloseDetailPanelCommand.Execute(null);
     }
-
-    /// <summary>追加一行日志到底部调试面板(经 VM 统一限行数并写 Serilog)</summary>
-    private void DebugLog(string msg) => ViewModel.AppendDebugLog(msg);
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -49,7 +44,6 @@ public sealed partial class ModMarketPage : Page
 
     private void OnSelectedModChanged()
     {
-        DebugLog($"[Page] SelectedMod变更: {ViewModel.SelectedMod?.Title ?? "null"}");
         if (ViewModel.SelectedMod is { } mod)
             DetailPanel.Show(mod);
         else
@@ -77,17 +71,11 @@ public sealed partial class ModMarketPage : Page
             ModCardsPanel.InvalidateMeasure();
             ModCardsPanel.UpdateLayout();
 
-            // Append viewport stats to the VM debug overlay
-            var sv = CardScrollViewer;
-            var vp = $"V={sv.ViewportHeight:F0} E={sv.ExtentHeight:F0} SH={sv.ScrollableHeight:F0} | Cards={ModCardsPanel.Children.Count} Mods={ViewModel.Mods.Count}";
-            DebugLog(vp);
-
             // If content fits viewport, auto-load more
             if (CardScrollViewer.ScrollableHeight <= 0
                 && ViewModel.HasMorePages && !ViewModel.IsLoading
                 && ModCardsPanel.Children.Count > 0)
             {
-                DebugLog("[Scroll] 内容不满一屏,自动加载更多");
                 _ = ViewModel.LoadMoreCommand.ExecuteAsync(null);
             }
         });
@@ -103,7 +91,6 @@ public sealed partial class ModMarketPage : Page
         // Wire click to show detail panel
         card.Tapped += (s, e) =>
         {
-            DebugLog($"[Page] 点击卡片: {mod.Title}, 当前SelectedMod: {ViewModel.SelectedMod?.Title ?? "null"}");
             ViewModel.OpenModDetailCommand.Execute(mod);
         };
         card.IsTapEnabled = true;
@@ -116,7 +103,6 @@ public sealed partial class ModMarketPage : Page
         if (CardScrollViewer.VerticalOffset >= CardScrollViewer.ScrollableHeight - 200
             && !ViewModel.IsLoading && ViewModel.HasMorePages)
         {
-            DebugLog($"[Scroll] 触底加载更多: offset={CardScrollViewer.VerticalOffset:F0}/{CardScrollViewer.ScrollableHeight:F0}");
             _ = ViewModel.LoadMoreCommand.ExecuteAsync(null);
         }
     }
