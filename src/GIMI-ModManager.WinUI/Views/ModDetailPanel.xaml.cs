@@ -14,17 +14,8 @@ public sealed partial class ModDetailPanel : UserControl
     private ModMarketMod? _currentMod;
     private bool _isClosing;
 
-    /// <summary>页面订阅后转发到底部调试面板</summary>
-    public event Action<string>? DebugLog;
-
     /// <summary>用户请求关闭面板(点关闭按钮/空白区)。由页面重置 ViewModel.SelectedMod,经 PropertyChanged 链路调用 Hide()</summary>
     public event EventHandler? Closed;
-
-    private void LogDebug(string msg)
-    {
-        _logger.Information(msg);
-        DebugLog?.Invoke(msg);
-    }
 
     public ModDetailPanel()
     {
@@ -34,11 +25,11 @@ public sealed partial class ModDetailPanel : UserControl
             // 防御:WinUI 的 Stop() 也可能触发 Completed;若已被 Show() 打断则不能 Collapse
             if (!_isClosing)
             {
-                LogDebug("[Panel] SlideOut完成但已被打断(非关闭中),忽略");
+                _logger.Information("[Panel] SlideOut完成但已被打断(非关闭中),忽略");
                 return;
             }
             _isClosing = false;
-            LogDebug("[Panel] SlideOut完成 → 面板Collapsed");
+            _logger.Information("[Panel] SlideOut完成 → 面板Collapsed");
             PanelRoot.Visibility = Visibility.Collapsed;
             _currentMod = null;
         };
@@ -47,11 +38,11 @@ public sealed partial class ModDetailPanel : UserControl
 
     public void Show(ModMarketMod mod)
     {
-        LogDebug($"[Panel] Show调用: 当前={_currentMod?.Title ?? "null"}, 新={mod.Title}, 可见={PanelRoot.Visibility}");
+        _logger.Information($"[Panel] Show调用: 当前={_currentMod?.Title ?? "null"}, 新={mod.Title}, 可见={PanelRoot.Visibility}");
 
         if (_currentMod == mod && PanelRoot.Visibility == Visibility.Visible)
         {
-            LogDebug("[Panel] 同一mod且面板可见 → 重新滑入");
+            _logger.Information("[Panel] 同一mod且面板可见 → 重新滑入");
             _isClosing = false;
             SlideOutStoryboard.Stop();
             SlideInStoryboard.Stop();
@@ -78,7 +69,7 @@ public sealed partial class ModDetailPanel : UserControl
 
     public void Hide()
     {
-        LogDebug($"[Panel] Hide调用: 可见={PanelRoot.Visibility}");
+        _logger.Information($"[Panel] Hide调用: 可见={PanelRoot.Visibility}");
         if (PanelRoot.Visibility != Visibility.Visible) return;
         _isClosing = true;
         SlideOutStoryboard.Begin();
@@ -264,13 +255,13 @@ public sealed partial class ModDetailPanel : UserControl
 
     private void TapCloseArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        LogDebug("[Panel] 点击空白关闭区 → 触发Closed事件");
+        _logger.Information("[Panel] 点击空白关闭区 → 触发Closed事件");
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        LogDebug("[Panel] 点击关闭按钮 → 触发Closed事件");
+        _logger.Information("[Panel] 点击关闭按钮 → 触发Closed事件");
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
