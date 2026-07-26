@@ -74,35 +74,12 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private ModMarketMod? _selectedMod;
 
-    [ObservableProperty]
-    private string _debugInfo = "等待加载...";
-
-    /// <summary>底部调试面板是否显示(隐藏后留一个"调试"小按钮可再显示)</summary>
-    [ObservableProperty]
-    private bool _isDebugPanelVisible = true;
-
-    [RelayCommand]
-    private void ToggleDebugPanel() => IsDebugPanelVisible = !IsDebugPanelVisible;
-
     [RelayCommand]
     private void OpenDownloadManager()
     {
         _notificationManager.ShowNotification("下载管理",
             "下载管理功能即将推出，敬请期待。",
             TimeSpan.FromSeconds(4));
-    }
-
-    private const int MaxDebugLines = 200;
-
-    /// <summary>追加一行到调试面板(限制行数防止无限增长),同时写 Serilog</summary>
-    public void AppendDebugLog(string msg)
-    {
-        _logger.Information("[Debug] " + msg);
-        var text = (DebugInfo ?? "") + "\n" + msg;
-        var lines = text.Split('\n');
-        if (lines.Length > MaxDebugLines)
-            text = string.Join("\n", lines[^MaxDebugLines..]);
-        DebugInfo = text;
     }
 
     public ModMarketViewModel(ILogger logger, ModMarketService modMarketService,
@@ -215,14 +192,12 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     {
         if (IsLoading)
         {
-            AppendDebugLog($"[Load] 跳过: 已在加载中 (append={append})");
             return;
         }
         IsLoading = true;
         // 首次/重载 vs 加载更多,分别控制不同位置的指示器
         IsInitialLoading = !append;
         IsLoadingMore = append;
-        AppendDebugLog($"[Load] 开始: append={append} → 顶部指示器={IsInitialLoading}, 底部指示器={IsLoadingMore}");
 
         // Only increment page when appending (load-more). Must be done after
         // the IsLoading guard to prevent races from LayoutUpdated / ViewChanged.
@@ -262,7 +237,6 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             // "最近更新": 只显示 3 天内更新的内容
             DateTime? updatedAfter = SelectedSortOption == "最近更新"
                 ? DateTime.UtcNow.AddDays(-3) : null;
-            AppendDebugLog($"[Filter] sort={SelectedSortOption} sortBy={sortBy} updatedAfter={updatedAfter:yyyy-MM-dd}");
 
             var result = await _modMarketService.GetModsAsync(
                 character: SelectedCategory?.Key,
@@ -296,40 +270,11 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 
             IsEmpty = Mods.Count == 0;
             StatusMessage = IsEmpty ? "没有找到 Mod" : string.Empty;
-
-            // ── Debug overlay ──────────────────────────────────
-            var dropped = result.RawResponseCount - mods.Count;
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Pg={_currentPage} cat={SelectedCategory?.Key ?? "?"} modsOnly={categoryFilter} search={SearchText ?? ""}");
-            sb.AppendLine(result.RequestUrl ?? "?");
-            sb.Append($"Content-Range: {result.ContentRange ?? "MISSING"}");
-            if (result.UsedCountFallback) sb.Append(" (count fallback used)");
-            sb.AppendLine();
-            sb.Append($"Raw JSON rows: {result.RawResponseCount}  Deserialized: {mods.Count}");
-            if (dropped > 0) sb.Append($"  DROPPED: {dropped}");
-            sb.AppendLine();
-            sb.Append($"Total: {result.TotalCount}  Accumulated: {Mods.Count}  HasMore={HasMorePages}");
-
-            // Show first few dropped entries so we can debug schema mismatches
-            if (result.DroppedEntries.Length > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine($"── Dropped entries: {result.DroppedEntries.Length} ──");
-                for (int i = 0; i < Math.Min(result.DroppedEntries.Length, 2); i++)
-                {
-                    sb.AppendLine($"  [{i + 1}] {result.DroppedEntries[i]}");
-                }
-            }
-
-            // 追加而非覆盖,保留之前的点击/滚动日志
-            AppendDebugLog(sb.ToString().TrimEnd());
-            AppendDebugLog($"[Load] 完成: 本页={mods.Count} 累计={Mods.Count} HasMore={HasMorePages}");
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to load mods");
             StatusMessage = $"加载失败：{ex.Message}";
-            AppendDebugLog($"[Load] 失败: {ex.Message}");
         }
         finally
         {
