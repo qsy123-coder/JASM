@@ -118,9 +118,16 @@ For example, if `README.md`, `best-practice/claude-subagents.md`, and a skill fi
 
 This makes the git history cleaner and easier to review, revert, or cherry-pick individual changes.
 
-## Documentation
+## JASM Build & Release Verification
 
-See `.claude/rules/markdown-docs.md` for documentation standards. Key docs:
-- `best-practice/claude-subagents.md`: Subagent frontmatter, hooks, and repository agents
-- `best-practice/claude-commands.md`: Slash command patterns and built-in command reference
-- `orchestration-workflow/orchestration-workflow.md`: Weather system flow diagram
+Before pushing code, always verify the full CI pipeline locally — `dotnet build` alone is NOT enough:
+
+1. **C# 编译**: `dotnet build src/GIMI-ModManager.WinUI/GIMI-ModManager.WinUI.csproj`
+2. **Python 发布脚本**: `python Build/Release.py ExcludeElevator` — 验证打包流程不会因转义字符、路径问题中断
+3. **分支名匹配**: CI workflow 监听 `master`（不是 `main`），确保 `.github/workflows/*.yml` 中的分支名与仓库一致
+4. **GitHub Actions 启用**: fork 仓库默认禁用 Actions，需手动去 Actions 页开启
+
+常见坑:
+- Python 3.12+ 对 `\P` `\d` 等非法转义报 SyntaxWarning，路径用正斜杠 `/`，正则用原始字符串 `r""`
+- `dotnet publish` 不加 `-o` 时输出到 TFM 子目录，与脚本期望的路径不匹配
+- workflow `branches:` 过滤器不匹配会导致 push 不触发 CI
