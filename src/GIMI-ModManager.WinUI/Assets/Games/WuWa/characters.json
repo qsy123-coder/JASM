@@ -889,5 +889,23 @@
     "InGameSkins": [],
     "InternalName": "Lucilla",
     "DisplayName": "Lucilla"
+  },
+  {
+    "Keys": [
+      "aemeath",
+      "爱弥斯"
+    ],
+    "ReleaseDate": "2026-02-05T00:00:00",
+    "Image": "Aemeath.png",
+    "Rarity": 5,
+    "Element": "Fusion",
+    "Class": "Sword",
+    "Region": [
+      "Lahai"
+    ],
+    "ModFilesName": "Aemeath",
+    "InGameSkins": [],
+    "InternalName": "Aemeath",
+    "DisplayName": "Aemeath"
   }
 ]
