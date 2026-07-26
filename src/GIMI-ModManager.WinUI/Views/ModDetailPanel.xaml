@@ -158,9 +158,24 @@
                                       VerticalScrollMode="Disabled">
                             <StackPanel x:Name="GalleryPanel" Orientation="Horizontal" Spacing="8" />
                         </ScrollViewer>
-                        <!-- 下载方式 -->
-                        <TextBlock Text="下载方式" FontSize="14" FontWeight="SemiBold"
-                                   Margin="0,0,0,8" />
+                        <!-- 下载方式 + 解压码 -->
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="下载方式" FontSize="14" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <Border Grid.Column="2" Padding="6,2" CornerRadius="4"
+                                    Background="#10FFFFFF" BorderBrush="#30FFFFFF"
+                                    BorderThickness="0.5">
+                                <TextBlock Text="解压码 x77syq" FontSize="11"
+                                           FontFamily="Consolas"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
                         <!-- 直链下载(有 DownloadUrl 时显示) -->
                         <Border x:Name="DirectDownloadCard" Margin="0,0,0,8"
                                 Visibility="Collapsed" Padding="12,10"
