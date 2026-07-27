@@ -17,6 +17,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.ModExport;
 using GIMI_ModManager.WinUI.Services.ModHandling;
+using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels;
@@ -217,6 +218,7 @@ public partial class App : Application
                 });
                 services.AddSingleton<ModUpdateAvailableChecker>();
                 services.AddSingleton<ModInstallerService>();
+                services.AddSingleton<GameDataSyncService>();
 
                 // Supabase HttpClient for ModMarket
                 services.AddHttpClient("Supabase", (sp, client) =>
@@ -234,6 +236,20 @@ public partial class App : Application
                             TimeSpan.FromMilliseconds(500), 3, null, true))
                 );
 
+
+                // Game Data Sync HttpClient
+                services.AddHttpClient("GameDataSync", client =>
+                    {
+                        client.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager");
+                        client.DefaultRequestHeaders.Add("Accept", "application/json");
+                        client.Timeout = TimeSpan.FromSeconds(60);
+                    })
+                    .AddHttpMessageHandler<HttpLoggerHandler>()
+                    .AddPolicyHandler(
+                        HttpPolicyExtensions.HandleTransientHttpError()
+                            .WaitAndRetryAsync(Backoff.DecorrelatedJitterBackoffV2(
+                                TimeSpan.FromMilliseconds(500), 3, null, true))
+                    );
 
                 services.AddHttpClient(Options.DefaultName, (client) =>
                     {
