@@ -1,4 +1,6 @@
-﻿using Windows.ApplicationModel.DataTransfer;
+﻿using System.Security.Cryptography;
+using System.Text;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
@@ -10,6 +12,9 @@ namespace GIMI_ModManager.WinUI.Services;
 public class ImageHandlerService
 {
     private readonly string _tmpFolder = Path.Combine(App.TMP_DIR, "Images");
+    private readonly string _cacheFolder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "JASM", "ImageCache");
 
     public readonly Uri PlaceholderImageUri = StaticPlaceholderImageUri;
 
@@ -20,9 +25,33 @@ public class ImageHandlerService
     public ImageHandlerService(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
+
+        if (!Directory.Exists(_cacheFolder))
+            Directory.CreateDirectory(_cacheFolder);
     }
 
     public string PlaceholderImagePath => PlaceholderImageUri.LocalPath;
+
+    /// <summary>
+    /// Get the current cache size in bytes.
+    /// </summary>
+    public long GetCacheSize()
+    {
+        if (!Directory.Exists(_cacheFolder)) return 0;
+        return new DirectoryInfo(_cacheFolder)
+            .GetFiles("*", SearchOption.AllDirectories)
+            .Sum(f => f.Length);
+    }
+
+    /// <summary>
+    /// Clear all cached images.
+    /// </summary>
+    public void ClearCache()
+    {
+        if (!Directory.Exists(_cacheFolder)) return;
+        foreach (var file in Directory.GetFiles(_cacheFolder))
+            try { File.Delete(file); } catch { /* ignore */ }
+    }
 
     public async Task<IStorageFile?> PickImageAsync(bool copyToTmpFolder = true, Window? window = null)
     {
@@ -55,35 +84,64 @@ public class ImageHandlerService
         if (!url.IsAbsoluteUri)
             throw new ArgumentException("Url must be absolute", nameof(url));
 
-
-        if (!Constants.SupportedImageExtensions.Contains(Path.GetExtension(url.AbsolutePath)))
+        var extension = Path.GetExtension(url.AbsolutePath);
+        if (!Constants.SupportedImageExtensions.Contains(extension))
         {
-            var invalidExtension = Path.GetExtension(url.AbsolutePath);
-
-            invalidExtension = string.IsNullOrWhiteSpace(invalidExtension)
-                ? "Could determine extension"
-                : invalidExtension;
+            var invalidExtension = string.IsNullOrWhiteSpace(extension)
+                ? "Could not determine extension"
+                : extension;
 
             throw new ArgumentException($"Url must be a valid image url. Invalid extension: {invalidExtension}");
         }
 
+        // Check cache first
+        var cacheKey = GetCacheKey(url.ToString());
+        var cacheFile = Path.Combine(_cacheFolder, cacheKey + extension);
+
+        if (File.Exists(cacheFile))
+        {
+            try
+            {
+                return await StorageFile.GetFileFromPathAsync(cacheFile);
+            }
+            catch
+            {
+                // Cache file corrupt, re-download
+                try { File.Delete(cacheFile); } catch { /* ignore */ }
+            }
+        }
+
+        // Download to temp file first, then move to cache
         var tmpFolder = new DirectoryInfo(_tmpFolder);
-
-        var tmpFile = Path.Combine(tmpFolder.FullName,
-            $"WEB_DOWNLOAD_{Guid.NewGuid():N}{Path.GetExtension(url.ToString())}");
-
-
         if (!tmpFolder.Exists)
             tmpFolder.Create();
+
+        var tmpFile = Path.Combine(tmpFolder.FullName,
+            $"WEB_DOWNLOAD_{Guid.NewGuid():N}{extension}");
 
         var client = _httpClientFactory.CreateClient();
 
         await using var responseStream = await client.GetStreamAsync(url, cancellationToken).ConfigureAwait(false);
+        await using var tmpFileStream = File.Create(tmpFile);
+        await responseStream.CopyToAsync(tmpFileStream, cancellationToken).ConfigureAwait(false);
 
-        await using var fileStream = File.Create(tmpFile);
-        await responseStream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
+        // Save to cache
+        try
+        {
+            File.Copy(tmpFile, cacheFile, overwrite: true);
+        }
+        catch
+        {
+            // Cache write failed, still return the temp file
+        }
 
         return await StorageFile.GetFileFromPathAsync(tmpFile);
+    }
+
+    private static string GetCacheKey(string url)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(url));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
 
