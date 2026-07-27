@@ -199,6 +199,65 @@
 
                 <TextBlock
                     Style="{ThemeResource SubtitleTextBlockStyle}"
+                    Text="游戏数据同步"
+                    l:Uids.Uid="/Settings/GameDataSyncSectionHeader" />
+                <StackPanel Margin="{StaticResource SmallTopBottomMargin}">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="上次同步: " />
+                        <TextBlock
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="{x:Bind ViewModel.GameDataLastSyncTime, Mode=OneWay}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="数据版本: " />
+                        <TextBlock
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="{x:Bind ViewModel.GameDataCurrentVersion, Mode=OneWay}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="状态: " />
+                        <TextBlock
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="{x:Bind ViewModel.GameDataSyncStatus, Mode=OneWay}" />
+                    </StackPanel>
+                    <Button
+                        Margin="0,6,0,4"
+                        Command="{x:Bind ViewModel.CheckAndSyncGameDataCommand}"
+                        IsEnabled="{x:Bind ViewModel.IsGameDataSyncNotRunning, Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE895;" />
+                            <TextBlock Text="检查并同步游戏数据" />
+                        </StackPanel>
+                    </Button>
+                    <CheckBox
+                        Command="{x:Bind ViewModel.ToggleGameDataAutoSyncCommand}"
+                        Content="JASM 启动时自动检查更新"
+                        IsChecked="{x:Bind ViewModel.IsGameDataSyncEnabled, Mode=OneWay}" />
+                    <TextBlock
+                        Margin="0,4,0,0"
+                        IsTextSelectionEnabled="True"
+                        TextWrapping="WrapWholeWords"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="从 GitHub 下载最新的游戏角色数据，包括新角色、NPC 和图片资源。自定义角色和 Mod 将被保留。" />
+                </StackPanel>
+
+                <TextBlock
+                    Style="{ThemeResource SubtitleTextBlockStyle}"
                     Text="Elevator Process"
                     l:Uids.Uid="/Settings/ElevatorSectionHeader" />
                 <StackPanel Margin="{StaticResource SmallTopBottomMargin}">
