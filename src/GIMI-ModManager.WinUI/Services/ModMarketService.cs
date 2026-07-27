@@ -125,14 +125,18 @@ public class ModMarketService
                 foreach (var c in chars)
                 {
                     if (c.ImageUri is null) continue;
-                    imageLookup.TryAdd(c.InternalName.Id, c.ImageUri);
-                    imageLookup.TryAdd(c.DisplayName, c.ImageUri);
+                    imageLookup[c.InternalName.Id] = c.ImageUri;
+                    imageLookup[c.DisplayName] = c.ImageUri;
                     if (c is ICharacter ch)
                         foreach (var key in ch.Keys)
-                            imageLookup.TryAdd(key, c.ImageUri);
+                            imageLookup[key] = c.ImageUri;
                 }
             }
-            catch { imageLookup = new(); }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to build image lookup from local characters");
+                imageLookup = new();
+            }
 
             // Icons for special Supabase-only categories
             var iconDir = Path.Combine(
@@ -157,11 +161,34 @@ public class ModMarketService
             {
                 Uri? img = null;
                 imageLookup.TryGetValue(key, out img);
+
+                // Fallback: remove special chars (spaces, middle dots) and try again
+                if (img is null)
+                {
+                    var normalized = key
+                        .Replace(" ", "")
+                        .Replace("·", "") // middle dot
+                        .Replace("・", "") // katakana middle dot
+                        .Replace("・", "")     // fullwidth middle dot
+                        .Replace("·", "");     // latin middle dot
+
+                    if (!string.Equals(normalized, key, StringComparison.OrdinalIgnoreCase))
+                    {
+                        imageLookup.TryGetValue(normalized, out img);
+                        if (img is not null)
+                            _logger.Debug("Resolved image for '{Key}' via normalized key '{Normalized}'", key, normalized);
+                    }
+                }
+
                 if (img is null && specialIcons.TryGetValue(key, out var iconFile))
                 {
                     var path = Path.Combine(iconDir, iconFile);
                     if (File.Exists(path)) img = new Uri(path);
                 }
+
+                if (img is null && !specialIcons.ContainsKey(key))
+                    _logger.Debug("No image found for category key '{Key}'", key);
+
                 return img;
             }
 
