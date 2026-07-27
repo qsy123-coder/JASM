@@ -151,7 +151,6 @@ public class GameService : IGameService
         await InitializeCustomCharactersAsync().ConfigureAwait(false);
         CheckIfDuplicateInternalNameExists();
 
-        Initialized?.Invoke(this, EventArgs.Empty);
         _logger.Information("GameService re-initialization complete for game: {GameName}", GameName);
     }
 
