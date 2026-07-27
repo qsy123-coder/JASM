@@ -793,26 +793,6 @@
   },
   {
     "Keys": [
-      "xuanling",
-      "秧秧玄翎",
-      "秧秧·玄翎",
-      "玄翎"
-    ],
-    "ReleaseDate": "2026-07-10T00:00:00",
-    "Image": "Xuanling.jpeg",
-    "Rarity": 5,
-    "Element": "Havoc",
-    "Class": "Sword",
-    "Region": [
-      "Huanglong"
-    ],
-    "ModFilesName": "Xuanling",
-    "InGameSkins": [],
-    "InternalName": "Xuanling",
-    "DisplayName": "玄翎"
-  },
-  {
-    "Keys": [
       "Sigrika"
     ],
     "ReleaseDate": "2026-12-11T00:00:00",
@@ -888,7 +868,7 @@
       "xuanling"
     ],
     "ReleaseDate": "2026-07-10T00:00:00",
-    "Image": "YangyangXuanling.png",
+    "Image": "YangyangXuanling.webp",
     "Rarity": 5,
     "Element": "Havoc",
     "Class": "Sword",
@@ -905,7 +885,7 @@
       "suisui"
     ],
     "ReleaseDate": "2026-08-13T00:00:00",
-    "Image": "Suisui.png",
+    "Image": "Suisui.webp",
     "Rarity": 5,
     "Element": "Glacio",
     "Class": "Rectifier",
@@ -922,7 +902,7 @@
       "qingxiao"
     ],
     "ReleaseDate": "2026-08-20T00:00:00",
-    "Image": "Qingxiao.png",
+    "Image": "Qingxiao.webp",
     "Rarity": 5,
     "Element": "Aero",
     "Class": "Sword",
@@ -939,7 +919,7 @@
       "jingran"
     ],
     "ReleaseDate": "2026-09-04T00:00:00",
-    "Image": "Jingran.png",
+    "Image": "Jingran.webp",
     "Rarity": 5,
     "Element": "Fusion",
     "Class": "Broadblade",
@@ -956,7 +936,7 @@
       "xinyuehu"
     ],
     "ReleaseDate": "2026-09-11T00:00:00",
-    "Image": "Xinyuehu.png",
+    "Image": "Xinyuehu.webp",
     "Rarity": 5,
     "Element": "Electro",
     "Class": "Rectifier",
@@ -973,7 +953,7 @@
       "suoming"
     ],
     "ReleaseDate": "2026-09-25T00:00:00",
-    "Image": "Suoming.png",
+    "Image": "Suoming.webp",
     "Rarity": 5,
     "Element": "Havoc",
     "Class": "Rectifier",
