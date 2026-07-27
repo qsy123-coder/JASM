@@ -125,6 +125,36 @@ public class GameService : IGameService
         Initialized?.Invoke(this, EventArgs.Empty);
     }
 
+    public async Task ReinitializeAsync()
+    {
+        if (!_initialized)
+            throw new InvalidOperationException("GameService is not initialized");
+
+        _logger.Information("Re-initializing GameService for game: {GameName}", GameName);
+
+        _characters.Clear();
+        _npcs.Clear();
+        _gameObjects.Clear();
+        _weapons.Clear();
+        _duplicateInternalNames.Clear();
+        _categories.Clear();
+
+        await InitializeGameInfoAsync().ConfigureAwait(false);
+        await InitializeRegionsAsync().ConfigureAwait(false);
+        await InitializeElementsAsync().ConfigureAwait(false);
+        await InitializeClassesAsync().ConfigureAwait(false);
+        await InitializeCharactersAsync().ConfigureAwait(false);
+        await InitializeNpcsAsync().ConfigureAwait(false);
+        await InitializeObjectsAsync().ConfigureAwait(false);
+        await InitializeWeaponsAsync().ConfigureAwait(false);
+        await MapCategoriesLanguageOverrideAsync().ConfigureAwait(false);
+        await InitializeCustomCharactersAsync().ConfigureAwait(false);
+        CheckIfDuplicateInternalNameExists();
+
+        Initialized?.Invoke(this, EventArgs.Empty);
+        _logger.Information("GameService re-initialization complete for game: {GameName}", GameName);
+    }
+
 
     public static async Task<GameInfo?> GetGameInfoAsync(SupportedGames game)
     {
