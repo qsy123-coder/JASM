@@ -880,5 +880,109 @@
     "InGameSkins": [],
     "InternalName": "Aemeath",
     "DisplayName": "爱弥斯"
+  },
+  {
+    "Keys": [
+      "yangyangxuanling",
+      "yangyang",
+      "xuanling"
+    ],
+    "ReleaseDate": "2026-07-10T00:00:00",
+    "Image": "YangyangXuanling.png",
+    "Rarity": 5,
+    "Element": "Havoc",
+    "Class": "Sword",
+    "Region": [
+      "Mingting"
+    ],
+    "ModFilesName": "YangyangXuanling",
+    "InGameSkins": [],
+    "InternalName": "YangyangXuanling",
+    "DisplayName": "秧秧・玄翎"
+  },
+  {
+    "Keys": [
+      "suisui"
+    ],
+    "ReleaseDate": "2026-08-13T00:00:00",
+    "Image": "Suisui.png",
+    "Rarity": 5,
+    "Element": "Glacio",
+    "Class": "Rectifier",
+    "Region": [
+      "Mingting"
+    ],
+    "ModFilesName": "Suisui",
+    "InGameSkins": [],
+    "InternalName": "Suisui",
+    "DisplayName": "穗穗"
+  },
+  {
+    "Keys": [
+      "qingxiao"
+    ],
+    "ReleaseDate": "2026-08-20T00:00:00",
+    "Image": "Qingxiao.png",
+    "Rarity": 5,
+    "Element": "Aero",
+    "Class": "Sword",
+    "Region": [
+      "Mengzhou"
+    ],
+    "ModFilesName": "Qingxiao",
+    "InGameSkins": [],
+    "InternalName": "Qingxiao",
+    "DisplayName": "清宵"
+  },
+  {
+    "Keys": [
+      "jingran"
+    ],
+    "ReleaseDate": "2026-09-04T00:00:00",
+    "Image": "Jingran.png",
+    "Rarity": 5,
+    "Element": "Fusion",
+    "Class": "Broadblade",
+    "Region": [
+      "Mengzhou"
+    ],
+    "ModFilesName": "Jingran",
+    "InGameSkins": [],
+    "InternalName": "Jingran",
+    "DisplayName": "景燃"
+  },
+  {
+    "Keys": [
+      "xinyuehu"
+    ],
+    "ReleaseDate": "2026-09-11T00:00:00",
+    "Image": "Xinyuehu.png",
+    "Rarity": 5,
+    "Element": "Electro",
+    "Class": "Rectifier",
+    "Region": [
+      "Mengzhou"
+    ],
+    "ModFilesName": "Xinyuehu",
+    "InGameSkins": [],
+    "InternalName": "Xinyuehu",
+    "DisplayName": "心月狐"
+  },
+  {
+    "Keys": [
+      "suoming"
+    ],
+    "ReleaseDate": "2026-09-25T00:00:00",
+    "Image": "Suoming.png",
+    "Rarity": 5,
+    "Element": "Havoc",
+    "Class": "Rectifier",
+    "Region": [
+      "Mengzhou"
+    ],
+    "ModFilesName": "Suoming",
+    "InGameSkins": [],
+    "InternalName": "Suoming",
+    "DisplayName": "锁暝"
   }
 ]
