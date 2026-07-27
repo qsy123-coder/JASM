@@ -21,6 +21,7 @@ using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
+using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.Validators.PreConfigured;
@@ -53,6 +54,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
     private readonly NotificationManager _notificationManager;
     private readonly UpdateChecker _updateChecker;
+    private readonly GameDataSyncService _gameDataSyncService;
     public ElevatorService ElevatorService;
 
     [ObservableProperty]
@@ -105,6 +107,16 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
     [ObservableProperty] private bool _persistWindowPosition = false;
 
+    // Game data sync
+    [ObservableProperty] private string _gameDataLastSyncTime = "Never";
+    [ObservableProperty] private string _gameDataCurrentVersion = "None";
+    [ObservableProperty] private string _gameDataSyncStatus = "Idle";
+    [ObservableProperty] private bool _isGameDataSyncEnabled = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGameDataSyncNotRunning))]
+    private bool _isGameDataSyncRunning = false;
+    public bool IsGameDataSyncNotRunning => !IsGameDataSyncRunning;
+
     private Dictionary<string, string> _nameToLangCode = new();
 
     public PathPicker PathToGIMIFolderPicker { get; }
@@ -128,7 +140,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         IGameService gameService, AutoUpdaterService autoUpdaterService, ILanguageLocalizer localizer,
         SelectedGameService selectedGameService, ModUpdateAvailableChecker modUpdateAvailableChecker,
         LifeCycleService lifeCycleService, INavigationService navigationService,
-        ModArchiveRepository modArchiveRepository)
+        ModArchiveRepository modArchiveRepository,
+        GameDataSyncService gameDataSyncService)
     {
         _themeSelectorService = themeSelectorService;
         _localSettingsService = localSettingsService;
@@ -146,6 +159,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         _lifeCycleService = lifeCycleService;
         _navigationService = navigationService;
         _modArchiveRepository = modArchiveRepository;
+        _gameDataSyncService = gameDataSyncService;
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
         _logger = logger.ForContext<SettingsViewModel>();
@@ -773,6 +787,51 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         IsModUpdateCheckerEnabled = modUpdateCheckerSettings.Enabled;
     }
 
+    [RelayCommand]
+    private async Task CheckAndSyncGameDataAsync()
+    {
+        if (IsGameDataSyncRunning) return;
+        IsGameDataSyncRunning = true;
+        GameDataSyncStatus = "Checking...";
+
+        try
+        {
+            var result = await _gameDataSyncService.CheckAndSyncAsync(
+                Enum.Parse<SupportedGames>(SelectedGame), isManual: true);
+
+            GameDataSyncStatus = result switch
+            {
+                SyncResult.Success => "Sync successful",
+                SyncResult.AlreadyUpToDate => "Already up to date",
+                SyncResult.Failed => "Sync failed",
+                SyncResult.NoReleaseFound => "No data release found",
+                _ => ""
+            };
+        }
+        finally
+        {
+            IsGameDataSyncRunning = false;
+            RefreshSyncDisplay();
+        }
+    }
+
+    [RelayCommand]
+    private async Task ToggleGameDataAutoSyncAsync()
+    {
+        var settings = await _localSettingsService
+            .ReadOrCreateSettingAsync<GameDataSyncSettings>(GameDataSyncSettings.Key);
+        settings.AutoSyncOnStartup = IsGameDataSyncEnabled;
+        await _localSettingsService.SaveSettingAsync(GameDataSyncSettings.Key, settings);
+    }
+
+    private void RefreshSyncDisplay()
+    {
+        var game = Enum.Parse<SupportedGames>(SelectedGame);
+        GameDataCurrentVersion = _gameDataSyncService.GetCurrentDataVersion(game) ?? "None";
+        var lastSync = _gameDataSyncService.GetLastSyncTime(game);
+        GameDataLastSyncTime = lastSync?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "Never";
+    }
+
     public async void OnNavigatedTo(object parameter)
     {
         SelectedGame = await _selectedGameService.GetSelectedGameAsync();
@@ -798,6 +857,21 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         await GenshinProcessManager.TryInitialize();
         await ThreeDMigtoProcessManager.TryInitialize();
         ModCacheSizeGB = _modArchiveRepository.GetTotalCacheSizeInGB().ToString("F");
+
+        // Game data sync initialization
+        var syncSettings = await _localSettingsService
+            .ReadOrCreateSettingAsync<GameDataSyncSettings>(GameDataSyncSettings.Key);
+        IsGameDataSyncEnabled = syncSettings.AutoSyncOnStartup;
+        RefreshSyncDisplay();
+
+        if (IsGameDataSyncEnabled)
+        {
+            _ = Task.Run(async () =>
+            {
+                await _gameDataSyncService.CheckAndSyncAsync(
+                    Enum.Parse<SupportedGames>(SelectedGame), isManual: false);
+            });
+        }
     }
 
     [ObservableProperty] private string _maxCacheSizeString = string.Empty;
