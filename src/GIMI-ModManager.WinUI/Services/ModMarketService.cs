@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net.Http.Json;
 using System.Text.Json;
 using GIMI_ModManager.Core.GamesService;
@@ -127,10 +128,18 @@ public class ModMarketService
                     if (c.ImageUri is null) continue;
                     imageLookup[c.InternalName.Id] = c.ImageUri;
                     imageLookup[c.DisplayName] = c.ImageUri;
+                    // Also add display name with special chars stripped
+                    var normalizedDisplay = c.DisplayName
+                        .Replace(" ", "").Replace("・", "").Replace("·", "");
+                    if (normalizedDisplay != c.DisplayName)
+                        imageLookup[normalizedDisplay] = c.ImageUri;
                     if (c is ICharacter ch)
                         foreach (var key in ch.Keys)
                             imageLookup[key] = c.ImageUri;
                 }
+
+                _logger.Debug("ImageLookup has {Count} entries for {CharCount} characters",
+                    imageLookup.Count, chars.Count);
             }
             catch (Exception ex)
             {
@@ -187,7 +196,13 @@ public class ModMarketService
                 }
 
                 if (img is null && !specialIcons.ContainsKey(key))
-                    _logger.Debug("No image found for category key '{Key}'", key);
+                {
+                    _logger.Warning("No image found for category key '{Key}' (lookup has {Count} entries)",
+                        key, imageLookup.Count);
+                    // Log first 5 lookup keys for diagnostics
+                    var sampleKeys = imageLookup.Keys.Take(5);
+                    _logger.Debug("Sample lookup keys: {Keys}", string.Join(", ", sampleKeys));
+                }
 
                 return img;
             }
