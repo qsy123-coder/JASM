@@ -4,6 +4,7 @@ using Windows.Storage;
 using Windows.System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.GamesService;
@@ -19,6 +20,7 @@ using GIMI_ModManager.WinUI.Models;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Models.ViewModels;
 using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.ViewModels.Messages;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels;
@@ -28,7 +30,7 @@ using Serilog;
 
 namespace GIMI_ModManager.WinUI.ViewModels;
 
-public partial class CharactersViewModel : ObservableRecipient, INavigationAware
+public partial class CharactersViewModel : ObservableRecipient, INavigationAware, IRecipient<GameDataSyncCompletedMessage>
 {
     private readonly IGameService _gameService;
     private readonly ILogger _logger;
@@ -315,6 +317,7 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
         }
 
         _busyService.BusyChanged += OnBusyChangedHandler;
+        Messenger.RegisterAll(this);
 
         _category = category;
         CategoryPageTitle =
@@ -620,6 +623,56 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
     public void OnNavigatedFrom()
     {
         _busyService.BusyChanged -= OnBusyChangedHandler;
+        Messenger.UnregisterAll(this);
+    }
+
+    public void Receive(GameDataSyncCompletedMessage message)
+    {
+        _logger.Information("Game data sync completed, refreshing character overview");
+        App.MainWindow.DispatcherQueue.TryEnqueue(async () =>
+        {
+            // Reload characters from the re-initialized GameService
+            var characters = _gameService.GetModdableObjects(_category);
+            _characters = new List<IModdableObject>(characters);
+
+            // Preserve pinned/hidden state from existing backend
+            var pinnedInternalNames = _backendCharacters
+                .Where(c => c.IsPinned)
+                .Select(c => c.Character.InternalName.ToString())
+                .ToHashSet();
+            var hiddenInternalNames = _backendCharacters
+                .Where(c => c.IsHidden)
+                .Select(c => c.Character.InternalName.ToString())
+                .ToHashSet();
+
+            var backendChars = new List<CharacterGridItemModel>();
+            foreach (var character in _characters)
+            {
+                var gridItem = new CharacterGridItemModel(character);
+                var name = character.InternalName.ToString();
+
+                if (pinnedInternalNames.Contains(name))
+                {
+                    gridItem.IsPinned = true;
+                    backendChars.Insert(0, gridItem);
+                }
+                else if (hiddenInternalNames.Contains(name))
+                {
+                    gridItem.IsHidden = true;
+                    backendChars.Add(gridItem);
+                }
+                else
+                {
+                    backendChars.Add(gridItem);
+                }
+            }
+
+            _backendCharacters = backendChars;
+
+            await RefreshMultipleModsWarningAsync();
+            await RefreshNotificationsAsync();
+            ResetContent();
+        });
     }
 
     [RelayCommand]
