@@ -22,6 +22,8 @@ public interface IGameService
 
     public Task InitializeAsync(InitializationOptions options);
 
+    public Task ReinitializeAsync();
+
     public Task SetCharacterOverrideAsync(ICharacter character, OverrideCharacterRequest request);
 
     public Task DisableCharacterAsync(ICharacter character);
