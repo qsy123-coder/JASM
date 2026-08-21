@@ -72,10 +72,13 @@ print("Building JASM...")
 if SingleFile:
     profile = "FolderProfileSingleFile.pubxml"
     jasmOutput = "src/GIMI-ModManager.WinUI/bin/Release/PublishSingleFile/"
+    # 单文件模式必须显式指定 Platform=x64，否则 WinUI 运行时激活会失败(COMException 0x80040111)
+    platformArgs = " -p:Platform=x64"
 else:
     profile = "FolderProfileSelfContained.pubxml" if SelfContained else "FolderProfile.pubxml"
     jasmOutput = JASM_OUTPUT
-jasmPublishCommand = f'dotnet publish {JASM_CSPROJ} -o {jasmOutput} /p:PublishProfile={profile} -c Release'
+    platformArgs = ""
+jasmPublishCommand = f'dotnet publish {JASM_CSPROJ} -o {jasmOutput} /p:PublishProfile={profile} -c Release{platformArgs}'
 print(jasmPublishCommand)
 checkSuccessfulExitCode(os.system(jasmPublishCommand))
 print()
