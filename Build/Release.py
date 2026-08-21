@@ -21,6 +21,7 @@ JASM_RELEASE_DIR = "output/JASM"
 
 SelfContained = sys.argv[1] == "SelfContained" if len(sys.argv) > 1 else False
 ExcludeElevator = "ExcludeElevator" in sys.argv
+SingleFile = "SingleFile" in sys.argv
 
 def checkSuccessfulExitCode(exitCode: int) -> None:
     if exitCode != 0:
@@ -37,6 +38,7 @@ def extractVersionNumber() -> str:
 print("PostBuild.py")
 print("PWD: " + os.getcwd())
 print("SelfContained: " + str(SelfContained))
+print("SingleFile: " + str(SingleFile))
 
 versionNumber = extractVersionNumber()
 if versionNumber is None or len(versionNumber) == 0:
@@ -44,7 +46,7 @@ if versionNumber is None or len(versionNumber) == 0:
     exit(1)
 versionNumber = versionNumber[0]
 
-if ExcludeElevator == False:
+if ExcludeElevator == False and SingleFile == False:
     print("Building Elevator...")
     elevatorPublishCommand = f'dotnet publish {ELEVATOR_CSPROJ} -o {ELEVATOR_OUTPUT_DIR} /p:PublishProfile=FolderProfile.pubxml -c Release'
     print(elevatorPublishCommand)
@@ -55,7 +57,7 @@ else:
     print("Skipping Elevator")
     print()
 
-if SelfContained == False:
+if SelfContained == False and SingleFile == False:
     print("Building JASM - Auto Updater...")
     jasmUpdaterPublishCommand = f'dotnet publish {JASM_Updater_CSPROJ} -o {JASM_Updater_OUTPUT} /p:PublishProfile=FolderProfile.pubxml -c Release'
     print(jasmUpdaterPublishCommand)
@@ -67,8 +69,13 @@ else:
     print()
 
 print("Building JASM...")
-profile = "FolderProfileSelfContained.pubxml" if SelfContained else "FolderProfile.pubxml"
-jasmPublishCommand = f'dotnet publish {JASM_CSPROJ} -o {JASM_OUTPUT} /p:PublishProfile={profile} -c Release'
+if SingleFile:
+    profile = "FolderProfileSingleFile.pubxml"
+    jasmOutput = "src/GIMI-ModManager.WinUI/bin/Release/PublishSingleFile/"
+else:
+    profile = "FolderProfileSelfContained.pubxml" if SelfContained else "FolderProfile.pubxml"
+    jasmOutput = JASM_OUTPUT
+jasmPublishCommand = f'dotnet publish {JASM_CSPROJ} -o {jasmOutput} /p:PublishProfile={profile} -c Release'
 print(jasmPublishCommand)
 checkSuccessfulExitCode(os.system(jasmPublishCommand))
 print()
@@ -78,18 +85,22 @@ print("Finished building JASM")
 os.makedirs(RELEASE_DIR, exist_ok=True)
 os.makedirs(JASM_RELEASE_DIR, exist_ok=True)
 
-if ExcludeElevator == False:
+if ExcludeElevator == False and SingleFile == False:
     print("Copying Elevator to JASM...")
     shutil.copy(ELEVATOR_OUTPUT_FILE, JASM_RELEASE_DIR)
     print()
     print("Finished copying Elevator to release directory")
 
-print("Copying JASM to output...")
-shutil.copytree(JASM_OUTPUT, JASM_RELEASE_DIR, dirs_exist_ok=True)
+if SingleFile:
+    print("Copying JASM single exe to output...")
+    shutil.copy(os.path.join(jasmOutput, "JASM - Just Another Skin Manager.exe"), JASM_RELEASE_DIR)
+else:
+    print("Copying JASM to output...")
+    shutil.copytree(JASM_OUTPUT, JASM_RELEASE_DIR, dirs_exist_ok=True)
 print()
 print("Finished copying JASM to release directory")
 
-if SelfContained == False:
+if SelfContained == False and SingleFile == False:
     print("Copying JASM - Auto Updater to output...")
     updater_dest = os.path.join(JASM_RELEASE_DIR, JASM_Updater_FolderName)
     os.mkdir(updater_dest)
@@ -105,7 +116,9 @@ print("Finished copying text files to release directory")
 
 print("Zipping release directory...")
 releaseArchiveName = "JASM_v" + versionNumber + ".7z"
-if SelfContained:
+if SingleFile:
+    releaseArchiveName = "SingleFile_" + releaseArchiveName
+elif SelfContained:
     releaseArchiveName = "SelfContained_" + releaseArchiveName
 
 checkSuccessfulExitCode(os.system(f'7z a -mx4 {releaseArchiveName} ./{RELEASE_DIR}/*'))
