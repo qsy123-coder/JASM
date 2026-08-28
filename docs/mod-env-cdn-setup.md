@@ -27,19 +27,28 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 | 文件 | 内容要求 |
 |---|---|
 | `xxmi-<版本>.zip` | XXMI 注入器框架包。解压后至少含 1 个文件/目录即可（JASM 用它判定「基础包是否装好」） |
-| `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `WWMI Loader.exe` 和 `Mods\` 文件夹（JASM 硬性校验这两个） |
+| `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」） |
 | `version.json` | 版本清单，见下节 |
 
-WWMi 包结构示意：
+WWMi 包结构示意（干净基础包）：
 
 ```
 wwmi-1.0.0.zip
-├── WWMI Loader.exe   ← 必须有
-└── Mods\             ← 必须有
+├── d3d11.dll          ← 必须有（注入器）
+├── d3dcompiler_47.dll
+├── d3dx.ini           ← 必须有（配置）
+├── d3dx_user.ini
+├── README.md
+├── Core\              ← 3DMigoto 核心
+└── Mods\              ← 必须有（空目录即可，JASM 的 mods 放这里）
 ```
 
 > 包根目录如果只有一个文件夹（例如解压后是 `WWMI\...`），JASM 会自动解开这一层再复制，所以
-> 用官方 release 的原样 zip 通常也没问题——但务必确认解压后能看到 `WWMI Loader.exe` 和 `Mods\`。
+> 用官方 release 的原样 zip 通常也没问题——但务必确认解压后能看到 `d3d11.dll`、`d3dx.ini` 和 `Mods\`。
+
+> ⚠️ **打包 wwmi 时务必用「干净基础包」**（注入器 + 配置 + Core + 空 `Mods\`），
+> **不要**拿你在用的实机 `WWMI\` 文件夹直接打——里面通常装着几 GB 的个人 mods 和着色器缓存，
+> 既不该分发给别的用户，也会让包体积爆炸（几 GB）。`ShaderCache\` / `ShaderFixes\` 是可选项，运行时自动重建。
 
 ## 三、生成 version.json
 
