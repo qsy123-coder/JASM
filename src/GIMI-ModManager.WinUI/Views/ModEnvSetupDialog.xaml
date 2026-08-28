@@ -13,6 +13,11 @@
     Width="640"
     MaxHeight="720">
 
+    <!-- WinUI 默认 ContentDialogMaxWidth=548，会压掉 Width=640 导致右侧按钮被裁切，这里局部提高上限 -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMaxWidth">720</x:Double>
+    </ContentDialog.Resources>
+
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 
         <StackPanel MinWidth="560" Spacing="12">
