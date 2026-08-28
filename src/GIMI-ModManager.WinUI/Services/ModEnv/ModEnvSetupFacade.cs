@@ -1,3 +1,7 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.WinUI.Models.ModEnvSetup;
 using GIMI_ModManager.WinUI.Models.Options;
@@ -285,6 +289,10 @@ public class ModEnvSetupFacade
             // Ensure the Mods folder exists — some game packages may omit the (empty) dir from the zip.
             Directory.CreateDirectory(modsFolder);
 
+            // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set.
+            // Non-fatal; mirrors EnsureLauncherDesktopShortcut.
+            EnsureLauncherConfigPaths(rootFolder, miFolder, request.GameInstallDir, issues, progress);
+
             // Re-verify after install.
             (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
             if (!filesOk)
@@ -416,6 +424,123 @@ public class ModEnvSetupFacade
             _logger.Warning(ex, "Failed to create launcher desktop shortcut at {Shortcut}", shortcutPath);
             issues.Add("创建桌面快捷方式失败，不影响 Mod 环境使用。");
         }
+    }
+
+    /// <summary>
+    /// Pre-fills the launcher GUI's game path and WWMi path in "XXMI Launcher Config.json" so a fresh
+    /// install opens with them set instead of relying on the launcher's first-run self-detection.
+    /// Conservative: only fills when a field is empty (game_folder) or empty/relative (importer_folder),
+    /// so user-set absolute paths are never overwritten. Non-fatal on any failure.
+    /// </summary>
+    private void EnsureLauncherConfigPaths(string rootFolder, string miFolder, string? gameInstallDir,
+        List<string> issues, IProgress<string>? progress)
+    {
+        var configPath = Path.Combine(rootFolder, LauncherConfigFileName);
+        if (!File.Exists(configPath))
+        {
+            progress?.Report("未找到启动器配置文件，跳过自动填写 GUI 路径。");
+            return;
+        }
+
+        try
+        {
+            // JsonNode.Parse does not skip a leading UTF-8 BOM, but the package's clean config has one,
+            // so decode manually and strip it. Preserve the original BOM state on write-back.
+            var raw = File.ReadAllBytes(configPath);
+            var hadBom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
+            var text = Encoding.UTF8.GetString(raw);
+            var root = JsonNode.Parse(hadBom ? text[1..] : text) as JsonObject;
+            if (root is null)
+            {
+                _logger.Debug("Launcher config {Config} is not a JSON object; skipping GUI path fill", configPath);
+                return;
+            }
+
+            var importers = root["Importers"] as JsonObject;
+            var wwmi = importers?["WWMI"] as JsonObject;
+            var importer = wwmi?["Importer"] as JsonObject;
+            if (importer is null)
+            {
+                _logger.Debug("Launcher config {Config} has no Importers.WWMI.Importer node; skipping GUI path fill",
+                    configPath);
+                return;
+            }
+
+            var changed = false;
+
+            if (!string.IsNullOrWhiteSpace(gameInstallDir))
+            {
+                var currentGame = importer["game_folder"]?.GetValue<string>() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(currentGame))
+                {
+                    var gameFolder = FindGameFolder(gameInstallDir);
+                    if (gameFolder is not null)
+                    {
+                        importer["game_folder"] = gameFolder;
+                        changed = true;
+                    }
+                }
+            }
+
+            var currentImporter = importer["importer_folder"]?.GetValue<string>() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(currentImporter) || !Path.IsPathRooted(currentImporter))
+            {
+                importer["importer_folder"] = miFolder.Replace('\\', '/');
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                progress?.Report("启动器 GUI 路径已是最新，无需更新。");
+                return;
+            }
+
+            var writerOptions = new JsonWriterOptions { Indented = true, IndentSize = 4 };
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream, writerOptions))
+                root.WriteTo(writer);
+
+            var json = Encoding.UTF8.GetString(stream.ToArray());
+            File.WriteAllText(configPath, json, new UTF8Encoding(hadBom));
+            progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to pre-fill launcher GUI paths in {Config}", configPath);
+            issues.Add("未能自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+        }
+    }
+
+    /// <summary>
+    /// Derives the launcher's game_folder: the directory holding the game executable at its root
+    /// (or a Client dir). The real install layout is "&lt;root&gt;\Wuthering Waves Game\Wuthering Waves.exe"
+    /// where the exe sits at the game folder root, not under Client\Binaries\Win64. Best-effort:
+    /// falls back to the install dir itself.
+    /// </summary>
+    private static string? FindGameFolder(string? installDir)
+    {
+        if (string.IsNullOrWhiteSpace(installDir)) return null;
+
+        if (LooksLikeGameFolder(installDir))
+            return installDir;
+
+        foreach (var sub in Directory.GetDirectories(installDir))
+        {
+            if (LooksLikeGameFolder(sub))
+                return sub;
+        }
+
+        return installDir;
+    }
+
+    private static bool LooksLikeGameFolder(string dir)
+    {
+        if (!Directory.Exists(dir)) return false;
+
+        if (File.Exists(Path.Combine(dir, "Wuthering Waves.exe")))
+            return true;
+
+        return Directory.Exists(Path.Combine(dir, "Client"));
     }
 
     private static ModEnvPackageAction EvaluateAction(IReadOnlyDictionary<string, string> installed, string packageId,
