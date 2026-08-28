@@ -15,6 +15,7 @@ using WindowsInput;
 // -2: Alive check
 // -1: Exit
 // 0: RefreshActiveGenshinMods
+// 1: CopyDirectory (<src> and <dst> follow on their own lines; replies "OK" or "FAIL:<msg>")
 
 internal class Program
 {
@@ -56,7 +57,8 @@ internal class Program
 
         while (true)
         {
-            using var pipeServer = NamedPipeServerStreamConstructors.New("MyPipess", PipeDirection.In, 1,
+            // InOut so we can reply to commands that need a result (e.g. CopyDirectory).
+            using var pipeServer = NamedPipeServerStreamConstructors.New("MyPipess", PipeDirection.InOut, 1,
                 PipeTransmissionMode.Message,
                 PipeOptions.Asynchronous, pipeSecurity: ps);
             Console.WriteLine("Waiting for connection...");
@@ -83,11 +85,59 @@ internal class Program
                     Console.WriteLine("Refreshing Genshin Mods");
                     RefreshGenshinMods();
                     break;
+                case "1":
+                    Console.WriteLine("Copying directory");
+                    HandleCopyCommand(pipeServer, reader);
+                    break;
 
                 default:
                     Console.Error.WriteLine($"Unknown command: {command}");
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Reads &lt;src&gt; and &lt;dst&gt; lines, copies the directory tree (overwriting) and replies
+    /// "OK" or "FAIL:&lt;message&gt;" so the caller knows the elevated copy succeeded.
+    /// </summary>
+    static void HandleCopyCommand(PipeStream pipe, StreamReader reader)
+    {
+        using var writer = new StreamWriter(pipe) { AutoFlush = true };
+
+        var src = reader.ReadLine();
+        var dst = reader.ReadLine();
+
+        if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(dst))
+        {
+            writer.WriteLine("FAIL:Missing source or destination path");
+            return;
+        }
+
+        try
+        {
+            DirectoryCopy(src, dst, overwrite: true);
+            Console.WriteLine($"Copied {src} -> {dst}");
+            writer.WriteLine("OK");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            writer.WriteLine("FAIL:" + ex.Message);
+        }
+    }
+
+    static void DirectoryCopy(string sourceDir, string destDir, bool overwrite)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite);
+        }
+
+        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        {
+            DirectoryCopy(subDir, Path.Combine(destDir, Path.GetFileName(subDir)), overwrite);
         }
     }
 
