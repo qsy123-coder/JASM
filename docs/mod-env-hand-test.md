@@ -8,9 +8,10 @@
 已生成假包 + 版本清单到 `C:\jasm-mock-cdn\`：
 
 ```
-version.json         # 含 xxmi / wwmi 两个包，URL 指向 localhost:8899
+version.json         # 含 xxmi / wwmi / launcher 三个包，URL 指向 localhost:8899
 xxmi-1.0.5.zip       # 真实 XXMI 注入器框架包（3 个 DLL）
 wwmi-1.0.0.zip       # 真实 WWMI 游戏包（d3d11.dll + d3dx.ini + Core\ + 空 Mods\）
+launcher-2.2.1.zip   # 真实 XXMI 启动器离线包（~55MB，见 mod-env-cdn-setup.md「打 launcher 包」）
 ```
 
 起一个本地 HTTP 服务：
@@ -60,3 +61,17 @@ python -m http.server 8899 --directory C:\jasm-mock-cdn
 ## 7. 游戏未检测到（手动回退）
 
 - 卸载/移动鸣潮后打开向导 → 显示「未自动检测到鸣潮安装位置」→ 浏览选择游戏目录 → 重新预检
+
+## 8. Phase 2：XXMI 启动器（GUI）独立运行验证
+
+目标：确认从干净 launcher 包装出的启动器**不依赖 MSI 注册表项**也能独立跑起来。
+
+1. 把 `D:\XXMI` 改名为 `D:\XXMI.bak`（保留现场，可回滚）
+2. 上传 `launcher-2.2.1.zip` + 更新版 `version.json` 到 COS `modenv/`
+3. JASM 里点「一键配置 Mod 环境」→ 预检应显示 **xxmi / launcher / wwmi 三个包** → 开始配置
+4. 配置完成后双击 `D:\XXMI\Resources\Bin\XXMI Launcher.exe`
+   - GUI 能打开 → 注册表不是硬依赖 ✓
+   - 弹错/闪退 → 需要 JASM 补写注册表卸载项或排查其他依赖
+5. GUI 里点 WWMI → 选择游戏目录（`D:\Wuthering Waves\Wuthering Waves Game`）→ 点启动 → 确认注入生效
+6. 验证幂等：再次点「一键配置」→ launcher 显示「已是最新」；更新 version.json 版本号 → 显示「可更新」
+7. 验证保留配置：改过 GUI 里的设置后升级 launcher 包 → `XXMI Launcher Config.json` 不被覆盖
