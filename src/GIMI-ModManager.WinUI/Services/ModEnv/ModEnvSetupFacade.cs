@@ -266,6 +266,10 @@ public class ModEnvSetupFacade
                 }
             }
 
+            // Ensure the launcher has a desktop shortcut (created on install AND when already up-to-date,
+            // so a removed shortcut is restored). Non-fatal: failure is reported as a warning issue.
+            EnsureLauncherDesktopShortcut(rootFolder, issues, progress);
+
             // Per-game package (WWMi) -> into <root>\<subDir>.
             var gameAction = EvaluateAction(installed, modEnv.PackageId, gamePkg, filesOk && modsOk);
             if (gameAction != ModEnvPackageAction.UpToDate)
@@ -365,6 +369,54 @@ public class ModEnvSetupFacade
     /// <summary>True when the XXMI Launcher GUI executable is present at the root.</summary>
     private static bool LauncherFilesOk(string rootFolder)
         => File.Exists(Path.Combine(rootFolder, "Resources", "Bin", "XXMI Launcher.exe"));
+
+    /// <summary>
+    /// Creates (or restores) a "XXMI Launcher" shortcut on the user's desktop pointing at the launcher exe.
+    /// The launcher itself does not create one; the MSI used to, so we replicate it for JASM installs.
+    /// Non-fatal: failures are logged and surfaced as a warning issue, never abort the setup.
+    /// </summary>
+    private void EnsureLauncherDesktopShortcut(string rootFolder, List<string> issues, IProgress<string>? progress)
+    {
+        var launcherExe = Path.Combine(rootFolder, "Resources", "Bin", "XXMI Launcher.exe");
+        if (!File.Exists(launcherExe))
+        {
+            progress?.Report("未找到 XXMI 启动器可执行文件，跳过桌面快捷方式。");
+            return;
+        }
+
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        if (string.IsNullOrWhiteSpace(desktop) || !Directory.Exists(desktop))
+        {
+            _logger.Warning("Desktop folder unavailable ({Desktop}); skipping launcher shortcut", desktop);
+            issues.Add("未找到用户桌面文件夹，未能创建 XXMI 启动器快捷方式。");
+            return;
+        }
+
+        var shortcutPath = Path.Combine(desktop, "XXMI Launcher.lnk");
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null)
+            {
+                issues.Add("系统不支持创建桌面快捷方式 (WScript.Shell 不可用)。");
+                return;
+            }
+
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            dynamic shortcut = shell.CreateShortcut(shortcutPath);
+            shortcut.TargetPath = launcherExe;
+            shortcut.WorkingDirectory = Path.GetDirectoryName(launcherExe);
+            shortcut.IconLocation = $"{launcherExe},0";
+            shortcut.Description = "XXMI Launcher";
+            shortcut.Save();
+            progress?.Report("已在桌面创建 XXMI 启动器快捷方式。");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to create launcher desktop shortcut at {Shortcut}", shortcutPath);
+            issues.Add("创建桌面快捷方式失败，不影响 Mod 环境使用。");
+        }
+    }
 
     private static ModEnvPackageAction EvaluateAction(IReadOnlyDictionary<string, string> installed, string packageId,
         ModEnvPackage pkg, bool filesOk)
