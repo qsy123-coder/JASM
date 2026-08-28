@@ -20,6 +20,11 @@ public record GameInfo
         GameModelImporterName = jsonGame.GameModelImporterName ?? "";
         GameModelImporterShortName = jsonGame.GameModelImporterShortName ?? "";
         GameModelImporterExeNames = jsonGame.GameModelImporterExeName.ToList() ?? [];
+
+        ModEnv = jsonGame.ModEnv is null
+            ? null
+            : new ModEnvInfo(jsonGame.ModEnv.PackageId?.Trim() ?? "", jsonGame.ModEnv.RootDirName?.Trim() ?? "XXMI",
+                jsonGame.ModEnv.SubDirName?.Trim() ?? "");
     }
 
     public string GameName { get; }
@@ -31,4 +36,13 @@ public record GameInfo
     public string GameModelImporterShortName { get; }
 
     public IReadOnlyList<string> GameModelImporterExeNames { get; }
+
+    /// <summary>Optional per-game configuration for the one-click Mod environment setup feature.</summary>
+    public ModEnvInfo? ModEnv { get; }
 }
+
+/// <summary>
+/// Immutable per-game configuration for the Mod environment setup feature,
+/// mirrors <see cref="GIMI_ModManager.Core.GamesService.JsonModels.JsonModEnv"/>.
+/// </summary>
+public record ModEnvInfo(string PackageId, string RootDirName, string SubDirName);
