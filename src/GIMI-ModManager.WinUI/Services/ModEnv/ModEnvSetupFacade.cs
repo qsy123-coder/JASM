@@ -483,6 +483,20 @@ public class ModEnvSetupFacade
 
                 var changed = false;
 
+                // The caller only passes a game dir when the user picked/auto-detected one in the dialog.
+                // Fall back to our own detector so a plain one-click run still fills game_folder.
+                if (string.IsNullOrWhiteSpace(gameInstallDir))
+                {
+                    var detected = await _detector.DetectAsync();
+                    if (detected is not null)
+                    {
+                        gameInstallDir = detected.InstallDir;
+                        _logger.Information(
+                            "Launcher config fill: no game dir supplied, falling back to detected install at {Path}",
+                            gameInstallDir);
+                    }
+                }
+
                 if (!string.IsNullOrWhiteSpace(gameInstallDir))
                 {
                     var currentGame = importer["game_folder"]?.GetValue<string>() ?? string.Empty;
