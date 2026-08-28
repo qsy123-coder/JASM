@@ -374,6 +374,11 @@
                             Margin="40,0,0,0"
                             Command="{x:Bind ViewModel.ShowDisableAllModsDialogCommand}"
                             Content="Disable All Mods" />
+                        <Button
+                            Margin="40,0,0,0"
+                            Command="{x:Bind ViewModel.OneClickSetupCommand}"
+                            Content="一键配置 Mod 环境"
+                            Visibility="{x:Bind ViewModel.ShowModEnvSetupButton, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
 
                     <StackPanel Margin="0,16,0,0" Orientation="Horizontal">
