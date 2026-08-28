@@ -109,9 +109,12 @@ public class ModEnvInstallerService
     /// Downloads, verifies and installs one package.
     /// <paramref name="targetRoot"/> is the XXMI root; when <paramref name="subDir"/> is non-null the
     /// package installs into <c>targetRoot\subDir</c>.
+    /// <paramref name="preserveExistingFiles"/> optionally lists file names (at any depth) that should
+    /// NOT be overwritten when they already exist at the destination — used to keep user-edited files
+    /// such as the launcher's Config.json across package updates.
     /// </summary>
     public async Task InstallPackageAsync(ModEnvPackage pkg, string targetRoot, string? subDir,
-        IProgress<string>? progress, CancellationToken ct)
+        IProgress<string>? progress, CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null)
     {
         Directory.CreateDirectory(StagingDir);
         var zipPath = await DownloadWithResumeAsync(pkg, progress, ct).ConfigureAwait(false);
@@ -122,7 +125,7 @@ public class ModEnvInstallerService
         NormalizeSingleRootFolder(ref extractedFolder);
 
         var targetDir = subDir is null ? targetRoot : Path.Combine(targetRoot, subDir);
-        await CopyToTargetAsync(extractedFolder, targetDir, progress, ct).ConfigureAwait(false);
+        await CopyToTargetAsync(extractedFolder, targetDir, progress, ct, preserveExistingFiles).ConfigureAwait(false);
 
         TryCleanup(extractRoot);
         TryCleanup(zipPath);
@@ -211,11 +214,11 @@ public class ModEnvInstallerService
     }
 
     private async Task CopyToTargetAsync(string sourceDir, string targetDir, IProgress<string>? progress,
-        CancellationToken ct)
+        CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null)
     {
         try
         {
-            DirectoryCopy(sourceDir, targetDir, overwrite: true);
+            DirectoryCopy(sourceDir, targetDir, overwrite: true, preserveExistingFiles);
         }
         catch (UnauthorizedAccessException)
         {
@@ -227,17 +230,23 @@ public class ModEnvInstallerService
         }
     }
 
-    private static void DirectoryCopy(string sourceDir, string destDir, bool overwrite)
+    private static void DirectoryCopy(string sourceDir, string destDir, bool overwrite,
+        IReadOnlyCollection<string>? preserveExistingFiles = null)
     {
         Directory.CreateDirectory(destDir);
         foreach (var file in Directory.GetFiles(sourceDir))
         {
-            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite);
+            var destPath = Path.Combine(destDir, Path.GetFileName(file));
+            if (preserveExistingFiles?.Contains(Path.GetFileName(file), StringComparer.OrdinalIgnoreCase) == true
+                && File.Exists(destPath))
+                continue; // keep the existing (user-edited) file
+
+            File.Copy(file, destPath, overwrite);
         }
 
         foreach (var subDir in Directory.GetDirectories(sourceDir))
         {
-            DirectoryCopy(subDir, Path.Combine(destDir, Path.GetFileName(subDir)), overwrite);
+            DirectoryCopy(subDir, Path.Combine(destDir, Path.GetFileName(subDir)), overwrite, preserveExistingFiles);
         }
     }
 
