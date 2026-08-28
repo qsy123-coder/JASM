@@ -7,7 +7,7 @@
   "GameModelImporterUrl": "https://gamebanana.com/tools/17252",
   "GameModelImporterName": "Wuthering Waves Model Importer",
   "GameModelImporterShortName": "WWMI",
-  "GameModelImporterExeName": ["WWMI Loader.exe"],
+  "GameModelImporterExeName": ["d3d11.dll"],
   "ModEnv": {
     "PackageId": "wwmi",
     "RootDirName": "XXMI",
