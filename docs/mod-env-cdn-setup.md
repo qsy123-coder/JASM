@@ -77,7 +77,9 @@ XXMI Launcher 是个 PyInstaller 打包的 Python/tkinter 应用，`XXMI Launche
 干净 Config.json 要点（JASM 更新时会保留用户已编辑的该文件）：
 - `Launcher.auto_update=false`（避免启动器去 GitHub 自更新）
 - `Launcher.locale="CN"`、`log_level="INFO"`
-- `Importers.WWMI.Importer.importer_folder="WWMI/"`（相对路径，指向 JASM 装的 wwmi 包）、`game_folder=""`（用户首次在 GUI 里选一次）、`shortcut_deployed=false`
+- `Importers.WWMI.Importer.importer_folder="WWMI/"`（相对路径，指向 JASM 装的 wwmi 包）、`game_folder=""`、`shortcut_deployed=false`
+  - JASM 一键配置时会**自动填入**这两项为绝对路径（`importer_folder="D:/XXMI/WWMI"` 正斜杠、`game_folder="D:\Wuthering Waves\Wuthering Waves Game"`），
+    用户无需在 GUI 里手选；仅当字段已是非空绝对路径时保留用户值（`importer_folder` 为相对路径如 `WWMI/` 也会被替换成绝对路径）
 - 删除 `Security.user_signature`（机器专属）
 
 JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不配就跳过（纯 JASM 注入器玩法）。
