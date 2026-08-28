@@ -14,9 +14,12 @@ using GIMI_ModManager.WinUI.Models.Options;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
+using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.Validators.PreConfigured;
 using GIMI_ModManager.WinUI.ViewModels.SubVms;
+using GIMI_ModManager.WinUI.Views;
+using Microsoft.UI.Xaml.Controls;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.ViewModels;
@@ -34,6 +37,7 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     private readonly SelectedGameService _selectedGameService;
     private readonly ModArchiveRepository _modArchiveRepository;
     private readonly CommandService _commandService;
+    private readonly ModEnvSetupFacade _modEnvSetupFacade;
     private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
 
@@ -57,13 +61,18 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
 
     [ObservableProperty] private Uri _modelImporterUrl = new("https://github.com/SilentNightSound");
 
+    [ObservableProperty] private bool _showModEnvSetupButton;
+    [ObservableProperty] private bool _modEnvNeedsSetup;
+    [ObservableProperty] private string _modEnvStatusText = string.Empty;
+    [ObservableProperty] private InfoBarSeverity _modEnvStatusSeverity = InfoBarSeverity.Informational;
+
     public ObservableCollection<GameComboBoxEntryVM> Games { get; } = new();
 
     public StartupViewModel(INavigationService navigationService, ILocalSettingsService localSettingsService,
         IWindowManagerService windowManagerService, ISkinManagerService skinManagerService,
         SelectedGameService selectedGameService, IGameService gameService, ModPresetService modPresetService,
         UserPreferencesService userPreferencesService, ModArchiveRepository modArchiveRepository,
-        CommandService commandService)
+        CommandService commandService, ModEnvSetupFacade modEnvSetupFacade)
     {
         _navigationService = navigationService;
         _localSettingsService = localSettingsService;
@@ -75,6 +84,7 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         _userPreferencesService = userPreferencesService;
         _modArchiveRepository = modArchiveRepository;
         _commandService = commandService;
+        _modEnvSetupFacade = modEnvSetupFacade;
 
         PathToGIMIFolderPicker = new PathPicker([]);
 
@@ -168,6 +178,74 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     private async Task BrowseModsFolderAsync()
         => await PathToModsFolderPicker.BrowseFolderPathAsync(App.MainWindow);
 
+    /// <summary>
+    /// Auto-detects an already-installed Mod environment for the selected game and fills the two path
+    /// pickers; when the environment is missing (or the game has no ModEnv config) it shows the
+    /// one-click setup entry point instead.
+    /// </summary>
+    private async Task TryAutoFillModEnvPathsAsync()
+    {
+        var gameInfo = await GameService.GetGameInfoAsync(SelectedGame.Value);
+        if (gameInfo?.ModEnv is null)
+        {
+            ShowModEnvSetupButton = false;
+            return;
+        }
+
+        ShowModEnvSetupButton = true;
+        var pre = await _modEnvSetupFacade.PreCheckAsync(new ModEnvSetupRequest());
+
+        var loaderOk = pre.MiFolder is not null &&
+                       gameInfo.GameModelImporterExeNames.Any(n => File.Exists(Path.Combine(pre.MiFolder, n)));
+        var modsOk = pre.ModsFolder is not null && Directory.Exists(pre.ModsFolder);
+
+        if (pre.MiFolder is not null && pre.ModsFolder is not null && loaderOk && modsOk)
+        {
+            PathToGIMIFolderPicker.Path = pre.MiFolder;
+            PathToGIMIFolderPicker.Validate();
+            PathToModsFolderPicker.Path = pre.ModsFolder;
+            PathToModsFolderPicker.Validate();
+            ModEnvNeedsSetup = false;
+            ModEnvStatusSeverity = InfoBarSeverity.Success;
+            ModEnvStatusText = "已检测到已安装的 Mod 环境，路径已自动填入。";
+        }
+        else
+        {
+            ModEnvNeedsSetup = true;
+            ModEnvStatusSeverity = InfoBarSeverity.Warning;
+            ModEnvStatusText = pre.Issues.FirstOrDefault()
+                ?? "未检测到已安装的 Mod 环境，可点击「配置 Mod 环境」一键安装。";
+        }
+    }
+
+    /// <summary>
+    /// Opens the one-click Mod environment setup wizard; on success fills both path pickers from
+    /// the configured install so the user only needs to press Save.
+    /// </summary>
+    [RelayCommand]
+    private async Task OneClickSetupAsync()
+    {
+        var dialog = App.GetService<ModEnvSetupDialog>();
+        dialog.XamlRoot = App.MainWindow.Content.XamlRoot;
+        await dialog.ShowAsync();
+
+        if (dialog.MiFolder is not null && dialog.ModsFolder is not null)
+        {
+            PathToGIMIFolderPicker.Path = dialog.MiFolder;
+            PathToGIMIFolderPicker.Validate();
+            PathToModsFolderPicker.Path = dialog.ModsFolder;
+            PathToModsFolderPicker.Validate();
+            ModEnvNeedsSetup = false;
+            ModEnvStatusSeverity = InfoBarSeverity.Success;
+            ModEnvStatusText = "Mod 环境配置完成，路径已自动填入，点击 Save 保存。";
+        }
+        else if (dialog.Result is { Success: false })
+        {
+            ModEnvStatusSeverity = InfoBarSeverity.Warning;
+            ModEnvStatusText = "Mod 环境未配置成功，请检查日志后重试。";
+        }
+    }
+
     public async void OnNavigatedTo(object parameter)
     {
         _windowManagerService.ResizeWindowPercent(_windowManagerService.MainWindow, 50, 60);
@@ -181,6 +259,7 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         SetSelectedGame(await _selectedGameService.GetSelectedGameAsync());
         await SetGameInfo(SelectedGame.Value.ToString());
         SetPaths(settings);
+        await TryAutoFillModEnvPathsAsync();
         ReorganizeModsOnStartup = true;
     }
 
@@ -198,6 +277,7 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
 
         await SetGameInfo(game);
         SetPaths(settings);
+        await TryAutoFillModEnvPathsAsync();
     }
 
 
