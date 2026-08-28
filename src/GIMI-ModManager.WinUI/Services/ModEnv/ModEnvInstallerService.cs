@@ -80,13 +80,27 @@ public class ModEnvInstallerService
             JsonSerializer.Serialize(marker, new JsonSerializerOptions { WriteIndented = true }), ct);
     }
 
-    /// <summary>Checks whether the game package's key files are present and intact under the MI sub-folder.</summary>
-    public (bool LoaderOk, bool ModsOk) CheckGamePackageFiles(string miSubFolder, IEnumerable<string> loaderExeNames)
+    /// <summary>
+    /// Signature files that mark a correctly-deployed XXMI-family game package. A WWMi/3DMigoto
+    /// package ships the DXGI hook (d3d11.dll) plus its config (d3dx.ini) at the folder root and a
+    /// Mods directory — there is no loader executable inside the package.
+    /// </summary>
+    private static readonly string[] PackageSignatureFiles = { "d3d11.dll", "d3dx.ini" };
+
+    /// <summary>True when the MI sub-folder looks like a deployed XXMI-family game package.</summary>
+    public static bool IsGamePackagePresent(string miSubFolder)
     {
-        var loaderOk = loaderExeNames.Any(name =>
-            File.Exists(Path.Combine(miSubFolder, name)));
+        if (string.IsNullOrWhiteSpace(miSubFolder)) return false;
+        return PackageSignatureFiles.All(f => File.Exists(Path.Combine(miSubFolder, f)))
+               && Directory.Exists(Path.Combine(miSubFolder, "Mods"));
+    }
+
+    /// <summary>Checks whether the game package's key files are present and intact under the MI sub-folder.</summary>
+    public (bool FilesOk, bool ModsOk) CheckGamePackageFiles(string miSubFolder)
+    {
+        var filesOk = PackageSignatureFiles.All(f => File.Exists(Path.Combine(miSubFolder, f)));
         var modsOk = Directory.Exists(Path.Combine(miSubFolder, "Mods"));
-        return (loaderOk, modsOk);
+        return (filesOk, modsOk);
     }
 
     // ---- Install pipeline ---------------------------------------------------
