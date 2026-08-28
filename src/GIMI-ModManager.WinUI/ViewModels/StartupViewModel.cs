@@ -195,8 +195,7 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         ShowModEnvSetupButton = true;
         var pre = await _modEnvSetupFacade.PreCheckAsync(new ModEnvSetupRequest());
 
-        var loaderOk = pre.MiFolder is not null &&
-                       gameInfo.GameModelImporterExeNames.Any(n => File.Exists(Path.Combine(pre.MiFolder, n)));
+        var loaderOk = pre.MiFolder is not null && ModEnvInstallerService.IsGamePackagePresent(pre.MiFolder);
         var modsOk = pre.ModsFolder is not null && Directory.Exists(pre.ModsFolder);
 
         if (pre.MiFolder is not null && pre.ModsFolder is not null && loaderOk && modsOk)
