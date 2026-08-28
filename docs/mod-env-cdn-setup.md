@@ -67,6 +67,13 @@ XXMI Launcher 是个 PyInstaller 打包的 Python/tkinter 应用，`XXMI Launche
 | `Themes\`、`Locale\`、`Backups\` | `Resources\Bin\ReShade.log*`（轮转日志） |
 | 一份**干净默认** `XXMI Launcher Config.json` | 实机 `WWMI\`（JASM 的 wwmi 包已装）、根目录 3 个 DLL（JASM 的 xxmi 包已装）、`.modenv.json`、日志、`.lnk`、`Config.json` 里的机器专属字段 |
 
+> ⚠️ **目录结构必须保持 `Resources\Bin` 用的就是原始多级结构，别用会"压平"的通配拷贝**。实测踩过两个坑：
+> - `Locale\` 必须是 **`Locale\Strings\CN\…`** 结构（启动器 2.2.1 迁移后的结构），不能是旧版 `Locale\CN\…`——
+>   否则启动器崩：`Failed to load locale: [WinError 3] '…\Locale\Strings\CN'`
+> - `Themes\` 必须保留 **`Themes\Default\…`** 顶层——否则崩：`FileNotFoundError: …\Themes\Default\MainWindow\LauncherFrame\background-image-xxmi.webp`
+>
+> 打包用 `robocopy "…\Themes" <stage>\Themes /E`（不要 `Copy-Item …\Themes\*`），打包后抽查这两个关键文件是否存在。
+
 干净 Config.json 要点（JASM 更新时会保留用户已编辑的该文件）：
 - `Launcher.auto_update=false`（避免启动器去 GitHub 自更新）
 - `Launcher.locale="CN"`、`log_level="INFO"`
@@ -103,7 +110,7 @@ JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不�
       "Version": "2.2.1",
       "DownloadUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/launcher-2.2.1.zip",
       "Sha256": "……",
-      "SizeBytes": 57286275,
+      "SizeBytes": 57286625,
       "GameVersion": null,
       "CompatibleGameVersions": []
     }
