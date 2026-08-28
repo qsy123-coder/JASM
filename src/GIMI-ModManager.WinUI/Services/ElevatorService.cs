@@ -18,6 +18,7 @@ public partial class ElevatorService : ObservableRecipient
     private readonly ILogger _logger;
     private Task? _refreshTask;
     private readonly object _refreshLock = new();
+    private readonly SemaphoreSlim _copyGate = new(1, 1);
 
     [ObservableProperty] private ElevatorStatus _elevatorStatus = ElevatorStatus.NotRunning;
     [ObservableProperty] private bool _canStartElevator;
@@ -215,6 +216,76 @@ public partial class ElevatorService : ObservableRecipient
         catch (TimeoutException e)
         {
             _logger.Error(e, "Failed to Refresh Genshin Mods");
+        }
+    }
+
+    /// <summary>
+    /// Requests an elevated recursive copy from <paramref name="sourceDir"/> to <paramref name="targetDir"/>
+    /// via the Elevator process (UAC prompt shown when it is not already running).
+    /// Returns true when the elevated copy reported success.
+    /// </summary>
+    public async Task<bool> CopyDirectoryAsync(string sourceDir, string targetDir, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sourceDir) || string.IsNullOrWhiteSpace(targetDir))
+            return false;
+
+        await _copyGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await CopyDirectoryCoreAsync(sourceDir, targetDir, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _copyGate.Release();
+        }
+    }
+
+    private async Task<bool> CopyDirectoryCoreAsync(string sourceDir, string targetDir, CancellationToken ct)
+    {
+        // Make sure an elevated Elevator.exe is running (shows the UAC prompt when it is not).
+        if (_elevatorProcess is not { HasExited: false })
+        {
+            if (!CanStartElevator)
+            {
+                _logger.Warning("Elevator.exe unavailable, cannot perform elevated copy");
+                return false;
+            }
+
+            try
+            {
+                if (!StartElevator()) return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to start Elevator.exe for elevated copy");
+                return false;
+            }
+        }
+
+        try
+        {
+            await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            await pipeClient.ConnectAsync(linkedCts.Token).ConfigureAwait(false);
+
+            using var reader = new StreamReader(pipeClient);
+            await using var writer = new StreamWriter(pipeClient) { AutoFlush = true };
+
+            await writer.WriteLineAsync("1".AsMemory(), linkedCts.Token).ConfigureAwait(false);
+            await writer.WriteLineAsync(sourceDir.AsMemory(), linkedCts.Token).ConfigureAwait(false);
+            await writer.WriteLineAsync(targetDir.AsMemory(), linkedCts.Token).ConfigureAwait(false);
+
+            var response = await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+            var ok = string.Equals(response, "OK", StringComparison.Ordinal);
+            if (!ok)
+                _logger.Error("Elevated copy returned: {Response}", response);
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Elevated copy {Src} -> {Dst} failed", sourceDir, targetDir);
+            return false;
         }
     }
 
