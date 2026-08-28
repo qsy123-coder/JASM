@@ -22,10 +22,12 @@ using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
+using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.Validators.PreConfigured;
 using GIMI_ModManager.WinUI.ViewModels.SettingsViewModels;
+using GIMI_ModManager.WinUI.Views;
 using GIMI_ModManager.WinUI.ViewModels.SubVms;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -50,6 +52,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private readonly LifeCycleService _lifeCycleService;
     private readonly INavigationService _navigationService;
     private readonly ModArchiveRepository _modArchiveRepository;
+    private readonly ModEnvSetupFacade _modEnvSetupFacade;
 
 
     private readonly NotificationManager _notificationManager;
@@ -124,6 +127,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
     [ObservableProperty] private bool _legacyCharacterDetails;
 
+    /// <summary>Whether the selected game supports one-click Mod environment setup (e.g. WuWa).</summary>
+    [ObservableProperty] private bool _showModEnvSetupButton;
+
 
     private static bool _showElevatorStartDialog = true;
 
@@ -141,7 +147,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         SelectedGameService selectedGameService, ModUpdateAvailableChecker modUpdateAvailableChecker,
         LifeCycleService lifeCycleService, INavigationService navigationService,
         ModArchiveRepository modArchiveRepository,
-        GameDataSyncService gameDataSyncService)
+        GameDataSyncService gameDataSyncService, ModEnvSetupFacade modEnvSetupFacade)
     {
         _themeSelectorService = themeSelectorService;
         _localSettingsService = localSettingsService;
@@ -160,6 +166,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         _navigationService = navigationService;
         _modArchiveRepository = modArchiveRepository;
         _gameDataSyncService = gameDataSyncService;
+        _modEnvSetupFacade = modEnvSetupFacade;
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
         _logger = logger.ForContext<SettingsViewModel>();
@@ -360,6 +367,41 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private async Task BrowseModsFolderAsync()
     {
         await PathToModsFolderPicker.BrowseFolderPathAsync(App.MainWindow);
+    }
+
+    /// <summary>
+    /// Opens the one-click Mod environment setup wizard; on success fills both path pickers and
+    /// triggers the existing save flow (which restarts the app to apply the new paths).
+    /// </summary>
+    [RelayCommand]
+    private async Task OneClickSetupAsync()
+    {
+        var dialog = App.GetService<ModEnvSetupDialog>();
+        dialog.XamlRoot = App.MainWindow.Content.XamlRoot;
+        await dialog.ShowAsync();
+
+        if (dialog.MiFolder is null || dialog.ModsFolder is null)
+        {
+            if (dialog.Result is { Success: false } && dialog.Result is { Cancelled: false })
+                _notificationManager.ShowNotification("Mod 环境配置失败", string.Join("；", dialog.Result.Issues),
+                    TimeSpan.FromSeconds(5));
+            return;
+        }
+
+        PathToGIMIFolderPicker.Path = dialog.MiFolder;
+        PathToGIMIFolderPicker.Validate();
+        PathToModsFolderPicker.Path = dialog.ModsFolder;
+        PathToModsFolderPicker.Validate();
+
+        if (ValidFolderSettings())
+        {
+            await SaveSettingsCommand.ExecuteAsync(null);
+        }
+        else
+        {
+            _notificationManager.ShowNotification("Mod 环境配置完成", "路径已填入，路径设置未变化。",
+                TimeSpan.FromSeconds(3));
+        }
     }
 
     [RelayCommand]
@@ -845,6 +887,11 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         if (gameInfo is not null)
         {
             PathToGIMIFolderPicker.SetValidators(GimiFolderRootValidators.Validators(gameInfo.GameModelImporterExeNames));
+            ShowModEnvSetupButton = gameInfo.ModEnv is not null;
+        }
+        else
+        {
+            ShowModEnvSetupButton = false;
         }
 
         var windowSettings =
