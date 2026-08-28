@@ -457,7 +457,8 @@ public class ModEnvSetupFacade
                 }
 
                 // JsonNode.Parse does not skip a leading UTF-8 BOM, but the package's clean config has one,
-                // so decode manually and strip it. Preserve the original BOM state on write-back.
+                // so decode manually and strip it. Write back WITHOUT a BOM: the launcher's Python json.loads
+                // rejects a BOM ("Unexpected UTF-8 BOM"), which pops its "加载配置失败" dialog on first launch.
                 var raw = File.ReadAllBytes(configPath);
                 var hadBom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
                 var text = Encoding.UTF8.GetString(raw);
@@ -503,7 +504,7 @@ public class ModEnvSetupFacade
                     changed = true;
                 }
 
-                if (!changed)
+                if (!changed && !hadBom)
                 {
                     progress?.Report("启动器 GUI 路径已是最新，无需更新。");
                     return;
@@ -515,7 +516,7 @@ public class ModEnvSetupFacade
                     root.WriteTo(writer);
 
                 var json = Encoding.UTF8.GetString(stream.ToArray());
-                File.WriteAllText(configPath, json, new UTF8Encoding(hadBom));
+                File.WriteAllText(configPath, json, new UTF8Encoding(false));
                 _logger.Information(
                     "Pre-filled launcher GUI paths in {Config}: game_folder={GameFolder}, importer_folder={ImporterFolder}",
                     configPath, importer["game_folder"]?.GetValue<string>(), importer["importer_folder"]?.GetValue<string>());
