@@ -1,0 +1,157 @@
+<ContentDialog
+    x:Class="GIMI_ModManager.WinUI.Views.ModEnvSetupDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="一键配置 Mod 环境"
+    CloseButtonText="关闭"
+    DefaultButton="Close"
+    Opened="Dialog_OnOpened"
+    Closed="Dialog_OnClosed"
+    Width="640"
+    MaxHeight="720">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+
+        <StackPanel MinWidth="560" Spacing="12">
+
+            <!--  Status  -->
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.StatusVisible, Mode=OneWay}"
+                Severity="{x:Bind ViewModel.StatusSeverity, Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+
+            <!--  Idempotency pre-check  -->
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Packages, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid
+                            Padding="12,8"
+                            ColumnSpacing="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                    Text="{Binding PackageName}" />
+                                <TextBlock
+                                    Style="{ThemeResource CaptionTextBlockStyle}"
+                                    TextWrapping="WrapWholeWords"
+                                    Text="{Binding VersionSummary}" />
+                            </StackPanel>
+                            <Border
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Padding="8,3"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="10">
+                                <TextBlock
+                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                    Text="{Binding ActionText}" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!--  Manual game directory fallback  -->
+            <StackPanel
+                Spacing="8"
+                Visibility="{x:Bind ViewModel.NeedsManualGameDir, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock
+                    Style="{ThemeResource BodyTextBlockStyle}"
+                    TextWrapping="WrapWholeWords"
+                    Text="未自动检测到鸣潮安装位置，请手动选择游戏目录。" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        PlaceholderText="例如：D:\Wuthering Waves"
+                        Text="{x:Bind ViewModel.GameInstallDir, Mode=TwoWay}" />
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <Button Click="BrowseGameDir_OnClick" Content="浏览..." />
+                        <Button Click="RedetectGame_OnClick" Content="重新检测" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+            <!--  Install target + game version  -->
+            <StackPanel Spacing="2">
+                <TextBlock
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Text="安装位置"
+                    Visibility="{x:Bind ViewModel.HasRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <TextBlock
+                    IsTextSelectionEnabled="True"
+                    Style="{ThemeResource BodyTextBlockStyle}"
+                    Text="{x:Bind ViewModel.RootFolder, Mode=OneWay}" />
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="2"
+                    Visibility="{x:Bind ViewModel.HasGameVersion, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="检测到游戏版本：" />
+                    <TextBlock
+                        IsTextSelectionEnabled="True"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.GameVersion, Mode=OneWay}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!--  Progress  -->
+            <StackPanel
+                Spacing="4"
+                Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <ProgressBar IsIndeterminate="True" />
+                <TextBlock
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    TextWrapping="WrapWholeWords"
+                    Text="{x:Bind ViewModel.ProgressText, Mode=OneWay}" />
+            </StackPanel>
+
+            <!--  Log  -->
+            <ScrollViewer
+                x:Name="LogScrollViewer"
+                Height="150"
+                Padding="8"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                HorizontalScrollBarVisibility="Disabled">
+                <TextBlock
+                    FontFamily="Consolas"
+                    FontSize="12"
+                    IsTextSelectionEnabled="True"
+                    Text="{x:Bind ViewModel.LogText, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </ScrollViewer>
+
+            <!--  Actions  -->
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="CancelButton"
+                    Click="Cancel_OnClick"
+                    Content="取消"
+                    Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <Button
+                    x:Name="StartButton"
+                    Click="Start_OnClick"
+                    Content="开始配置"
+                    IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}"
+                    Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>
