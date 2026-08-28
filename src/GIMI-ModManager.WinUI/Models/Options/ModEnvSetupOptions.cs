@@ -13,4 +13,10 @@ public class ModEnvSetupOptions
 
     /// <summary>Id of the shared Mod injector base package inside the manifest.</summary>
     public string BasePackageId { get; set; } = "xxmi";
+
+    /// <summary>
+    /// Optional id of the XXMI Launcher (GUI) package inside the manifest. When set (and present in the
+    /// manifest), the setup pipeline also installs/updates the launcher into the XXMI root.
+    /// </summary>
+    public string? LauncherPackageId { get; set; }
 }
