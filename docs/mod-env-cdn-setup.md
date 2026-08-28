@@ -22,12 +22,13 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 
 可以用控制台网页直接拖拽，或用腾讯云官方图形工具 [COSBrowser](https://cosbrowser.cloud.tencent.com)（上传大文件更稳）。
 
-建议在桶里建一个子目录 `modenv/`，放 3 类文件：
+建议在桶里建一个子目录 `modenv/`，放 4 类文件：
 
 | 文件 | 内容要求 |
 |---|---|
 | `xxmi-<版本>.zip` | XXMI 注入器框架包。解压后至少含 1 个文件/目录即可（JASM 用它判定「基础包是否装好」） |
 | `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」） |
+| `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）包，见下节「打 launcher 包」 |
 | `version.json` | 版本清单，见下节 |
 
 WWMi 包结构示意（干净基础包）：
@@ -49,6 +50,30 @@ wwmi-1.0.0.zip
 > ⚠️ **打包 wwmi 时务必用「干净基础包」**（注入器 + 配置 + Core + 空 `Mods\`），
 > **不要**拿你在用的实机 `WWMI\` 文件夹直接打——里面通常装着几 GB 的个人 mods 和着色器缓存，
 > 既不该分发给别的用户，也会让包体积爆炸（几 GB）。`ShaderCache\` / `ShaderFixes\` 是可选项，运行时自动重建。
+
+### 打 launcher 包
+
+> ⚠️ **不要直接分发 `XXMI-Launcher-Installer-Online-v2.2.1.msi`**：它是**联网引导器**，只含
+> `XXMILauncher.exe`，Resources/Themes/Locale 首次运行才从境外下载——正是国内用户翻墙问题的来源。
+> 必须从一台**已安装好的 `D:\XXMI`** 打包完整离线包。
+
+XXMI Launcher 是个 PyInstaller 打包的 Python/tkinter 应用，`XXMI Launcher.exe`（60MB）+ `Bin\` 运行时
+（~50MB）不能裁剪。但可以排除大量垃圾，最终 zip 约 **55MB**：
+
+| 打进去（必须） | 排除（垃圾/危险） |
+|---|---|
+| `Resources\Bin\`（除日志） | `Resources\Packages\Launcher\TMP\`（旧版安装器，~90MB 垃圾） |
+| `Resources\Packages\XXMI\` + `Launcher\Manifest.json` | `Resources\Security\`（⚠️ 含 XXMI 签名**私钥** `private_key.der`，绝不能外发） |
+| `Themes\`、`Locale\`、`Backups\` | `Resources\Bin\ReShade.log*`（轮转日志） |
+| 一份**干净默认** `XXMI Launcher Config.json` | 实机 `WWMI\`（JASM 的 wwmi 包已装）、根目录 3 个 DLL（JASM 的 xxmi 包已装）、`.modenv.json`、日志、`.lnk`、`Config.json` 里的机器专属字段 |
+
+干净 Config.json 要点（JASM 更新时会保留用户已编辑的该文件）：
+- `Launcher.auto_update=false`（避免启动器去 GitHub 自更新）
+- `Launcher.locale="CN"`、`log_level="INFO"`
+- `Importers.WWMI.Importer.importer_folder="WWMI/"`（相对路径，指向 JASM 装的 wwmi 包）、`game_folder=""`（用户首次在 GUI 里选一次）、`shortcut_deployed=false`
+- 删除 `Security.user_signature`（机器专属）
+
+JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不配就跳过（纯 JASM 注入器玩法）。
 
 ## 三、生成 version.json
 
@@ -73,6 +98,14 @@ wwmi-1.0.0.zip
       "SizeBytes": 52428800,
       "GameVersion": "2.4.0",
       "CompatibleGameVersions": ["2.4.0", "2.5.0"]
+    },
+    "launcher": {
+      "Version": "2.2.1",
+      "DownloadUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/launcher-2.2.1.zip",
+      "Sha256": "……",
+      "SizeBytes": 57286275,
+      "GameVersion": null,
+      "CompatibleGameVersions": []
     }
   }
 }
