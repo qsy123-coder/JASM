@@ -104,6 +104,22 @@
                 </Grid>
 
 
+                <StackPanel
+                    Margin="4,8,4,8"
+                    Spacing="8"
+                    Visibility="{x:Bind ViewModel.ShowModEnvSetupButton, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <InfoBar
+                        IsClosable="False"
+                        IsOpen="True"
+                        Message="{x:Bind ViewModel.ModEnvStatusText, Mode=OneWay}"
+                        Severity="{x:Bind ViewModel.ModEnvStatusSeverity, Mode=OneWay}" />
+                    <Button
+                        HorizontalAlignment="Center"
+                        Command="{x:Bind ViewModel.OneClickSetupCommand}"
+                        Content="配置 / 更新 / 修复 Mod 环境" />
+                </StackPanel>
+
+
                 <controls:FolderSelector
                     Title="3Dmigoto Folder"
                     Margin="4,8,4,8"
