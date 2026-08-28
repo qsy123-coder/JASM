@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -291,7 +292,7 @@ public class ModEnvSetupFacade
 
             // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set.
             // Non-fatal; mirrors EnsureLauncherDesktopShortcut.
-            EnsureLauncherConfigPaths(rootFolder, miFolder, request.GameInstallDir, issues, progress);
+            await EnsureLauncherConfigPathsAsync(rootFolder, miFolder, request.GameInstallDir, issues, progress);
 
             // Re-verify after install.
             (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
@@ -432,82 +433,132 @@ public class ModEnvSetupFacade
     /// Conservative: only fills when a field is empty (game_folder) or empty/relative (importer_folder),
     /// so user-set absolute paths are never overwritten. Non-fatal on any failure.
     /// </summary>
-    private void EnsureLauncherConfigPaths(string rootFolder, string miFolder, string? gameInstallDir,
+    private async Task EnsureLauncherConfigPathsAsync(string rootFolder, string miFolder, string? gameInstallDir,
         List<string> issues, IProgress<string>? progress)
     {
         var configPath = Path.Combine(rootFolder, LauncherConfigFileName);
-        if (!File.Exists(configPath))
+
+        // The launcher rewrites its config by rename (tmp -> config), so while it runs the file can be
+        // briefly missing or locked. Closing it first makes our write authoritative; retries ride out
+        // any remaining transient states.
+        TryStopLauncherProcess(progress);
+
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            progress?.Report("未找到启动器配置文件，跳过自动填写 GUI 路径。");
-            return;
-        }
-
-        try
-        {
-            // JsonNode.Parse does not skip a leading UTF-8 BOM, but the package's clean config has one,
-            // so decode manually and strip it. Preserve the original BOM state on write-back.
-            var raw = File.ReadAllBytes(configPath);
-            var hadBom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
-            var text = Encoding.UTF8.GetString(raw);
-            var root = JsonNode.Parse(hadBom ? text[1..] : text) as JsonObject;
-            if (root is null)
+            try
             {
-                _logger.Debug("Launcher config {Config} is not a JSON object; skipping GUI path fill", configPath);
-                return;
-            }
-
-            var importers = root["Importers"] as JsonObject;
-            var wwmi = importers?["WWMI"] as JsonObject;
-            var importer = wwmi?["Importer"] as JsonObject;
-            if (importer is null)
-            {
-                _logger.Debug("Launcher config {Config} has no Importers.WWMI.Importer node; skipping GUI path fill",
-                    configPath);
-                return;
-            }
-
-            var changed = false;
-
-            if (!string.IsNullOrWhiteSpace(gameInstallDir))
-            {
-                var currentGame = importer["game_folder"]?.GetValue<string>() ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(currentGame))
+                if (!File.Exists(configPath))
                 {
-                    var gameFolder = FindGameFolder(gameInstallDir);
-                    if (gameFolder is not null)
+                    _logger.Information(
+                        "Launcher config {Config} not present (attempt {Attempt}/{Max}); skipping GUI path fill",
+                        configPath, attempt, maxAttempts);
+                    return;
+                }
+
+                // JsonNode.Parse does not skip a leading UTF-8 BOM, but the package's clean config has one,
+                // so decode manually and strip it. Preserve the original BOM state on write-back.
+                var raw = File.ReadAllBytes(configPath);
+                var hadBom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
+                var text = Encoding.UTF8.GetString(raw);
+                var root = JsonNode.Parse(hadBom ? text[1..] : text) as JsonObject;
+                if (root is null)
+                {
+                    _logger.Information("Launcher config {Config} is not a JSON object; skipping GUI path fill",
+                        configPath);
+                    return;
+                }
+
+                var importers = root["Importers"] as JsonObject;
+                var wwmi = importers?["WWMI"] as JsonObject;
+                var importer = wwmi?["Importer"] as JsonObject;
+                if (importer is null)
+                {
+                    _logger.Information(
+                        "Launcher config {Config} has no Importers.WWMI.Importer node; skipping GUI path fill",
+                        configPath);
+                    return;
+                }
+
+                var changed = false;
+
+                if (!string.IsNullOrWhiteSpace(gameInstallDir))
+                {
+                    var currentGame = importer["game_folder"]?.GetValue<string>() ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(currentGame))
                     {
-                        importer["game_folder"] = gameFolder;
-                        changed = true;
+                        var gameFolder = FindGameFolder(gameInstallDir);
+                        if (gameFolder is not null)
+                        {
+                            importer["game_folder"] = gameFolder;
+                            changed = true;
+                        }
                     }
                 }
-            }
 
-            var currentImporter = importer["importer_folder"]?.GetValue<string>() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(currentImporter) || !Path.IsPathRooted(currentImporter))
-            {
-                importer["importer_folder"] = miFolder.Replace('\\', '/');
-                changed = true;
-            }
+                var currentImporter = importer["importer_folder"]?.GetValue<string>() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(currentImporter) || !Path.IsPathRooted(currentImporter))
+                {
+                    importer["importer_folder"] = miFolder.Replace('\\', '/');
+                    changed = true;
+                }
 
-            if (!changed)
-            {
-                progress?.Report("启动器 GUI 路径已是最新，无需更新。");
+                if (!changed)
+                {
+                    progress?.Report("启动器 GUI 路径已是最新，无需更新。");
+                    return;
+                }
+
+                var writerOptions = new JsonWriterOptions { Indented = true, IndentSize = 4 };
+                using var stream = new MemoryStream();
+                using (var writer = new Utf8JsonWriter(stream, writerOptions))
+                    root.WriteTo(writer);
+
+                var json = Encoding.UTF8.GetString(stream.ToArray());
+                File.WriteAllText(configPath, json, new UTF8Encoding(hadBom));
+                _logger.Information(
+                    "Pre-filled launcher GUI paths in {Config}: game_folder={GameFolder}, importer_folder={ImporterFolder}",
+                    configPath, importer["game_folder"]?.GetValue<string>(), importer["importer_folder"]?.GetValue<string>());
+                progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
                 return;
             }
+            catch (IOException ex) when (attempt < maxAttempts)
+            {
+                _logger.Information(ex, "Launcher config {Config} is busy (attempt {Attempt}/{Max}); retrying",
+                    configPath, attempt, maxAttempts);
+                await Task.Delay(200);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to pre-fill launcher GUI paths in {Config}", configPath);
+                issues.Add("未能自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+                return;
+            }
+        }
 
-            var writerOptions = new JsonWriterOptions { Indented = true, IndentSize = 4 };
-            using var stream = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(stream, writerOptions))
-                root.WriteTo(writer);
+        _logger.Warning("Failed to pre-fill launcher GUI paths in {Config} after {Max} attempts", configPath, maxAttempts);
+        issues.Add("未能自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+    }
 
-            var json = Encoding.UTF8.GetString(stream.ToArray());
-            File.WriteAllText(configPath, json, new UTF8Encoding(hadBom));
-            progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+    /// <summary>
+    /// Force-closes a running XXMI Launcher so it cannot lock or overwrite the config while we fill it.
+    /// Best-effort and non-fatal: without it the retry loop may still succeed when the file is not held.
+    /// </summary>
+    private static void TryStopLauncherProcess(IProgress<string>? progress)
+    {
+        try
+        {
+            foreach (var p in Process.GetProcessesByName("XXMI Launcher"))
+            {
+                p.Kill();
+                p.WaitForExit(3000);
+            }
+            progress?.Report("已关闭运行中的 XXMI 启动器，避免其覆盖写入的路径。");
         }
         catch (Exception ex)
         {
-            _logger.Warning(ex, "Failed to pre-fill launcher GUI paths in {Config}", configPath);
-            issues.Add("未能自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+            // Non-fatal: closing the launcher is best-effort; the write below may still succeed.
+            _ = ex;
         }
     }
 
