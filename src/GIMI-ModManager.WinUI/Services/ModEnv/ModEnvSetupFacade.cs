@@ -151,14 +151,14 @@ public class ModEnvSetupFacade
 
             if (gamePkg is not null)
             {
-                var (loaderOk, modsOk) = _installer.CheckGamePackageFiles(miFolder, gameInfo.GameModelImporterExeNames);
+                var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
                 packages.Add(new ModEnvPackagePreCheck
                 {
                     PackageId = modEnv.PackageId,
                     PackageName = "WWMi 鸣潮游戏包",
                     ManifestVersion = gamePkg.Version,
                     InstalledVersion = installed.GetValueOrDefault(modEnv.PackageId),
-                    Action = EvaluateAction(installed, modEnv.PackageId, gamePkg, loaderOk && modsOk)
+                    Action = EvaluateAction(installed, modEnv.PackageId, gamePkg, filesOk && modsOk)
                 });
             }
 
@@ -210,7 +210,7 @@ public class ModEnvSetupFacade
                 return Fail("版本清单缺少必要的安装包");
 
             var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
-            var (loaderOk, modsOk) = _installer.CheckGamePackageFiles(miFolder, gameInfo.GameModelImporterExeNames);
+            var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
 
             // Base XXMI framework -> into the XXMI root itself.
             var baseAction = EvaluateAction(installed, _options.Value.BasePackageId, basePkg, BaseFilesOk(rootFolder));
@@ -225,7 +225,7 @@ public class ModEnvSetupFacade
             }
 
             // Per-game package (WWMi) -> into <root>\<subDir>.
-            var gameAction = EvaluateAction(installed, modEnv.PackageId, gamePkg, loaderOk && modsOk);
+            var gameAction = EvaluateAction(installed, modEnv.PackageId, gamePkg, filesOk && modsOk);
             if (gameAction != ModEnvPackageAction.UpToDate)
             {
                 progress?.Report($"安装/更新 WWMi 鸣潮游戏包 ({gamePkg.Version})...");
@@ -236,10 +236,13 @@ public class ModEnvSetupFacade
                 progress?.Report("WWMi 鸣潮游戏包已是最新版本，跳过。");
             }
 
+            // Ensure the Mods folder exists — some game packages may omit the (empty) dir from the zip.
+            Directory.CreateDirectory(modsFolder);
+
             // Re-verify after install.
-            (loaderOk, modsOk) = _installer.CheckGamePackageFiles(miFolder, gameInfo.GameModelImporterExeNames);
-            if (!loaderOk)
-                issues.Add("安装后校验未通过：未找到 Loader 可执行文件");
+            (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
+            if (!filesOk)
+                issues.Add("安装后校验未通过：未找到注入器文件 (d3d11.dll / d3dx.ini)");
             if (!modsOk)
                 issues.Add("安装后校验未通过：未找到 Mods 文件夹");
 
