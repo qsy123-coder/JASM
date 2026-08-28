@@ -18,6 +18,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.ModExport;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
+using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels;
@@ -220,6 +221,12 @@ public partial class App : Application
                 services.AddSingleton<ModInstallerService>();
                 services.AddSingleton<GameDataSyncService>();
 
+                // Mod environment setup (one-click XXMI/WWMI install)
+                services.AddSingleton<ModEnvManifestService>();
+                services.AddSingleton<GameInstallPathDetector>();
+                services.AddSingleton<ModEnvInstallerService>();
+                services.AddSingleton<ModEnvSetupFacade>();
+
                 // Supabase HttpClient for ModMarket
                 services.AddHttpClient("Supabase", (sp, client) =>
                 {
@@ -263,11 +270,26 @@ public partial class App : Application
                             .WaitAndRetryAsync(Backoff.DecorrelatedJitterBackoffV2(TimeSpan.FromMilliseconds(500), 3, null, true))
                     );
 
+                // Mod environment manifest/downloads (China-accessible CDN)
+                services.AddHttpClient(ModEnvManifestService.HttpClientName, client =>
+                    {
+                        client.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager");
+                        client.DefaultRequestHeaders.Add("Accept", "*/*");
+                        client.Timeout = TimeSpan.FromMinutes(30);
+                    })
+                    .AddPolicyHandler(
+                        HttpPolicyExtensions.HandleTransientHttpError()
+                            .WaitAndRetryAsync(Backoff.DecorrelatedJitterBackoffV2(
+                                TimeSpan.FromMilliseconds(500), 3, null, true))
+                    );
+
                 // Views and ViewModels
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<SettingsPage>();
                 services.AddTransient<StartupViewModel>();
                 services.AddTransient<StartupPage>();
+                services.AddTransient<ModEnvSetupViewModel>();
+                services.AddTransient<ModEnvSetupDialog>();
                 services.AddTransient<ShellPage>();
                 services.AddTransient<ShellViewModel>();
                 services.AddTransient<NotificationsViewModel>();
@@ -317,6 +339,8 @@ public partial class App : Application
                     context.Configuration.GetSection(ModMarketOptions.SectionName));
                 services.Configure<LocalSettingsOptions>(
                     context.Configuration.GetSection(nameof(LocalSettingsOptions)));
+                services.Configure<ModEnvSetupOptions>(
+                    context.Configuration.GetSection(ModEnvSetupOptions.SectionName));
 
                 services.AddSingleton<ModRandomizationService>();
             }).Build();
