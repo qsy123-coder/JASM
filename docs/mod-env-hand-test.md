@@ -9,8 +9,8 @@
 
 ```
 version.json         # 含 xxmi / wwmi 两个包，URL 指向 localhost:8899
-xxmi-1.0.0.zip       # 假 XXMI 基础包（含 bin\xxmi-loader.exe + config.json）
-wwmi-1.0.0.zip       # 假 WWMI 游戏包（含 WWMI Loader.exe + Mods\）
+xxmi-1.0.5.zip       # 真实 XXMI 注入器框架包（3 个 DLL）
+wwmi-1.0.0.zip       # 真实 WWMI 游戏包（d3d11.dll + d3dx.ini + Core\ + 空 Mods\）
 ```
 
 起一个本地 HTTP 服务：
@@ -32,7 +32,7 @@ python -m http.server 8899 --directory C:\jasm-mock-cdn
 
 ## 2. 已安装环境（自动识别）
 
-- 预置一个「已安装」目录，例如 `D:\XXMI\WWMI\`（含 `WWMI Loader.exe` + `Mods\`），
+- 预置一个「已安装」目录，例如 `D:\XXMI\WWMI\`（含 `d3d11.dll` + `d3dx.ini` + `Mods\`），
   并在 `D:\XXMI\` 写好 `.modenv.json` 标记
 - 首启页自动识别并填好两个路径，不再弹向导
 
