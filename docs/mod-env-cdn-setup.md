@@ -80,6 +80,10 @@ XXMI Launcher 是个 PyInstaller 打包的 Python/tkinter 应用，`XXMI Launche
 - `Importers.WWMI.Importer.importer_folder="WWMI/"`（相对路径，指向 JASM 装的 wwmi 包）、`game_folder=""`、`shortcut_deployed=false`
   - JASM 一键配置时会**自动填入**这两项为绝对路径（`importer_folder="D:/XXMI/WWMI"` 正斜杠、`game_folder="D:\Wuthering Waves\Wuthering Waves Game"`），
     用户无需在 GUI 里手选；仅当字段已是非空绝对路径时保留用户值（`importer_folder` 为相对路径如 `WWMI/` 也会被替换成绝对路径）
+- ⚠️ **配置文件必须无 UTF-8 BOM**：launcher 的 Python `json.loads` 遇到 BOM 会抛
+  `Unexpected UTF-8 BOM` → 首次启动弹「错误 加载配置失败」（有「加载默认/加载备份」按钮）。
+  JASM 一键配置时会**强制以无 BOM 写回**，但打包这份干净 config 时别用默认带 BOM 的编辑器保存
+  （PowerShell `Set-Content`、某些记事本会加 BOM；用 VS Code 右下角选「UTF-8」而非「UTF-8 with BOM」）
 - 删除 `Security.user_signature`（机器专属）
 
 JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不配就跳过（纯 JASM 注入器玩法）。
