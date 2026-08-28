@@ -162,6 +162,27 @@ public class ModEnvSetupFacade
                 });
             }
 
+            var launcherPkgId = _options.Value.LauncherPackageId;
+            if (!string.IsNullOrWhiteSpace(launcherPkgId))
+            {
+                var launcherPkg = manifest.Packages.GetValueOrDefault(launcherPkgId);
+                if (launcherPkg is not null)
+                {
+                    packages.Add(new ModEnvPackagePreCheck
+                    {
+                        PackageId = launcherPkgId,
+                        PackageName = "XXMI 启动器 (GUI)",
+                        ManifestVersion = launcherPkg.Version,
+                        InstalledVersion = installed.GetValueOrDefault(launcherPkgId),
+                        Action = EvaluateAction(installed, launcherPkgId, launcherPkg, LauncherFilesOk(rootFolder))
+                    });
+                }
+                else
+                {
+                    issues.Add($"版本清单缺少 XXMI 启动器包 ({launcherPkgId})");
+                }
+            }
+
             if (basePkg is null || gamePkg is null)
                 issues.Add("版本清单缺少必要的安装包");
         }
@@ -224,6 +245,27 @@ public class ModEnvSetupFacade
                 progress?.Report("XXMI 注入器框架已是最新版本，跳过。");
             }
 
+            // XXMI Launcher GUI -> into the XXMI root itself.
+            var launcherPkgId = _options.Value.LauncherPackageId;
+            if (!string.IsNullOrWhiteSpace(launcherPkgId))
+            {
+                var launcherPkg = manifest.Packages.GetValueOrDefault(launcherPkgId);
+                if (launcherPkg is not null)
+                {
+                    var launcherAction = EvaluateAction(installed, launcherPkgId, launcherPkg, LauncherFilesOk(rootFolder));
+                    if (launcherAction != ModEnvPackageAction.UpToDate)
+                    {
+                        progress?.Report($"安装/更新 XXMI 启动器 (GUI) ({launcherPkg.Version})...");
+                        await _installer.InstallPackageAsync(launcherPkg, rootFolder, null, progress, ct,
+                            preserveExistingFiles: new[] { LauncherConfigFileName });
+                    }
+                    else
+                    {
+                        progress?.Report("XXMI 启动器 (GUI) 已是最新版本，跳过。");
+                    }
+                }
+            }
+
             // Per-game package (WWMi) -> into <root>\<subDir>.
             var gameAction = EvaluateAction(installed, modEnv.PackageId, gamePkg, filesOk && modsOk);
             if (gameAction != ModEnvPackageAction.UpToDate)
@@ -249,6 +291,12 @@ public class ModEnvSetupFacade
             // Persist idempotency marker only after everything succeeded.
             installed[_options.Value.BasePackageId] = basePkg.Version;
             installed[modEnv.PackageId] = gamePkg.Version;
+            if (!string.IsNullOrWhiteSpace(_options.Value.LauncherPackageId))
+            {
+                var launcherPkg = manifest.Packages.GetValueOrDefault(_options.Value.LauncherPackageId);
+                if (launcherPkg is not null)
+                    installed[_options.Value.LauncherPackageId] = launcherPkg.Version;
+            }
             await _installer.WriteMarkerAsync(rootFolder, installed, ct);
 
             // Version compatibility warning (non-blocking).
@@ -293,15 +341,16 @@ public class ModEnvSetupFacade
         return detected?.DriveRoot;
     }
 
-    /// <summary>True when the XXMI root has any content besides the marker file.</summary>
+    /// <summary>Signature files of the shared XXMI base package, placed at the XXMI root.</summary>
+    private static readonly string[] BasePackageSignatureFiles = { "3dmloader.dll", "d3d11.dll", "d3dcompiler_47.dll" };
+
+    /// <summary>True when all base package files are present at the XXMI root.</summary>
     private bool BaseFilesOk(string rootFolder)
     {
         if (!Directory.Exists(rootFolder)) return false;
         try
         {
-            return Directory.GetFileSystemEntries(rootFolder)
-                .Any(e => !Path.GetFileName(e).Equals(ModEnvInstallerService.MarkerFileName,
-                    StringComparison.OrdinalIgnoreCase));
+            return BasePackageSignatureFiles.All(f => File.Exists(Path.Combine(rootFolder, f)));
         }
         catch (Exception ex)
         {
@@ -309,6 +358,13 @@ public class ModEnvSetupFacade
             return false;
         }
     }
+
+    /// <summary>Launcher config file that carries user-edited settings; preserved across package updates.</summary>
+    private const string LauncherConfigFileName = "XXMI Launcher Config.json";
+
+    /// <summary>True when the XXMI Launcher GUI executable is present at the root.</summary>
+    private static bool LauncherFilesOk(string rootFolder)
+        => File.Exists(Path.Combine(rootFolder, "Resources", "Bin", "XXMI Launcher.exe"));
 
     private static ModEnvPackageAction EvaluateAction(IReadOnlyDictionary<string, string> installed, string packageId,
         ModEnvPackage pkg, bool filesOk)
