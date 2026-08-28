@@ -55,6 +55,13 @@ public class GameInstallPathDetector
                 return new GameInstallInfo(fromCommonPaths);
             }
 
+            var fromDriveRoots = FindInDriveRoots();
+            if (fromDriveRoots is not null)
+            {
+                _logger.Information("Detected Wuthering Waves install at {Path} via drive root scan", fromDriveRoots);
+                return new GameInstallInfo(fromDriveRoots);
+            }
+
             _logger.Warning("Could not auto-detect Wuthering Waves install location");
             return null;
         }
@@ -180,6 +187,44 @@ public class GameInstallPathDetector
         {
             if (LooksLikeGameInstall(candidate))
                 return candidate;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Scans each fixed drive's root for common Wuthering Waves folder names. Many players install
+    /// to a custom drive root (e.g. D:\Wuthering Waves) rather than Program Files, and the game is
+    /// often absent from the registry uninstall keys, so this catches those installs.
+    /// </summary>
+    private string? FindInDriveRoots()
+    {
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                if (drive.DriveType != DriveType.Fixed || !drive.IsReady)
+                    continue;
+
+                var root = drive.RootDirectory.FullName;
+                var candidates = new[]
+                {
+                    Path.Combine(root, "Wuthering Waves"),
+                    Path.Combine(root, "Wuthering Waves Game"),
+                    Path.Combine(root, "Kuro Games", "Wuthering Waves"),
+                    Path.Combine(root, "KuroGames", "Wuthering Waves")
+                };
+
+                foreach (var candidate in candidates)
+                {
+                    if (LooksLikeGameInstall(candidate))
+                        return candidate;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug(ex, "Failed to scan drive roots for Wuthering Waves install");
         }
 
         return null;
