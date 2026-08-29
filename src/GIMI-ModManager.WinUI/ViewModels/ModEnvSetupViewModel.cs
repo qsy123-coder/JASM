@@ -166,6 +166,33 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
             CanStart = !Succeeded;
             ShowTestLaunch = Succeeded;
             CanTestLaunch = Succeeded;
+
+            // The per-package statuses were computed by the pre-check before install; refresh them now so
+            // the wizard reflects what actually got installed — e.g. "已是最新" after a successful setup,
+            // or the surviving packages after a mid-pipeline failure/cancel.
+            await RefreshPackageStatusesAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// Re-runs the pre-check and rebuilds the package list so statuses reflect what's on disk. Kept separate
+    /// from <see cref="RunPreCheckAsync"/> so it can update the display without resetting <see cref="Result"/>
+    /// or the status message (which the setup pipeline has just set).
+    /// </summary>
+    private async Task RefreshPackageStatusesAsync(CancellationToken ct)
+    {
+        try
+        {
+            var request = new ModEnvSetupRequest { GameInstallDir = GameInstallDir };
+            var pre = await _facade.PreCheckAsync(request, ct);
+
+            Packages.Clear();
+            foreach (var package in pre.Packages)
+                Packages.Add(package);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to refresh package statuses after setup");
         }
     }
 
