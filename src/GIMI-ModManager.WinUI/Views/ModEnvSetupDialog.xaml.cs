@@ -62,6 +62,9 @@ public sealed partial class ModEnvSetupDialog : ContentDialog
         StartButton.IsEnabled = ViewModel.CanStart;
     }
 
+    private async void TestLaunch_OnClick(object sender, RoutedEventArgs e) =>
+        await ViewModel.RunTestLaunchAsync();
+
     private void Cancel_OnClick(object sender, RoutedEventArgs e) => _cts?.Cancel();
 
     private async void BrowseGameDir_OnClick(object sender, RoutedEventArgs e)
