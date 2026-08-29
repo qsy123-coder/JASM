@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.23.0](https://github.com/qsy123-coder/JASM/compare/v2.22.9...v2.23.0) (2026-08-29)
+
+
+### Features
+
+* One-click Mod environment setup for Wuthering Waves: auto-detects the game install, downloads & installs the XXMI injector, WWMi game package and the XXMI Launcher (GUI) from a China-friendly CDN, with resumable downloads, SHA256 verification and idempotent repair/update
+* One-click setup auto-fills the importer/mods paths and the launcher's game folder, creates a desktop shortcut, and fixes the launcher's UTF-8 BOM "load config failed" dialog
+* One-click setup now auto-configures the game start commands: "Start Game" launches the game with mods via `XXMI Launcher.exe --xxmi WWMI --nogui`, and "Start 3Dmigoto" opens the launcher GUI
+
 ## [2.22.9](https://github.com/Jorixon/JASM/compare/v2.22.8...v2.22.9) (2026-01-18)
 
 
