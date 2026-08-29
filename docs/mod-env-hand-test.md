@@ -75,3 +75,18 @@ python -m http.server 8899 --directory C:\jasm-mock-cdn
 5. GUI 里点 WWMI → 选择游戏目录（`D:\Wuthering Waves\Wuthering Waves Game`）→ 点启动 → 确认注入生效
 6. 验证幂等：再次点「一键配置」→ launcher 显示「已是最新」；更新 version.json 版本号 → 显示「可更新」
 7. 验证保留配置：改过 GUI 里的设置后升级 launcher 包 → `XXMI Launcher Config.json` 不被覆盖
+
+## 9. Phase 3：启动命令自动接通（启动游戏即带 mod）
+
+目标：确认一键配置后 JASM **自动写好**「启动游戏 / 启动 3Dmigoto」两条命令，无需手动配置命令模板。
+实现：`ModEnvSetupFacade.EnsureLaunchCommandsAsync`（`feature/game-launch-integration`）。
+
+1. 一键配置成功后打开 `%LOCALAPPDATA%\JASM\ApplicationData_WuWa[_Debug]\commands.json`，应看到：
+   - `StartGameCommand`：`Command` = `D:\XXMI\Resources\Bin\XXMI Launcher.exe`，`Arguments` = `--xxmi WWMI --nogui`
+   - `StartGameModelImporter`：`Command` = 同上，无 `Arguments`（打开启动器 GUI）
+2. 角色页点「启动游戏」→ 游戏带 mod 启动，**不弹** launcher 窗口（`--nogui` 后台注入+直启游戏）
+3. 角色页点「启动 3Dmigoto」→ 打开 XXMI Launcher GUI（管理 mod 环境）
+4. 游戏退出后无残留 `XXMI Launcher` 进程（launcher `auto_close=true` 自处理）
+5. 幂等：再次一键配置 → 命令不变（update-or-create 替换）
+6. 边界：升级前已手动配过游戏命令（如直启 `Wuthering Waves.exe`）→ 被自动替换为 launcher 命令，日志记录
+7. 边界：`ModEnv:LauncherPackageId` 不配置（纯注入器无 launcher）→ 命令不被改动
