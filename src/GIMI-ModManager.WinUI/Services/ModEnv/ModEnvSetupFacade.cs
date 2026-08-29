@@ -262,6 +262,11 @@ public class ModEnvSetupFacade
                 progress?.Report("XXMI 注入器框架已是最新版本，跳过。");
             }
 
+            // Persist each package as soon as it is installed so a later failure (e.g. a flaky network on
+            // the next package) doesn't force re-downloading an already-installed package on re-run.
+            installed[_options.Value.BasePackageId] = basePkg.Version;
+            await _installer.WriteMarkerAsync(rootFolder, installed, ct);
+
             // XXMI Launcher GUI -> into the XXMI root itself.
             var launcherPkgId = _options.Value.LauncherPackageId;
             if (!string.IsNullOrWhiteSpace(launcherPkgId))
@@ -280,6 +285,9 @@ public class ModEnvSetupFacade
                     {
                         progress?.Report("XXMI 启动器 (GUI) 已是最新版本，跳过。");
                     }
+
+                    installed[launcherPkgId] = launcherPkg.Version;
+                    await _installer.WriteMarkerAsync(rootFolder, installed, ct);
                 }
             }
 
@@ -299,6 +307,9 @@ public class ModEnvSetupFacade
                 progress?.Report("WWMi 鸣潮游戏包已是最新版本，跳过。");
             }
 
+            installed[modEnv.PackageId] = gamePkg.Version;
+            await _installer.WriteMarkerAsync(rootFolder, installed, ct);
+
             // Ensure the Mods folder exists — some game packages may omit the (empty) dir from the zip.
             Directory.CreateDirectory(modsFolder);
 
@@ -317,7 +328,8 @@ public class ModEnvSetupFacade
             if (!modsOk)
                 issues.Add("安装后校验未通过：未找到 Mods 文件夹");
 
-            // Persist idempotency marker only after everything succeeded.
+            // Final flush — packages were already persisted incrementally after each step, so this is an
+            // idempotent safety net for any skipped-branch version bookkeeping.
             installed[_options.Value.BasePackageId] = basePkg.Version;
             installed[modEnv.PackageId] = gamePkg.Version;
             if (!string.IsNullOrWhiteSpace(_options.Value.LauncherPackageId))

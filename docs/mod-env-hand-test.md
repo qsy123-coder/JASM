@@ -117,3 +117,57 @@ Save 按钮不再因 `IsValid` 未刷新而保持禁用。修复见 `PathPicker.
 3. 点击按钮 → 向导走通并成功 → 两个路径（MI 文件夹 / Mods 文件夹）自动回填，状态显示成功
 4. **Save 按钮应为可用状态**，点击后进入主页面；此前此场景 Save 一直禁用（回归点）
 5. 回归：设置页同样删除 XXMI 后一键配置 → `ValidFolderSettings` 通过，自动走「保存并重启」流程
+
+## 12. Phase 4：弱网/断点续传验证
+
+目标：下载在中途断流、卡死时**自动续传重试**，过期 `.part` 自动截断，进度节流带速度，
+失败链保留已完成包。实现：`ModEnvInstallerService.DownloadWithResumeAsync` 重试循环 +
+`ModEnvSetupFacade` 增量 marker（`feature/mod-env-weak-network`）。
+
+模拟弱网用一个 Python 节流服务器（起在 mock CDN 同目录，替换 `version.json` 里的 URL）：
+
+```python
+# throttle_server.py：下载中段 sleep 造成断流/卡死
+import http.server, time
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.send_header("Content-Length", str(os.path.getsize("." + self.path))); self.end_headers()
+        with open("." + self.path, "rb") as f:
+            for i, chunk in enumerate(iter(lambda: f.read(81920), b"")):
+                self.wfile.write(chunk); self.wfile.flush()
+                if i == 5: time.sleep(45)   # 第 5 块后卡 45s（> 默认 30s 超时），模拟断流
+    def log_message(self, *a): pass
+http.server.ThreadingHTTPServer(("127.0.0.1", 8899), H).serve_forever()
+```
+
+1. **中途断流续传**：一键配置下载中，用 Ctrl+C 杀掉 `python -m http.server`（或上面的节流服务器只断一次）
+   → 向导日志出现「网络不稳定，正在重试下载（第 2/3 次）...」→ 重试成功后日志「Resuming download of
+   … from X bytes」（X = 已下字节，不是 0）→ 配置最终成功
+2. **卡死超时**：节流服务器让某段 >30s 无数据 → 日志「下载长时间无数据，自动续传重试」，不无限挂起
+3. **过期 .part**：往 `%TEMP%\JASM\modenv\` 写一个比真实包更大的 `xxmi-1.0.5.zip.part`
+   （如 `fsutil file createnew` 造大文件）→ 再配置 → 日志「Discarding stale .part …」自动截断重下，
+   不再报 416 通用错误
+4. **进度节流 + 速度**：观察日志「下载中 … 字节（X MB/s）」行频率 ≈ 2-3 行/秒（不再每 80KB 一行）
+5. **跨包保留**：把 `version.json` 里 launcher URL 指向不存在文件 → base 安装成功后 launcher 失败
+   → 检查 `D:\XXMI\.modenv.json` 已含 base 版本 → 修好 URL 重跑 → 日志 base「已是最新版本，跳过」，
+   只重下 launcher
+6. **回归**：正常网络一次配置成功；下载中途取消 → `.part` 保留可续；SHA 不匹配 → 删 `.part` 报错
+
+## 13. Phase 4 弱网验证结果（2026-08-29）
+
+全部 6 项用例通过。日志位于 `%APPDATA%` 外的应用工作目录 `logs\log.txt`
+（Serilog 相对路径按启动时的工作目录解析，从仓库根目录启动时落在 `仓库根/logs/log.txt`）。
+
+| 用例 | 结果 | 关键证据（文件日志） |
+|---|---|---|
+| 1. 中途断流续传 | ✅ | `failed transiently (attempt 1): The response ended prematurely... (ResponseEnded)` → `Retrying download of xxmi-1.0.5.zip, attempt 2/3` → `Resuming download of xxmi-1.0.5.zip from 409600 bytes`（=5×81920，非 0） |
+| 2. 卡死超时 | ✅ | 卡 30s 后 `failed transiently (attempt 1): 下载长时间无数据，自动续传重试` → `Retrying ... attempt 2/3` → `Resuming ... from 409600 bytes` |
+| 3. 过期 .part | ✅ | `Discarding stale .part for xxmi-1.0.5.zip (5242880 bytes >= 3321339 bytes)`，随后从头重下，无 416 |
+| 4. 进度节流+速度 | ✅ | 下载中行 ≈2.5 行/秒，每行字节增量 ≈573440（7×81920，400ms 一报），显示 `1.2-1.4 MB/s` |
+| 5. 跨包保留 | ✅ | launcher 404 失败后 `D:\XXMI\.modenv.json` 仅含 `xxmi: 1.0.5`；修 URL 重跑 xxmi 跳过、只重下 launcher+wwmi |
+| 6. 回归 | ✅ | 正常网络一次成功无重试；取消后 `.part` 保留并从 13MB 处续传完成；SHA 不匹配 → `SHA256 mismatch ... expected aee41df4..., got f16446c3...` → 删 `.part` 报 `SHA256 校验失败` |
+
+**测试中发现并已修复的一个问题**：配置完成后向导内包状态列表仍显示「未安装」。
+根因：`ModEnvSetupViewModel.RunSetupAsync` 结束后未刷新预检列表。已加
+`RefreshPackageStatusesAsync`，在 finally 中重跑预检重建 `Packages`（成功/取消/失败均刷新），
+现在完成后显示「已是最新」。

@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.24.0](https://github.com/qsy123-coder/JASM/compare/v2.23.0...v2.24.0) (2026-08-29)
+
+
+### Features
+
+* Downloads are now resilient on weak networks: automatic retry with exponential backoff (max 3 attempts), resumable downloads from `.part` files, a 30s stall timeout that auto-resumes, throttled progress with speed display, and stale `.part` cleanup
+* One-click Mod environment setup keeps already-installed packages when a later package fails: an incremental `.modenv.json` marker is written after each package
+* The setup wizard now shows a "Test Launch" button after a successful configuration to launch the game with mods in one click
+* Added the Denia (达妮娅) character to the Wuthering Waves character list
+
 ## [2.23.0](https://github.com/qsy123-coder/JASM/compare/v2.22.9...v2.23.0) (2026-08-29)
 
 
