@@ -50,7 +50,9 @@ public partial class PathPicker : ObservableRecipient
         if (pathToSett is not null)
             Path = pathToSett;
 
-        if (Path is null || string.IsNullOrWhiteSpace(pathToSett))
+        // Validate the current Path. Guard on Path (not the optional pathToSett argument) so that a
+        // no-argument Validate() after a programmatic Path set actually re-validates instead of no-oping.
+        if (string.IsNullOrWhiteSpace(Path))
         {
             ValidationMessages.Clear();
             return;
