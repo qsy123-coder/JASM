@@ -965,5 +965,23 @@
     "InGameSkins": [],
     "InternalName": "Suoming",
     "DisplayName": "锁暝"
+  },
+  {
+    "Keys": [
+      "denia",
+      "达妮娅"
+    ],
+    "ReleaseDate": "2026-05-21T00:00:00",
+    "Image": "Denia.png",
+    "Rarity": 5,
+    "Element": "Fusion",
+    "Class": "Rectifier",
+    "Region": [
+      "Lahai"
+    ],
+    "ModFilesName": "Denia",
+    "InGameSkins": [],
+    "InternalName": "Denia",
+    "DisplayName": "达妮娅"
   }
 ]
