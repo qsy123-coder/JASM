@@ -4,8 +4,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 
 using GIMI_ModManager.Core.GamesService;
+using GIMI_ModManager.Core.GamesService.Models;
+using GIMI_ModManager.Core.Services.CommandService;
+using GIMI_ModManager.Core.Services.CommandService.Models;
 using GIMI_ModManager.WinUI.Models.ModEnvSetup;
 using GIMI_ModManager.WinUI.Models.Options;
+using GIMI_ModManager.WinUI.Services;
 using Microsoft.Extensions.Options;
 using Serilog;
 
@@ -98,15 +102,23 @@ public class ModEnvSetupFacade
     private readonly ModEnvManifestService _manifestService;
     private readonly ModEnvInstallerService _installer;
     private readonly GameInstallPathDetector _detector;
+    private readonly CommandService _commandService;
+    private readonly GenshinProcessManager _genshinProcessManager;
+    private readonly ThreeDMigtoProcessManager _threeDMigtoProcessManager;
     private readonly IOptions<ModEnvSetupOptions> _options;
     private readonly ILogger _logger;
 
     public ModEnvSetupFacade(ModEnvManifestService manifestService, ModEnvInstallerService installer,
-        GameInstallPathDetector detector, IOptions<ModEnvSetupOptions> options, ILogger logger)
+        GameInstallPathDetector detector, CommandService commandService,
+        GenshinProcessManager genshinProcessManager, ThreeDMigtoProcessManager threeDMigtoProcessManager,
+        IOptions<ModEnvSetupOptions> options, ILogger logger)
     {
         _manifestService = manifestService;
         _installer = installer;
         _detector = detector;
+        _commandService = commandService;
+        _genshinProcessManager = genshinProcessManager;
+        _threeDMigtoProcessManager = threeDMigtoProcessManager;
         _options = options;
         _logger = logger.ForContext<ModEnvSetupFacade>();
     }
@@ -293,6 +305,10 @@ public class ModEnvSetupFacade
             // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set.
             // Non-fatal; mirrors EnsureLauncherDesktopShortcut.
             await EnsureLauncherConfigPathsAsync(rootFolder, miFolder, request.GameInstallDir, issues, progress);
+
+            // Wire up the JASM "start game" / "start model importer" commands to the XXMI launcher so the
+            // user can launch the game (with mod injection) straight from the Characters page. Non-fatal.
+            await EnsureLaunchCommandsAsync(rootFolder, gameInfo, issues, progress);
 
             // Re-verify after install.
             (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
@@ -553,6 +569,121 @@ public class ModEnvSetupFacade
 
         _logger.Warning("Failed to pre-fill launcher GUI paths in {Config} after {Max} attempts", configPath, maxAttempts);
         issues.Add("未能自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+    }
+
+    /// <summary>
+    /// Writes the JASM "start game" / "start model importer" commands so a one-click setup leaves the user
+    /// able to launch the game (with XXMI mod injection) straight from the Characters page, no manual command
+    /// configuration needed.
+    ///
+    /// The WWMi importer is a d3d11.dll hook, not an exe, so the only way to "start" it is through the
+    /// XXMI Launcher, which supports a no-GUI CLI start: "XXMI Launcher.exe --xxmi WWMI --nogui" starts the
+    /// game with the active importer and no window. Both commands are REPLACED when already present, so
+    /// re-running setup is idempotent and upgrades a previously manual (plain exe) game-start command.
+    /// Non-fatal: any failure is logged and surfaced as a warning issue, never aborts the setup.
+    /// </summary>
+    private async Task EnsureLaunchCommandsAsync(string rootFolder, GameInfo gameInfo, List<string> issues,
+        IProgress<string>? progress)
+    {
+        // Without a launcher managed by JASM there is nothing to start the game through — leave the
+        // existing commands untouched so a manual (importer-less) setup keeps working.
+        if (string.IsNullOrWhiteSpace(_options.Value.LauncherPackageId))
+            return;
+
+        var launcherExe = Path.Combine(rootFolder, "Resources", "Bin", "XXMI Launcher.exe");
+        if (!File.Exists(launcherExe))
+        {
+            progress?.Report("未找到 XXMI 启动器可执行文件，跳过启动命令配置。");
+            return;
+        }
+
+        var binDir = Path.GetDirectoryName(launcherExe) ?? rootFolder;
+        // The launcher's --xxmi code is the importer's sub-directory name (WWMI/, GIMI/, …), which for
+        // WuWa equals ModEnv.SubDirName ("WWMI").
+        var importerCode = gameInfo.ModEnv?.SubDirName;
+        if (string.IsNullOrWhiteSpace(importerCode))
+        {
+            _logger.Warning("Cannot configure launch commands: ModEnv.SubDirName is empty for {Game}",
+                gameInfo.GameName);
+            issues.Add("未能配置启动命令：Mod 环境缺少 importer 代码。");
+            return;
+        }
+
+        try
+        {
+            // 1) "Start game" -> launcher --nogui: one click starts the game with mods, no window.
+            var gameCommand = new CommandDefinition
+            {
+                CommandDisplayName = $"Start {gameInfo.GameName} (XXMI)",
+                KillOnMainAppExit = false,
+                ExecutionOptions = new CommandExecutionOptions
+                {
+                    UseShellExecute = true,
+                    RunAsAdmin = true,
+                    CreateWindow = true,
+                    Command = launcherExe,
+                    Arguments = $"--xxmi {importerCode} --nogui",
+                    WorkingDirectory = binDir
+                }
+            };
+            await SaveOrUpdateSpecialCommandAsync(gameCommand, gameStart: true, modelImporterStart: false);
+            _logger.Information("Auto-configured game start command: {Cmd} {Args}", launcherExe,
+                gameCommand.ExecutionOptions.Arguments);
+            progress?.Report("已配置「启动游戏」命令（XXMI 带 mod 启动）。");
+
+            // 2) "Start 3Dmigoto" -> launcher GUI (no --nogui): opens the launcher to manage the mod env.
+            var importerCommand = new CommandDefinition
+            {
+                CommandDisplayName = $"Start {gameInfo.GameModelImporterName} (XXMI)",
+                KillOnMainAppExit = false,
+                ExecutionOptions = new CommandExecutionOptions
+                {
+                    UseShellExecute = true,
+                    RunAsAdmin = true,
+                    CreateWindow = true,
+                    Command = launcherExe,
+                    Arguments = null,
+                    WorkingDirectory = binDir
+                }
+            };
+            await SaveOrUpdateSpecialCommandAsync(importerCommand, gameStart: false, modelImporterStart: true);
+            _logger.Information("Auto-configured model importer start command: {Cmd}", launcherExe);
+            progress?.Report("已配置「启动 3Dmigoto」命令（打开启动器 GUI）。");
+
+            // Refresh the singleton process managers so the Characters page buttons pick up the new commands
+            // instead of falling back to the "pick an exe" dialog.
+            await _genshinProcessManager.TryInitialize();
+            await _threeDMigtoProcessManager.TryInitialize();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to auto-configure launch commands");
+            issues.Add("未能自动配置启动命令，可在设置中手动配置。");
+        }
+    }
+
+    /// <summary>
+    /// Saves <paramref name="newCommand"/> as the game-start or model-importer-start command, replacing an
+    /// existing special command of the same kind when present. Re-fetches the current command list so the
+    /// snapshot is never stale across the two (game + importer) writes in <see cref="EnsureLaunchCommandsAsync"/>.
+    /// </summary>
+    private async Task SaveOrUpdateSpecialCommandAsync(CommandDefinition newCommand, bool gameStart,
+        bool modelImporterStart)
+    {
+        var commands = await _commandService.GetCommandDefinitionsAsync();
+        var existingSpecial = gameStart
+            ? commands.FirstOrDefault(c => c.IsGameStartCommand)
+            : commands.FirstOrDefault(c => c.IsModelImporterCommand);
+
+        if (existingSpecial is not null)
+        {
+            // UpdateCommandDefinitionAsync keeps the IsGameStartCommand/IsModelImporterCommand flags.
+            await _commandService.UpdateCommandDefinitionAsync(existingSpecial.Id, newCommand);
+            return;
+        }
+
+        await _commandService.SaveCommandDefinitionAsync(newCommand);
+        await _commandService.SetSpecialCommands(newCommand.Id, gameStart, modelImporterStart);
     }
 
     /// <summary>
