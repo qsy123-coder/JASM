@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using GIMI_ModManager.Core.Services.CommandService;
+using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.ModEnv;
 using Microsoft.UI.Xaml.Controls;
 using Serilog;
@@ -14,6 +17,8 @@ namespace GIMI_ModManager.WinUI.ViewModels;
 public partial class ModEnvSetupViewModel : ObservableRecipient
 {
     private readonly ModEnvSetupFacade _facade;
+    private readonly CommandService _commandService;
+    private readonly CommandHandlerService _commandHandlerService;
     private readonly ILogger _logger;
 
     public ObservableCollection<ModEnvPackagePreCheck> Packages { get; } = new();
@@ -33,6 +38,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private bool _hasResult;
     [ObservableProperty] private string _progressText = string.Empty;
+    [ObservableProperty] private bool _showTestLaunch;
+    [ObservableProperty] private bool _canTestLaunch;
+    [ObservableProperty] private bool _isTestingLaunch;
 
     /// <summary>Result of the last completed setup run (null until one completes).</summary>
     public ModEnvSetupResult? Result { get; private set; }
@@ -41,9 +49,12 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
 
     public string LogText => string.Join(Environment.NewLine, LogLines);
 
-    public ModEnvSetupViewModel(ModEnvSetupFacade facade, ILogger logger)
+    public ModEnvSetupViewModel(ModEnvSetupFacade facade, CommandService commandService,
+        CommandHandlerService commandHandlerService, ILogger logger)
     {
         _facade = facade;
+        _commandService = commandService;
+        _commandHandlerService = commandHandlerService;
         _logger = logger.ForContext<ModEnvSetupViewModel>();
     }
 
@@ -109,6 +120,8 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         CanStart = false;
         HasResult = false;
         Result = null;
+        ShowTestLaunch = false;
+        CanTestLaunch = false;
         LogLines.Clear();
         OnPropertyChanged(nameof(LogText));
         ProgressText = string.Empty;
@@ -151,6 +164,78 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
             IsRunning = false;
             IsBusy = false;
             CanStart = !Succeeded;
+            ShowTestLaunch = Succeeded;
+            CanTestLaunch = Succeeded;
+        }
+    }
+
+    /// <summary>
+    /// After a successful setup, runs the auto-configured "Start Game" command once so the user can
+    /// verify that the game launches with mods. Reuses the saved special command written by
+    /// <see cref="ModEnvSetupFacade.EnsureLaunchCommandsAsync"/>; only spawns the process, the actual
+    /// mod-injection check happens in-game.
+    /// </summary>
+    public async Task RunTestLaunchAsync()
+    {
+        if (!Succeeded || IsTestingLaunch)
+            return;
+
+        IsTestingLaunch = true;
+        CanTestLaunch = false;
+        AppendLog("正在测试启动...");
+
+        try
+        {
+            var gameStartCommand =
+                (await _commandService.GetCommandDefinitionsAsync()).FirstOrDefault(c => c.IsGameStartCommand);
+
+            if (gameStartCommand is null)
+            {
+                AppendLog("未找到「启动游戏」命令（可能未安装 launcher 包），无法测试启动。");
+                SetStatus("未找到启动命令，无法测试启动。", InfoBarSeverity.Warning);
+                return;
+            }
+
+            var errors = await _commandHandlerService.CanRunCommandAsync(gameStartCommand.Id, null);
+            if (errors.Count > 0)
+            {
+                AppendLog("启动前置检查未通过：" + string.Join("；", errors));
+                SetStatus("测试启动失败：前置检查未通过。", InfoBarSeverity.Error);
+                return;
+            }
+
+            var result = await Task.Run(() =>
+                _commandHandlerService.RunCommandAsync(gameStartCommand.Id, null));
+
+            if (result.IsSuccess)
+            {
+                AppendLog(
+                    $"已发起测试启动：{gameStartCommand.CommandDisplayName}（后台注入 + 游戏直启）。请在游戏中确认 mod 生效。");
+                SetStatus("测试启动已发起，请在游戏中确认 mod 是否生效。", InfoBarSeverity.Success);
+            }
+            else
+            {
+                var message = result.Exception switch
+                {
+                    Win32Exception e when e.NativeErrorCode == 1223 => "用户取消了 UAC 提权。",
+                    Win32Exception e when e.NativeErrorCode == 740 =>
+                        "需要管理员权限，请以管理员身份运行 JASM 后重试。",
+                    _ => result.Exception?.Message ?? result.Notification?.Message ?? "未知错误"
+                };
+                AppendLog("测试启动失败：" + message);
+                SetStatus("测试启动失败，请查看日志。", InfoBarSeverity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Test launch failed");
+            AppendLog("测试启动失败：" + ex.Message);
+            SetStatus("测试启动失败，请查看日志。", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            IsTestingLaunch = false;
+            CanTestLaunch = Succeeded;
         }
     }
 
