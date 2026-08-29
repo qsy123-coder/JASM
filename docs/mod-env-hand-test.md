@@ -90,3 +90,18 @@ python -m http.server 8899 --directory C:\jasm-mock-cdn
 5. 幂等：再次一键配置 → 命令不变（update-or-create 替换）
 6. 边界：升级前已手动配过游戏命令（如直启 `Wuthering Waves.exe`）→ 被自动替换为 launcher 命令，日志记录
 7. 边界：`ModEnv:LauncherPackageId` 不配置（纯注入器无 launcher）→ 命令不被改动
+
+## 10. Phase 4：测试启动引导（配置成功后一键验证）
+
+目标：配置完成后向导内出现「测试启动」按钮，点击即用已自动配好的「启动游戏」命令拉起游戏，
+现场验证「启动游戏即带 mod」。实现：`ModEnvSetupViewModel.RunTestLaunchAsync`
+（`feature/test-launch-guidance`）。
+
+1. 一键配置成功 → 向导动作区出现「测试启动」按钮（`Succeeded` 才显示；配置失败/取消不出现）
+2. 点击「测试启动」→ UAC 提权提示 → 游戏带 mod 启动，不弹 launcher 窗口（`--nogui`）
+3. 向导日志/状态栏显示「已发起测试启动：Start … (XXMI)（后台注入 + 游戏直启）。请在游戏中确认 mod 生效。」
+4. 进游戏确认 mod 生效后关闭对话框 → Settings 入口照常填路径 + 保存重启；Startup 入口照常回填 + Save
+5. 失败路径：UAC 点「否」→ 日志「用户取消了 UAC 提权。」，状态栏错误，不崩溃
+6. 边界：`ModEnv:LauncherPackageId` 不配置再配置 → 按钮仍显示，点击后日志「未找到「启动游戏」命令
+   （可能未安装 launcher 包），无法测试启动。」
+7. 回归：对话框关闭后再进设置/角色页，原有「启动游戏/启动 3Dmigoto」按钮行为不变
