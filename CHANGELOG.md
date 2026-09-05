@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.25.0](https://github.com/qsy123-coder/JASM/compare/v2.24.0...v2.25.0) (2026-09-06)
+
+
+### Fixes
+
+* 游戏数据同步不再覆盖 `game.json` 与 `.dataversion`,修复了「一键配置 Mod 环境」按钮在 2.24.0 消失的问题(由 2.24.0 之前打包的旧数据包在同步时覆盖了内置的 game.json 导致)
+* 游戏数据打包脚本不再把 `game.json` 与 `.dataversion` 打进数据包,从源头杜绝数据包覆盖静态配置
+
 ## [2.24.0](https://github.com/qsy123-coder/JASM/compare/v2.23.0...v2.24.0) (2026-08-29)
 
 
