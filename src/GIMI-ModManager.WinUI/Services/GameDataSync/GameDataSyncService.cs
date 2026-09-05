@@ -286,6 +286,17 @@ public class GameDataSyncService
         foreach (var filePath in Directory.GetFiles(extractDir, "*", SearchOption.AllDirectories))
         {
             var relativePath = Path.GetRelativePath(extractDir, filePath);
+
+            // game.json 是应用的静态配置(游戏名/图标/模型导入器/ModEnv 元数据),由 exe 内置自带,
+            // 一旦被数据同步覆盖,会导致「一键配置 Mod 环境」按钮消失(见 .dataversion 版本比较)。
+            // .dataversion 也由同步服务自身在下方写入,不应当从数据包复制进来。
+            if (relativePath.Equals("game.json", StringComparison.OrdinalIgnoreCase) ||
+                relativePath.Equals(DataVersionFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Information("Skipping protected config file during game data sync: {RelativePath}", relativePath);
+                continue;
+            }
+
             var destFile = Path.Combine(targetDir, relativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
             File.Copy(filePath, destFile, overwrite: true);
