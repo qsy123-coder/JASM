@@ -211,7 +211,7 @@
                     <!-- Description -->
                     <ScrollViewer x:Name="DescriptionContent" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto">
-                        <TextBlock Text="{Binding Description}" FontSize="13"
+                        <TextBlock x:Name="DescriptionText" Text="{Binding Description}" FontSize="13"
                                    TextWrapping="Wrap" LineHeight="20"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </ScrollViewer>
