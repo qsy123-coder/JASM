@@ -49,17 +49,20 @@
             <Border Width="250" Margin="6" CornerRadius="8"
                     BorderBrush="#404040" BorderThickness="0.5">
                 <Grid Height="340">
-                    <!-- 层0: 无图片时的占位背景 -->
-                    <Grid Background="#2A2A2A">
-                        <TextBlock Text="&#x1F5BC;" FontSize="32"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Foreground="#555555" />
-                    </Grid>
-                    <!-- 层1: 图片铺满（竖屏固定 250×340） -->
-                    <Image Source="{Binding PreviewImageUrl}"
+                    <!-- 层0: 无图片时的纯色占位背景 -->
+                    <Grid Background="#2A2A2A" />
+                    <!-- 层1: 图片加载动画(滚动到视口开始加载时才显示,离屏折叠,不空转) -->
+                    <ProgressRing x:Name="CardLoadingRing" IsActive="False"
+                                  Visibility="Collapsed"
+                                  Width="28" Height="28"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Foreground="#0078D4" />
+                    <!-- 层2: 图片铺满（竖屏固定 250×340,Source 懒加载:滚到视口才在代码里设置） -->
+                    <Image x:Name="CardImage"
                            Stretch="UniformToFill"
                            HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
+                           VerticalAlignment="Center"
+                           ImageOpened="CardImage_Opened" ImageFailed="CardImage_Failed" />
                     <!-- 层2: NSFW 遮罩覆盖整卡 -->
                     <Border CornerRadius="8"
                             Visibility="{Binding IsNsfwBlurred, Converter={StaticResource BoolToVisibilityConverter}}"
