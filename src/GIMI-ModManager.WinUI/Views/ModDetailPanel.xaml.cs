@@ -1,5 +1,7 @@
 using System.Text.Json;
 using GIMI_ModManager.WinUI.Models;
+using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.Services.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -48,6 +50,7 @@ public sealed partial class ModDetailPanel : UserControl
             SlideInStoryboard.Stop();
             DrawerBorder.RenderTransform = new TranslateTransform { X = 420 };
             SlideInStoryboard.Begin();
+            _ = FillMissingDetailAsync(mod);
             return;
         }
 
@@ -65,6 +68,7 @@ public sealed partial class ModDetailPanel : UserControl
         _logger.Information("PanelRoot visible={Vis}, opacity={Op}",
             PanelRoot.Visibility, PanelRoot.Opacity);
         SlideInStoryboard.Begin();
+        _ = FillMissingDetailAsync(mod);
     }
 
     public void Hide()
@@ -102,7 +106,24 @@ public sealed partial class ModDetailPanel : UserControl
         foreach (var url in images)
         {
             if (string.IsNullOrWhiteSpace(url)) continue;
-            var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(url));
+
+            // 图片加载动画:加载中显示进度圈,加载完成/失败后隐藏。
+            // 构造 BitmapImage 后立即订阅事件再赋 UriSource,避免缓存命中时事件先于订阅触发导致转圈不停。
+            var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+            var ring = new ProgressRing
+            {
+                IsActive = true,
+                Width = 24,
+                Height = 24,
+                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4))
+            };
+            bmp.ImageOpened += (_, _) => { ring.IsActive = false; ring.Visibility = Visibility.Collapsed; };
+            bmp.ImageFailed += (_, _) => { ring.IsActive = false; ring.Visibility = Visibility.Collapsed; };
+            bmp.UriSource = new Uri(url);
+
             var img = new Image
             {
                 Source = bmp,
@@ -110,10 +131,15 @@ public sealed partial class ModDetailPanel : UserControl
                 MaxWidth = 320,
                 MaxHeight = 200
             };
+
+            var container = new Grid { IsTapEnabled = true };
+            container.Children.Add(img);
+            container.Children.Add(ring);
+
             var border = new Border
             {
                 CornerRadius = new CornerRadius(8),
-                Child = img,
+                Child = container,
                 IsTapEnabled = true
             };
             border.Tapped += (s, e) =>
@@ -148,6 +174,9 @@ public sealed partial class ModDetailPanel : UserControl
 
     private string? _directDownloadUrl;
 
+    /// <summary>补拉详情递增序号，用于丢弃过期(已切换/已关闭)的异步结果。</summary>
+    private int _detailFetchSeq;
+
     private void BuildDownloadSection(ModMarketMod mod)
     {
         // ── Direct download ──
@@ -173,6 +202,8 @@ public sealed partial class ModDetailPanel : UserControl
                 var links = raw.Value.Deserialize<List<DriveLinkEntry>>();
                 if (links is { Count: > 0 })
                 {
+                    // 顶部引导：先提示操作方式，再列出网盘卡片
+                    DrivePanel.Children.Add(BuildDriveHint());
                     foreach (var link in links)
                         DrivePanel.Children.Add(BuildDriveCard(link.Name, link.Url));
                 }
@@ -211,7 +242,7 @@ public sealed partial class ModDetailPanel : UserControl
         });
         leftStack.Children.Add(new TextBlock
         {
-            Text = "点击下载",
+            Text = "点击复制链接",
             FontSize = 10,
             Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
         });
@@ -225,14 +256,21 @@ public sealed partial class ModDetailPanel : UserControl
             Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4)),
             BorderThickness = new Thickness(0),
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-            Tag = url
+            Margin = new Thickness(8, 0, 0, 0)
         };
-        btn.Click += DriveDownload_Click;
+        // 默认 WinUI 按钮在 hover/pressed 时会把行内 Background 换成浅色主题刷,
+        // 白色复制图标在浅色卡片上会几乎不可见(看起来像"消失")。覆盖这两支为深蓝,
+        // 让悬停/按下时背景不变淡,图标始终清晰。
+        btn.Resources["ButtonBackgroundPointerOver"] =
+            new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x5A, 0xA8));
+        btn.Resources["ButtonBackgroundPressed"] =
+            new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x4E, 0x8F));
+        // 点击 = 复制链接(而非跳转浏览器),引导用户去对应网盘转存下载
+        btn.Click += (s, e) => CopyNetdiskLink(url, name);
         btn.Content = new FontIcon
         {
             FontSize = 14,
-            Glyph = "",
+            Glyph = "",
             Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
@@ -245,10 +283,67 @@ public sealed partial class ModDetailPanel : UserControl
         return border;
     }
 
-    private void DriveDownload_Click(object sender, RoutedEventArgs e)
+    /// <summary>网盘列表顶部的操作提示，向用户说明「复制链接→去网盘转存」的流程。</summary>
+    private FrameworkElement BuildDriveHint()
     {
-        if (sender is Button { Tag: string url })
-            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+        return new TextBlock
+        {
+            Text = "提示：点击下方网盘卡片即可复制链接，请打开对应的网盘客户端转存并下载（网页端通常限速且需登录，推荐用客户端）。",
+            FontSize = 11,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
+            TextWrapping = TextWrapping.Wrap
+        };
+    }
+
+    /// <summary>复制网盘链接到剪贴板，并引导用户打开对应网盘转存下载（不再直接跳转浏览器）。</summary>
+    private void CopyNetdiskLink(string url, string platform)
+    {
+        try
+        {
+            var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            data.SetText(url);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+            Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to copy netdisk link to clipboard");
+            App.GetService<NotificationManager>()?.ShowNotification("复制失败", "无法复制网盘链接，请手动复制。",
+                TimeSpan.FromSeconds(4));
+            return;
+        }
+
+        _logger.Information("Copied {Platform} netdisk link to clipboard", platform);
+        App.GetService<NotificationManager>()?.ShowNotification("网盘链接已复制",
+            $"已复制「{platform}」网盘链接，请打开{platform}客户端粘贴链接后转存下载。网页端往往限速且需登录，不推荐使用网页端。",
+            TimeSpan.FromSeconds(6));
+    }
+
+    // ── 补拉详情(description) ───────────────────────────
+
+    /// <summary>
+    /// 列表接口只拉网格字段,description 是唯一的大字段被省略。点开详情时按 id 补拉一次并回填,
+    /// 若期间已切换到别的 mod 或面板已关闭,则丢弃过期结果。
+    /// </summary>
+    private async Task FillMissingDetailAsync(ModMarketMod mod)
+    {
+        // 已补过(例如同一 mod 再次点击)不再重复请求
+        if (!string.IsNullOrEmpty(mod.Description)) return;
+        var seq = ++_detailFetchSeq;
+        try
+        {
+            var full = await App.GetService<ModMarketService>().GetModByIdAsync(mod.Id);
+            if (full is null || seq != _detailFetchSeq || !ReferenceEquals(_currentMod, mod))
+                return; // 已切换/已关闭本次面板,丢弃过期结果
+            DescriptionText.Text = full.Description;
+            mod.Description = full.Description; // 供后续再次点击时直接复用
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to load full mod detail for '{Title}'", mod.Title);
+            if (ReferenceEquals(_currentMod, mod))
+                DescriptionText.Text = "（描述加载失败，请重试）";
+        }
     }
 
     // ── Event handlers ──────────────────────────────────
