@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.26.0](https://github.com/qsy123-coder/JASM/compare/v2.25.0...v2.26.0) (2026-09-08)
+
+
+### Features
+
+* **market:** 卡片占位改纯色 + 加载动画 + 图片源离屏折叠 ([4d15cdb](https://github.com/qsy123-coder/JASM/commit/4d15cdb2de6be91a8998a0da7fa86b179accb7e6))
+* **market:** 点开详情按 id 补拉 description,并丢弃过期异步结果 ([cbe339e](https://github.com/qsy123-coder/JASM/commit/cbe339e3139a0540c2a4afec83ac5f2c9c7f9493))
+* **market:** 视口懒加载图片源,滚到才设 Source 减少并发 COS 拉图 ([df09867](https://github.com/qsy123-coder/JASM/commit/df09867a99e5bee6e975936242683a72609e845c))
+* **market:** 详情描述 TextBlock 命名,作为补拉 description 的回填目标 ([1834f7a](https://github.com/qsy123-coder/JASM/commit/1834f7a54dfc39c4c52d8f26493c58d9f2222ab5))
+
+
+### Bug Fixes
+
+* **update:** AutoUpdater 下载源与回退链接改指 fork 仓库 ([bd567e3](https://github.com/qsy123-coder/JASM/commit/bd567e3fc9367aeb236bbbe12f28431daa15a306))
+* **update:** UpdateChecker 更新检测改指 fork 仓库 ([f9ccc3d](https://github.com/qsy123-coder/JASM/commit/f9ccc3de84dfa113b2e4c7d90c78447020ebb0e9))
+
+
+### Performance Improvements
+
+* **market:** ModMarketService 列表用窄字段投影 + 分类计数短TTL缓存 ([6a70c65](https://github.com/qsy123-coder/JASM/commit/6a70c65d8baed484800d0a87158216d9aa54c3e3))
+
+
+### Miscellaneous
+
+* **gitignore:** 忽略 Release.py 构建输出目录 output/ ([39528f0](https://github.com/qsy123-coder/JASM/commit/39528f019bd7317e7f745ea8fc781e6faa9d2664))
+* **release:** bump version 2.25.0 -&gt; 2.26.0 ([50f7ec8](https://github.com/qsy123-coder/JASM/commit/50f7ec87c162432fd1d586dd0dfb2dbd4e96d32e))
+
+
+### Continuous Integration
+
+* **release:** release-please 监听 master 以匹配默认分支 ([c26c525](https://github.com/qsy123-coder/JASM/commit/c26c525a6641d2387df8eebc62f1c9d80aaf3627))
+
 ## [2.25.0](https://github.com/qsy123-coder/JASM/compare/v2.24.0...v2.25.0) (2026-09-06)
 
 
