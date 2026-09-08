@@ -20,6 +20,16 @@ public class ModMarketService
         PropertyNameCaseInsensitive = true
     };
 
+    // 网格/详情面板实际用到的字段。description 等大字段(单行好几 KB)在列表里不拉,
+    // 点开详情时再按 id 单独拉一次(见 GetModByIdAsync),避免 24 个卡片每行都背 description 拖慢首屏。
+    private static readonly string GridSelect =
+        "id,title,character,images,download_url,nsfw,views,likes_count,comments_count,downloads_count,drive_links,created_at";
+
+    // 分类计数按角色分组需 1000/页全扫(~4s),而计数变化很慢,带短 TTL 缓存避免每次进市场/切换重扫。
+    private static readonly TimeSpan CategoryCacheTtl = TimeSpan.FromMinutes(10);
+    private List<ModMarketCategory>? _categoryCache;
+    private DateTime _categoryCacheAt;
+
     public ModMarketService(
         IHttpClientFactory httpClientFactory,
         IOptions<ModMarketOptions> options,
@@ -93,27 +103,60 @@ public class ModMarketService
     public async Task<IReadOnlyList<ModMarketCategory>> GetCharacterCategoriesAsync(
         CancellationToken ct = default)
     {
+        if (_categoryCache is not null && DateTime.UtcNow - _categoryCacheAt < CategoryCacheTtl)
+        {
+            _logger.Debug("Returning cached character categories ({Count})", _categoryCache.Count);
+            return _categoryCache;
+        }
+
         try
         {
             var client = CreateClient();
-            var response = await client.GetAsync(
-                "mods?select=character&is_published=eq.true&is_available=eq.true&limit=10000", ct);
-            response.EnsureSuccessStatusCode();
 
-            var json = await response.Content.ReadAsStringAsync(ct);
-            using var doc = JsonDocument.Parse(json);
+            // Supabase-hosted PostgREST defaults db-max-rows to 1000 and silently clamps any
+            // larger limit to 1000 — a single limit=10000 request only returns the first 1000
+            // rows, truncating per-character counts at 1000. Instead paginate in chunks of 1000
+            // (≤ the cap) ordered by the unique id so every row is counted exactly once, and keep
+            // fetching until a short page signals the end. This yields exact per-character counts
+            // regardless of how many published mods exist.
+            const int pageSize = 1000;
+            const int maxPages = 100; // safety guard (~100k mods) to avoid ever hanging the UI
+            const string baseFilters =
+                "mods?select=character&is_published=eq.true&is_available=eq.true&order=id.asc";
             var categories = new Dictionary<string, int>();
 
-            foreach (var element in doc.RootElement.EnumerateArray())
+            for (var offset = 0; ; offset += pageSize)
             {
-                if (element.TryGetProperty("character", out var prop))
+                var url = $"{baseFilters}&limit={pageSize}&offset={offset}";
+                _logger.Information("Supabase GET categories {Url}", url);
+                var response = await client.GetAsync(url, ct);
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync(ct);
+                using var doc = JsonDocument.Parse(json);
+                var rowsThisPage = 0;
+
+                foreach (var element in doc.RootElement.EnumerateArray())
                 {
-                    var name = prop.GetString();
-                    if (!string.IsNullOrWhiteSpace(name))
+                    rowsThisPage++;
+                    if (element.TryGetProperty("character", out var prop))
                     {
-                        categories.TryGetValue(name, out var count);
-                        categories[name] = count + 1;
+                        var name = prop.GetString();
+                        if (!string.IsNullOrWhiteSpace(name))
+                        {
+                            categories.TryGetValue(name, out var count);
+                            categories[name] = count + 1;
+                        }
                     }
+                }
+
+                // Short page => reached the end. Also bail on the page guard so a
+                // server that ignores offset can never loop forever.
+                if (rowsThisPage < pageSize || (offset / pageSize) + 1 >= maxPages)
+                {
+                    if ((offset / pageSize) + 1 >= maxPages)
+                        _logger.Warning("Character category scan reached page guard at offset {Offset}", offset);
+                    break;
                 }
             }
 
@@ -236,6 +279,9 @@ public class ModMarketService
 
             _logger.Information("Loaded {Count} character categories, total mods: {Total}, skins: {Skins}",
                 characterCategories.Count, total, skinsCount);
+
+            _categoryCache = result;
+            _categoryCacheAt = DateTime.UtcNow;
             return result;
         }
         catch (Exception ex)
@@ -317,7 +363,7 @@ public class ModMarketService
             };
 
             var offset = (page - 1) * pageSize;
-            var url = $"mods?{string.Join("&", filters)}&order={order}&limit={pageSize}&offset={offset}";
+            var url = $"mods?select={GridSelect}&{string.Join("&", filters)}&order={order}&limit={pageSize}&offset={offset}";
 
             _logger.Information("Supabase GET {Url}", url);
 
@@ -434,6 +480,35 @@ public class ModMarketService
             _logger.Error(ex, "GetModsAsync failed. Type: {Type}, Message: {Msg}, Inner: {Inner}",
                 ex.GetType().Name, ex.Message, ex.InnerException?.Message);
             return new ModMarketResult();
+        }
+    }
+
+    /// <summary>
+    /// 按 id 拉取单条 mod 的完整数据(select=*)。列表接口只拉了网格字段,
+    /// 详情面板打开时用它补拉 description 等大字段。
+    /// </summary>
+    public async Task<ModMarketMod?> GetModByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        try
+        {
+            var client = CreateClient();
+            var url = $"mods?id=eq.{id}&select=*&is_published=eq.true&is_available=eq.true";
+            _logger.Information("Supabase GET mod by id {Id}", id);
+            var response = await client.GetAsync(url, ct);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+            {
+                var mod = doc.RootElement[0].Deserialize<ModMarketMod>(JsonOptions);
+                return mod;
+            }
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "GetModByIdAsync failed for {Id}", id);
+            return null;
         }
     }
 }
