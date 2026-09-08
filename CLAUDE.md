@@ -131,3 +131,48 @@ Before pushing code, always verify the full CI pipeline locally — `dotnet buil
 - Python 3.12+ 对 `\P` `\d` 等非法转义报 SyntaxWarning，路径用正斜杠 `/`，正则用原始字符串 `r""`
 - `dotnet publish` 不加 `-o` 时输出到 TFM 子目录，与脚本期望的路径不匹配
 - workflow `branches:` 过滤器不匹配会导致 push 不触发 CI
+
+## JASM 自动更新 / Release 发布链路
+
+> 本节记录 Mod 市场改造 + 自动更新踩过的坑，涉及 `UpdateChecker`、`JASM.AutoUpdater`、`release-please.yml`、`dotnet-desktop*.yml`。
+
+### 1. 更新检测与下载源都写死 GitHub 仓库
+
+- 主 app：`src/GIMI-ModManager.WinUI/Services/AppManagement/Updating/UpdateChecker.cs:23` 的 `ReleasesApiUrl`
+- AutoUpdater：`src/JASM.AutoUpdater/MainPageVM.cs` 的 `:387`（下载 zip 的 API）、`:34` / `:171`（浏览器与回退链接）
+
+`qsy123-coder/JASM` 是 `Jorixon/JASM` 的 fork，**4 处都要改成自己的 fork repo**，否则用户端检测不到、更新器也下不了包。
+
+### 2. 版本号由 release-please 管理
+
+`GIMI-ModManager.WinUI.csproj` 的 `<VersionPrefix>` 被 `<!-- x-release-please-start-version -->` / `end` 标记包住，release-please 用它自动 bump。**确保 `release-please.yml` 的 `on.push.branches` 匹配默认分支**（本项目是 `master`，不是 `main`——`main` 分支不存在，配错了 workflow 永不触发）。
+
+### 3. release-please 需要两个权限开关
+
+Settings → Actions → General → Workflow permissions 下要**同时**勾「Read and write permissions」和「Allow GitHub Actions to create and approve pull requests」。只勾前者会报 `release-please failed: GitHub Actions is not permitted to create or approve pull requests`——报错在「开 release PR」那步，之前的版本 bump / 分支创建其实都成功了。
+
+### 4. 构建 workflow 只传 artifact，不挂 release
+
+`dotnet-desktop.yml` / `dotnet-desktop-self-contained.yml` 最后都是 `actions/upload-artifact`，**不会把 zip 挂到 GitHub release**。release 的 asset 要手动挂（或自己加 `gh release upload` 步骤）。
+
+### 5. 单文件模式没有 AutoUpdater ⇒ 无法自动更新
+
+- `Release.py` 在 `SingleFile` / `SelfContained` 模式跳过构建 AutoUpdater，且只复制单 exe。
+- 自动更新执行体是 `JASM - Auto Updater.exe`（独立更新器进程），**单文件安装完根本没有它** → 检测到新版徽标能亮，但点更新 `StartSelfUpdateProcess()` 会失败。
+- **自动更新只在 folder 版（`JASM_v*.7z`，即 `Release.py ExcludeElevator` 默认模式，含更新器）成立。**
+
+### 6. AutoUpdater 只认 `JASM_` 开头的 asset
+
+`MainPageVM.cs:160`：`.FirstOrDefault(a => a.name?.StartsWith("JASM_") ?? false)`。`SingleFile_JASM_*.zip` / `SelfContained_JASM_*.7z` 都**不匹配**，给自动更新用的 asset 必须是 `JASM_*` 命名。
+
+### 7. 发布两步走 & 更新机制
+
+release-please 建 release（tag `vX.Y.Z`）→ 手动挂 `JASM_vX.Y.Z.7z` 上去 → 老用户手动下一次 folder 版 → 之后 folder 用户自动更新。机制是「提示 + 手动点」，不是静默推：UpdateChecker 每 2h 查 GitHub releases，比对 `tag_name`（去 `v`）与编译版本，只有 `CurrentVersion < latest` 才亮徽标；用户点更新才拉起 AutoUpdater 下载替换。升级必须 bump `<VersionPrefix>` **且** release tag 用同一版本，否则 `==` 不触发。
+
+### 8. 打包映射速查
+
+| `Release.py` 模式 | 产物命名 | 含 AutoUpdater | 自动更新 |
+|---|---|---|---|
+| 默认 / `ExcludeElevator` | `JASM_v*.7z` | ✅ | ✅ |
+| `SingleFile` | `SingleFile_JASM_v*.zip` | ❌ | ❌ |
+| `SelfContained` | `SelfContained_JASM_v*.7z` | ❌ | ❌ |
