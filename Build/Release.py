@@ -120,7 +120,9 @@ print("Finished copying text files to release directory")
 print("Zipping release directory...")
 releaseArchiveName = "JASM_v" + versionNumber + ".7z"
 if SingleFile:
-    releaseArchiveName = "SingleFile_" + releaseArchiveName
+    # 单文件版产物改为 .zip：进程内自更新用 System.IO.Compression 解压,无需运行时 7z。
+    # 与 CLAUDE.md 文档及 gh release upload 示例里的 SingleFile_JASM_vX.Y.Z.zip 命名对齐。
+    releaseArchiveName = "SingleFile_JASM_v" + versionNumber + ".zip"
 elif SelfContained:
     releaseArchiveName = "SelfContained_" + releaseArchiveName
 
