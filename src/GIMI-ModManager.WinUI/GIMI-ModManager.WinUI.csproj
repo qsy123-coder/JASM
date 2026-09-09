@@ -88,6 +88,14 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
+		<None Update="Assets\QuarkDownloadHelp.png">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+		<None Update="Assets\ThunderDownloadHelp.png">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
 	</ItemGroup>
 	
 	<!--Other Assets-->
@@ -136,6 +144,8 @@
 		<Content Remove="Assets\ModPanePlaceholder.webp" />
 		<Content Remove="Assets\NPC_Icon.png" />
 		<Content Remove="Assets\Weapon_Icon.png" />
+		<Content Remove="Assets\QuarkDownloadHelp.png" />
+		<Content Remove="Assets\ThunderDownloadHelp.png" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Remove="Assets\easterEgg.mp3" />
