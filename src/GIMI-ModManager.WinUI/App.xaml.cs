@@ -138,6 +138,7 @@ public partial class App : Application
 
                 services.AddSingleton<UpdateChecker>();
                 services.AddSingleton<AutoUpdaterService>();
+                services.AddSingleton<SingleFileSelfUpdater>();
 
                 services.AddSingleton<ImageHandlerService>();
                 services.AddSingleton<SelectedGameService>();
