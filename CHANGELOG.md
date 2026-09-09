@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.27.0](https://github.com/qsy123-coder/JASM/compare/v2.26.0...v2.27.0) (2026-09-09)
+
+
+### Features
+
+* **assets:** 嵌入夸克下载提示截图 QuarkDownloadHelp.png ([aa58405](https://github.com/qsy123-coder/JASM/commit/aa5840560c59c1433080bdeb077fd163045f75e2))
+* **assets:** 嵌入迅雷下载提示截图 ThunderDownloadHelp.png ([4e07684](https://github.com/qsy123-coder/JASM/commit/4e07684e3e4c4782169fb63d62f735316c7a6b90))
+* **build:** csproj 引用两张下载提示截图 ([24c315a](https://github.com/qsy123-coder/JASM/commit/24c315ae380d0906691eb5981d5a81558aa53e99))
+* **ui:** 复制网盘链接后显示平台专属说明文字框 ([34f231f](https://github.com/qsy123-coder/JASM/commit/34f231fc28a0ef3a7a501478f3bdbd530937aea1))
+* **update:** UpdateJasm 按安装形态分支自更新 ([ba70f98](https://github.com/qsy123-coder/JASM/commit/ba70f98ef75f9853ee22080fb70aefff916ca9d1))
+* **update:** 新增单文件版进程内自更新器 ([d2a21e8](https://github.com/qsy123-coder/JASM/commit/d2a21e841b1bf5e9336f34dc3681256c4b0ff719))
+* **update:** 注册 SingleFileSelfUpdater 服务 ([a77d37b](https://github.com/qsy123-coder/JASM/commit/a77d37bd17be640051bc7622b4c9e8f4912e5173))
+
+
+### Miscellaneous
+
+* **build:** 单文件产物改为 .zip 以便进程内自更新解压 ([6a2bf07](https://github.com/qsy123-coder/JASM/commit/6a2bf07d6ee71b11dc53fbef3bda3826dd392d30))
+* **release:** bump version 2.26.0 -&gt; 2.26.1 ([431bdca](https://github.com/qsy123-coder/JASM/commit/431bdca0ea30bc71500e269e66c1a9e499e967fa))
+
+
+### Documentation
+
+* **claude.md:** 补充自动更新/Release 发布链路注意事项 ([a13568b](https://github.com/qsy123-coder/JASM/commit/a13568b4d9b138fd23907c07390461118bc214e3))
+* **claude.md:** 重写为 JASM 项目规范与发布链路 ([51d72d1](https://github.com/qsy123-coder/JASM/commit/51d72d1ab4c6529e4ed1b4fbccfa932c94451fc4))
+
 ## [2.26.0](https://github.com/qsy123-coder/JASM/compare/v2.25.0...v2.26.0) (2026-09-08)
 
 
