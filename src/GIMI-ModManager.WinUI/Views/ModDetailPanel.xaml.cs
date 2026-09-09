@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Views;
@@ -265,8 +267,6 @@ public sealed partial class ModDetailPanel : UserControl
             new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x5A, 0xA8));
         btn.Resources["ButtonBackgroundPressed"] =
             new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x4E, 0x8F));
-        // 点击 = 复制链接(而非跳转浏览器),引导用户去对应网盘转存下载
-        btn.Click += (s, e) => CopyNetdiskLink(url, name);
         btn.Content = new FontIcon
         {
             FontSize = 14,
@@ -280,7 +280,22 @@ public sealed partial class ModDetailPanel : UserControl
         grid.Children.Add(leftStack);
         grid.Children.Add(btn);
         border.Child = grid;
-        return border;
+
+        // 平台专属说明文字框(默认收起,复制成功后才展开)
+        var (tipText, tipImage) = GetDriveInfo(name);
+        var tip = BuildDriveTip(tipText, tipImage);
+
+        // 点击 = 复制链接(而非跳转浏览器) → 成功后展开下方说明文字框
+        btn.Click += (s, e) =>
+        {
+            if (CopyNetdiskLink(url, name))
+                tip.Visibility = Visibility.Visible;
+        };
+
+        var container = new StackPanel { Spacing = 6 };
+        container.Children.Add(border);
+        container.Children.Add(tip);
+        return container;
     }
 
     /// <summary>网盘列表顶部的操作提示，向用户说明「复制链接→去网盘转存」的流程。</summary>
@@ -295,8 +310,8 @@ public sealed partial class ModDetailPanel : UserControl
         };
     }
 
-    /// <summary>复制网盘链接到剪贴板，并引导用户打开对应网盘转存下载（不再直接跳转浏览器）。</summary>
-    private void CopyNetdiskLink(string url, string platform)
+    /// <summary>复制网盘链接到剪贴板（不再直接跳转浏览器）。成功返回 true，失败弹错误 toast 并返回 false。</summary>
+    private bool CopyNetdiskLink(string url, string platform)
     {
         try
         {
@@ -310,13 +325,144 @@ public sealed partial class ModDetailPanel : UserControl
             _logger.Warning(ex, "Failed to copy netdisk link to clipboard");
             App.GetService<NotificationManager>()?.ShowNotification("复制失败", "无法复制网盘链接，请手动复制。",
                 TimeSpan.FromSeconds(4));
-            return;
+            return false;
         }
 
         _logger.Information("Copied {Platform} netdisk link to clipboard", platform);
-        App.GetService<NotificationManager>()?.ShowNotification("网盘链接已复制",
-            $"已复制「{platform}」网盘链接，请打开{platform}客户端粘贴链接后转存下载。网页端往往限速且需登录，不推荐使用网页端。",
-            TimeSpan.FromSeconds(6));
+        return true;
+    }
+
+    /// <summary>根据网盘平台名返回对应的说明文本与提示截图文件名（不匹配则为通用兜底、无截图）。</summary>
+    private static (string Text, string? ImageFile) GetDriveInfo(string platform)
+    {
+        var p = platform.Trim().ToLowerInvariant();
+        if (p.Contains("夸克") || p.Contains("quark"))
+            return ("请打开夸克网盘客户端会自动弹出下载框；网页端打开则可能限速、需要反复登录。", "QuarkDownloadHelp.png");
+        if (p.Contains("迅雷") || p.Contains("thunder") || p.Contains("xunlei"))
+            return ("打开迅雷客户端，在上方搜索框粘贴链接转存下载；网页端打开则可能限速、需要反复登录。", "ThunderDownloadHelp.png");
+
+        return ("已复制链接，请在对应的下载客户端中打开；网页端打开可能限速或需反复登录。", null);
+    }
+
+    /// <summary>平台专属说明文字框：左侧说明文本，右侧「?」图标悬停时在下方展开对应截图（占满宽度，带展开/收起动画）。默认收起。</summary>
+    private Border BuildDriveTip(string text, string? imageFile)
+    {
+        var tip = new Border
+        {
+            Padding = new Thickness(10, 8, 10, 8),
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+            CornerRadius = new CornerRadius(8),
+            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+            BorderThickness = new Thickness(0.5),
+            Visibility = Visibility.Collapsed
+        };
+
+        var inner = new StackPanel { Spacing = 6 };
+
+        // 文本行：左说明 + 右「?」
+        var headRow = new Grid();
+        headRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var textBlock = new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(textBlock, 0);
+        headRow.Children.Add(textBlock);
+        inner.Children.Add(headRow);
+
+        // 「?」帮助图标：悬停时在文字下方展开对应平台的截图（占满整个文字框宽度）
+        if (imageFile is not null)
+        {
+            var iconGrid = new Grid
+            {
+                Width = 20,
+                Height = 20,
+                VerticalAlignment = VerticalAlignment.Top,
+                // 透明背景让整块都可命中，PointerEntered / PointerExited 才能稳定触发
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x00, 0x00, 0x00, 0x00))
+            };
+            iconGrid.Children.Add(new FontIcon
+            {
+                FontSize = 12,
+                Glyph = "", // Help(问号)
+                Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
+            });
+            Grid.SetColumn(iconGrid, 1);
+            headRow.Children.Add(iconGrid);
+
+            // 下方展开区：占满文字框宽度，默认收起。用 AppContext.BaseDirectory 文件路径加载
+            // (unpackaged 应用，与 ModModel.cs 加载本地图片的做法一致)
+            var preview = new Image
+            {
+                Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", imageFile))),
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                MaxHeight = 0,
+                Opacity = 0,
+                Visibility = Visibility.Collapsed
+            };
+            inner.Children.Add(preview);
+
+            // 进出共享一个状态位，避免快速进出时动画竞争
+            var open = false;
+            iconGrid.PointerEntered += (_, _) => { open = true; AnimatePreview(tip, preview, show: true, () => open); };
+            iconGrid.PointerExited += (_, _) => { open = false; AnimatePreview(tip, preview, show: false, () => open); };
+        }
+
+        tip.Child = inner;
+        return tip;
+    }
+
+    /// <summary>展开/收起提示截图：联动 MaxHeight（高度）与 Opacity（透明度），带缓动动画。</summary>
+    private static void AnimatePreview(Border host, Image preview, bool show, Func<bool> isOpen)
+    {
+        // 依据文字框当前实际宽度计算目标高度（源图 2560x1528，高 = 宽 * 1528/2560），避免失真或溢出
+        var boxWidth = host.ActualWidth > 0 ? host.ActualWidth : 460;
+        var targetHeight = Math.Min((boxWidth - 24) * (1528f / 2560f), 900);
+        if (targetHeight <= 0) targetHeight = 200;
+
+        preview.Visibility = Visibility.Visible;
+
+        var sb = new Storyboard();
+
+        var fade = new DoubleAnimation
+        {
+            From = show ? 0 : preview.Opacity,
+            To = show ? 1 : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(show ? 180 : 150)),
+            EasingFunction = new CubicEase { EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(fade, preview);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+
+        var grow = new DoubleAnimation
+        {
+            From = show ? 0 : preview.MaxHeight,
+            To = show ? targetHeight : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(show ? 260 : 200)),
+            EasingFunction = new CubicEase { EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn },
+            // MaxHeight 影响布局，属 dependent animation，默认不执行 → 必须显式启用
+            EnableDependentAnimation = true
+        };
+        Storyboard.SetTarget(grow, preview);
+        Storyboard.SetTargetProperty(grow, "MaxHeight");
+
+        sb.Children.Add(fade);
+        sb.Children.Add(grow);
+
+        if (!show)
+            sb.Completed += (_, _) =>
+            {
+                if (!isOpen()) preview.Visibility = Visibility.Collapsed;
+            };
+
+        sb.Begin();
     }
 
     // ── 补拉详情(description) ───────────────────────────
