@@ -1,140 +1,81 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件是 **JASM (Just Another Skin Manager)** 仓库的项目上下文与工程规范，供 Claude Code 在此仓库中工作时遵循。
 
-## Repository Overview
+> 注意：本仓库**不是**「Claude Code 最佳实践参考仓库」。仓库内没有 `.claude/`、`best-practice/`、`skills/` 目录。此前模板版 CLAUDE.md 里的 Weather System、Subagent/Skill/Hooks 定义均不适用于此处，已清理。
 
-This is a best practices repository for Claude Code configuration, demonstrating patterns for skills, subagents, hooks, and commands. It serves as a reference implementation rather than an application codebase.
+## 项目概述
 
-## Key Components
+- **项目**：JASM - Just Another Skin Manager，一个 WinUI 3 桌面应用，用于管理游戏（原神等）的 Mod / 皮肤。
+- **fork 关系**：本仓库是 `Jorixon/JASM` 的 fork → `qsy123-coder/JASM`，默认分支为 `master`（不存在 `main` 分支）。
+- **自动更新**：检测 + 手动点更新，主 app 用 `UpdateChecker`，更新执行体是独立的 `JASM - Auto Updater.exe`。
 
-### Weather System (Example Workflow)
-A demonstration of two distinct skill patterns via the **Command → Agent → Skill** architecture:
-- `/weather-orchestrator` command (`.claude/commands/weather-orchestrator.md`): Entry point — asks user for C/F, invokes agent, then invokes SVG skill
-- `weather-agent` agent (`.claude/agents/weather-agent.md`): Fetches temperature using its preloaded `weather-fetcher` skill (agent skill pattern)
-- `weather-fetcher` skill (`.claude/skills/weather-fetcher/SKILL.md`): Preloaded into agent — instructions for fetching temperature from Open-Meteo
-- `weather-svg-creator` skill (`.claude/skills/weather-svg-creator/SKILL.md`): Skill — creates SVG weather card, writes `orchestration-workflow/weather.svg` and `orchestration-workflow/output.md`
+## 技术栈
 
-Two skill patterns: agent skills (preloaded via `skills:` field) vs skills (invoked via `Skill` tool). See `orchestration-workflow/orchestration-workflow.md` for the complete flow diagram.
+- **框架**：.NET 9 (`net9.0-windows10.0.22621.0`) + Windows App SDK 1.7 (WinUI 3)，`Nullable` / `ImplicitUsings` 均开启。
+- **MVVM**：CommunityToolkit.Mvvm 8.4（`[ObservableProperty]` / `[RelayCommand]` 源生成器）。
+- **UI**：CommunityToolkit.WinUI.*（Segmented / SettingsControls 等）、WinUIEx、WinUI3Localizer。
+- **日志**：Serilog（File / EventLog / Debug sink）。
+- **数据**：Newtonsoft.Json、Supabase / PostgREST（Mod 市场后端）。
+- **其他**：FluentValidation、Polly（重试/限流）、OneOf、WindowsDisplayAPI。
+- **构建**：`Build/Release.py`（发布打包）、`Build/PackGameData.py`（游戏数据打包）。
 
-### Skill Definition Structure
-Skills in `.claude/skills/<name>/SKILL.md` use YAML frontmatter:
-- `name`: Display name and `/slash-command` (defaults to directory name)
-- `description`: When to invoke (recommended for auto-discovery)
-- `argument-hint`: Autocomplete hint (e.g., `[issue-number]`)
-- `disable-model-invocation`: Set `true` to prevent automatic invocation
-- `user-invocable`: Set `false` to hide from `/` menu (background knowledge only)
-- `allowed-tools`: Tools allowed without permission prompts when skill is active
-- `model`: Model to use when skill is active
-- `context`: Set to `fork` to run in isolated subagent context
-- `agent`: Subagent type for `context: fork` (default: `general-purpose`)
-- `hooks`: Lifecycle hooks scoped to this skill
+## 目录结构
 
-### Presentation System
-See `.claude/rules/presentation.md` — presentation work is delegated per-presentation to `presentation-vibe-coding` (for `presentation/vibe-coding-to-agentic-engineering/`) or `presentation-claude-gemini` (for `presentation/2026-04-25-gdg-kolachi-cli-claude-code-gemini/`).
-
-### Hooks System
-Cross-platform sound notification system in `.claude/hooks/`:
-- `scripts/hooks.py`: Main handler for Claude Code hook events
-- `config/hooks-config.json`: Shared team configuration
-- `config/hooks-config.local.json`: Personal overrides (git-ignored)
-- `sounds/`: Audio files organized by hook event (generated via ElevenLabs TTS)
-
-Hook events configured in `.claude/settings.json`: PreToolUse, PostToolUse, UserPromptSubmit, Notification, Stop, SubagentStart, SubagentStop, PreCompact, SessionStart, SessionEnd, Setup, PermissionRequest, TeammateIdle, TaskCompleted, ConfigChange.
-
-Special handling: git commits trigger `pretooluse-git-committing` sound.
-
-## Critical Patterns
-
-### Subagent Orchestration
-Subagents **cannot** invoke other subagents via bash commands. Use the Agent tool (renamed from Task in v2.1.63; `Task(...)` still works as an alias):
 ```
-Agent(subagent_type="agent-name", description="...", prompt="...", model="haiku")
+src/
+├── GIMI-ModManager.sln
+├── GIMI-ModManager.WinUI/      # 主应用 (WinUI 3) —— 真正的 JASM
+├── GIMI-ModManager.Core/       # 核心库
+├── JASM.AutoUpdater/           # 独立自动更新进程 (JASM - Auto Updater.exe)
+├── CommunityToolkitWrapper/    # CommunityToolkit 封装
+├── Elevator/                   # UAC 提权助手 (Elevator.exe)
+├── JASM.Tests/                 # xUnit 测试
+├── Tools/                      # 基准 / 工具
+├── GenshinGenerator/           # 资产生成器
+└── UpdateGenshinAssets/        # 资产生成更新
+Build/
+├── Release.py                  # 发布脚本 (ExcludeElevator / SingleFile / SelfContained)
+└── PackGameData.py             # 游戏数据打包
+.github/workflows/
+├── dotnet-desktop.yml           # 默认打包 (ExcludeElevator) → artifact
+├── dotnet-desktop-self-contained.yml  # SelfContained → artifact
+├── dotnet-format.yml            # dotnet format --verify-no-changes (监听 main, 不会触发)
+└── release-please.yml           # 版本管理 + 开 release PR (监听 master)
 ```
 
-Be explicit about tool usage in subagent definitions. Avoid vague terms like "launch" that could be misinterpreted as bash commands.
+## 编码规范
 
-### Subagent Definition Structure
-Subagents in `.claude/agents/*.md` use YAML frontmatter:
-- `name`: Subagent identifier
-- `description`: When to invoke (use "PROACTIVELY" for auto-invocation)
-- `tools`: Comma-separated allowlist of tools (inherits all if omitted). Supports `Agent(agent_type)` syntax
-- `disallowedTools`: Tools to deny, removed from inherited or specified list
-- `model`: Model alias: `haiku`, `sonnet`, `opus`, or `inherit` (default: `inherit`)
-- `permissionMode`: Permission mode (e.g., `"acceptEdits"`, `"plan"`, `"bypassPermissions"`)
-- `maxTurns`: Maximum agentic turns before the subagent stops
-- `skills`: List of skill names to preload into agent context
-- `mcpServers`: MCP servers for this subagent (server names or inline configs)
-- `hooks`: Lifecycle hooks scoped to this subagent (all hook events are supported; `PreToolUse`, `PostToolUse`, and `Stop` are the most common)
-- `memory`: Persistent memory scope — `user`, `project`, or `local` (see `reports/claude-agent-memory.md`)
-- `background`: Set to `true` to always run as a background task
-- `effort`: Effort level override: `low`, `medium`, `high`, `max` (default: inherits from session)
-- `isolation`: Set to `"worktree"` to run in a temporary git worktree
-- `color`: CLI output color for visual distinction
+- 遵循 `src/.editorconfig`；格式门禁为 `dotnet format --verify-no-changes`。
+- ViewModel 用 CommunityToolkit 源生成器（`[ObservableProperty]` / `[RelayCommand]`），避免手写 INotifyPropertyChanged。
+- 依赖注入通过 `Microsoft.Extensions.Hosting`；日志统一走 Serilog。
+- 边界输入（用户/远端 API）尽量校验；错误信息勿暴露敏感数据（如 token / 本地路径细节）。
 
-### Configuration Hierarchy
-1. **Managed** (`managed-settings.json` / MDM plist / Registry): Organization-enforced, cannot be overridden
-2. Command line arguments: Single-session overrides
-3. `.claude/settings.local.json`: Personal project settings (git-ignored)
-4. `.claude/settings.json`: Team-shared settings
-5. `~/.claude/settings.json`: Global personal defaults
-6. `hooks-config.local.json` overrides `hooks-config.json`
+## Git 提交规范
 
-### Disable Hooks
-Set `"disableAllHooks": true` in `.claude/settings.local.json`, or disable individual hooks in `hooks-config.json`.
+1. **每个文件单独一个 commit**（重要，是本仓库的硬性约定）。**不要**把多个文件的改动 bundle 进一个 commit —— 每个文件一条独立的、描述该文件改动的 message，便于 review / revert / cherry-pick。
+   - 例如：`README.md`、`src/.../Foo.cs`、`Build/Release.py` 都改了 → 拆成 3 个 commit。
+2. 提交前缀遵循 Conventional Commits：`feat:` `fix:` `refactor:` `chore:` `docs:` `ci:` `perf:` 等。
+3. 涉及远程操作（`push` / 合并 PR / 发 release / 改动 release 资产）前，先与用户确认。
 
-## Answering Best Practice Questions
+## JASM 构建与发布验证
 
-When the user asks a Claude Code best practice question, **always search this repo first** (`best-practice/`, `reports/`, `tips/`, `implementation/`, and `README.md`) before relying on training knowledge or external sources. This repo is the authoritative source — only fall back to external docs or web search if the answer is not found here.
+push 前必须验证完整 CI 链路 —— `dotnet build` 单跑不算完成：
 
-## Workflow Best Practices
+1. **C# 编译**：`dotnet build src/GIMI-ModManager.WinUI/GIMI-ModManager.WinUI.csproj`
+2. **Python 发布脚本**：`python Build/Release.py ExcludeElevator` —— 验证打包流程不会因转义字符、路径问题中断
+3. **分支名匹配**：CI workflow 监听默认分支，确保 `.github/workflows/*.yml` 中的分支名与仓库一致（本仓库是 `master`；`dotnet-format.yml` / `release-please.yml` 若有 `main` 需改为 `master`，否则永不触发）
+4. **GitHub Actions 启用**：fork 仓库默认禁用 Actions，需手动去 Actions 页开启
 
-From experience with this repository:
-
-- Keep CLAUDE.md under 200 lines per file for reliable adherence
-- `.claude/rules/*.md` with `paths:` YAML frontmatter are lazy-loaded only when Claude touches matching files; without frontmatter they load into every session like CLAUDE.md
-- Use commands for workflows instead of standalone agents
-- Create feature-specific subagents with skills (progressive disclosure) rather than general-purpose agents
-- Perform manual `/compact` at ~50% context usage
-- Start with plan mode for complex tasks
-- Use human-gated task list workflow for multi-step tasks
-- Break subtasks small enough to complete in under 50% context
-
-### Debugging Tips
-
-- Use `/doctor` for diagnostics
-- Run long-running terminal commands as background tasks for better log visibility
-- Use browser automation MCPs (Claude in Chrome, Playwright, Chrome DevTools) for Claude to inspect console logs
-- Provide screenshots when reporting visual issues
-
-## Git Commit Rules
-
-When committing changes, **create separate commits per file**. Do NOT bundle multiple file changes into a single commit. Each file gets its own commit with a descriptive message specific to that file's changes.
-
-For example, if `README.md`, `best-practice/claude-subagents.md`, and a skill file all changed:
-- Commit 1: `git add README.md` → commit with README-specific message
-- Commit 2: `git add best-practice/claude-subagents.md` → commit with subagents-doc-specific message
-- Commit 3: `git add .claude/skills/weather-fetcher/SKILL.md` → commit with skill-specific message
-
-This makes the git history cleaner and easier to review, revert, or cherry-pick individual changes.
-
-## JASM Build & Release Verification
-
-Before pushing code, always verify the full CI pipeline locally — `dotnet build` alone is NOT enough:
-
-1. **C# 编译**: `dotnet build src/GIMI-ModManager.WinUI/GIMI-ModManager.WinUI.csproj`
-2. **Python 发布脚本**: `python Build/Release.py ExcludeElevator` — 验证打包流程不会因转义字符、路径问题中断
-3. **分支名匹配**: CI workflow 监听 `master`（不是 `main`），确保 `.github/workflows/*.yml` 中的分支名与仓库一致
-4. **GitHub Actions 启用**: fork 仓库默认禁用 Actions，需手动去 Actions 页开启
-
-常见坑:
+常见坑：
 - Python 3.12+ 对 `\P` `\d` 等非法转义报 SyntaxWarning，路径用正斜杠 `/`，正则用原始字符串 `r""`
 - `dotnet publish` 不加 `-o` 时输出到 TFM 子目录，与脚本期望的路径不匹配
 - workflow `branches:` 过滤器不匹配会导致 push 不触发 CI
+- **本地构建前先关闭运行中的 JASM 进程**，避免 exe/dll 被锁定导致编译或打包失败
 
 ## JASM 自动更新 / Release 发布链路
 
-> 本节记录 Mod 市场改造 + 自动更新踩过的坑，涉及 `UpdateChecker`、`JASM.AutoUpdater`、`release-please.yml`、`dotnet-desktop*.yml`。
+> 记录自动更新 + 发布踩过的坑，涉及 `UpdateChecker`、`JASM.AutoUpdater`、`release-please.yml`、`dotnet-desktop*.yml`。
 
 ### 1. 更新检测与下载源都写死 GitHub 仓库
 
@@ -176,3 +117,59 @@ release-please 建 release（tag `vX.Y.Z`）→ 手动挂 `JASM_vX.Y.Z.7z` 上�
 | 默认 / `ExcludeElevator` | `JASM_v*.7z` | ✅ | ✅ |
 | `SingleFile` | `SingleFile_JASM_v*.zip` | ❌ | ❌ |
 | `SelfContained` | `SelfContained_JASM_v*.7z` | ❌ | ❌ |
+
+### 9. 发布时要挂载的多形态产物
+
+release 的 asset 不会自动挂（见第 4 节），**每次手动挂载，把面向不同用户的分发形态都传上去**：
+
+| 产物 | 用途 | 是否必须 |
+|---|---|---|
+| `JASM_vX.Y.Z.7z` | folder 版，含 AutoUpdater，**自动更新的唯一对象** | ✅ 必须 |
+| `SingleFile_JASM_vX.Y.Z.zip` | 单 exe 便携版，无需安装/不参与自动更新，给不想自动更新的用户 | ✅ 一并上传 |
+| `SelfContained_JASM_v*.7z` | 自包含版 | 按需 |
+
+- **CI 不构建 `SingleFile`**：`dotnet-desktop.yml` 是 `ExcludeElevator`，`dotnet-desktop-self-contained.yml` 是 SelfContained，**没有 workflow 会产出 `SingleFile_*.zip`**。想要单 exe，需本地跑 `python Build/Release.py SingleFile`（会写 `GITHUB_ENV`，本地需先设临时环境变量否则脚本 `exit(1)`）。
+- AutoUpdater 只认 `JASM_` 前缀（见第 6 节），单文件/自包含都不会被自动更新器匹配，二者只是「给手动下载的用户」的分发形态 —— 不影响自动更新。
+- 挂载命令示例：`gh release upload vX.Y.Z SingleFile_JASM_vX.Y.Z.zip --repo qsy123-coder/JASM --clobber`。
+
+## Claude 工作要求
+
+1. **先理解再行动**：任何修改前，先梳理受影响模块，避免被局部问题误导。
+2. **逐步推进**：一次只做一个功能 / 重构，不大范围改动。
+3. **输出格式**：先给**变更计划**（影响文件清单）→ 再做**具体改动** → 最后给出**自检清单**（编译/格式/是否影响发布）。
+4. **永远不要**：
+   - 随意删除已有代码
+   - 引入未在项目中使用的库 / 依赖
+   - 忽略现有架构与命名约定
+   - 生成不带注释的复杂逻辑
+5. 复杂任务先用计划模式，长会话在 ~50% 上下文时手动 `/compact`。
+
+## MCP 服务
+
+- **Context7**：遇到第三方库（Windows App SDK / WinUI 3 / CommunityToolkit / Supabase 等）的 API 用法、配置、示例时，自动查实时文档，避免过时 API。
+
+## 常用命令
+
+```bash
+dotnet build src/GIMI-ModManager.sln                          # 整个解决方案编译
+dotnet build src/GIMI-ModManager.WinUI/GIMI-ModManager.WinUI.csproj  # 主应用编译
+dotnet format --verify-no-changes                             # 格式 / lint 门禁 (在 src/ 下)
+dotnet test src/JASM.Tests/JASM.Tests.csproj                  # 测试
+python Build/Release.py ExcludeElevator                       # 默认 folder 打包 (.7z, 含 AutoUpdater)
+python Build/Release.py SingleFile                            # 单 exe 打包 (.zip, 无 AutoUpdater)
+python Build/Release.py SelfContained ExcludeElevator         # 自包含打包 (.7z, 无 AutoUpdater)
+```
+
+## 提交前质量门禁
+
+每次提交 / 合并到 `master` 前执行以下检查，CI 必须绿：
+
+1. **编译**：`dotnet build` 必须成功。
+2. **格式**：`dotnet format --verify-no-changes` 零差异。
+3. **发布链路**：涉及发布时跑 `python Build/Release.py ExcludeElevator` 确认打包脚本不中断（`dotnet build` 通过≠发布能跑）。
+4. **CI 验证**：push 后等待 GitHub Actions 通过；失败时读日志、修复、重新 push，直到绿。
+
+**Claude 执行规范**：
+- 每次 commit 前必须跑编译；有错必须先修。
+- CI 失败若来自**未修改**的文件，视为既有问题，一并处理。
+- push / 合并 / 发 release 前先征得用户同意；用户同意后等 CI 通过，确认成功后再说「完成」。
