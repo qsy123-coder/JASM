@@ -47,6 +47,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private readonly IGameService _gameService;
     private readonly ILanguageLocalizer _localizer;
     private readonly AutoUpdaterService _autoUpdaterService;
+    private readonly SingleFileSelfUpdater _singleFileSelfUpdater;
     private readonly SelectedGameService _selectedGameService;
     private readonly ModUpdateAvailableChecker _modUpdateAvailableChecker;
     private readonly LifeCycleService _lifeCycleService;
@@ -143,7 +144,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         INavigationViewService navigationViewService, IWindowManagerService windowManagerService,
         ISkinManagerService skinManagerService, UpdateChecker updateChecker,
         GenshinProcessManager genshinProcessManager, ThreeDMigtoProcessManager threeDMigtoProcessManager,
-        IGameService gameService, AutoUpdaterService autoUpdaterService, ILanguageLocalizer localizer,
+        IGameService gameService, AutoUpdaterService autoUpdaterService, SingleFileSelfUpdater singleFileSelfUpdater,
+        ILanguageLocalizer localizer,
         SelectedGameService selectedGameService, ModUpdateAvailableChecker modUpdateAvailableChecker,
         LifeCycleService lifeCycleService, INavigationService navigationService,
         ModArchiveRepository modArchiveRepository,
@@ -159,6 +161,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         _updateChecker = updateChecker;
         _gameService = gameService;
         _autoUpdaterService = autoUpdaterService;
+        _singleFileSelfUpdater = singleFileSelfUpdater;
         _localizer = localizer;
         _selectedGameService = selectedGameService;
         _modUpdateAvailableChecker = modUpdateAvailableChecker;
@@ -715,24 +718,56 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     }
 
     [RelayCommand]
-    private void UpdateJasm()
+    private async Task UpdateJasm()
     {
-        var errors = Array.Empty<Error>();
+        // folder 版：走外部更新器（存在 JASM - Auto Updater.exe）
+        if (_autoUpdaterService.AutoUpdaterExists)
+        {
+            var errors = Array.Empty<Error>();
+            try
+            {
+                errors = _autoUpdaterService.StartSelfUpdateProcess();
+            }
+            catch (Exception e)
+            {
+                _logger.Error(e, "Error starting update process");
+                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ErrorStartingUpdateTitle", defaultValue: "Error starting update process"), e.Message, TimeSpan.FromSeconds(10));
+            }
+
+            if (errors is not null && errors.Any())
+            {
+                var errorMessages = errors.Select(e => e.Description).ToArray();
+                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_CouldNotStartUpdateTitle", defaultValue: "Could not start update process"), string.Join('\n', errorMessages),
+                    TimeSpan.FromSeconds(10));
+            }
+
+            return;
+        }
+
+        // 单文件版：进程内自更新（下载 → 解出单个 exe → 临时脚本替换并重启）
         try
         {
-            errors = _autoUpdaterService.StartSelfUpdateProcess();
+            _logger.Information("Single-file build detected, using in-app self-update.");
+            _notificationManager.ShowNotification("更新", "正在下载更新包（约百 MB），完成后将自动替换并重启 JASM…",
+                TimeSpan.FromSeconds(10));
+
+            var result = await _singleFileSelfUpdater.TryUpdateAsync(_updateChecker.CurrentVersion);
+            if (result.Success)
+            {
+                _logger.Information("Single-file update handed off to replacement script. Exiting app.");
+                await Task.Delay(800); // 让提示先渲染一下,再交给脚本替换
+                Application.Current.Exit();
+            }
+            else
+            {
+                _logger.Warning("Single-file self update did not proceed: {Error}", result.Error);
+                _notificationManager.ShowNotification("更新失败", result.Error ?? "未知错误", TimeSpan.FromSeconds(10));
+            }
         }
         catch (Exception e)
         {
-            _logger.Error(e, "Error starting update process");
-            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ErrorStartingUpdateTitle", defaultValue: "Error starting update process"), e.Message, TimeSpan.FromSeconds(10));
-        }
-
-        if (errors is not null && errors.Any())
-        {
-            var errorMessages = errors.Select(e => e.Description).ToArray();
-            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_CouldNotStartUpdateTitle", defaultValue: "Could not start update process"), string.Join('\n', errorMessages),
-                TimeSpan.FromSeconds(10));
+            _logger.Error(e, "Error starting single-file self update");
+            _notificationManager.ShowNotification("更新启动出错", e.Message, TimeSpan.FromSeconds(10));
         }
     }
 
