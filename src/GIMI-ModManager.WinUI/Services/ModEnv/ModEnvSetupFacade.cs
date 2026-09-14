@@ -398,9 +398,11 @@ public class ModEnvSetupFacade
             // Ensure the Mods folder exists — some game packages may omit the (empty) dir from the zip.
             Directory.CreateDirectory(modsFolder);
 
-            // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set.
+            // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set, and
+            // mark the launcher's stale cached versions as skipped so it stops offering a downgrade.
             // Non-fatal; mirrors EnsureLauncherDesktopShortcut.
-            await EnsureLauncherConfigPathsAsync(rootFolder, miFolder, request.GameInstallDir, issues, progress);
+            await EnsureLauncherConfigPathsAsync(rootFolder, miFolder, request.GameInstallDir, installed, issues,
+                progress);
 
             // Wire up the JASM "start game" / "start model importer" commands to the XXMI launcher so the
             // user can launch the game (with mod injection) straight from the Characters page. Non-fatal.
@@ -783,12 +785,13 @@ public class ModEnvSetupFacade
 
     /// <summary>
     /// Pre-fills the launcher GUI's game path and WWMi path in "XXMI Launcher Config.json" so a fresh
-    /// install opens with them set instead of relying on the launcher's first-run self-detection.
+    /// install opens with them set instead of relying on the launcher's first-run self-detection, and
+    /// suppresses the launcher's stale cached "latest version" prompts (see <see cref="SuppressStaleLauncherUpdates"/>).
     /// Conservative: only fills when a field is empty (game_folder) or empty/relative (importer_folder),
     /// so user-set absolute paths are never overwritten. Non-fatal on any failure.
     /// </summary>
     private async Task EnsureLauncherConfigPathsAsync(string rootFolder, string miFolder, string? gameInstallDir,
-        List<string> issues, IProgress<string>? progress)
+        IReadOnlyDictionary<string, string> deployedVersions, List<string> issues, IProgress<string>? progress)
     {
         var configPath = Path.Combine(rootFolder, LauncherConfigFileName);
 
@@ -835,7 +838,7 @@ public class ModEnvSetupFacade
                     return;
                 }
 
-                var changed = false;
+                var pathsChanged = false;
 
                 // The caller only passes a game dir when the user picked/auto-detected one in the dialog.
                 // Fall back to our own detector so a plain one-click run still fills game_folder.
@@ -860,7 +863,7 @@ public class ModEnvSetupFacade
                         if (gameFolder is not null)
                         {
                             importer["game_folder"] = gameFolder;
-                            changed = true;
+                            pathsChanged = true;
                         }
                     }
                 }
@@ -869,12 +872,16 @@ public class ModEnvSetupFacade
                 if (string.IsNullOrWhiteSpace(currentImporter) || !Path.IsPathRooted(currentImporter))
                 {
                     importer["importer_folder"] = miFolder.Replace('\\', '/');
-                    changed = true;
+                    pathsChanged = true;
                 }
 
-                if (!changed && !hadBom)
+                // Stops the launcher from offering to "update" to the older version it has cached.
+                var skippedVersions =
+                    SuppressStaleLauncherUpdates(deployedVersions, root["Packages"]?["packages"] as JsonObject);
+
+                if (!pathsChanged && skippedVersions.Count == 0 && !hadBom)
                 {
-                    progress?.Report("启动器 GUI 路径已是最新，无需更新。");
+                    progress?.Report("启动器配置已是最新，无需更新。");
                     return;
                 }
 
@@ -885,10 +892,22 @@ public class ModEnvSetupFacade
 
                 var json = Encoding.UTF8.GetString(stream.ToArray());
                 File.WriteAllText(configPath, json, new UTF8Encoding(false));
-                _logger.Information(
-                    "Pre-filled launcher GUI paths in {Config}: game_folder={GameFolder}, importer_folder={ImporterFolder}",
-                    configPath, importer["game_folder"]?.GetValue<string>(), importer["importer_folder"]?.GetValue<string>());
-                progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+                if (pathsChanged)
+                {
+                    _logger.Information(
+                        "Pre-filled launcher GUI paths in {Config}: game_folder={GameFolder}, importer_folder={ImporterFolder}",
+                        configPath, importer["game_folder"]?.GetValue<string>(), importer["importer_folder"]?.GetValue<string>());
+                    progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+                }
+
+                if (skippedVersions.Count > 0)
+                {
+                    _logger.Information("Marked stale launcher versions as skipped in {Config}: {Skipped}",
+                        configPath, string.Join(", ", skippedVersions));
+                    progress?.Report(
+                        $"已在 XXMI 启动器中跳过更旧的版本（{string.Join("、", skippedVersions)}），避免它反复提示更新。");
+                }
+
                 return;
             }
             catch (IOException ex) when (attempt < maxAttempts)
@@ -907,6 +926,81 @@ public class ModEnvSetupFacade
 
         _logger.Warning("Failed to pre-fill launcher GUI paths in {Config} after {Max} attempts", configPath, maxAttempts);
         issues.Add("未能自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+    }
+
+    /// <summary>
+    /// Writes the launcher's own <c>skipped_version</c> for every package JASM just deployed whose cached
+    /// <c>latest_version</c> is <em>older</em> than the deployed one, so the launcher stops offering it.
+    /// Returns what it touched (launcher display name + version) for the progress log.
+    /// </summary>
+    /// <remarks>
+    /// The launcher compares the version it reads off disk against the <c>latest_version</c> in
+    /// "XXMI Launcher Config.json" and, on any mismatch, pops "将包更新到最新版本：XXMI: x → y" — y being that
+    /// cache. The cache is only refreshed from GitHub releases (core/package_manager.py -> github_client.py),
+    /// which is unreachable for most of our users and rate-limits the rest, so after we deploy anything other
+    /// than the cached version it keeps offering a <em>downgrade</em>. Skipping the stale version is the
+    /// launcher's own "don't offer me this one" mechanism, it is reversible from its GUI, and only strictly
+    /// older versions are written — a genuinely newer release is still offered normally.
+    /// </remarks>
+    private static List<string> SuppressStaleLauncherUpdates(
+        IReadOnlyDictionary<string, string> deployedVersions, JsonObject? launcherPackages)
+    {
+        var skipped = new List<string>();
+        if (launcherPackages is null)
+            return skipped;
+
+        foreach (var (packageId, deployedVersion) in deployedVersions)
+        {
+            if (string.IsNullOrWhiteSpace(deployedVersion))
+                continue;
+
+            // The config keys are the launcher's display names ("XXMI" / "WWMI" / "Launcher") while our package
+            // ids are lower-case, and JsonObject indexers are case-sensitive — hence the manual lookup.
+            var entry = launcherPackages.FirstOrDefault(pair =>
+                string.Equals(pair.Key, packageId, StringComparison.OrdinalIgnoreCase));
+            if (entry.Value is not JsonObject package)
+                continue;
+
+            var cachedLatest = package["latest_version"]?.GetValue<string>()?.Trim();
+            if (string.IsNullOrWhiteSpace(cachedLatest) || !IsOlderVersion(cachedLatest, deployedVersion))
+                continue;
+
+            // Already suppressed — by us on an earlier run or by the user from the launcher GUI. Leave it be.
+            var currentSkip = package["skipped_version"]?.GetValue<string>()?.Trim();
+            if (string.Equals(currentSkip, cachedLatest, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            package["skipped_version"] = cachedLatest;
+            skipped.Add($"{entry.Key} {cachedLatest}");
+        }
+
+        return skipped;
+    }
+
+    /// <summary>
+    /// True when both values parse as versions and the first is strictly older, i.e. the launcher's cached
+    /// "latest" is actually behind what JASM deployed. Unparseable values return false so an update we cannot
+    /// reason about is never suppressed.
+    /// </summary>
+    private static bool IsOlderVersion(string candidate, string reference)
+    {
+        var left = ParseLooseVersion(candidate);
+        var right = ParseLooseVersion(reference);
+        return left is not null && right is not null && left < right;
+    }
+
+    /// <summary>
+    /// Parses "v1.1.7" / "1.1.7-beta.1" style versions. Returns null when there is no usable "major.minor"
+    /// core, so callers can treat the value as unknown instead of guessing at its ordering.
+    /// </summary>
+    private static Version? ParseLooseVersion(string value)
+    {
+        var text = value.Trim().TrimStart('v', 'V');
+        var suffix = text.IndexOfAny(new[] { '-', '+' });
+        if (suffix >= 0)
+            text = text[..suffix];
+
+        return Version.TryParse(text, out var parsed) ? parsed : null;
     }
 
     /// <summary>
