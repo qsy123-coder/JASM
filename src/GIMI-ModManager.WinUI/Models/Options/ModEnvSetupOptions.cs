@@ -11,8 +11,22 @@ public class ModEnvSetupOptions
     /// <summary>Base URL of the remote version manifest JSON on the CDN.</summary>
     public string ManifestUrl { get; set; } = string.Empty;
 
+    /// <summary>
+    /// URL of the selectable-version catalogue JSON (e.g. <c>xxmi-versions.json</c>) on the CDN. The
+    /// manifest above only describes one version per package, so this is what lets the user pick an older
+    /// base package and roll back. When unset or unreachable the picker degrades to "latest only" and the
+    /// wizard behaves exactly as it did before version selection existed.
+    /// </summary>
+    public string VersionCatalogUrl { get; set; } = string.Empty;
+
     /// <summary>Id of the shared Mod injector base package inside the manifest.</summary>
     public string BasePackageId { get; set; } = "xxmi";
+
+    /// <summary>
+    /// How many per-version snapshots to keep under the backup folder before the oldest are pruned.
+    /// Each snapshot is only a few MB (the base package's DLLs), so this is about tidiness, not disk.
+    /// </summary>
+    public int KeepBackupCount { get; set; } = 5;
 
     /// <summary>
     /// Optional id of the XXMI Launcher (GUI) package inside the manifest. When set (and present in the

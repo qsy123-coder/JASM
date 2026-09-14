@@ -26,6 +26,9 @@ public enum ModEnvPackageAction
     /// <summary>An older version is installed; an update is available.</summary>
     UpdateAvailable,
 
+    /// <summary>The selected version is older than the installed one; installing it is a rollback.</summary>
+    Rollback,
+
     /// <summary>Marker says installed but key files are missing; reinstall to repair.</summary>
     NeedsRepair
 }
@@ -37,6 +40,12 @@ public record ModEnvSetupRequest
 
     /// <summary>Optional user override for the XXMI root folder.</summary>
     public string? CustomRootFolder { get; init; }
+
+    /// <summary>
+    /// Base-package version picked in the version dropdown, or null to use the version from the main
+    /// manifest. Null is the default and reproduces the pre-version-selection behaviour exactly.
+    /// </summary>
+    public string? SelectedXxmiVersion { get; init; }
 }
 
 public record ModEnvPackagePreCheck
@@ -53,6 +62,7 @@ public record ModEnvPackagePreCheck
         ModEnvPackageAction.NotInstalled => "未安装",
         ModEnvPackageAction.UpToDate => "已是最新",
         ModEnvPackageAction.UpdateAvailable => "可更新",
+        ModEnvPackageAction.Rollback => "可回退",
         ModEnvPackageAction.NeedsRepair => "需修复",
         _ => "未知"
     };
@@ -66,9 +76,12 @@ public record ModEnvPackagePreCheck
             if (string.IsNullOrWhiteSpace(InstalledVersion))
                 return $"最新版本：{latest}";
 
-            return Action == ModEnvPackageAction.UpdateAvailable
-                ? $"已安装 v{InstalledVersion}，可更新到 v{latest}"
-                : $"已安装 v{InstalledVersion}";
+            return Action switch
+            {
+                ModEnvPackageAction.UpdateAvailable => $"已安装 v{InstalledVersion}，可更新到 v{latest}",
+                ModEnvPackageAction.Rollback => $"已安装 v{InstalledVersion}，可回退到 v{latest}",
+                _ => $"已安装 v{InstalledVersion}"
+            };
         }
     }
 }
@@ -81,6 +94,18 @@ public record ModEnvPreCheck
     public string? GameVersion { get; init; }
     public List<ModEnvPackagePreCheck> Packages { get; init; } = new();
     public List<string> Issues { get; init; } = new();
+
+    /// <summary>Selectable base-package versions, newest first. Empty when the catalogue is unavailable.</summary>
+    public List<ModEnvCatalogVersion> XxmiVersions { get; init; } = new();
+
+    /// <summary>
+    /// Version the picker should preselect — the main manifest's own base version, so an untouched
+    /// dropdown installs exactly what the pre-version-selection code installed.
+    /// </summary>
+    public string? DefaultXxmiVersion { get; init; }
+
+    /// <summary>Version currently installed at the XXMI root (per the marker), if one is recorded.</summary>
+    public string? InstalledXxmiVersion { get; init; }
 }
 
 public record ModEnvSetupResult
@@ -100,6 +125,8 @@ public record ModEnvSetupResult
 public class ModEnvSetupFacade
 {
     private readonly ModEnvManifestService _manifestService;
+    private readonly ModEnvVersionCatalogService _catalogService;
+    private readonly ModEnvBackupService _backupService;
     private readonly ModEnvInstallerService _installer;
     private readonly GameInstallPathDetector _detector;
     private readonly CommandService _commandService;
@@ -108,12 +135,15 @@ public class ModEnvSetupFacade
     private readonly IOptions<ModEnvSetupOptions> _options;
     private readonly ILogger _logger;
 
-    public ModEnvSetupFacade(ModEnvManifestService manifestService, ModEnvInstallerService installer,
-        GameInstallPathDetector detector, CommandService commandService,
+    public ModEnvSetupFacade(ModEnvManifestService manifestService,
+        ModEnvVersionCatalogService catalogService, ModEnvBackupService backupService,
+        ModEnvInstallerService installer, GameInstallPathDetector detector, CommandService commandService,
         GenshinProcessManager genshinProcessManager, ThreeDMigtoProcessManager threeDMigtoProcessManager,
         IOptions<ModEnvSetupOptions> options, ILogger logger)
     {
         _manifestService = manifestService;
+        _catalogService = catalogService;
+        _backupService = backupService;
         _installer = installer;
         _detector = detector;
         _commandService = commandService;
@@ -134,25 +164,40 @@ public class ModEnvSetupFacade
             return new ModEnvPreCheck { Issues = { "该游戏暂不支持一键配置 Mod 环境" } };
 
         var modEnv = gameInfo.ModEnv;
-        var driveRoot = await ResolveDriveRootAsync(request, ct);
-        if (driveRoot is null)
-            return new ModEnvPreCheck { Issues = { "未检测到游戏安装位置，请在向导中选择游戏目录" } };
+        var (rootFolder, rootError) = await ResolveRootFolderAsync(request, modEnv, ct);
+        if (rootFolder is null)
+            return new ModEnvPreCheck { Issues = { rootError! } };
 
-        var rootFolder = request.CustomRootFolder ?? Path.Combine(driveRoot, modEnv.RootDirName);
         var miFolder = Path.Combine(rootFolder, modEnv.SubDirName);
         var issues = new List<string>();
         var packages = new List<ModEnvPackagePreCheck>();
         var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
 
-        var manifest = await _manifestService.GetManifestAsync(ct);
+        // Fetched together: the catalogue and the manifest are independent of each other, and failing to
+        // load one must not take the other down — each degrades on its own.
+        var manifestTask = _manifestService.GetManifestAsync(ct);
+        var catalogTask = _catalogService.GetVersionsAsync(ct);
+        await Task.WhenAll(manifestTask, catalogTask);
+        var manifest = await manifestTask;
+        var catalogVersions = await catalogTask;
+
+        ModEnvPackage? basePkg = null;
         if (manifest is null)
         {
             issues.Add("无法获取 Mod 环境版本清单，请检查网络后重试");
         }
         else
         {
-            var basePkg = manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId);
+            basePkg = manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId);
             var gamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
+
+            // The pre-check has to describe the version the user picked, not the manifest default, or the
+            // status badges would talk about a package the setup run is not actually going to install.
+            var effectiveBasePkg = ResolveBasePackage(basePkg, request.SelectedXxmiVersion, catalogVersions);
+            if (!string.IsNullOrWhiteSpace(request.SelectedXxmiVersion) && effectiveBasePkg is null)
+            {
+                issues.Add($"所选 XXMI 版本 {request.SelectedXxmiVersion} 不在当前版本清单中，请重新选择");
+            }
 
             if (basePkg is not null)
             {
@@ -160,9 +205,10 @@ public class ModEnvSetupFacade
                 {
                     PackageId = _options.Value.BasePackageId,
                     PackageName = "XXMI 注入器框架",
-                    ManifestVersion = basePkg.Version,
+                    ManifestVersion = (effectiveBasePkg ?? basePkg).Version,
                     InstalledVersion = installed.GetValueOrDefault(_options.Value.BasePackageId),
-                    Action = EvaluateAction(installed, _options.Value.BasePackageId, basePkg, BaseFilesOk(rootFolder))
+                    Action = EvaluateAction(installed, _options.Value.BasePackageId, effectiveBasePkg ?? basePkg,
+                        BasePackageConsistent(rootFolder, installed))
                 });
             }
 
@@ -202,6 +248,19 @@ public class ModEnvSetupFacade
 
             if (basePkg is null || gamePkg is null)
                 issues.Add("版本清单缺少必要的安装包");
+
+            // The launcher reads the version from its own copy of the framework. Something else writing that
+            // copy (the official launcher's own update button) leaves it disagreeing with the marker, which
+            // is why the base package now reports "需修复" — say so, since the badge alone looks arbitrary.
+            var recordedBase = installed.GetValueOrDefault(_options.Value.BasePackageId);
+            var launcherBase = ReadLauncherVisibleXxmiVersion(rootFolder);
+            if (!string.IsNullOrWhiteSpace(launcherBase) && !string.IsNullOrWhiteSpace(recordedBase)
+                && !string.Equals(launcherBase, recordedBase, StringComparison.Ordinal))
+            {
+                issues.Add(
+                    $"XXMI 启动器读到的是 v{launcherBase}，与 JASM 记录的 v{recordedBase} 不一致"
+                    + $"（通常是点过官方启动器自己的更新按钮）；点「开始配置」会把两处统一成下拉框所选版本。");
+            }
         }
 
         return new ModEnvPreCheck
@@ -211,7 +270,10 @@ public class ModEnvSetupFacade
             ModsFolder = Path.Combine(miFolder, "Mods"),
             GameVersion = request.GameInstallDir is { Length: > 0 } dir ? _detector.GetGameVersion(dir) : null,
             Packages = packages,
-            Issues = issues
+            Issues = issues,
+            XxmiVersions = BuildVersionList(catalogVersions, basePkg),
+            DefaultXxmiVersion = basePkg?.Version,
+            InstalledXxmiVersion = installed.GetValueOrDefault(_options.Value.BasePackageId)
         };
     }
 
@@ -229,11 +291,10 @@ public class ModEnvSetupFacade
                 return Fail("该游戏暂不支持一键配置 Mod 环境");
 
             var modEnv = gameInfo.ModEnv;
-            var driveRoot = await ResolveDriveRootAsync(request, ct);
-            if (driveRoot is null)
-                return Fail("未检测到游戏安装位置，请先手动选择游戏目录");
+            var (rootFolder, rootError) = await ResolveRootFolderAsync(request, modEnv, ct);
+            if (rootFolder is null)
+                return Fail(rootError!);
 
-            var rootFolder = request.CustomRootFolder ?? Path.Combine(driveRoot, modEnv.RootDirName);
             var miFolder = Path.Combine(rootFolder, modEnv.SubDirName);
             var modsFolder = Path.Combine(miFolder, "Mods");
             var issues = new List<string>();
@@ -242,20 +303,42 @@ public class ModEnvSetupFacade
             if (manifest is null)
                 return Fail("无法获取 Mod 环境版本清单，请检查网络后重试");
 
-            var basePkg = manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId);
             var gamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
-            if (basePkg is null || gamePkg is null)
+            if (gamePkg is null)
                 return Fail("版本清单缺少必要的安装包");
+
+            // Resolve the base package the user actually picked. With the dropdown untouched this is the
+            // manifest's own base version, so the flow stays exactly what it was before version selection.
+            var catalogVersions = await _catalogService.GetVersionsAsync(ct);
+            var basePkg = ResolveBasePackage(
+                manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId),
+                request.SelectedXxmiVersion, catalogVersions);
+            if (basePkg is null)
+            {
+                return Fail(string.IsNullOrWhiteSpace(request.SelectedXxmiVersion)
+                    ? "版本清单缺少必要的安装包"
+                    : $"所选 XXMI 版本 {request.SelectedXxmiVersion} 不在当前版本清单中，请重新选择");
+            }
 
             var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
             var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
 
-            // Base XXMI framework -> into the XXMI root itself.
-            var baseAction = EvaluateAction(installed, _options.Value.BasePackageId, basePkg, BaseFilesOk(rootFolder));
+            // Base XXMI framework -> both copies the XXMI layout keeps: the XXMI root (what the game loads)
+            // and Resources\Packages\XXMI (what the launcher reads its displayed version from).
+            var baseAction =
+                EvaluateAction(installed, _options.Value.BasePackageId, basePkg,
+                    BasePackageConsistent(rootFolder, installed));
             if (baseAction != ModEnvPackageAction.UpToDate)
             {
-                progress?.Report($"安装/更新 XXMI 注入器框架 ({basePkg.Version})...");
-                await _installer.InstallPackageAsync(basePkg, rootFolder, null, progress, ct);
+                // Snapshot before overwriting. This throws on failure by design — continuing would destroy
+                // the only copy of a working install, which is precisely what the backup exists to prevent.
+                await BackupBaseFilesAsync(rootFolder, installed, progress, ct);
+
+                progress?.Report(baseAction == ModEnvPackageAction.Rollback
+                    ? $"回退 XXMI 注入器框架到 {basePkg.Version}..."
+                    : $"安装/更新 XXMI 注入器框架 ({basePkg.Version})...");
+                await _installer.InstallPackageAsync(basePkg, rootFolder, null, progress, ct,
+                    mirrorTargetDirs: new[] { XxmiPackageDir(rootFolder) });
             }
             else
             {
@@ -313,9 +396,11 @@ public class ModEnvSetupFacade
             // Ensure the Mods folder exists — some game packages may omit the (empty) dir from the zip.
             Directory.CreateDirectory(modsFolder);
 
-            // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set.
+            // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set, and
+            // align its stale cached versions so it stops offering a downgrade.
             // Non-fatal; mirrors EnsureLauncherDesktopShortcut.
-            await EnsureLauncherConfigPathsAsync(rootFolder, miFolder, request.GameInstallDir, issues, progress);
+            await EnsureLauncherConfigPathsAsync(rootFolder, miFolder, request.GameInstallDir, installed, issues,
+                progress);
 
             // Wire up the JASM "start game" / "start model importer" commands to the XXMI launcher so the
             // user can launch the game (with mod injection) straight from the Characters page. Non-fatal.
@@ -365,7 +450,119 @@ public class ModEnvSetupFacade
         }
     }
 
+    /// <summary>
+    /// Puts a previously taken snapshot back onto both copies of the XXMI framework, then records it as the
+    /// installed version.
+    /// </summary>
+    /// <remarks>
+    /// Snapshots the current files first, so a restore can itself be undone — otherwise "恢复" would be the
+    /// one action in this feature with no way back. Only the base package is touched: the launcher and the
+    /// per-game package are independent of the injector version.
+    /// </remarks>
+    public async Task<ModEnvSetupResult> RestoreBackupAsync(ModEnvSetupRequest request, ModEnvBackupInfo backup,
+        IProgress<string>? progress, CancellationToken ct = default)
+    {
+        try
+        {
+            var gameInfo = await GameService.GetGameInfoAsync(SupportedGames.WuWa);
+            if (gameInfo?.ModEnv is null)
+                return Fail("该游戏暂不支持一键配置 Mod 环境");
+
+            var (rootFolder, rootError) = await ResolveRootFolderAsync(request, gameInfo.ModEnv, ct);
+            if (rootFolder is null)
+                return Fail(rootError!);
+
+            if (!Directory.Exists(backup.Folder))
+                return Fail("该备份已不存在，可能已被清理，请重新打开向导。");
+
+            var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
+
+            // Undoable restore: keep what is on disk right now before replacing it.
+            await BackupBaseFilesAsync(rootFolder, installed, progress, ct);
+
+            progress?.Report($"正在恢复备份 {backup.DisplayName}...");
+            // Both copies, exactly like an install: restoring only the root would leave the launcher
+            // displaying the version the user just rolled back from.
+            await _installer.CopyToTargetAsync(backup.Folder, rootFolder, progress, ct);
+            await _installer.CopyToTargetAsync(backup.Folder, XxmiPackageDir(rootFolder), progress, ct);
+
+            // Snapshots taken before the manifest became part of the package hold only the DLLs, so the
+            // launcher's copy keeps whatever manifest it had. Say so rather than let the user find the
+            // mismatched version number themselves (a re-run of the setup aligns both copies).
+            if (!File.Exists(Path.Combine(backup.Folder, XxmiManifestFileName)))
+                progress?.Report(
+                    $"注意：该备份不含 {XxmiManifestFileName}（由旧版 JASM 生成），启动器显示的版本可能未同步；再点一次「开始配置」即可对齐。");
+
+            if (backup.Version == ModEnvBackupInfo.UnknownVersion)
+            {
+                // A snapshot taken when the installed version was unknown must not be recorded as a version,
+                // or the next pre-check would claim a precise version we never actually established.
+                installed.Remove(_options.Value.BasePackageId);
+            }
+            else
+            {
+                installed[_options.Value.BasePackageId] = backup.Version;
+            }
+
+            await _installer.WriteMarkerAsync(rootFolder, installed, ct);
+
+            var miFolder = Path.Combine(rootFolder, gameInfo.ModEnv.SubDirName);
+            var issues = new List<string>();
+            if (!BaseFilesOk(rootFolder))
+                issues.Add("恢复后校验未通过：XXMI 基础包文件不完整，请重新配置 Mod 环境。");
+
+            return new ModEnvSetupResult
+            {
+                Success = issues.Count == 0,
+                MiFolder = miFolder,
+                ModsFolder = Path.Combine(miFolder, "Mods"),
+                Issues = issues
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return new ModEnvSetupResult { Success = false, Cancelled = true };
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "ModEnv backup restore failed");
+            return new ModEnvSetupResult { Success = false, Issues = { ex.Message } };
+        }
+    }
+
+    /// <summary>
+    /// Snapshots available for restore, newest first. Exposed here so the wizard keeps a single dependency
+    /// and does not need to reach into the backup store itself.
+    /// </summary>
+    public IReadOnlyList<ModEnvBackupInfo> ListBackups() => _backupService.List();
+
     // ---- Helpers ------------------------------------------------------------
+
+    /// <summary>
+    /// The XXMI root a run installs into: the location picked on the startup page when there is one, otherwise
+    /// the historical "&lt;game drive&gt;\&lt;RootDirName&gt;". Returns the failure message when neither is usable.
+    /// </summary>
+    /// <remarks>
+    /// An explicit root makes the game drive irrelevant for *locating* the install — game on C:, XXMI on D: is a
+    /// normal setup. The game directory is still used for the launcher GUI's game_folder hint, and that fill
+    /// falls back to its own detection when the dialog did not supply one.
+    /// </remarks>
+    private async Task<(string? RootFolder, string? Error)> ResolveRootFolderAsync(
+        ModEnvSetupRequest request, ModEnvInfo modEnv, CancellationToken ct)
+    {
+        if (request.CustomRootFolder is { Length: > 0 } customRoot)
+        {
+            if (!Path.IsPathFullyQualified(customRoot))
+                return (null, "XXMI 安装位置必须是完整路径，例如 D:\\XXMI");
+
+            return (Path.GetFullPath(customRoot), null);
+        }
+
+        var driveRoot = await ResolveDriveRootAsync(request, ct);
+        return driveRoot is null
+            ? (null, "未检测到游戏安装位置，请在向导中选择游戏目录")
+            : (Path.Combine(driveRoot, modEnv.RootDirName), null);
+    }
 
     private async Task<string?> ResolveDriveRootAsync(ModEnvSetupRequest request, CancellationToken ct)
     {
@@ -382,21 +579,175 @@ public class ModEnvSetupFacade
         return detected?.DriveRoot;
     }
 
-    /// <summary>Signature files of the shared XXMI base package, placed at the XXMI root.</summary>
-    private static readonly string[] BasePackageSignatureFiles = { "3dmloader.dll", "d3d11.dll", "d3dcompiler_47.dll" };
+    /// <summary>Files of the shared XXMI base package: the three injector DLLs plus the version manifest.</summary>
+    /// <remarks>
+    /// The manifest is part of the package rather than an optional extra — the XXMI Launcher derives the
+    /// version it displays from it, so switching versions without it swaps the DLLs while the version
+    /// number visibly stays put.
+    /// </remarks>
+    private static readonly string[] BasePackageFiles =
+        { "3dmloader.dll", "d3d11.dll", "d3dcompiler_47.dll", XxmiManifestFileName };
 
-    /// <summary>True when all base package files are present at the XXMI root.</summary>
+    /// <summary>Name of the XXMI package manifest, which also carries the launcher-visible version.</summary>
+    private const string XxmiManifestFileName = "Manifest.json";
+
+    /// <summary>
+    /// The framework copy the XXMI Launcher reads: a sibling of the per-game packages under
+    /// <c>Resources\Packages\</c>. The launcher never looks at the DLLs sitting at the XXMI root.
+    /// </summary>
+    private static string XxmiPackageDir(string rootFolder) =>
+        Path.Combine(rootFolder, "Resources", "Packages", "XXMI");
+
+    /// <summary>
+    /// True when the base package is fully deployed to both places the XXMI layout keeps it in.
+    /// </summary>
+    /// <remarks>
+    /// Requiring the manifest as well as the DLLs is what heals installs made by earlier JASM versions:
+    /// those wrote only the root DLLs, so they report "需修复" and get brought in line by the next setup
+    /// run instead of silently keeping the two copies split.
+    /// </remarks>
+    /// <summary>
+    /// True when the deployed base package is self-consistent: both copies complete AND the copy the
+    /// launcher reads reporting the version JASM recorded.
+    /// </summary>
+    /// <remarks>
+    /// The version half matters because something outside JASM can write that copy — the official
+    /// launcher's own "update" button does, and it pulls from GitHub. Without this check the marker alone
+    /// would keep saying "已是最新" while the launcher runs a version JASM never installed, and the setup
+    /// run would skip the base package, leaving the two copies split.
+    /// </remarks>
+    private bool BasePackageConsistent(string rootFolder, IReadOnlyDictionary<string, string> installed)
+    {
+        if (!BaseFilesOk(rootFolder)) return false;
+
+        var recorded = installed.GetValueOrDefault(_options.Value.BasePackageId);
+        if (string.IsNullOrWhiteSpace(recorded)) return true; // nothing recorded to compare against
+
+        // An unreadable manifest is not evidence of drift — only a readable, differing version is.
+        var visible = ReadLauncherVisibleXxmiVersion(rootFolder);
+        return visible is null || string.Equals(visible, recorded, StringComparison.Ordinal);
+    }
+
     private bool BaseFilesOk(string rootFolder)
     {
         if (!Directory.Exists(rootFolder)) return false;
         try
         {
-            return BasePackageSignatureFiles.All(f => File.Exists(Path.Combine(rootFolder, f)));
+            return BasePackageFiles.All(f => File.Exists(Path.Combine(rootFolder, f)))
+                   && BasePackageFiles.All(f => File.Exists(Path.Combine(XxmiPackageDir(rootFolder), f)));
         }
         catch (Exception ex)
         {
             _logger.Debug(ex, "Failed to inspect XXMI root {Root}", rootFolder);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Version recorded in the framework copy the launcher displays, or null when it is missing/unreadable.
+    /// </summary>
+    /// <remarks>
+    /// JASM owns this copy too, so the two versions must agree; they diverge when something else (the
+    /// official updater) touches it. Surfacing the mismatch in the pre-check turns "回退后版本号没变" from a
+    /// puzzling symptom into a stated cause.
+    /// </remarks>
+    private string? ReadLauncherVisibleXxmiVersion(string rootFolder)
+    {
+        try
+        {
+            var manifestPath = Path.Combine(XxmiPackageDir(rootFolder), XxmiManifestFileName);
+            if (!File.Exists(manifestPath)) return null;
+
+            // File.ReadAllText strips a UTF-8 BOM, which this manifest is free to carry.
+            return JsonNode.Parse(File.ReadAllText(manifestPath))?["version"]?.GetValue<string>()?.Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug(ex, "Failed to read launcher-visible XXMI manifest under {Root}", rootFolder);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Builds the version list for the picker: the catalogue, with the main manifest's own base version
+    /// synthesised in when the catalogue does not list it.
+    /// </summary>
+    /// <remarks>
+    /// The synthesised entry is what turns "leave the dropdown alone == previous behaviour" into a hard
+    /// guarantee, instead of something that depends on the maintainer keeping two CDN files in sync.
+    /// </remarks>
+    private static List<ModEnvCatalogVersion> BuildVersionList(
+        IReadOnlyList<ModEnvCatalogVersion> catalogVersions, ModEnvPackage? basePkg)
+    {
+        var versions = new List<ModEnvCatalogVersion>(catalogVersions);
+
+        if (basePkg is not null &&
+            versions.All(v => !string.Equals(v.Version, basePkg.Version, StringComparison.Ordinal)))
+        {
+            versions.Add(new ModEnvCatalogVersion
+            {
+                Version = basePkg.Version,
+                DownloadUrl = basePkg.DownloadUrl,
+                Sha256 = basePkg.Sha256,
+                SizeBytes = basePkg.SizeBytes
+            });
+        }
+
+        versions.Sort((left, right) => ModEnvVersion.CompareDescending(left.Version, right.Version));
+        return versions;
+    }
+
+    /// <summary>
+    /// Picks the base package to install: the version the user selected, or the manifest's own when nothing
+    /// was selected. Returns null when a selection is not in the catalogue (stale picker data).
+    /// </summary>
+    private static ModEnvPackage? ResolveBasePackage(ModEnvPackage? manifestBase, string? selectedVersion,
+        IReadOnlyList<ModEnvCatalogVersion> catalogVersions)
+    {
+        if (string.IsNullOrWhiteSpace(selectedVersion))
+            return manifestBase;
+
+        if (manifestBase is not null &&
+            string.Equals(manifestBase.Version, selectedVersion, StringComparison.Ordinal))
+            return manifestBase;
+
+        return catalogVersions.FirstOrDefault(v =>
+            string.Equals(v.Version, selectedVersion, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Snapshots the base package files before they are overwritten, so the user can always switch back.
+    /// </summary>
+    /// <returns>The snapshot, or null on a fresh install where there is nothing to lose.</returns>
+    /// <remarks>
+    /// An IO failure is converted into a hard stop on purpose: carrying on would overwrite the only copy of
+    /// a working install, which is exactly what this snapshot exists to prevent.
+    /// </remarks>
+    private async Task<ModEnvBackupInfo?> BackupBaseFilesAsync(string rootFolder,
+        IReadOnlyDictionary<string, string> installed, IProgress<string>? progress, CancellationToken ct)
+    {
+        var currentVersion = installed.GetValueOrDefault(_options.Value.BasePackageId);
+        if (string.IsNullOrWhiteSpace(currentVersion) && !BaseFilesOk(rootFolder))
+            return null;
+
+        progress?.Report("正在备份当前 XXMI 版本...");
+        try
+        {
+            var backup = await _backupService.BackupAsync(rootFolder, currentVersion, BasePackageFiles, ct);
+            if (backup is not null)
+                progress?.Report($"已备份当前 XXMI 版本到 {backup.Folder}");
+
+            return backup;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Cancelling during the copy must still read as "user cancelled", not as a backup failure.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to back up ModEnv base package from {Root}", rootFolder);
+            throw new InvalidOperationException("备份当前 XXMI 版本失败，已中止操作以免无法回退：" + ex.Message, ex);
         }
     }
 
@@ -457,12 +808,13 @@ public class ModEnvSetupFacade
 
     /// <summary>
     /// Pre-fills the launcher GUI's game path and WWMi path in "XXMI Launcher Config.json" so a fresh
-    /// install opens with them set instead of relying on the launcher's first-run self-detection.
+    /// install opens with them set instead of relying on the launcher's first-run self-detection, and
+    /// aligns the launcher's stale cached package versions (see <see cref="AlignStaleLauncherVersions"/>).
     /// Conservative: only fills when a field is empty (game_folder) or empty/relative (importer_folder),
     /// so user-set absolute paths are never overwritten. Non-fatal on any failure.
     /// </summary>
     private async Task EnsureLauncherConfigPathsAsync(string rootFolder, string miFolder, string? gameInstallDir,
-        List<string> issues, IProgress<string>? progress)
+        IReadOnlyDictionary<string, string> deployedVersions, List<string> issues, IProgress<string>? progress)
     {
         var configPath = Path.Combine(rootFolder, LauncherConfigFileName);
 
@@ -509,7 +861,7 @@ public class ModEnvSetupFacade
                     return;
                 }
 
-                var changed = false;
+                var pathsChanged = false;
 
                 // The caller only passes a game dir when the user picked/auto-detected one in the dialog.
                 // Fall back to our own detector so a plain one-click run still fills game_folder.
@@ -534,7 +886,7 @@ public class ModEnvSetupFacade
                         if (gameFolder is not null)
                         {
                             importer["game_folder"] = gameFolder;
-                            changed = true;
+                            pathsChanged = true;
                         }
                     }
                 }
@@ -543,12 +895,16 @@ public class ModEnvSetupFacade
                 if (string.IsNullOrWhiteSpace(currentImporter) || !Path.IsPathRooted(currentImporter))
                 {
                     importer["importer_folder"] = miFolder.Replace('\\', '/');
-                    changed = true;
+                    pathsChanged = true;
                 }
 
-                if (!changed && !hadBom)
+                // Stops the launcher from offering to "update" to the older version it has cached.
+                var alignedVersions =
+                    AlignStaleLauncherVersions(deployedVersions, root["Packages"]?["packages"] as JsonObject);
+
+                if (!pathsChanged && alignedVersions.Count == 0 && !hadBom)
                 {
-                    progress?.Report("启动器 GUI 路径已是最新，无需更新。");
+                    progress?.Report("启动器配置已是最新，无需更新。");
                     return;
                 }
 
@@ -559,10 +915,22 @@ public class ModEnvSetupFacade
 
                 var json = Encoding.UTF8.GetString(stream.ToArray());
                 File.WriteAllText(configPath, json, new UTF8Encoding(false));
-                _logger.Information(
-                    "Pre-filled launcher GUI paths in {Config}: game_folder={GameFolder}, importer_folder={ImporterFolder}",
-                    configPath, importer["game_folder"]?.GetValue<string>(), importer["importer_folder"]?.GetValue<string>());
-                progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+                if (pathsChanged)
+                {
+                    _logger.Information(
+                        "Pre-filled launcher GUI paths in {Config}: game_folder={GameFolder}, importer_folder={ImporterFolder}",
+                        configPath, importer["game_folder"]?.GetValue<string>(), importer["importer_folder"]?.GetValue<string>());
+                    progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+                }
+
+                if (alignedVersions.Count > 0)
+                {
+                    _logger.Information("Aligned stale launcher package versions in {Config}: {Aligned}",
+                        configPath, string.Join(", ", alignedVersions));
+                    progress?.Report(
+                        $"已把 XXMI 启动器缓存的过期版本对齐到实装版本（{string.Join("、", alignedVersions)}），避免它反复提示「更新」。");
+                }
+
                 return;
             }
             catch (IOException ex) when (attempt < maxAttempts)
@@ -581,6 +949,94 @@ public class ModEnvSetupFacade
 
         _logger.Warning("Failed to pre-fill launcher GUI paths in {Config} after {Max} attempts", configPath, maxAttempts);
         issues.Add("未能自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
+    }
+
+    /// <summary>
+    /// Brings the launcher's cached version records for every package JASM just deployed back in line with what
+    /// is on disk: <c>latest_version</c> and <c>deployed_version</c> become the deployed version, and the
+    /// pending-version leftovers (<c>skipped_version</c>, <c>latest_release_notes</c>) are cleared. Returns what
+    /// it touched (launcher display name + the stale version it replaced) for the progress log.
+    /// </summary>
+    /// <remarks>
+    /// The launcher treats "version read off disk != cached latest_version" as an update — including when the
+    /// cached value is <em>older</em> than what is installed, which renders the nonsensical
+    /// "将包更新到最新版本：XXMI: 1.1.7 → 1.0.5" prompt. Its cache is only refreshed from GitHub releases
+    /// (core/package_manager.py -> github_client.py), which is unreachable for most of our users and rate-limits
+    /// the rest, so the mismatch persists indefinitely.
+    /// Measured 2026-09-14 on a real install (cache latest=1.0.5 / skipped=1.0.5 / on-disk 1.1.7): writing
+    /// <c>skipped_version</c> alone — the launcher's own "跳过" button — does <em>not</em> silence that prompt;
+    /// it is only honoured by the update dialog. Aligning the cache instead reproduces exactly the state the
+    /// launcher's own updater leaves behind (latest == deployed == on-disk), which is silent.
+    /// Only strictly older cached versions are aligned: when the cache knows a <em>newer</em> version than the
+    /// one we deployed (e.g. the user deliberately rolled back), the launcher's offer is legitimate and stays.
+    /// </remarks>
+    private static List<string> AlignStaleLauncherVersions(
+        IReadOnlyDictionary<string, string> deployedVersions, JsonObject? launcherPackages)
+    {
+        var aligned = new List<string>();
+        if (launcherPackages is null)
+            return aligned;
+
+        foreach (var (packageId, deployedVersion) in deployedVersions)
+        {
+            if (string.IsNullOrWhiteSpace(deployedVersion))
+                continue;
+
+            // The config keys are the launcher's display names ("XXMI" / "WWMI" / "Launcher") while our package
+            // ids are lower-case, and JsonObject indexers are case-sensitive — hence the manual lookup.
+            var entry = launcherPackages.FirstOrDefault(pair =>
+                string.Equals(pair.Key, packageId, StringComparison.OrdinalIgnoreCase));
+            if (entry.Value is not JsonObject package)
+                continue;
+
+            var cachedLatest = package["latest_version"]?.GetValue<string>()?.Trim();
+            if (string.IsNullOrWhiteSpace(cachedLatest) || !IsOlderVersion(cachedLatest, deployedVersion))
+                continue;
+
+            package["latest_version"] = deployedVersion;
+            package["deployed_version"] = deployedVersion;
+
+            // A skip for that same stale version is now moot. A skip naming some *other* version is the user's
+            // own choice about a genuinely pending one, so it is left alone.
+            var currentSkip = package["skipped_version"]?.GetValue<string>()?.Trim();
+            if (string.IsNullOrWhiteSpace(currentSkip) ||
+                string.Equals(currentSkip, cachedLatest, StringComparison.OrdinalIgnoreCase))
+                package["skipped_version"] = string.Empty;
+
+            // The notes describe the cached latest we just replaced; without them the launcher would show the
+            // old version's changelog next to the new version number.
+            package["latest_release_notes"] = string.Empty;
+
+            aligned.Add($"{entry.Key} {cachedLatest} → {deployedVersion}");
+        }
+
+        return aligned;
+    }
+
+    /// <summary>
+    /// True when both values parse as versions and the first is strictly older, i.e. the launcher's cached
+    /// "latest" is actually behind what JASM deployed. Unparseable values return false so an update we cannot
+    /// reason about is never suppressed.
+    /// </summary>
+    private static bool IsOlderVersion(string candidate, string reference)
+    {
+        var left = ParseLooseVersion(candidate);
+        var right = ParseLooseVersion(reference);
+        return left is not null && right is not null && left < right;
+    }
+
+    /// <summary>
+    /// Parses "v1.1.7" / "1.1.7-beta.1" style versions. Returns null when there is no usable "major.minor"
+    /// core, so callers can treat the value as unknown instead of guessing at its ordering.
+    /// </summary>
+    private static Version? ParseLooseVersion(string value)
+    {
+        var text = value.Trim().TrimStart('v', 'V');
+        var suffix = text.IndexOfAny(new[] { '-', '+' });
+        if (suffix >= 0)
+            text = text[..suffix];
+
+        return Version.TryParse(text, out var parsed) ? parsed : null;
     }
 
     /// <summary>
@@ -761,9 +1217,15 @@ public class ModEnvSetupFacade
         if (!filesOk)
             return ModEnvPackageAction.NeedsRepair;
 
-        return string.Equals(installedVer, pkg.Version, StringComparison.Ordinal)
-            ? ModEnvPackageAction.UpToDate
-            : ModEnvPackageAction.UpdateAvailable;
+        if (string.Equals(installedVer, pkg.Version, StringComparison.Ordinal))
+            return ModEnvPackageAction.UpToDate;
+
+        // Numeric comparison, not Ordinal: a string compare ranks "1.1.7" below "0.9.2", so switching to an
+        // older version would be labelled an update instead of a rollback. The distinction is what the wizard
+        // shows the user, and only Rollback triggers the pre-switch snapshot messaging.
+        return ModEnvVersion.IsOlder(installedVer, pkg.Version)
+            ? ModEnvPackageAction.UpdateAvailable
+            : ModEnvPackageAction.Rollback;
     }
 
     private static bool IsCompatible(string gameVersion, ModEnvPackage pkg)

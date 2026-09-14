@@ -112,9 +112,13 @@ public class ModEnvInstallerService
     /// <paramref name="preserveExistingFiles"/> optionally lists file names (at any depth) that should
     /// NOT be overwritten when they already exist at the destination — used to keep user-edited files
     /// such as the launcher's Config.json across package updates.
+    /// <paramref name="mirrorTargetDirs"/> lists extra absolute folders that receive a second copy of the
+    /// same payload. Used for the XXMI base package, which the official layout keeps both at the XXMI root
+    /// and under <c>Resources\Packages\XXMI</c> (the copy the XXMI Launcher reads its version from).
     /// </summary>
     public async Task InstallPackageAsync(ModEnvPackage pkg, string targetRoot, string? subDir,
-        IProgress<string>? progress, CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null)
+        IProgress<string>? progress, CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null,
+        IReadOnlyCollection<string>? mirrorTargetDirs = null)
     {
         Directory.CreateDirectory(StagingDir);
         var zipPath = await DownloadWithResumeAsync(pkg, progress, ct).ConfigureAwait(false);
@@ -126,6 +130,11 @@ public class ModEnvInstallerService
 
         var targetDir = subDir is null ? targetRoot : Path.Combine(targetRoot, subDir);
         await CopyToTargetAsync(extractedFolder, targetDir, progress, ct, preserveExistingFiles).ConfigureAwait(false);
+
+        // Mirrors reuse the already-extracted payload — downloading a second time for the other copy would
+        // double the bandwidth and let one copy land while the other fails half-way.
+        foreach (var mirrorDir in mirrorTargetDirs ?? Array.Empty<string>())
+            await CopyToTargetAsync(extractedFolder, mirrorDir, progress, ct, preserveExistingFiles).ConfigureAwait(false);
 
         TryCleanup(extractRoot);
         TryCleanup(zipPath);
@@ -339,7 +348,12 @@ public class ModEnvInstallerService
             extractDir = entries[0];
     }
 
-    private async Task CopyToTargetAsync(string sourceDir, string targetDir, IProgress<string>? progress,
+    /// <summary>
+    /// Copies a staged folder onto the target, falling back to an elevated copy when the target needs
+    /// admin rights. <c>internal</c> rather than private so restoring a version backup (which is just a
+    /// folder of package files) reuses this elevation handling instead of reimplementing it.
+    /// </summary>
+    internal async Task CopyToTargetAsync(string sourceDir, string targetDir, IProgress<string>? progress,
         CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null)
     {
         try

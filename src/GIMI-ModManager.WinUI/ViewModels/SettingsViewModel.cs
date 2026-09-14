@@ -381,7 +381,24 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         var dialog = App.GetService<ModEnvSetupDialog>();
         dialog.XamlRoot = App.MainWindow.Content.XamlRoot;
+
+        // Reuse the XXMI root picked earlier; ignoring the saved value here would quietly install a
+        // second copy at the default location.
+        var modManagerOptions = await _localSettingsService.ReadOrCreateSettingAsync<ModManagerOptions>(
+            ModManagerOptions.Section);
+        dialog.ViewModel.CustomRootFolder = modManagerOptions.XxmiRootFolderPath;
+
         await dialog.ShowAsync();
+
+        // The wizard's "安装位置" row may have moved the target. Saved here rather than by SaveSettings,
+        // which only writes the two folder paths and needs them to have changed first.
+        if (!string.Equals(modManagerOptions.XxmiRootFolderPath, dialog.CustomRootFolder,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            modManagerOptions.XxmiRootFolderPath = dialog.CustomRootFolder;
+            await _localSettingsService.SaveSettingAsync(ModManagerOptions.Section, modManagerOptions);
+            _logger.Information("Saved XXMI root folder: {XxmiRootFolder}", dialog.CustomRootFolder);
+        }
 
         if (dialog.MiFolder is null || dialog.ModsFolder is null)
         {

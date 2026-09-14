@@ -66,6 +66,13 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty] private string _modEnvStatusText = string.Empty;
     [ObservableProperty] private InfoBarSeverity _modEnvStatusSeverity = InfoBarSeverity.Informational;
 
+    /// <summary>
+    /// XXMI root the user picked in the setup wizard, or null for the default "&lt;game drive&gt;\XXMI".
+    /// Persisted with the other startup settings so a later run targets the same place instead of
+    /// installing a second copy at the default location.
+    /// </summary>
+    [ObservableProperty] private string? _xxmiRootFolderPath;
+
     public ObservableCollection<GameComboBoxEntryVM> Games { get; } = new();
 
     public StartupViewModel(INavigationService navigationService, ILocalSettingsService localSettingsService,
@@ -100,6 +107,25 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     private bool ValidStartupSettings() => PathToGIMIFolderPicker.IsValid && PathToModsFolderPicker.IsValid &&
                                            PathToGIMIFolderPicker.Path != PathToModsFolderPicker.Path;
 
+    /// <summary>
+    /// Remembers the XXMI root the wizard ended up using so the next run targets the same place. Written
+    /// straight to the settings: the wizard is reachable from the settings page too, where the user never
+    /// presses this page's Save, and losing the choice would silently install a second copy.
+    /// </summary>
+    private async Task RememberXxmiRootFolderAsync(string? rootFolder)
+    {
+        XxmiRootFolderPath = string.IsNullOrWhiteSpace(rootFolder) ? null : rootFolder;
+
+        var settings = await _localSettingsService.ReadOrCreateSettingAsync<ModManagerOptions>(
+            ModManagerOptions.Section);
+
+        if (string.Equals(settings.XxmiRootFolderPath, XxmiRootFolderPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        settings.XxmiRootFolderPath = XxmiRootFolderPath;
+        await _localSettingsService.SaveSettingAsync(ModManagerOptions.Section, settings);
+    }
+
 
     [RelayCommand(CanExecute = nameof(ValidStartupSettings))]
     private async Task SaveStartupSettings()
@@ -108,7 +134,8 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         {
             GimiRootFolderPath = PathToGIMIFolderPicker.Path,
             ModsFolderPath = PathToModsFolderPicker.Path,
-            UnloadedModsFolderPath = null
+            UnloadedModsFolderPath = null,
+            XxmiRootFolderPath = XxmiRootFolderPath
         };
 
         await _selectedGameService.SetSelectedGame(SelectedGame.Value.ToString());
@@ -193,7 +220,13 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         }
 
         ShowModEnvSetupButton = true;
-        var pre = await _modEnvSetupFacade.PreCheckAsync(new ModEnvSetupRequest());
+
+        // Probing the same root the setup would use: a custom folder is empty until it is configured, and
+        // reporting the default location's state instead would contradict what the user just picked.
+        var pre = await _modEnvSetupFacade.PreCheckAsync(new ModEnvSetupRequest
+        {
+            CustomRootFolder = XxmiRootFolderPath
+        });
 
         var loaderOk = pre.MiFolder is not null && ModEnvInstallerService.IsGamePackagePresent(pre.MiFolder);
         var modsOk = pre.ModsFolder is not null && Directory.Exists(pre.ModsFolder);
@@ -226,7 +259,11 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     {
         var dialog = App.GetService<ModEnvSetupDialog>();
         dialog.XamlRoot = App.MainWindow.Content.XamlRoot;
+        dialog.ViewModel.CustomRootFolder = XxmiRootFolderPath;
         await dialog.ShowAsync();
+
+        // The wizard's "安装位置" row may have moved the target; keep it before anything reads it again.
+        await RememberXxmiRootFolderAsync(dialog.CustomRootFolder);
 
         if (dialog.MiFolder is not null && dialog.ModsFolder is not null)
         {
@@ -333,6 +370,10 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
             PathToModsFolderPicker.Path = settings.ModsFolderPath;
         else
             PathToModsFolderPicker.Path = "";
+
+        XxmiRootFolderPath = string.IsNullOrWhiteSpace(settings.XxmiRootFolderPath)
+            ? null
+            : settings.XxmiRootFolderPath;
     }
 
 
