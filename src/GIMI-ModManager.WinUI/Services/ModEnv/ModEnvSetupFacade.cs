@@ -399,7 +399,7 @@ public class ModEnvSetupFacade
             Directory.CreateDirectory(modsFolder);
 
             // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set, and
-            // mark the launcher's stale cached versions as skipped so it stops offering a downgrade.
+            // align its stale cached versions so it stops offering a downgrade.
             // Non-fatal; mirrors EnsureLauncherDesktopShortcut.
             await EnsureLauncherConfigPathsAsync(rootFolder, miFolder, request.GameInstallDir, installed, issues,
                 progress);
@@ -786,7 +786,7 @@ public class ModEnvSetupFacade
     /// <summary>
     /// Pre-fills the launcher GUI's game path and WWMi path in "XXMI Launcher Config.json" so a fresh
     /// install opens with them set instead of relying on the launcher's first-run self-detection, and
-    /// suppresses the launcher's stale cached "latest version" prompts (see <see cref="SuppressStaleLauncherUpdates"/>).
+    /// aligns the launcher's stale cached package versions (see <see cref="AlignStaleLauncherVersions"/>).
     /// Conservative: only fills when a field is empty (game_folder) or empty/relative (importer_folder),
     /// so user-set absolute paths are never overwritten. Non-fatal on any failure.
     /// </summary>
@@ -876,10 +876,10 @@ public class ModEnvSetupFacade
                 }
 
                 // Stops the launcher from offering to "update" to the older version it has cached.
-                var skippedVersions =
-                    SuppressStaleLauncherUpdates(deployedVersions, root["Packages"]?["packages"] as JsonObject);
+                var alignedVersions =
+                    AlignStaleLauncherVersions(deployedVersions, root["Packages"]?["packages"] as JsonObject);
 
-                if (!pathsChanged && skippedVersions.Count == 0 && !hadBom)
+                if (!pathsChanged && alignedVersions.Count == 0 && !hadBom)
                 {
                     progress?.Report("启动器配置已是最新，无需更新。");
                     return;
@@ -900,12 +900,12 @@ public class ModEnvSetupFacade
                     progress?.Report("已自动填写启动器 GUI 的游戏路径与 WWMi 路径。");
                 }
 
-                if (skippedVersions.Count > 0)
+                if (alignedVersions.Count > 0)
                 {
-                    _logger.Information("Marked stale launcher versions as skipped in {Config}: {Skipped}",
-                        configPath, string.Join(", ", skippedVersions));
+                    _logger.Information("Aligned stale launcher package versions in {Config}: {Aligned}",
+                        configPath, string.Join(", ", alignedVersions));
                     progress?.Report(
-                        $"已在 XXMI 启动器中跳过更旧的版本（{string.Join("、", skippedVersions)}），避免它反复提示更新。");
+                        $"已把 XXMI 启动器缓存的过期版本对齐到实装版本（{string.Join("、", alignedVersions)}），避免它反复提示「更新」。");
                 }
 
                 return;
@@ -929,25 +929,30 @@ public class ModEnvSetupFacade
     }
 
     /// <summary>
-    /// Writes the launcher's own <c>skipped_version</c> for every package JASM just deployed whose cached
-    /// <c>latest_version</c> is <em>older</em> than the deployed one, so the launcher stops offering it.
-    /// Returns what it touched (launcher display name + version) for the progress log.
+    /// Brings the launcher's cached version records for every package JASM just deployed back in line with what
+    /// is on disk: <c>latest_version</c> and <c>deployed_version</c> become the deployed version, and the
+    /// pending-version leftovers (<c>skipped_version</c>, <c>latest_release_notes</c>) are cleared. Returns what
+    /// it touched (launcher display name + the stale version it replaced) for the progress log.
     /// </summary>
     /// <remarks>
-    /// The launcher compares the version it reads off disk against the <c>latest_version</c> in
-    /// "XXMI Launcher Config.json" and, on any mismatch, pops "将包更新到最新版本：XXMI: x → y" — y being that
-    /// cache. The cache is only refreshed from GitHub releases (core/package_manager.py -> github_client.py),
-    /// which is unreachable for most of our users and rate-limits the rest, so after we deploy anything other
-    /// than the cached version it keeps offering a <em>downgrade</em>. Skipping the stale version is the
-    /// launcher's own "don't offer me this one" mechanism, it is reversible from its GUI, and only strictly
-    /// older versions are written — a genuinely newer release is still offered normally.
+    /// The launcher treats "version read off disk != cached latest_version" as an update — including when the
+    /// cached value is <em>older</em> than what is installed, which renders the nonsensical
+    /// "将包更新到最新版本：XXMI: 1.1.7 → 1.0.5" prompt. Its cache is only refreshed from GitHub releases
+    /// (core/package_manager.py -> github_client.py), which is unreachable for most of our users and rate-limits
+    /// the rest, so the mismatch persists indefinitely.
+    /// Measured 2026-09-14 on a real install (cache latest=1.0.5 / skipped=1.0.5 / on-disk 1.1.7): writing
+    /// <c>skipped_version</c> alone — the launcher's own "跳过" button — does <em>not</em> silence that prompt;
+    /// it is only honoured by the update dialog. Aligning the cache instead reproduces exactly the state the
+    /// launcher's own updater leaves behind (latest == deployed == on-disk), which is silent.
+    /// Only strictly older cached versions are aligned: when the cache knows a <em>newer</em> version than the
+    /// one we deployed (e.g. the user deliberately rolled back), the launcher's offer is legitimate and stays.
     /// </remarks>
-    private static List<string> SuppressStaleLauncherUpdates(
+    private static List<string> AlignStaleLauncherVersions(
         IReadOnlyDictionary<string, string> deployedVersions, JsonObject? launcherPackages)
     {
-        var skipped = new List<string>();
+        var aligned = new List<string>();
         if (launcherPackages is null)
-            return skipped;
+            return aligned;
 
         foreach (var (packageId, deployedVersion) in deployedVersions)
         {
@@ -965,16 +970,24 @@ public class ModEnvSetupFacade
             if (string.IsNullOrWhiteSpace(cachedLatest) || !IsOlderVersion(cachedLatest, deployedVersion))
                 continue;
 
-            // Already suppressed — by us on an earlier run or by the user from the launcher GUI. Leave it be.
-            var currentSkip = package["skipped_version"]?.GetValue<string>()?.Trim();
-            if (string.Equals(currentSkip, cachedLatest, StringComparison.OrdinalIgnoreCase))
-                continue;
+            package["latest_version"] = deployedVersion;
+            package["deployed_version"] = deployedVersion;
 
-            package["skipped_version"] = cachedLatest;
-            skipped.Add($"{entry.Key} {cachedLatest}");
+            // A skip for that same stale version is now moot. A skip naming some *other* version is the user's
+            // own choice about a genuinely pending one, so it is left alone.
+            var currentSkip = package["skipped_version"]?.GetValue<string>()?.Trim();
+            if (string.IsNullOrWhiteSpace(currentSkip) ||
+                string.Equals(currentSkip, cachedLatest, StringComparison.OrdinalIgnoreCase))
+                package["skipped_version"] = string.Empty;
+
+            // The notes describe the cached latest we just replaced; without them the launcher would show the
+            // old version's changelog next to the new version number.
+            package["latest_release_notes"] = string.Empty;
+
+            aligned.Add($"{entry.Key} {cachedLatest} → {deployedVersion}");
         }
 
-        return skipped;
+        return aligned;
     }
 
     /// <summary>
