@@ -26,7 +26,7 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 
 | 文件 | 内容要求 |
 |---|---|
-| `xxmi-<版本>.zip` | XXMI 注入器框架包。解压后至少含 1 个文件/目录即可（JASM 用它判定「基础包是否装好」） |
+| `xxmi-<版本>.zip` | XXMI 注入器框架包，**4 个文件平铺在根**：`3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` / `Manifest.json`。JASM 会把这 4 个文件同时写入 XXMI 根目录和 `Resources\Packages\XXMI\`（后者是启动器读版本号的地方），缺任一个都判「需修复」 |
 | `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」） |
 | `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）包，见下节「打 launcher 包」 |
 | `version.json` | 版本清单，见下节 |
@@ -158,13 +158,24 @@ python Build/PackXxmiVersions.py --base-url https://<你的桶域名>/modenv/
 
 | 文件 | 说明 |
 |---|---|
-| `xxmi-<版本>.zip` | 扁平包，**只含** `3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` |
+| `xxmi-<版本>.zip` | 扁平包，**只含** `3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` / `Manifest.json` |
 | `xxmi-versions.json` | 版本目录，直接传 CDN |
 | `xxmi-version-hashes.json` | 各版本逐文件 sha256，手测对照用 |
 
-> ⚠️ **安全闸**：脚本对每个 zip 断言「文件名集合 == 白名单这三个文件」，不等就删掉 zip 并退出。
+> ⚠️ **安全闸**：脚本对每个 zip 断言「文件名集合 == 白名单这四个文件」，不等就删掉 zip 并退出。
 > 目的是防止把 `XXMI 更新包` 目录里的 `Security/private_key.der`（XXMI 的签名**私钥**，与「打 launcher 包」
 > 那节同源）打进可公开下载的包里。**不要**为了少一个版本而放宽这个断言。
+> （`Manifest.json` 是唯一被放进来的白名单外延伸文件：它带 `signatures` 是**公开**的验签数据，不是私钥。）
+
+> ⚠️ **`Manifest.json` 不能省**。XXMI 的框架在磁盘上有**两份**：XXMI 根目录（游戏实际加载的）和
+> `Resources\Packages\XXMI\`（**启动器显示版本号的那份**）。少了 `Manifest.json`，JASM 换完 dll
+> 启动器上的版本号也不会变——「回退到 1.0.5 后启动器还显示 1.1.7」就是这么来的。
+> 脚本另外会断言包内 `Manifest.json` 的 `version` 与包版本一致、`signatures` 非空，不一致直接退出。
+
+> ⚠️ **同一个 `xxmi-<版本>.zip` 换了内容，就必须同步改 `version.json` 里 xxmi 的 `Sha256`/`SizeBytes`**。
+> `version.json`（默认装哪个版本）和 `xxmi-versions.json`（可以选哪些版本）是两份独立清单，各带包哈希。
+> 只重传 zip 不改 `version.json`，用户端会在下载完成后卡在 SHA256 校验失败——而且文件名没变，
+> 现象上看起来像「什么都没改」。稳妥做法：传新 zip 和改好的 `version.json` 挨着做。
 
 传上去的 `xxmi-versions.json` 形如（脚本已生成，必要时给版本填 `Notes`）：
 
@@ -191,6 +202,9 @@ python Build/PackXxmiVersions.py --base-url https://<你的桶域名>/modenv/
 - 顺序不用你排，JASM 按版本号从新到旧自己排；重复 / 缺字段的条目会被自动丢弃。
 - 下拉框的**默认选中项永远是 `version.json` 里那个版本**，所以「不动下拉框」= 加此功能之前的行为。
   想让用户默认装哪个版本，改 `version.json` 即可。
+- **同一个版本在 `version.json` 和 `xxmi-versions.json` 里的 `Sha256`/`SizeBytes` 必须指向同一个对象。**
+  不动下拉框时 JASM 用 `version.json` 那份，选中该版本时用 catalog 那份——两处哈希不一致，
+  用户就会遇到「同一个版本，有时能装有时校验失败」。
 - ⚠️ **上线前先跑 `docs/mod-env-hand-test.md` §14.2 的兼容性矩阵**（每个版本 × 当前 wwmi 包），
   **只把实测可用的版本放进目录**——目录里放了坏版本，用户回退过去照样是坏的。
 - 不必把全部历史版本都放上去，近期几个够用：每多一个版本，就多一份要验证、要托管的资产。
