@@ -224,6 +224,8 @@ public partial class App : Application
 
                 // Mod environment setup (one-click XXMI/WWMI install)
                 services.AddSingleton<ModEnvManifestService>();
+                services.AddSingleton<ModEnvVersionCatalogService>();
+                services.AddSingleton<ModEnvBackupService>();
                 services.AddSingleton<GameInstallPathDetector>();
                 services.AddSingleton<ModEnvInstallerService>();
                 services.AddSingleton<ModEnvSetupFacade>();
