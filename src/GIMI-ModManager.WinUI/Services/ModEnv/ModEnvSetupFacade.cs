@@ -164,11 +164,10 @@ public class ModEnvSetupFacade
             return new ModEnvPreCheck { Issues = { "该游戏暂不支持一键配置 Mod 环境" } };
 
         var modEnv = gameInfo.ModEnv;
-        var driveRoot = await ResolveDriveRootAsync(request, ct);
-        if (driveRoot is null)
-            return new ModEnvPreCheck { Issues = { "未检测到游戏安装位置，请在向导中选择游戏目录" } };
+        var (rootFolder, rootError) = await ResolveRootFolderAsync(request, modEnv, ct);
+        if (rootFolder is null)
+            return new ModEnvPreCheck { Issues = { rootError! } };
 
-        var rootFolder = request.CustomRootFolder ?? Path.Combine(driveRoot, modEnv.RootDirName);
         var miFolder = Path.Combine(rootFolder, modEnv.SubDirName);
         var issues = new List<string>();
         var packages = new List<ModEnvPackagePreCheck>();
@@ -292,11 +291,10 @@ public class ModEnvSetupFacade
                 return Fail("该游戏暂不支持一键配置 Mod 环境");
 
             var modEnv = gameInfo.ModEnv;
-            var driveRoot = await ResolveDriveRootAsync(request, ct);
-            if (driveRoot is null)
-                return Fail("未检测到游戏安装位置，请先手动选择游戏目录");
+            var (rootFolder, rootError) = await ResolveRootFolderAsync(request, modEnv, ct);
+            if (rootFolder is null)
+                return Fail(rootError!);
 
-            var rootFolder = request.CustomRootFolder ?? Path.Combine(driveRoot, modEnv.RootDirName);
             var miFolder = Path.Combine(rootFolder, modEnv.SubDirName);
             var modsFolder = Path.Combine(miFolder, "Mods");
             var issues = new List<string>();
@@ -470,14 +468,13 @@ public class ModEnvSetupFacade
             if (gameInfo?.ModEnv is null)
                 return Fail("该游戏暂不支持一键配置 Mod 环境");
 
-            var driveRoot = await ResolveDriveRootAsync(request, ct);
-            if (driveRoot is null)
-                return Fail("未检测到游戏安装位置，请先手动选择游戏目录");
+            var (rootFolder, rootError) = await ResolveRootFolderAsync(request, gameInfo.ModEnv, ct);
+            if (rootFolder is null)
+                return Fail(rootError!);
 
             if (!Directory.Exists(backup.Folder))
                 return Fail("该备份已不存在，可能已被清理，请重新打开向导。");
 
-            var rootFolder = request.CustomRootFolder ?? Path.Combine(driveRoot, gameInfo.ModEnv.RootDirName);
             var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
 
             // Undoable restore: keep what is on disk right now before replacing it.
@@ -540,6 +537,32 @@ public class ModEnvSetupFacade
     public IReadOnlyList<ModEnvBackupInfo> ListBackups() => _backupService.List();
 
     // ---- Helpers ------------------------------------------------------------
+
+    /// <summary>
+    /// The XXMI root a run installs into: the location picked on the startup page when there is one, otherwise
+    /// the historical "&lt;game drive&gt;\&lt;RootDirName&gt;". Returns the failure message when neither is usable.
+    /// </summary>
+    /// <remarks>
+    /// An explicit root makes the game drive irrelevant for *locating* the install — game on C:, XXMI on D: is a
+    /// normal setup. The game directory is still used for the launcher GUI's game_folder hint, and that fill
+    /// falls back to its own detection when the dialog did not supply one.
+    /// </remarks>
+    private async Task<(string? RootFolder, string? Error)> ResolveRootFolderAsync(
+        ModEnvSetupRequest request, ModEnvInfo modEnv, CancellationToken ct)
+    {
+        if (request.CustomRootFolder is { Length: > 0 } customRoot)
+        {
+            if (!Path.IsPathFullyQualified(customRoot))
+                return (null, "XXMI 安装位置必须是完整路径，例如 D:\\XXMI");
+
+            return (Path.GetFullPath(customRoot), null);
+        }
+
+        var driveRoot = await ResolveDriveRootAsync(request, ct);
+        return driveRoot is null
+            ? (null, "未检测到游戏安装位置，请在向导中选择游戏目录")
+            : (Path.Combine(driveRoot, modEnv.RootDirName), null);
+    }
 
     private async Task<string?> ResolveDriveRootAsync(ModEnvSetupRequest request, CancellationToken ct)
     {
