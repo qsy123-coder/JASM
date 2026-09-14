@@ -37,6 +37,12 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private bool _canStart;
     [ObservableProperty] private bool _needsManualGameDir;
     [ObservableProperty] private string? _gameInstallDir;
+
+    /// <summary>
+    /// XXMI root chosen on the startup page, or null for the default "&lt;game drive&gt;\XXMI". Set by the
+    /// caller before the dialog is shown; the wizard itself does not offer a picker for it.
+    /// </summary>
+    [ObservableProperty] private string? _customRootFolder;
     [ObservableProperty] private string? _rootFolder;
     [ObservableProperty] private string? _gameVersion;
     [ObservableProperty] private bool _hasRootFolder;
@@ -312,6 +318,7 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     private ModEnvSetupRequest BuildRequest() => new()
     {
         GameInstallDir = GameInstallDir,
+        CustomRootFolder = CustomRootFolder,
         SelectedXxmiVersion = SelectedVersion?.Version
     };
 
