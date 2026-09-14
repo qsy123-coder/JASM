@@ -1,5 +1,76 @@
 # Changelog
 
+## [2.27.0](https://github.com/qsy123-coder/JASM/compare/v2.26.1...v2.27.0) (2026-09-14)
+
+
+### Reverts
+
+* **startup:** 撤掉启动页的 XXMI 目录选择器 ([d3300f3](https://github.com/qsy123-coder/JASM/commit/d3300f368d81aa3bae891d45be06a72f6691767a))
+* **startup:** 撤掉启动页的 XXMI 路径行，改放到向导「安装位置」行 ([47ee6db](https://github.com/qsy123-coder/JASM/commit/47ee6db428bb60abaa32271cef2683458939269c))
+
+
+### Features
+
+* **build:** 新增 XXMI 多版本包打包脚本 PackXxmiVersions.py ([693711c](https://github.com/qsy123-coder/JASM/commit/693711cd2a3e3f62c07e95929eb64f7cb55cf211))
+* **modenv:** DI 注册版本目录服务与备份服务 ([13da6c9](https://github.com/qsy123-coder/JASM/commit/13da6c90b10d9d9c11c21cc92039ee7fbbdb7f94))
+* **modenv:** Facade 接入版本选择、版本回退与备份还原 ([81a0088](https://github.com/qsy123-coder/JASM/commit/81a0088654b2ddbd694115219e17b2cf44b92d94))
+* **modenv:** InstallPackageAsync 支持镜像目标目录 ([c01c6bb](https://github.com/qsy123-coder/JASM/commit/c01c6bb05f9fbb0f100f755feb5972dc0abb7277))
+* **modenv:** ModEnvSetupOptions 增加 VersionCatalogUrl 与 KeepBackupCount ([b38c93d](https://github.com/qsy123-coder/JASM/commit/b38c93d97b34afe18815efb95aff536f87891a00))
+* **modenv:** 一键配置支持调用方指定 XXMI 根目录 ([c7c23dd](https://github.com/qsy123-coder/JASM/commit/c7c23dd2ad112f76829e5119cbfab1a700a003a8))
+* **modenv:** 向导「安装位置」行右侧加「更改…」「用默认」 ([90aadeb](https://github.com/qsy123-coder/JASM/commit/90aadebece231024df6764cdfac5ad5b6c5fa7b6))
+* **modenv:** 向导内选择 XXMI 安装目录并即时重跑预检 ([a80c6fd](https://github.com/qsy123-coder/JASM/commit/a80c6fd782615734898e590bb33ef56fcb192722))
+* **modenv:** 向导接受调用方传入的 XXMI 根目录 ([f30a23b](https://github.com/qsy123-coder/JASM/commit/f30a23b5f2e8ace1f827795c8aacd61c612c5dae))
+* **modenv:** 向导暴露 HasCustomRootFolder 供「用默认」按钮显隐 ([c69e02e](https://github.com/qsy123-coder/JASM/commit/c69e02edf510de3ac8816c932efd992d47f49b21))
+* **modenv:** 对话框接线恢复备份按钮 ([06e5fbd](https://github.com/qsy123-coder/JASM/commit/06e5fbd377b37b26c3730d56221f45b100b11e4c))
+* **modenv:** 抑制启动器缓存的过期版本提示 ([2f466f6](https://github.com/qsy123-coder/JASM/commit/2f466f6eed387acd91561511d48dd916eae079ff))
+* **modenv:** 新增可选版本目录模型 ModEnvVersionCatalog ([df33c96](https://github.com/qsy123-coder/JASM/commit/df33c96228aa83f12f1d2faf5e47641432774d8f))
+* **modenv:** 新增版本号比较工具 ModEnvVersion ([11954ed](https://github.com/qsy123-coder/JASM/commit/11954edfe47a884a8948773ce571eaf1ee163d80))
+* **modenv:** 新增版本备份服务 ModEnvBackupService ([764e5be](https://github.com/qsy123-coder/JASM/commit/764e5be23e94793670d9745ee52a5fdc0ca3c409))
+* **modenv:** 新增版本目录服务 ModEnvVersionCatalogService ([e077a29](https://github.com/qsy123-coder/JASM/commit/e077a29f6b04cf5045dfd7808317a4dfcfc46b86))
+* **modenv:** 配置向导 ViewModel 增加版本选择与备份还原 ([12dbcac](https://github.com/qsy123-coder/JASM/commit/12dbcac0123204b3fabdb657c9627e7885ad2b5e))
+* **modenv:** 配置对话框增加 XXMI 版本下拉框与备份恢复区 ([0a2ba2c](https://github.com/qsy123-coder/JASM/commit/0a2ba2cf39b26fc88a8bb72f21a0be3a8efc6e2a))
+* **options:** 新增 XxmiRootFolderPath 保存 XXMI 安装位置 ([a295e13](https://github.com/qsy123-coder/JASM/commit/a295e13f012f5f33897c8f0167880f8d9723e770))
+* **settings:** 一键配置复用启动页选定的 XXMI 根目录 ([1c3fd36](https://github.com/qsy123-coder/JASM/commit/1c3fd36f17f221eb0bffa08557d4c608b966595d))
+* **startup:** 启动页支持自选 XXMI 安装位置 ([badf3ca](https://github.com/qsy123-coder/JASM/commit/badf3ca3f93cc9e15bb661d124a9cff28a14751d))
+* **startup:** 启动页新增 XXMI 安装位置一行 ([d05dffd](https://github.com/qsy123-coder/JASM/commit/d05dffd89d7411f9ebc89b539a21fd8b2fafddfb))
+* **startup:** 新增 XXMI 安装目录选择器 ([508dfcf](https://github.com/qsy123-coder/JASM/commit/508dfcfacf30bd622d446cce06adbb9bc1b3683a))
+
+
+### Bug Fixes
+
+* **build:** XXMI 版本包白名单纳入 Manifest.json ([28929c6](https://github.com/qsy123-coder/JASM/commit/28929c6606b614d86f369fde3a6bf516d31df589))
+* **modenv:** XXMI 基础包同时写入 Resources\Packages\XXMI ([7061016](https://github.com/qsy123-coder/JASM/commit/706101646ba272349a4a98a1a238b61380795e33))
+* **modenv:** 向导按钮行固定底部，选完版本无需下滑 ([a1eed11](https://github.com/qsy123-coder/JASM/commit/a1eed1185187a873ac1b5b0b7c4e81ad4704698a))
+* **modenv:** 改用对齐启动器缓存版本的方式消除「更新」误报 ([128f1f3](https://github.com/qsy123-coder/JASM/commit/128f1f34d9eac975696110f4cebc7cca46cf6b41))
+* **modenv:** 版本下拉默认选中当前已安装版本 ([b5dc9b7](https://github.com/qsy123-coder/JASM/commit/b5dc9b75b57d4e91f44d7ae4ea377b061e6fdbe7))
+* **settings:** 向导改过的 XXMI 安装位置立即落盘 ([b186f0b](https://github.com/qsy123-coder/JASM/commit/b186f0beaff0d4ba37bdd75277fde578b13c5cf8))
+* **startup:** 向导关闭后立即落盘 XXMI 安装位置 ([138c5ae](https://github.com/qsy123-coder/JASM/commit/138c5ae1a2f2961f54122f983bb549d5ba1f23b7))
+
+
+### Miscellaneous
+
+* **modenv:** appsettings 填入 VersionCatalogUrl 与 KeepBackupCount ([a12e52a](https://github.com/qsy123-coder/JASM/commit/a12e52aa2dad54c8ffee56723146da94979f58ce))
+
+
+### Documentation
+
+* **cdn:** 补充 xxmi-versions.json 的生成与上传说明 ([53f6b2e](https://github.com/qsy123-coder/JASM/commit/53f6b2ef31892684a95a0023a3427d6dfe03e356))
+* **mod-env-hand-test:** §14.2 兼容性矩阵补实测结果（四版本 Mod 均正常） ([b31b7c5](https://github.com/qsy123-coder/JASM/commit/b31b7c593de1086bee8a1a5ecfeac4c4f80a0d11))
+* **mod-env-hand-test:** §14.3 改为「默认选中已装版本」，补重跑/恢复用例 ([3c127f9](https://github.com/qsy123-coder/JASM/commit/3c127f92322ea6df4584dc9a66d434e75d3413a2))
+* **mod-env-hand-test:** §15 改为「缓存对齐到实装版本」并记录 skipped_version 不生效的实测 ([17ec046](https://github.com/qsy123-coder/JASM/commit/17ec04657559b23286f832be0e2e2c1da07f2a49))
+* **mod-env-hand-test:** §16 改为向导「安装位置」行，补取消/落盘用例 ([d3b8974](https://github.com/qsy123-coder/JASM/commit/d3b89741d81eb87b78e87b3c6e4bec303d00fca4))
+* **mod-env-hand-test:** 补充 §16 启动页自选 XXMI 安装位置 ([84fb8cd](https://github.com/qsy123-coder/JASM/commit/84fb8cdf1b5d275a0cc796e18e0cdea261516c1c))
+* **mod-env-hand-test:** 补充启动器更新误报抑制的验收项 ([43650c3](https://github.com/qsy123-coder/JASM/commit/43650c31d461038a5e1a5219288b3322c95c1d03))
+* **mod-env:** 手测清单覆盖两处框架副本与启动器版本校验 ([8d828a2](https://github.com/qsy123-coder/JASM/commit/8d828a2d97a67b03f5e4a677f2ee1c99d8167f69))
+* **mod-env:** 说明 Manifest.json 分发要求与两份清单哈希须一致 ([b8edc2e](https://github.com/qsy123-coder/JASM/commit/b8edc2ee455a2c337649d254055eef29ff47b760))
+* **test:** 补 XXMI 版本选择与回退手测清单（第 14 节） ([75f62b3](https://github.com/qsy123-coder/JASM/commit/75f62b376ec68b32a08e4a5e52a27236e9fbb3ce))
+* 新增 XXMI 版本选择与回退 PRD ([af7e82d](https://github.com/qsy123-coder/JASM/commit/af7e82da8eb28a51781f7391932881a931bd3129))
+
+
+### Code Refactoring
+
+* **modenv:** CopyToTargetAsync 由 private 放宽为 internal ([0ae7950](https://github.com/qsy123-coder/JASM/commit/0ae795048a1abcb6fe118188087a0aa15905212d))
+
 ## [2.26.0](https://github.com/qsy123-coder/JASM/compare/v2.25.0...v2.26.0) (2026-09-08)
 
 
