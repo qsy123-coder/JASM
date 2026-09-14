@@ -26,6 +26,9 @@ public enum ModEnvPackageAction
     /// <summary>An older version is installed; an update is available.</summary>
     UpdateAvailable,
 
+    /// <summary>The selected version is older than the installed one; installing it is a rollback.</summary>
+    Rollback,
+
     /// <summary>Marker says installed but key files are missing; reinstall to repair.</summary>
     NeedsRepair
 }
@@ -37,6 +40,12 @@ public record ModEnvSetupRequest
 
     /// <summary>Optional user override for the XXMI root folder.</summary>
     public string? CustomRootFolder { get; init; }
+
+    /// <summary>
+    /// Base-package version picked in the version dropdown, or null to use the version from the main
+    /// manifest. Null is the default and reproduces the pre-version-selection behaviour exactly.
+    /// </summary>
+    public string? SelectedXxmiVersion { get; init; }
 }
 
 public record ModEnvPackagePreCheck
@@ -53,6 +62,7 @@ public record ModEnvPackagePreCheck
         ModEnvPackageAction.NotInstalled => "未安装",
         ModEnvPackageAction.UpToDate => "已是最新",
         ModEnvPackageAction.UpdateAvailable => "可更新",
+        ModEnvPackageAction.Rollback => "可回退",
         ModEnvPackageAction.NeedsRepair => "需修复",
         _ => "未知"
     };
@@ -66,9 +76,12 @@ public record ModEnvPackagePreCheck
             if (string.IsNullOrWhiteSpace(InstalledVersion))
                 return $"最新版本：{latest}";
 
-            return Action == ModEnvPackageAction.UpdateAvailable
-                ? $"已安装 v{InstalledVersion}，可更新到 v{latest}"
-                : $"已安装 v{InstalledVersion}";
+            return Action switch
+            {
+                ModEnvPackageAction.UpdateAvailable => $"已安装 v{InstalledVersion}，可更新到 v{latest}",
+                ModEnvPackageAction.Rollback => $"已安装 v{InstalledVersion}，可回退到 v{latest}",
+                _ => $"已安装 v{InstalledVersion}"
+            };
         }
     }
 }
@@ -81,6 +94,18 @@ public record ModEnvPreCheck
     public string? GameVersion { get; init; }
     public List<ModEnvPackagePreCheck> Packages { get; init; } = new();
     public List<string> Issues { get; init; } = new();
+
+    /// <summary>Selectable base-package versions, newest first. Empty when the catalogue is unavailable.</summary>
+    public List<ModEnvCatalogVersion> XxmiVersions { get; init; } = new();
+
+    /// <summary>
+    /// Version the picker should preselect — the main manifest's own base version, so an untouched
+    /// dropdown installs exactly what the pre-version-selection code installed.
+    /// </summary>
+    public string? DefaultXxmiVersion { get; init; }
+
+    /// <summary>Version currently installed at the XXMI root (per the marker), if one is recorded.</summary>
+    public string? InstalledXxmiVersion { get; init; }
 }
 
 public record ModEnvSetupResult
@@ -100,6 +125,8 @@ public record ModEnvSetupResult
 public class ModEnvSetupFacade
 {
     private readonly ModEnvManifestService _manifestService;
+    private readonly ModEnvVersionCatalogService _catalogService;
+    private readonly ModEnvBackupService _backupService;
     private readonly ModEnvInstallerService _installer;
     private readonly GameInstallPathDetector _detector;
     private readonly CommandService _commandService;
@@ -108,12 +135,15 @@ public class ModEnvSetupFacade
     private readonly IOptions<ModEnvSetupOptions> _options;
     private readonly ILogger _logger;
 
-    public ModEnvSetupFacade(ModEnvManifestService manifestService, ModEnvInstallerService installer,
-        GameInstallPathDetector detector, CommandService commandService,
+    public ModEnvSetupFacade(ModEnvManifestService manifestService,
+        ModEnvVersionCatalogService catalogService, ModEnvBackupService backupService,
+        ModEnvInstallerService installer, GameInstallPathDetector detector, CommandService commandService,
         GenshinProcessManager genshinProcessManager, ThreeDMigtoProcessManager threeDMigtoProcessManager,
         IOptions<ModEnvSetupOptions> options, ILogger logger)
     {
         _manifestService = manifestService;
+        _catalogService = catalogService;
+        _backupService = backupService;
         _installer = installer;
         _detector = detector;
         _commandService = commandService;
@@ -144,15 +174,31 @@ public class ModEnvSetupFacade
         var packages = new List<ModEnvPackagePreCheck>();
         var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
 
-        var manifest = await _manifestService.GetManifestAsync(ct);
+        // Fetched together: the catalogue and the manifest are independent of each other, and failing to
+        // load one must not take the other down — each degrades on its own.
+        var manifestTask = _manifestService.GetManifestAsync(ct);
+        var catalogTask = _catalogService.GetVersionsAsync(ct);
+        await Task.WhenAll(manifestTask, catalogTask);
+        var manifest = await manifestTask;
+        var catalogVersions = await catalogTask;
+
+        ModEnvPackage? basePkg = null;
         if (manifest is null)
         {
             issues.Add("无法获取 Mod 环境版本清单，请检查网络后重试");
         }
         else
         {
-            var basePkg = manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId);
+            basePkg = manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId);
             var gamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
+
+            // The pre-check has to describe the version the user picked, not the manifest default, or the
+            // status badges would talk about a package the setup run is not actually going to install.
+            var effectiveBasePkg = ResolveBasePackage(basePkg, request.SelectedXxmiVersion, catalogVersions);
+            if (!string.IsNullOrWhiteSpace(request.SelectedXxmiVersion) && effectiveBasePkg is null)
+            {
+                issues.Add($"所选 XXMI 版本 {request.SelectedXxmiVersion} 不在当前版本清单中，请重新选择");
+            }
 
             if (basePkg is not null)
             {
@@ -160,9 +206,10 @@ public class ModEnvSetupFacade
                 {
                     PackageId = _options.Value.BasePackageId,
                     PackageName = "XXMI 注入器框架",
-                    ManifestVersion = basePkg.Version,
+                    ManifestVersion = (effectiveBasePkg ?? basePkg).Version,
                     InstalledVersion = installed.GetValueOrDefault(_options.Value.BasePackageId),
-                    Action = EvaluateAction(installed, _options.Value.BasePackageId, basePkg, BaseFilesOk(rootFolder))
+                    Action = EvaluateAction(installed, _options.Value.BasePackageId, effectiveBasePkg ?? basePkg,
+                        BaseFilesOk(rootFolder))
                 });
             }
 
@@ -211,7 +258,10 @@ public class ModEnvSetupFacade
             ModsFolder = Path.Combine(miFolder, "Mods"),
             GameVersion = request.GameInstallDir is { Length: > 0 } dir ? _detector.GetGameVersion(dir) : null,
             Packages = packages,
-            Issues = issues
+            Issues = issues,
+            XxmiVersions = BuildVersionList(catalogVersions, basePkg),
+            DefaultXxmiVersion = basePkg?.Version,
+            InstalledXxmiVersion = installed.GetValueOrDefault(_options.Value.BasePackageId)
         };
     }
 
@@ -242,10 +292,22 @@ public class ModEnvSetupFacade
             if (manifest is null)
                 return Fail("无法获取 Mod 环境版本清单，请检查网络后重试");
 
-            var basePkg = manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId);
             var gamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
-            if (basePkg is null || gamePkg is null)
+            if (gamePkg is null)
                 return Fail("版本清单缺少必要的安装包");
+
+            // Resolve the base package the user actually picked. With the dropdown untouched this is the
+            // manifest's own base version, so the flow stays exactly what it was before version selection.
+            var catalogVersions = await _catalogService.GetVersionsAsync(ct);
+            var basePkg = ResolveBasePackage(
+                manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId),
+                request.SelectedXxmiVersion, catalogVersions);
+            if (basePkg is null)
+            {
+                return Fail(string.IsNullOrWhiteSpace(request.SelectedXxmiVersion)
+                    ? "版本清单缺少必要的安装包"
+                    : $"所选 XXMI 版本 {request.SelectedXxmiVersion} 不在当前版本清单中，请重新选择");
+            }
 
             var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
             var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
@@ -254,7 +316,13 @@ public class ModEnvSetupFacade
             var baseAction = EvaluateAction(installed, _options.Value.BasePackageId, basePkg, BaseFilesOk(rootFolder));
             if (baseAction != ModEnvPackageAction.UpToDate)
             {
-                progress?.Report($"安装/更新 XXMI 注入器框架 ({basePkg.Version})...");
+                // Snapshot before overwriting. This throws on failure by design — continuing would destroy
+                // the only copy of a working install, which is precisely what the backup exists to prevent.
+                await BackupBaseFilesAsync(rootFolder, installed, progress, ct);
+
+                progress?.Report(baseAction == ModEnvPackageAction.Rollback
+                    ? $"回退 XXMI 注入器框架到 {basePkg.Version}..."
+                    : $"安装/更新 XXMI 注入器框架 ({basePkg.Version})...");
                 await _installer.InstallPackageAsync(basePkg, rootFolder, null, progress, ct);
             }
             else
@@ -365,6 +433,82 @@ public class ModEnvSetupFacade
         }
     }
 
+    /// <summary>
+    /// Puts a previously taken snapshot back onto the XXMI root, then records it as the installed version.
+    /// </summary>
+    /// <remarks>
+    /// Snapshots the current files first, so a restore can itself be undone — otherwise "恢复" would be the
+    /// one action in this feature with no way back. Only the base package is touched: the launcher and the
+    /// per-game package are independent of the injector version.
+    /// </remarks>
+    public async Task<ModEnvSetupResult> RestoreBackupAsync(ModEnvSetupRequest request, ModEnvBackupInfo backup,
+        IProgress<string>? progress, CancellationToken ct = default)
+    {
+        try
+        {
+            var gameInfo = await GameService.GetGameInfoAsync(SupportedGames.WuWa);
+            if (gameInfo?.ModEnv is null)
+                return Fail("该游戏暂不支持一键配置 Mod 环境");
+
+            var driveRoot = await ResolveDriveRootAsync(request, ct);
+            if (driveRoot is null)
+                return Fail("未检测到游戏安装位置，请先手动选择游戏目录");
+
+            if (!Directory.Exists(backup.Folder))
+                return Fail("该备份已不存在，可能已被清理，请重新打开向导。");
+
+            var rootFolder = request.CustomRootFolder ?? Path.Combine(driveRoot, gameInfo.ModEnv.RootDirName);
+            var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
+
+            // Undoable restore: keep what is on disk right now before replacing it.
+            await BackupBaseFilesAsync(rootFolder, installed, progress, ct);
+
+            progress?.Report($"正在恢复备份 {backup.DisplayName}...");
+            await _installer.CopyToTargetAsync(backup.Folder, rootFolder, progress, ct);
+
+            if (backup.Version == ModEnvBackupInfo.UnknownVersion)
+            {
+                // A snapshot taken when the installed version was unknown must not be recorded as a version,
+                // or the next pre-check would claim a precise version we never actually established.
+                installed.Remove(_options.Value.BasePackageId);
+            }
+            else
+            {
+                installed[_options.Value.BasePackageId] = backup.Version;
+            }
+
+            await _installer.WriteMarkerAsync(rootFolder, installed, ct);
+
+            var miFolder = Path.Combine(rootFolder, gameInfo.ModEnv.SubDirName);
+            var issues = new List<string>();
+            if (!BaseFilesOk(rootFolder))
+                issues.Add("恢复后校验未通过：XXMI 基础包文件不完整，请重新配置 Mod 环境。");
+
+            return new ModEnvSetupResult
+            {
+                Success = issues.Count == 0,
+                MiFolder = miFolder,
+                ModsFolder = Path.Combine(miFolder, "Mods"),
+                Issues = issues
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return new ModEnvSetupResult { Success = false, Cancelled = true };
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "ModEnv backup restore failed");
+            return new ModEnvSetupResult { Success = false, Issues = { ex.Message } };
+        }
+    }
+
+    /// <summary>
+    /// Snapshots available for restore, newest first. Exposed here so the wizard keeps a single dependency
+    /// and does not need to reach into the backup store itself.
+    /// </summary>
+    public IReadOnlyList<ModEnvBackupInfo> ListBackups() => _backupService.List();
+
     // ---- Helpers ------------------------------------------------------------
 
     private async Task<string?> ResolveDriveRootAsync(ModEnvSetupRequest request, CancellationToken ct)
@@ -397,6 +541,89 @@ public class ModEnvSetupFacade
         {
             _logger.Debug(ex, "Failed to inspect XXMI root {Root}", rootFolder);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Builds the version list for the picker: the catalogue, with the main manifest's own base version
+    /// synthesised in when the catalogue does not list it.
+    /// </summary>
+    /// <remarks>
+    /// The synthesised entry is what turns "leave the dropdown alone == previous behaviour" into a hard
+    /// guarantee, instead of something that depends on the maintainer keeping two CDN files in sync.
+    /// </remarks>
+    private static List<ModEnvCatalogVersion> BuildVersionList(
+        IReadOnlyList<ModEnvCatalogVersion> catalogVersions, ModEnvPackage? basePkg)
+    {
+        var versions = new List<ModEnvCatalogVersion>(catalogVersions);
+
+        if (basePkg is not null &&
+            versions.All(v => !string.Equals(v.Version, basePkg.Version, StringComparison.Ordinal)))
+        {
+            versions.Add(new ModEnvCatalogVersion
+            {
+                Version = basePkg.Version,
+                DownloadUrl = basePkg.DownloadUrl,
+                Sha256 = basePkg.Sha256,
+                SizeBytes = basePkg.SizeBytes
+            });
+        }
+
+        versions.Sort((left, right) => ModEnvVersion.CompareDescending(left.Version, right.Version));
+        return versions;
+    }
+
+    /// <summary>
+    /// Picks the base package to install: the version the user selected, or the manifest's own when nothing
+    /// was selected. Returns null when a selection is not in the catalogue (stale picker data).
+    /// </summary>
+    private static ModEnvPackage? ResolveBasePackage(ModEnvPackage? manifestBase, string? selectedVersion,
+        IReadOnlyList<ModEnvCatalogVersion> catalogVersions)
+    {
+        if (string.IsNullOrWhiteSpace(selectedVersion))
+            return manifestBase;
+
+        if (manifestBase is not null &&
+            string.Equals(manifestBase.Version, selectedVersion, StringComparison.Ordinal))
+            return manifestBase;
+
+        return catalogVersions.FirstOrDefault(v =>
+            string.Equals(v.Version, selectedVersion, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Snapshots the base package files before they are overwritten, so the user can always switch back.
+    /// </summary>
+    /// <returns>The snapshot, or null on a fresh install where there is nothing to lose.</returns>
+    /// <remarks>
+    /// An IO failure is converted into a hard stop on purpose: carrying on would overwrite the only copy of
+    /// a working install, which is exactly what this snapshot exists to prevent.
+    /// </remarks>
+    private async Task<ModEnvBackupInfo?> BackupBaseFilesAsync(string rootFolder,
+        IReadOnlyDictionary<string, string> installed, IProgress<string>? progress, CancellationToken ct)
+    {
+        var currentVersion = installed.GetValueOrDefault(_options.Value.BasePackageId);
+        if (string.IsNullOrWhiteSpace(currentVersion) && !BaseFilesOk(rootFolder))
+            return null;
+
+        progress?.Report("正在备份当前 XXMI 版本...");
+        try
+        {
+            var backup = await _backupService.BackupAsync(rootFolder, currentVersion, BasePackageSignatureFiles, ct);
+            if (backup is not null)
+                progress?.Report($"已备份当前 XXMI 版本到 {backup.Folder}");
+
+            return backup;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Cancelling during the copy must still read as "user cancelled", not as a backup failure.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to back up ModEnv base package from {Root}", rootFolder);
+            throw new InvalidOperationException("备份当前 XXMI 版本失败，已中止操作以免无法回退：" + ex.Message, ex);
         }
     }
 
@@ -761,9 +988,15 @@ public class ModEnvSetupFacade
         if (!filesOk)
             return ModEnvPackageAction.NeedsRepair;
 
-        return string.Equals(installedVer, pkg.Version, StringComparison.Ordinal)
-            ? ModEnvPackageAction.UpToDate
-            : ModEnvPackageAction.UpdateAvailable;
+        if (string.Equals(installedVer, pkg.Version, StringComparison.Ordinal))
+            return ModEnvPackageAction.UpToDate;
+
+        // Numeric comparison, not Ordinal: a string compare ranks "1.1.7" below "0.9.2", so switching to an
+        // older version would be labelled an update instead of a rollback. The distinction is what the wizard
+        // shows the user, and only Rollback triggers the pre-switch snapshot messaging.
+        return ModEnvVersion.IsOlder(installedVer, pkg.Version)
+            ? ModEnvPackageAction.UpdateAvailable
+            : ModEnvPackageAction.Rollback;
     }
 
     private static bool IsCompatible(string gameVersion, ModEnvPackage pkg)
