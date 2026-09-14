@@ -67,6 +67,16 @@ public sealed partial class ModEnvSetupDialog : ContentDialog
 
     private void Cancel_OnClick(object sender, RoutedEventArgs e) => _cts?.Cancel();
 
+    private async void RestoreBackup_OnClick(object sender, RoutedEventArgs e)
+    {
+        // Shares the setup run's CTS slot: a restore writes files exactly like a setup run does, so the
+        // same cancel button (and dialog close) has to be able to stop it.
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        await ViewModel.RunRestoreAsync(_cts.Token);
+        StartButton.IsEnabled = ViewModel.CanStart;
+    }
+
     private async void BrowseGameDir_OnClick(object sender, RoutedEventArgs e)
     {
         var folderPicker = new FolderPicker();
