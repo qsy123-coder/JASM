@@ -381,6 +381,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         var dialog = App.GetService<ModEnvSetupDialog>();
         dialog.XamlRoot = App.MainWindow.Content.XamlRoot;
+
+        // Reuse the XXMI root picked on the startup page; this entry point has no picker of its own, and
+        // ignoring it here would quietly install a second copy at the default location.
+        var modManagerOptions = await _localSettingsService.ReadSettingAsync<ModManagerOptions>(
+            ModManagerOptions.Section);
+        dialog.ViewModel.CustomRootFolder = modManagerOptions?.XxmiRootFolderPath;
+
         await dialog.ShowAsync();
 
         if (dialog.MiFolder is null || dialog.ModsFolder is null)
