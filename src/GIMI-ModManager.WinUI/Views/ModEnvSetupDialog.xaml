@@ -147,10 +147,30 @@
                         Style="{ThemeResource CaptionTextBlockStyle}"
                         Text="安装位置"
                         Visibility="{x:Bind ViewModel.HasRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                    <TextBlock
-                        IsTextSelectionEnabled="True"
-                        Style="{ThemeResource BodyTextBlockStyle}"
-                        Text="{x:Bind ViewModel.RootFolder, Mode=OneWay}" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            IsTextSelectionEnabled="True"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="{x:Bind ViewModel.RootFolder, Mode=OneWay}"
+                            TextWrapping="WrapWholeWords" />
+                        <Button
+                            Grid.Column="1"
+                            Click="BrowseXxmiRoot_OnClick"
+                            Content="更改…" />
+                        <!--  Only meaningful once a custom folder is in play.  -->
+                        <Button
+                            Grid.Column="2"
+                            Click="UseDefaultXxmiRoot_OnClick"
+                            Content="用默认"
+                            Visibility="{x:Bind ViewModel.HasCustomRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </Grid>
                     <StackPanel
                         Orientation="Horizontal"
                         Spacing="2"
