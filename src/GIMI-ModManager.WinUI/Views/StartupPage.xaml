@@ -113,6 +113,30 @@
                         IsOpen="True"
                         Message="{x:Bind ViewModel.ModEnvStatusText, Mode=OneWay}"
                         Severity="{x:Bind ViewModel.ModEnvStatusSeverity, Mode=OneWay}" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="XXMI 安装位置" />
+                            <!--  The picked folder, or the default this app would resolve to.  -->
+                            <TextBlock
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.XxmiRootFolderText, Mode=OneWay}"
+                                TextWrapping="WrapWholeWords" />
+                        </StackPanel>
+                        <Button
+                            Grid.Column="1"
+                            Click="XxmiRootFolder_OnClick"
+                            Content="更改…" />
+                        <Button
+                            Grid.Column="2"
+                            Command="{x:Bind ViewModel.UseDefaultXxmiRootFolderCommand}"
+                            Content="用默认"
+                            Visibility="{x:Bind ViewModel.HasCustomXxmiRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </Grid>
                     <Button
                         HorizontalAlignment="Center"
                         Command="{x:Bind ViewModel.OneClickSetupCommand}"
