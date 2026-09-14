@@ -209,7 +209,7 @@ public class ModEnvSetupFacade
                     ManifestVersion = (effectiveBasePkg ?? basePkg).Version,
                     InstalledVersion = installed.GetValueOrDefault(_options.Value.BasePackageId),
                     Action = EvaluateAction(installed, _options.Value.BasePackageId, effectiveBasePkg ?? basePkg,
-                        BaseFilesOk(rootFolder))
+                        BasePackageConsistent(rootFolder, installed))
                 });
             }
 
@@ -249,6 +249,19 @@ public class ModEnvSetupFacade
 
             if (basePkg is null || gamePkg is null)
                 issues.Add("版本清单缺少必要的安装包");
+
+            // The launcher reads the version from its own copy of the framework. Something else writing that
+            // copy (the official launcher's own update button) leaves it disagreeing with the marker, which
+            // is why the base package now reports "需修复" — say so, since the badge alone looks arbitrary.
+            var recordedBase = installed.GetValueOrDefault(_options.Value.BasePackageId);
+            var launcherBase = ReadLauncherVisibleXxmiVersion(rootFolder);
+            if (!string.IsNullOrWhiteSpace(launcherBase) && !string.IsNullOrWhiteSpace(recordedBase)
+                && !string.Equals(launcherBase, recordedBase, StringComparison.Ordinal))
+            {
+                issues.Add(
+                    $"XXMI 启动器读到的是 v{launcherBase}，与 JASM 记录的 v{recordedBase} 不一致"
+                    + $"（通常是点过官方启动器自己的更新按钮）；点「开始配置」会把两处统一成下拉框所选版本。");
+            }
         }
 
         return new ModEnvPreCheck
@@ -312,8 +325,11 @@ public class ModEnvSetupFacade
             var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
             var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
 
-            // Base XXMI framework -> into the XXMI root itself.
-            var baseAction = EvaluateAction(installed, _options.Value.BasePackageId, basePkg, BaseFilesOk(rootFolder));
+            // Base XXMI framework -> both copies the XXMI layout keeps: the XXMI root (what the game loads)
+            // and Resources\Packages\XXMI (what the launcher reads its displayed version from).
+            var baseAction =
+                EvaluateAction(installed, _options.Value.BasePackageId, basePkg,
+                    BasePackageConsistent(rootFolder, installed));
             if (baseAction != ModEnvPackageAction.UpToDate)
             {
                 // Snapshot before overwriting. This throws on failure by design — continuing would destroy
@@ -323,7 +339,8 @@ public class ModEnvSetupFacade
                 progress?.Report(baseAction == ModEnvPackageAction.Rollback
                     ? $"回退 XXMI 注入器框架到 {basePkg.Version}..."
                     : $"安装/更新 XXMI 注入器框架 ({basePkg.Version})...");
-                await _installer.InstallPackageAsync(basePkg, rootFolder, null, progress, ct);
+                await _installer.InstallPackageAsync(basePkg, rootFolder, null, progress, ct,
+                    mirrorTargetDirs: new[] { XxmiPackageDir(rootFolder) });
             }
             else
             {
@@ -434,7 +451,8 @@ public class ModEnvSetupFacade
     }
 
     /// <summary>
-    /// Puts a previously taken snapshot back onto the XXMI root, then records it as the installed version.
+    /// Puts a previously taken snapshot back onto both copies of the XXMI framework, then records it as the
+    /// installed version.
     /// </summary>
     /// <remarks>
     /// Snapshots the current files first, so a restore can itself be undone — otherwise "恢复" would be the
@@ -464,7 +482,17 @@ public class ModEnvSetupFacade
             await BackupBaseFilesAsync(rootFolder, installed, progress, ct);
 
             progress?.Report($"正在恢复备份 {backup.DisplayName}...");
+            // Both copies, exactly like an install: restoring only the root would leave the launcher
+            // displaying the version the user just rolled back from.
             await _installer.CopyToTargetAsync(backup.Folder, rootFolder, progress, ct);
+            await _installer.CopyToTargetAsync(backup.Folder, XxmiPackageDir(rootFolder), progress, ct);
+
+            // Snapshots taken before the manifest became part of the package hold only the DLLs, so the
+            // launcher's copy keeps whatever manifest it had. Say so rather than let the user find the
+            // mismatched version number themselves (a re-run of the setup aligns both copies).
+            if (!File.Exists(Path.Combine(backup.Folder, XxmiManifestFileName)))
+                progress?.Report(
+                    $"注意：该备份不含 {XxmiManifestFileName}（由旧版 JASM 生成），启动器显示的版本可能未同步；再点一次「开始配置」即可对齐。");
 
             if (backup.Version == ModEnvBackupInfo.UnknownVersion)
             {
@@ -526,21 +554,92 @@ public class ModEnvSetupFacade
         return detected?.DriveRoot;
     }
 
-    /// <summary>Signature files of the shared XXMI base package, placed at the XXMI root.</summary>
-    private static readonly string[] BasePackageSignatureFiles = { "3dmloader.dll", "d3d11.dll", "d3dcompiler_47.dll" };
+    /// <summary>Files of the shared XXMI base package: the three injector DLLs plus the version manifest.</summary>
+    /// <remarks>
+    /// The manifest is part of the package rather than an optional extra — the XXMI Launcher derives the
+    /// version it displays from it, so switching versions without it swaps the DLLs while the version
+    /// number visibly stays put.
+    /// </remarks>
+    private static readonly string[] BasePackageFiles =
+        { "3dmloader.dll", "d3d11.dll", "d3dcompiler_47.dll", XxmiManifestFileName };
 
-    /// <summary>True when all base package files are present at the XXMI root.</summary>
+    /// <summary>Name of the XXMI package manifest, which also carries the launcher-visible version.</summary>
+    private const string XxmiManifestFileName = "Manifest.json";
+
+    /// <summary>
+    /// The framework copy the XXMI Launcher reads: a sibling of the per-game packages under
+    /// <c>Resources\Packages\</c>. The launcher never looks at the DLLs sitting at the XXMI root.
+    /// </summary>
+    private static string XxmiPackageDir(string rootFolder) =>
+        Path.Combine(rootFolder, "Resources", "Packages", "XXMI");
+
+    /// <summary>
+    /// True when the base package is fully deployed to both places the XXMI layout keeps it in.
+    /// </summary>
+    /// <remarks>
+    /// Requiring the manifest as well as the DLLs is what heals installs made by earlier JASM versions:
+    /// those wrote only the root DLLs, so they report "需修复" and get brought in line by the next setup
+    /// run instead of silently keeping the two copies split.
+    /// </remarks>
+    /// <summary>
+    /// True when the deployed base package is self-consistent: both copies complete AND the copy the
+    /// launcher reads reporting the version JASM recorded.
+    /// </summary>
+    /// <remarks>
+    /// The version half matters because something outside JASM can write that copy — the official
+    /// launcher's own "update" button does, and it pulls from GitHub. Without this check the marker alone
+    /// would keep saying "已是最新" while the launcher runs a version JASM never installed, and the setup
+    /// run would skip the base package, leaving the two copies split.
+    /// </remarks>
+    private bool BasePackageConsistent(string rootFolder, IReadOnlyDictionary<string, string> installed)
+    {
+        if (!BaseFilesOk(rootFolder)) return false;
+
+        var recorded = installed.GetValueOrDefault(_options.Value.BasePackageId);
+        if (string.IsNullOrWhiteSpace(recorded)) return true; // nothing recorded to compare against
+
+        // An unreadable manifest is not evidence of drift — only a readable, differing version is.
+        var visible = ReadLauncherVisibleXxmiVersion(rootFolder);
+        return visible is null || string.Equals(visible, recorded, StringComparison.Ordinal);
+    }
+
     private bool BaseFilesOk(string rootFolder)
     {
         if (!Directory.Exists(rootFolder)) return false;
         try
         {
-            return BasePackageSignatureFiles.All(f => File.Exists(Path.Combine(rootFolder, f)));
+            return BasePackageFiles.All(f => File.Exists(Path.Combine(rootFolder, f)))
+                   && BasePackageFiles.All(f => File.Exists(Path.Combine(XxmiPackageDir(rootFolder), f)));
         }
         catch (Exception ex)
         {
             _logger.Debug(ex, "Failed to inspect XXMI root {Root}", rootFolder);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Version recorded in the framework copy the launcher displays, or null when it is missing/unreadable.
+    /// </summary>
+    /// <remarks>
+    /// JASM owns this copy too, so the two versions must agree; they diverge when something else (the
+    /// official updater) touches it. Surfacing the mismatch in the pre-check turns "回退后版本号没变" from a
+    /// puzzling symptom into a stated cause.
+    /// </remarks>
+    private string? ReadLauncherVisibleXxmiVersion(string rootFolder)
+    {
+        try
+        {
+            var manifestPath = Path.Combine(XxmiPackageDir(rootFolder), XxmiManifestFileName);
+            if (!File.Exists(manifestPath)) return null;
+
+            // File.ReadAllText strips a UTF-8 BOM, which this manifest is free to carry.
+            return JsonNode.Parse(File.ReadAllText(manifestPath))?["version"]?.GetValue<string>()?.Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug(ex, "Failed to read launcher-visible XXMI manifest under {Root}", rootFolder);
+            return null;
         }
     }
 
@@ -609,7 +708,7 @@ public class ModEnvSetupFacade
         progress?.Report("正在备份当前 XXMI 版本...");
         try
         {
-            var backup = await _backupService.BackupAsync(rootFolder, currentVersion, BasePackageSignatureFiles, ct);
+            var backup = await _backupService.BackupAsync(rootFolder, currentVersion, BasePackageFiles, ct);
             if (backup is not null)
                 progress?.Report($"已备份当前 XXMI 版本到 {backup.Folder}");
 
