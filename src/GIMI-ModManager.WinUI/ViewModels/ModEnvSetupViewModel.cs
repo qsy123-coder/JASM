@@ -39,8 +39,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private string? _gameInstallDir;
 
     /// <summary>
-    /// XXMI root chosen on the startup page, or null for the default "&lt;game drive&gt;\XXMI". Set by the
-    /// caller before the dialog is shown; the wizard itself does not offer a picker for it.
+    /// XXMI root the user picked, or null for the default "&lt;game drive&gt;\XXMI". Seeded by the caller
+    /// before the dialog opens, then changed from the "安装位置" row; read back after it closes so the
+    /// choice survives into the next run.
     /// </summary>
     [ObservableProperty] private string? _customRootFolder;
     [ObservableProperty] private string? _rootFolder;
@@ -73,8 +74,13 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// </summary>
     public bool CanPickVersion => !IsRunning && !IsRestoring;
 
+    /// <summary>Whether the install target is a user-picked folder rather than the default one.</summary>
+    public bool HasCustomRootFolder => !string.IsNullOrWhiteSpace(CustomRootFolder);
+
     /// <summary>Version currently installed at the XXMI root, kept for the picker hint.</summary>
     private string? _installedXxmiVersion;
+
+    partial void OnCustomRootFolderChanged(string? value) => OnPropertyChanged(nameof(HasCustomRootFolder));
 
     partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
 
