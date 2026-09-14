@@ -321,26 +321,38 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
 3. 原有 `## 9` 启动命令自动接通、`## 10` 测试启动引导不受影响
 4. 弱网相关行为（`## 12`）不回归 —— 版本包走的仍是同一条下载链路
 
-## 15. 启动器「更新」误报抑制（skipped_version）
+## 15. 启动器「更新」误报抑制（把缓存对齐到实装版本）
 
 背景：XXMI 启动器把「磁盘上读到的版本 ≠ 它缓存的 `latest_version`」当成有更新，于是弹
 「将包更新到最新版本：XXMI: 1.1.7 → 1.0.5」。它的缓存只在能连上 GitHub releases 时才刷新
 （国内基本连不上，日志里是 `GitHub API速率限制超出` / `ConnectionRefusedError`），所以只要 JASM 装的
-不是缓存里那个版本，它就**反复**提示这个「降级更新」。它自己的「跳过」按钮
-（`message_button_skip_update`）解决的正是这个，写的字段就是 `Packages.packages.<Name>.skipped_version`。
+不是缓存里那个版本，它就**反复**提示这个「降级更新」。
 
-JASM 在 `ModEnvSetupFacade.EnsureLauncherConfigPathsAsync` 里顺带补写该字段：**仅当缓存版本比 JASM
-实装的更旧**（两边都能按 `vX.Y.Z` 解析且严格更小）才写，所以真正的新版本提示不受影响；值已相同则不重复写。
+> ⚠️ 2026-09-14 实测（本机 `D:\XXMI`）：只写 `skipped_version`（也就是启动器「跳过」按钮写的那个字段）
+> **不生效** —— `latest=1.0.5 / skipped=1.0.5 / 磁盘 1.1.7` 时悬停提示照旧出现。那个字段只被更新**对话框**
+> 认，管不了悬停/待更新列表。真正生效的是把缓存改写成实装版本（也就是「官方更新成功」后启动器自己留下的
+> 状态：`latest == deployed == 磁盘版本`）。
 
-1. 先确认真实缓存：`D:\XXMI\XXMI Launcher Config.json` 里 `Packages.packages.XXMI.latest_version` 是旧版
-   （如 `1.0.5`）、`skipped_version` 为空，而磁盘上装的是新版（如 `1.1.7`）
-2. 跑一次「一键配置 Mod 环境」→ 向导日志出现「已在 XXMI 启动器中跳过更旧的版本（XXMI 1.0.5）…」
-3. 复查该文件：`skipped_version` == 旧的那个 `latest_version`；`Importers.WWMI.Importer.game_folder` /
-   `importer_folder` 照旧被回填；文件**无 BOM**、缩进 4 空格
-4. 打开启动器 → 左下角版本悬停**不再**出现该包的「x → y」，也不弹更新对话框
-   （若仍显示：说明它的悬停提示不吃 `skipped_version`，记下现象，这条得换招——把缓存版本一起改写）
-5. 幂等：再跑一次一键配置 → `skipped_version` 不变（值相同不重写），不重复报日志
-6. 边界：缓存版本比实装的**新**（如缓存 2.0.0、实装 1.1.7）→ **不写** `skipped_version`，
-   启动器的更新提示保留（这是真的可更新，不能替用户决定）
-7. 边界：缓存 `latest_version` 为空 / 非数字（如 `latest`）→ 不写、不报错，其余回填照常
-8. 边界：启动器正在运行 → 先结束进程再写；写入被占用则重试最多 5 次，仍失败只记 issue、不中断安装
+JASM 在 `ModEnvSetupFacade.EnsureLauncherConfigPathsAsync` 里顺带对齐：**仅当缓存版本比 JASM 实装的更旧**
+（两边都能按 `vX.Y.Z` 解析且严格更小）时，写 `latest_version` / `deployed_version` = 实装版本，
+清掉 `skipped_version`（仅当它指的就是这个过期版本）与 `latest_release_notes`（那是旧版本号的更新说明）。
+缓存比实装**新**时一律不动。
+
+1. 先造现场：手工把 `D:\XXMI\XXMI Launcher Config.json` 里 `Packages.packages.XXMI` 改成
+   `latest_version = "1.0.5"`、`skipped_version = "1.0.5"`、`deployed_version = "1.0.5"`，
+   磁盘上两份 `Manifest.json` 是 `1.1.7` → 打开启动器，悬停左下角版本应看到「1.1.7 → 1.0.5」
+2. 跑一次「一键配置 Mod 环境」→ 向导日志出现「已把 XXMI 启动器缓存的过期版本对齐到实装版本（XXMI 1.0.5 → 1.1.7）…」
+3. 复查该文件：`latest_version` / `deployed_version` 都是 `1.1.7`，`skipped_version` 为空、
+   `latest_release_notes` 为空；`Importers.WWMI.Importer.game_folder` / `importer_folder` 照旧被回填；
+   文件**无 BOM**、缩进 4 空格
+4. 重启启动器 → 悬停左下角版本**不再**出现「x → y」，也不再有待更新提示（`WWMI` / `Launcher` 不受影响）
+5. 幂等：再跑一次一键配置 → 缓存已是实装版本，不再改写、不重复报日志
+6. 边界：缓存版本比实装的**新**（如缓存 2.0.0、实装 1.1.7，或用户主动回退到 0.9.2）→ **一律不动**，
+   启动器的更新提示保留（那是真的可更新，不替用户决定）
+7. 边界：缓存 `latest_version` 为空 / 非数字（如 `latest`）→ 不改、不报错，其余回填照常
+8. 边界：`skipped_version` 指的是**另一个**（更新的）版本 → 不动它，只对齐版本号字段
+9. 边界：启动器正在运行 → 先结束进程再写；写入被占用则重试最多 5 次，仍失败只记 issue、不中断安装
+
+> 已知残留：若启动器某天成功连上 GitHub 并把 `latest_version` 刷回**低于**实装版本的官方最新，
+> 提示会再出现 —— 那说明我们发的包比官方 GitHub release 还新，属于选包源的问题，不是这段逻辑能兜的。
+
