@@ -27,7 +27,12 @@ public class SingleFileSelfUpdater
     private const string SingleFileAssetPrefix = "SingleFile_JASM_";
     private const string ExeName = "JASM - Just Another Skin Manager.exe";
 
-    /// <summary>临时 PowerShell 脚本：等本进程退出 → 覆盖 exe → 重启。路径全部经参数传入，避免插值转义陷阱。</summary>
+    /// <summary>
+    /// 临时 PowerShell 脚本：等本进程退出 → 覆盖 exe → 重启。路径全部经参数传入，避免插值转义陷阱。
+    /// 重启两处都必须带 -WorkingDirectory：JASM 的 Serilog 日志走的是相对路径 "logs\log.txt"
+    /// （见 App.xaml.cs），而本脚本的工作目录是临时目录，不指定的话新版起来后 CWD 就变成临时目录，
+    /// 日志会写到 %TEMP% 里而不是 exe 旁边。
+    /// </summary>
     private const string SelfUpdateScript = @"
 param(
     [string]$New,
@@ -67,12 +72,12 @@ Remove-Item -LiteralPath $New -Force -ErrorAction SilentlyContinue
 
 if (-not $copied) {
     Log 'Failed to copy new exe over target. Keeping old version.'
-    Start-Process -FilePath $Target
+    Start-Process -FilePath $Target -WorkingDirectory (Split-Path -LiteralPath $Target -Parent)
     exit 1
 }
 
 Log 'New exe copied. Restarting JASM.'
-Start-Process -FilePath $Target
+Start-Process -FilePath $Target -WorkingDirectory (Split-Path -LiteralPath $Target -Parent)
 exit 0
 ";
 
