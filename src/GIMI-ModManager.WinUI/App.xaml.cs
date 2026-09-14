@@ -106,7 +106,10 @@ public partial class App : Application
                 configuration.ReadFrom.Configuration(context.Configuration);
                 var mt = new ExpressionTemplate(
                     "[{@t:yyyy-MM-dd'T'HH:mm:ss} {@l:u3} {Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1)}] {@m}\n{@x}");
-                configuration.WriteTo.File(formatter: mt, "logs\\log.txt");
+                // Absolute rather than "logs\\log.txt": a relative path resolves against the current working
+                // directory, which is not always the exe's folder — a shortcut with its own "start in", or the
+                // single-file self-update script relaunching JASM from its temp workDir, would move the log.
+                configuration.WriteTo.File(formatter: mt, Path.Combine(AppContext.BaseDirectory, "logs", "log.txt"));
                 if (Debugger.IsAttached) configuration.WriteTo.Debug();
             })
             .ConfigureServices((context, services) =>
