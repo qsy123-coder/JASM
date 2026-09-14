@@ -180,7 +180,7 @@ http.server.ThreadingHTTPServer(("127.0.0.1", 8899), H).serve_forever()
 
 ### 14.1 生成版本包与 catalog
 
-从本地「XXMI更新包（持续更新）」打包（脚本用白名单，只取 3 个 dll，**绝不会带出
+从本地「XXMI更新包（持续更新）」打包（脚本用白名单，只取 4 个文件，**绝不会带出
 `Security/private_key.der`**）：
 
 ```
@@ -191,11 +191,15 @@ python Build/PackXxmiVersions.py
 
 | 产物 | 说明 |
 |---|---|
-| `xxmi-0.9.2.zip` / `xxmi-1.0.5.zip` / `xxmi-1.1.6.zip` / `xxmi-1.1.7.zip` | 每版本一包，约 3.2 MB，zip 内**平铺且仅有** 3 个 dll |
+| `xxmi-0.9.2.zip` / `xxmi-1.0.5.zip` / `xxmi-1.1.6.zip` / `xxmi-1.1.7.zip` | 每版本一包，约 3.2 MB，zip 内**平铺且仅有** 3 个 dll + `Manifest.json` |
 | `xxmi-versions.json` | 版本清单，含 DownloadUrl / Sha256 / SizeBytes / ReleasedAt |
 | `xxmi-version-hashes.json` | 逐文件哈希表，14.2 核对「当前装的是哪个版本」用 |
 
-打包后自查（应看到 4 个包各 **3 个条目**，不得出现 `Security/` 或 `Manifest.json`）：
+> `Manifest.json` **必须**跟着 dll 一起发：XXMI 启动器显示的版本号来自它，少了它就会出现
+> 「dll 已换成旧版、启动器版本号却没变」。它带的是**公开**的 `signatures`（验签数据），不是私钥。
+> 脚本另外会断言包内 `Manifest.json` 的 `version` 与包版本一致、`signatures` 非空。
+
+打包后自查（应看到 4 个包各 **4 个条目**，且不得出现 `Security/`）：
 
 ```powershell
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -214,11 +218,22 @@ Get-ChildItem Build\out\xxmi-versions\*.zip | ForEach-Object {
 目标：回答「v0.9.2 / v1.0.5 / v1.1.6 / v1.1.7 这 4 个核心包，各自跟**当前** wwmi 游戏包能否搭配工作」。
 结论直接决定 catalog 里该列哪些版本。
 
+> ⚠️ XXMI 的框架在磁盘上有**两份**：`D:\XXMI\`（游戏实际加载的）和
+> `D:\XXMI\Resources\Packages\XXMI\`（**启动器读版本号的那份**，多一个 `Manifest.json`）。
+> JASM 两处都写；手工实测时也必须两处都换，只换根目录则启动器显示的版本不会变。
+
 **判定当前装的是哪个版本**（比 `.modenv.json` 更可信 —— 它可能被手改）：
 
 ```powershell
-Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll -Algorithm SHA256 |
-  Format-Table Path, Hash -AutoSize
+Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
+  D:\XXMI\Resources\Packages\XXMI\3dmloader.dll,D:\XXMI\Resources\Packages\XXMI\d3d11.dll `
+  -Algorithm SHA256 | Format-Table Path, Hash -AutoSize
+```
+
+**启动器显示的版本**（唯一权威来源）：
+
+```powershell
+(Get-Content D:\XXMI\Resources\Packages\XXMI\Manifest.json -Raw | ConvertFrom-Json).version
 ```
 
 对照表（`d3dcompiler_47.dll` 四个版本**完全相同**，恒为
@@ -231,26 +246,28 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll -Algorithm SHA256 |
 | 1.1.6 | `427F6B1082121F96AD83696AFAF40EB2F5799FC29C960BEC917D403B5EB8753A` | `7BA9CC0BFC1E26F613E7F00BA0720CFDCDDF08EBEAD4C8A29B19EB98424CEB6A` |
 | 1.1.7 | `44965EE51786DB44FB4252671F356426CA7D879E6F7E8436B27D68E13237B0CF` | `6C962958DD14C79786A88D4358C8EAE24026352D31B4D564DBB2DC57E85A2FFC` |
 
-> 参考：本机 `D:\XXMI` 当前为 **1.0.5**（与 `.modenv.json` 记录一致，已验证）。
+> 参考：本机 `D:\XXMI` 根目录为 **1.0.5**，而 `Resources\Packages\XXMI\Manifest.json` 曾停在
+> **1.1.7** —— 修复前 JASM 只写根目录，启动器便一直显示旧版本号。修复后两处会同版本。
 
 逐一实测（每个版本重复一遍）：
 
-1. 备份现场：把 `D:\XXMI` 下的 3 个 dll 复制到别处
-2. 从 `xxmi-<版本>.zip` 解出 3 个 dll，覆盖 `D:\XXMI\` 根目录
+1. 备份现场：把 `D:\XXMI\` 与 `D:\XXMI\Resources\Packages\XXMI\` 下的 4 个文件各复制到别处
+2. 从 `xxmi-<版本>.zip` 解出 4 个文件，**同时覆盖上面两处**
 3. 双击 `D:\XXMI\Resources\Bin\XXMI Launcher.exe` → GUI 能打开
-4. GUI 里选 WWMI → 启动游戏 → **确认注入生效**
-5. 进游戏确认 **Mod 正常加载**、无黑屏/闪退
-6. 记录结果（✅/❌ + 现象），填回下表
+4. 启动器界面上的版本号 == 你刚换的版本（读法见上）
+5. GUI 里选 WWMI → 启动游戏 → **确认注入生效**
+6. 进游戏确认 **Mod 正常加载**、无黑屏/闪退
+7. 记录结果（✅/❌ + 现象），填回下表
 
-| 版本 | 启动器可开 | 游戏可进 | Mod 生效 | 结论 |
-|---|---|---|---|---|
-| 0.9.2 | | | | |
-| 1.0.5 | | | | |
-| 1.1.6 | | | | |
-| 1.1.7 | | | | |
+| 版本 | 启动器可开 | 显示版本一致 | 游戏可进 | Mod 生效 | 结论 |
+|---|---|---|---|---|---|
+| 0.9.2 | | | | | |
+| 1.0.5 | | | | | |
+| 1.1.6 | | | | | |
+| 1.1.7 | | | | | |
 
 **只有结论为 ✅ 的版本才写进 `xxmi-versions.json`**；不可用的版本直接不列，
-避免用户选了之后照样用不了。测完把 3 个 dll 还原成本来的版本。
+避免用户选了之后照样用不了。测完把 4 个文件还原成本来的版本（两处都要）。
 
 ### 14.3 版本下拉与默认行为（需代码改动后测）
 
@@ -273,19 +290,33 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll -Algorithm SHA256 |
 
 1. 当前装 v1.1.7 → 下拉选 v0.9.2 → 安装
 2. 备份目录（`%LOCALAPPDATA%\JASM\ModEnvBackups\`）应出现含 `1.1.7` 与时间戳的备份档，
-   内含当时那 3 个 dll
-3. 回退完成后 `D:\XXMI` 根目录 3 个 dll 的哈希应等于 14.2 表里 **0.9.2** 那一行
-4. `D:\XXMI\.modenv.json` 的 `InstalledVersions["xxmi"]` 更新为 `0.9.2`
-5. **`WWMI\` 子目录与用户 Mod 不受影响**（回退只动 root 下 3 个 dll）
-6. `XXMI Launcher Config.json` 不被覆盖（沿用 launcher 包的 `preserveExistingFiles` 行为）
-7. 备份档出现在 UI 中，点「切换到此版本」→ 3 个 dll 哈希变回 1.1.7
-8. 磁盘空间不足 / 备份目录不可写 → **中止切换并报错**，不得在不留后路的情况下覆盖
-9. 游戏或 XXMI Launcher 正在运行时切换 → 给出提示（沿用现有强杀 Launcher 进程的逻辑）
-10. 取消切换 → 现场保持原样，`.part` 可续传
+   内含当时那 4 个文件（含 `Manifest.json`）
+3. 回退完成后 **两处**（`D:\XXMI\` 与 `Resources\Packages\XXMI\`）4 个文件都在，
+   且 dll 哈希等于 14.2 表里 **0.9.2** 那一行
+4. 打开 XXMI 启动器 → **界面上的版本号跟着变成 0.9.2**（本功能的核心验收点）
+5. `D:\XXMI\.modenv.json` 的 `InstalledVersions["xxmi"]` 更新为 `0.9.2`
+6. **`WWMI\` 子目录与用户 Mod 不受影响**（回退只动那 4 个文件）
+7. `XXMI Launcher Config.json` 不被覆盖（沿用 launcher 包的 `preserveExistingFiles` 行为）
+8. 备份档出现在 UI 中，点「恢复此备份」→ 两处版本变回 1.1.7
+9. 磁盘空间不足 / 备份目录不可写 → **中止切换并报错**，不得在不留后路的情况下覆盖
+10. 游戏或 XXMI Launcher 正在运行时切换 → 给出提示（沿用现有强杀 Launcher 进程的逻辑）
+11. 取消切换 → 现场保持原样，`.part` 可续传
+12. 旧布局自愈：删掉 `D:\XXMI\Manifest.json`（模拟修复前装的）→ 预检查判「需修复」，
+    点「开始配置」后两处补齐，启动器版本与 JASM 记录一致
+13. 旧备份档（不含 `Manifest.json`，由修复前的 JASM 生成）→ 恢复不报失败，
+    日志出现「该备份不含 Manifest.json…再点一次开始配置即可对齐」的提示
+14. 版本被外部改动：手工改乱 `Resources\Packages\XXMI\Manifest.json` 的 `version` →
+    预检查出现「XXMI 启动器读到的是 vX，与 JASM 记录的 vY 不一致」的提示，且基础包判成**需修复**
+    （这是有意的：点「开始配置」必须真的把两处统一，而不是跳过）
+15. 被官方更新覆盖：点官方启动器自己的「更新」按钮（从 GitHub 拉包，国内通常需要梯子）→
+    之后按上一条检查：JASM 能识破并覆盖回自己管理的版本。
+    注意 JASM **不会**自动覆盖，只在用户点「开始配置」时统一两处
 
 ### 14.6 回归
 
 1. 首启页 / 设置页两个「一键配置」入口均能看到版本下拉且行为一致
 2. 原有 `## 3` 幂等四态（未安装 / 已最新 / 可更新 / 可修复）判定不变
+   （注意：修复前装的用户会因为根目录缺 `Manifest.json` 判成「需修复」——这是**有意的自愈**，
+   重跑一次即回到「已是最新」）
 3. 原有 `## 9` 启动命令自动接通、`## 10` 测试启动引导不受影响
 4. 弱网相关行为（`## 12`）不回归 —— 版本包走的仍是同一条下载链路
