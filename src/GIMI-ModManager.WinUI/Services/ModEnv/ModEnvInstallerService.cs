@@ -339,7 +339,12 @@ public class ModEnvInstallerService
             extractDir = entries[0];
     }
 
-    private async Task CopyToTargetAsync(string sourceDir, string targetDir, IProgress<string>? progress,
+    /// <summary>
+    /// Copies a staged folder onto the target, falling back to an elevated copy when the target needs
+    /// admin rights. <c>internal</c> rather than private so restoring a version backup (which is just a
+    /// folder of package files) reuses this elevation handling instead of reimplementing it.
+    /// </summary>
+    internal async Task CopyToTargetAsync(string sourceDir, string targetDir, IProgress<string>? progress,
         CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null)
     {
         try
