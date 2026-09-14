@@ -8,9 +8,12 @@ XXMI 版本，需要把每个历史版本的核心文件单独打成 `xxmi-<版�
 
 打包范围（白名单，非常重要）
 ---------------------------
-XXMI 更新包里 `Packages/XXMI/` 的三个 dll 是四个版本之间**唯一**的实质差异：
+XXMI 更新包里 `Packages/XXMI/` 的这四个文件是四个版本之间**唯一**的实质差异：
 
-    3dmloader.dll / d3d11.dll / d3dcompiler_47.dll
+    3dmloader.dll / d3d11.dll / d3dcompiler_47.dll / Manifest.json
+
+`Manifest.json` 必须一起打进去：XXMI 启动器显示、并用来判定「当前装的是哪个版本」的
+就是它里面的 `version` 字段。少了它，JASM 把 dll 换成旧版之后启动器版本号也不会变。
 
 其余内容一律**不打包**，尤其是：
 
@@ -20,7 +23,8 @@ XXMI 更新包里 `Packages/XXMI/` 的三个 dll 是四个版本之间**唯一**
   * `Packages/EFMI`、`Packages/WWMI` —— 只有 Manifest.json，没有实际内容
 
 脚本用白名单而非黑名单，并在打包后重新打开 zip 断言内容与白名单**完全相等**，
-确保私钥不可能因为源目录结构变化而被带出去。
+确保私钥不可能因为源目录结构变化而被带出去。（`Manifest.json` 里的 `signatures`
+是公开的验签数据而非私钥，可以外发。）
 
 用法
 ----
@@ -34,7 +38,7 @@ XXMI 更新包里 `Packages/XXMI/` 的三个 dll 是四个版本之间**唯一**
 
 产物
 ----
-    <out>/xxmi-<版本>.zip          每个版本一个包（内含 3 个 dll，平铺在根）
+    <out>/xxmi-<版本>.zip          每个版本一个包（内含 4 个文件，平铺在根）
     <out>/xxmi-versions.json       版本清单，可直接上传 CDN
     <out>/xxmi-version-hashes.json 逐文件哈希表，供手测核对「当前装的是哪个版本」
 
@@ -61,12 +65,13 @@ DEFAULT_BASE_URL = "https://jasm-modenv-1327973389.cos.ap-guangzhou.myqcloud.com
 
 DEFAULT_OUT = "Build/out/xxmi-versions"
 
-# 白名单：只有这三个文件会被打进 zip，且必须全部存在。
-ALLOWED_FILES = ("3dmloader.dll", "d3d11.dll", "d3dcompiler_47.dll")
-
 # 源包内 XXMI 核心包的相对路径与版本来源。
 PACKAGE_SUBDIR = "Packages/XXMI"
 MANIFEST_NAME = "Manifest.json"
+
+# 白名单：只有这四个文件会被打进 zip，且必须全部存在。
+# Manifest.json 是启动器读版本号的载体，少它则换了 dll 启动器也显示旧版本。
+ALLOWED_FILES = ("3dmloader.dll", "d3d11.dll", "d3dcompiler_47.dll", MANIFEST_NAME)
 
 # 逐文件哈希表里用来代表「这个版本发布日期」的文件。
 DATE_REFERENCE_FILE = "d3d11.dll"
@@ -165,14 +170,38 @@ def assert_whitelist_only(zip_path: Path) -> None:
         )
 
 
+def assert_manifest_version(version: str, package_dir: Path) -> None:
+    """断言包内 Manifest.json 自洽：version 与包版本一致、signatures 非空。
+
+    两者任一不成立都会产出「标签写一个版本、装上去却是另一个版本」或「启动器拒签」的坏包，
+    而这类问题在 JASM 侧只表现为「版本号没变」，很难回查，所以在这里直接拦掉。
+    """
+    manifest_path = package_dir / MANIFEST_NAME
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError) as ex:
+        raise SystemExit(f"版本 {version} 的 {manifest_path} 无法解析: {ex}") from ex
+
+    declared = str(manifest.get("version", "")).strip()
+    if declared != version:
+        raise SystemExit(
+            f"版本号不一致：包版本是 {version}，但 {manifest_path} 里写的是 {declared or '(空)'}。"
+        )
+
+    if not manifest.get("signatures"):
+        raise SystemExit(f"{manifest_path} 里没有 signatures，启动器会拒签，请检查源包是否被裁剪过。")
+
+
 def pack_version(version: str, package_dir: Path, out_dir: Path) -> dict:
     """打一个版本的包，返回 catalog 条目 + 逐文件哈希。"""
     missing = [name for name in ALLOWED_FILES if not (package_dir / name).is_file()]
     if missing:
         raise SystemExit(f"版本 {version} 缺少文件 {missing}（目录 {package_dir}）")
 
+    assert_manifest_version(version, package_dir)
+
     zip_path = out_dir / f"xxmi-{version}.zip"
-    # 平铺写入：zip 根目录直接就是 3 个 dll，对应 JASM 装到 XXMI 根目录的结构。
+    # 平铺写入：zip 根目录直接就是这几个文件，对应 JASM 装到 XXMI 注入器目录的结构。
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name in ALLOWED_FILES:
             archive.write(package_dir / name, arcname=name)
