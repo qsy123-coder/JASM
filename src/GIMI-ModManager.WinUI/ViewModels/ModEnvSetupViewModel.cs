@@ -221,12 +221,12 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// from <see cref="RunPreCheckAsync"/> so it can update the display without resetting <see cref="Result"/>
     /// or the status message (which the setup pipeline has just set).
     /// </summary>
-    private async Task RefreshPackageStatusesAsync(CancellationToken ct)
+    private async Task RefreshPackageStatusesAsync(CancellationToken ct, bool resyncVersion = false)
     {
         try
         {
             var pre = await _facade.PreCheckAsync(BuildRequest(), ct);
-            ApplyPreCheck(pre);
+            ApplyPreCheck(pre, resyncVersion);
         }
         catch (Exception ex)
         {
@@ -235,24 +235,34 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     }
 
     /// <summary>Rebuilds the package list, the version picker and the backup list from a pre-check result.</summary>
-    private void ApplyPreCheck(ModEnvPreCheck pre)
+    /// <param name="resyncVersion">
+    /// Re-point the version picker at whatever is now on disk instead of keeping the user's choice. Set
+    /// after a run that changed the installed version behind the picker's back — a backup restore.
+    /// </param>
+    private void ApplyPreCheck(ModEnvPreCheck pre, bool resyncVersion = false)
     {
         Packages.Clear();
         foreach (var package in pre.Packages)
             Packages.Add(package);
 
-        ApplyVersions(pre);
+        ApplyVersions(pre, resyncVersion);
         RefreshBackups();
     }
 
     /// <summary>
     /// Rebuilds the version picker from a pre-check result, keeping the user's choice when it is still
     /// offered. Only the first pre-check preselects — a later refresh must not yank the dropdown back
-    /// to the default while the user is looking at it.
+    /// to what is on disk while the user is looking at it.
     /// </summary>
-    private void ApplyVersions(ModEnvPreCheck pre)
+    /// <remarks>
+    /// The initial selection is the version actually installed, not the manifest's newest: the dropdown
+    /// then reads back what the user has on disk, and "start" is a no-op instead of an update. Falling
+    /// back to the manifest default covers a fresh install and an installed build that predates the
+    /// catalogue (it cannot be re-picked, but must not silently become a different version either).
+    /// </remarks>
+    private void ApplyVersions(ModEnvPreCheck pre, bool resyncVersion = false)
     {
-        var previousSelection = SelectedVersion?.Version;
+        var previousSelection = resyncVersion ? null : SelectedVersion?.Version;
 
         Versions.Clear();
         foreach (var version in pre.XxmiVersions)
@@ -265,8 +275,10 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
             ? NotInstalledVersionText
             : $"当前版本：v{pre.InstalledXxmiVersion}";
 
-        var target = previousSelection ?? pre.DefaultXxmiVersion;
+        var target = previousSelection ?? pre.InstalledXxmiVersion;
         SelectedVersion = Versions.FirstOrDefault(v => string.Equals(v.Version, target, StringComparison.Ordinal))
+                          ?? Versions.FirstOrDefault(v =>
+                              string.Equals(v.Version, pre.DefaultXxmiVersion, StringComparison.Ordinal))
                           ?? Versions.FirstOrDefault();
 
         UpdateSelectionHint();
@@ -388,7 +400,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
             ShowTestLaunch = Succeeded;
             CanTestLaunch = Succeeded;
 
-            await RefreshPackageStatusesAsync(CancellationToken.None);
+            // A restore swaps the version on disk without going through the picker, so re-point the picker
+            // at what is now installed — otherwise it keeps offering the version the user just rolled off.
+            await RefreshPackageStatusesAsync(CancellationToken.None, resyncVersion: true);
         }
     }
 
