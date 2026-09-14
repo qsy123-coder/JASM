@@ -171,3 +171,121 @@ http.server.ThreadingHTTPServer(("127.0.0.1", 8899), H).serve_forever()
 根因：`ModEnvSetupViewModel.RunSetupAsync` 结束后未刷新预检列表。已加
 `RefreshPackageStatusesAsync`，在 finally 中重跑预检重建 `Packages`（成功/取消/失败均刷新），
 现在完成后显示「已是最新」。
+
+## 14. XXMI 版本选择与回退
+
+对应 `docs/xxmi-version-switch-prd.md`。**14.1 和 14.2 不需要 JASM 代码改动就能先跑**，
+且 14.2 是本功能唯一的实质性阻塞项 —— 如果某个旧版 dll 跟当前 wwmi 游戏包搭不上，
+回退装了也没用，先把结论拿到再写代码。
+
+### 14.1 生成版本包与 catalog
+
+从本地「XXMI更新包（持续更新）」打包（脚本用白名单，只取 3 个 dll，**绝不会带出
+`Security/private_key.der`**）：
+
+```
+python Build/PackXxmiVersions.py
+```
+
+预期产物落在 `Build/out/xxmi-versions/`（该目录已被 `.gitignore` 忽略）：
+
+| 产物 | 说明 |
+|---|---|
+| `xxmi-0.9.2.zip` / `xxmi-1.0.5.zip` / `xxmi-1.1.6.zip` / `xxmi-1.1.7.zip` | 每版本一包，约 3.2 MB，zip 内**平铺且仅有** 3 个 dll |
+| `xxmi-versions.json` | 版本清单，含 DownloadUrl / Sha256 / SizeBytes / ReleasedAt |
+| `xxmi-version-hashes.json` | 逐文件哈希表，14.2 核对「当前装的是哪个版本」用 |
+
+打包后自查（应看到 4 个包各 **3 个条目**，不得出现 `Security/` 或 `Manifest.json`）：
+
+```powershell
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+Get-ChildItem Build\out\xxmi-versions\*.zip | ForEach-Object {
+  $z = [System.IO.Compression.ZipFile]::OpenRead($_.FullName)
+  "{0}: {1} -> {2}" -f $_.Name, $z.Entries.Count, ($z.Entries.FullName -join ", ")
+  $z.Dispose()
+}
+```
+
+然后把这些文件和 `xxmi-versions.json` 上传到 COS `modenv/`（与
+`appsettings.json` 的 `ModEnv:ManifestUrl` 同桶同前缀）。
+
+### 14.2 ⚠️ 兼容性实测（开发前必做）
+
+目标：回答「v0.9.2 / v1.0.5 / v1.1.6 / v1.1.7 这 4 个核心包，各自跟**当前** wwmi 游戏包能否搭配工作」。
+结论直接决定 catalog 里该列哪些版本。
+
+**判定当前装的是哪个版本**（比 `.modenv.json` 更可信 —— 它可能被手改）：
+
+```powershell
+Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll -Algorithm SHA256 |
+  Format-Table Path, Hash -AutoSize
+```
+
+对照表（`d3dcompiler_47.dll` 四个版本**完全相同**，恒为
+`86110AC1986FF0E4F35E1A797A3EDE99233C4A5BD12EDACC6DD45750E22B4171`，不具区分度）：
+
+| 版本 | `3dmloader.dll` SHA256 | `d3d11.dll` SHA256 |
+|---|---|---|
+| 0.9.2 | `4CA7425C18881E9EBBCE13AE22E7A3CA3843E526B9AA901D14F97953CA87F38B` | `CCBDD982B7CA4FD324198B68B83AEE23ED8B0CF0445255AA8309D021BA8AAD29` |
+| 1.0.5 | `DB62EA065744EA07E04FB60B26D53BE185026E16A66E557A0553F7AF079E2A72` | `02E5F1DCF926F6A1C00517307213265B1671797E9DE1E49CEDF731A95447A403` |
+| 1.1.6 | `427F6B1082121F96AD83696AFAF40EB2F5799FC29C960BEC917D403B5EB8753A` | `7BA9CC0BFC1E26F613E7F00BA0720CFDCDDF08EBEAD4C8A29B19EB98424CEB6A` |
+| 1.1.7 | `44965EE51786DB44FB4252671F356426CA7D879E6F7E8436B27D68E13237B0CF` | `6C962958DD14C79786A88D4358C8EAE24026352D31B4D564DBB2DC57E85A2FFC` |
+
+> 参考：本机 `D:\XXMI` 当前为 **1.0.5**（与 `.modenv.json` 记录一致，已验证）。
+
+逐一实测（每个版本重复一遍）：
+
+1. 备份现场：把 `D:\XXMI` 下的 3 个 dll 复制到别处
+2. 从 `xxmi-<版本>.zip` 解出 3 个 dll，覆盖 `D:\XXMI\` 根目录
+3. 双击 `D:\XXMI\Resources\Bin\XXMI Launcher.exe` → GUI 能打开
+4. GUI 里选 WWMI → 启动游戏 → **确认注入生效**
+5. 进游戏确认 **Mod 正常加载**、无黑屏/闪退
+6. 记录结果（✅/❌ + 现象），填回下表
+
+| 版本 | 启动器可开 | 游戏可进 | Mod 生效 | 结论 |
+|---|---|---|---|---|
+| 0.9.2 | | | | |
+| 1.0.5 | | | | |
+| 1.1.6 | | | | |
+| 1.1.7 | | | | |
+
+**只有结论为 ✅ 的版本才写进 `xxmi-versions.json`**；不可用的版本直接不列，
+避免用户选了之后照样用不了。测完把 3 个 dll 还原成本来的版本。
+
+### 14.3 版本下拉与默认行为（需代码改动后测）
+
+1. 打开「一键配置 / 修复 Mod 环境」对话框 → 出现「XXMI 版本」下拉
+2. **默认选中最新版**；不碰下拉框直接走完流程 → 结果与改动前**完全一致**（零行为变更）
+3. 下拉项按版本号**降序**，数量与 `xxmi-versions.json` 一致
+4. 对话框显示「当前版本：vX.Y.Z」，且与实际安装的 3 个 dll 哈希（见 14.2）吻合
+5. 选中项 == 当前版本 → 提示「已安装该版本」，跳过 XXMI 包但仍检查 launcher / wwmi
+6. 边界：`.modenv.json` 删掉或写坏 → 显示「未检测到已安装版本」，**不报错、不崩溃**
+7. 边界：已装版本不在 catalog 里（如已下线）→ 仍如实显示，不隐藏、不误报成最新
+
+### 14.4 CDN 降级容错（需代码改动后测）
+
+1. 把 `xxmi-versions.json` 从 CDN 删掉（或 `appsettings.json` 里指到 404 地址）
+   → 对话框**照常打开**，下拉降级为仅「最新版」一项，不阻断原有安装流程
+2. catalog 内容是坏 JSON → 同上降级，日志有 warning
+3. catalog 拉取超时（用 `## 12` 的节流服务器）→ 短超时后降级，不拖慢对话框打开
+
+### 14.5 回退与备份（需代码改动后测）
+
+1. 当前装 v1.1.7 → 下拉选 v0.9.2 → 安装
+2. 备份目录（`%LOCALAPPDATA%\JASM\ModEnvBackups\`）应出现含 `1.1.7` 与时间戳的备份档，
+   内含当时那 3 个 dll
+3. 回退完成后 `D:\XXMI` 根目录 3 个 dll 的哈希应等于 14.2 表里 **0.9.2** 那一行
+4. `D:\XXMI\.modenv.json` 的 `InstalledVersions["xxmi"]` 更新为 `0.9.2`
+5. **`WWMI\` 子目录与用户 Mod 不受影响**（回退只动 root 下 3 个 dll）
+6. `XXMI Launcher Config.json` 不被覆盖（沿用 launcher 包的 `preserveExistingFiles` 行为）
+7. 备份档出现在 UI 中，点「切换到此版本」→ 3 个 dll 哈希变回 1.1.7
+8. 磁盘空间不足 / 备份目录不可写 → **中止切换并报错**，不得在不留后路的情况下覆盖
+9. 游戏或 XXMI Launcher 正在运行时切换 → 给出提示（沿用现有强杀 Launcher 进程的逻辑）
+10. 取消切换 → 现场保持原样，`.part` 可续传
+
+### 14.6 回归
+
+1. 首启页 / 设置页两个「一键配置」入口均能看到版本下拉且行为一致
+2. 原有 `## 3` 幂等四态（未安装 / 已最新 / 可更新 / 可修复）判定不变
+3. 原有 `## 9` 启动命令自动接通、`## 10` 测试启动引导不受影响
+4. 弱网相关行为（`## 12`）不回归 —— 版本包走的仍是同一条下载链路
