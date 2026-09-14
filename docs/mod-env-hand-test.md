@@ -320,3 +320,27 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
    重跑一次即回到「已是最新」）
 3. 原有 `## 9` 启动命令自动接通、`## 10` 测试启动引导不受影响
 4. 弱网相关行为（`## 12`）不回归 —— 版本包走的仍是同一条下载链路
+
+## 15. 启动器「更新」误报抑制（skipped_version）
+
+背景：XXMI 启动器把「磁盘上读到的版本 ≠ 它缓存的 `latest_version`」当成有更新，于是弹
+「将包更新到最新版本：XXMI: 1.1.7 → 1.0.5」。它的缓存只在能连上 GitHub releases 时才刷新
+（国内基本连不上，日志里是 `GitHub API速率限制超出` / `ConnectionRefusedError`），所以只要 JASM 装的
+不是缓存里那个版本，它就**反复**提示这个「降级更新」。它自己的「跳过」按钮
+（`message_button_skip_update`）解决的正是这个，写的字段就是 `Packages.packages.<Name>.skipped_version`。
+
+JASM 在 `ModEnvSetupFacade.EnsureLauncherConfigPathsAsync` 里顺带补写该字段：**仅当缓存版本比 JASM
+实装的更旧**（两边都能按 `vX.Y.Z` 解析且严格更小）才写，所以真正的新版本提示不受影响；值已相同则不重复写。
+
+1. 先确认真实缓存：`D:\XXMI\XXMI Launcher Config.json` 里 `Packages.packages.XXMI.latest_version` 是旧版
+   （如 `1.0.5`）、`skipped_version` 为空，而磁盘上装的是新版（如 `1.1.7`）
+2. 跑一次「一键配置 Mod 环境」→ 向导日志出现「已在 XXMI 启动器中跳过更旧的版本（XXMI 1.0.5）…」
+3. 复查该文件：`skipped_version` == 旧的那个 `latest_version`；`Importers.WWMI.Importer.game_folder` /
+   `importer_folder` 照旧被回填；文件**无 BOM**、缩进 4 空格
+4. 打开启动器 → 左下角版本悬停**不再**出现该包的「x → y」，也不弹更新对话框
+   （若仍显示：说明它的悬停提示不吃 `skipped_version`，记下现象，这条得换招——把缓存版本一起改写）
+5. 幂等：再跑一次一键配置 → `skipped_version` 不变（值相同不重写），不重复报日志
+6. 边界：缓存版本比实装的**新**（如缓存 2.0.0、实装 1.1.7）→ **不写** `skipped_version`，
+   启动器的更新提示保留（这是真的可更新，不能替用户决定）
+7. 边界：缓存 `latest_version` 为空 / 非数字（如 `latest`）→ 不写、不报错，其余回填照常
+8. 边界：启动器正在运行 → 先结束进程再写；写入被占用则重试最多 5 次，仍失败只记 issue、不中断安装
