@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.27.1](https://github.com/qsy123-coder/JASM/compare/v2.27.0...v2.27.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **logging:** 日志路径改为绝对路径，不再依赖进程工作目录 ([7744636](https://github.com/qsy123-coder/JASM/commit/774463616ec1cc0bf628d98ef5e690b8e8abfcf8))
+* **update:** 自更新重启时带上工作目录，避免日志落到临时目录 ([99a18e8](https://github.com/qsy123-coder/JASM/commit/99a18e844b4d0174da3ca4f3481c0284b693b508))
+
 ## [2.27.0](https://github.com/qsy123-coder/JASM/compare/v2.26.1...v2.27.0) (2026-09-14)
 
 
