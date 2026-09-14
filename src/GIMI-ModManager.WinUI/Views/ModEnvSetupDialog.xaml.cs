@@ -23,6 +23,9 @@ public sealed partial class ModEnvSetupDialog : ContentDialog
 
     public string? ModsFolder => ViewModel.Result?.ModsFolder;
 
+    /// <summary>XXMI root the user ended up choosing, or null for the default. Callers persist it.</summary>
+    public string? CustomRootFolder => ViewModel.CustomRootFolder;
+
     private CancellationTokenSource? _cts;
 
     public ModEnvSetupDialog(ModEnvSetupViewModel viewModel)
@@ -96,6 +99,38 @@ public sealed partial class ModEnvSetupDialog : ContentDialog
     private async void RedetectGame_OnClick(object sender, RoutedEventArgs e)
     {
         ViewModel.GameInstallDir = null;
+        StartButton.IsEnabled = false;
+        await ViewModel.RunPreCheckAsync();
+        StartButton.IsEnabled = ViewModel.CanStart;
+    }
+
+    /// <summary>
+    /// Picks the folder XXMI is installed into. Re-runs the pre-check so the displayed path, the package
+    /// statuses and the game-version row all describe the new target rather than the old one.
+    /// </summary>
+    private async void BrowseXxmiRoot_OnClick(object sender, RoutedEventArgs e)
+    {
+        var folderPicker = new FolderPicker();
+        folderPicker.FileTypeFilter.Add("*");
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+        WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
+
+        // Cancelling leaves the current choice alone, so a misclick cannot move the install target.
+        var folder = await folderPicker.PickSingleFolderAsync();
+        if (folder is null) return;
+
+        await ApplyXxmiRootAsync(folder.Path);
+    }
+
+    private async void UseDefaultXxmiRoot_OnClick(object sender, RoutedEventArgs e) =>
+        await ApplyXxmiRootAsync(null);
+
+    private async Task ApplyXxmiRootAsync(string? rootFolder)
+    {
+        ViewModel.CustomRootFolder = string.IsNullOrWhiteSpace(rootFolder)
+            ? null
+            : Path.GetFullPath(rootFolder);
+
         StartButton.IsEnabled = false;
         await ViewModel.RunPreCheckAsync();
         StartButton.IsEnabled = ViewModel.CanStart;
