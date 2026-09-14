@@ -66,6 +66,26 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty] private string _modEnvStatusText = string.Empty;
     [ObservableProperty] private InfoBarSeverity _modEnvStatusSeverity = InfoBarSeverity.Informational;
 
+    /// <summary>
+    /// XXMI root the user picked here, or null to keep the default "&lt;game drive&gt;\XXMI". Persisted with
+    /// the other startup settings so a later run targets the same place.
+    /// </summary>
+    [ObservableProperty] private string? _xxmiRootFolderPath;
+
+    /// <summary>Display text for the picker: the chosen path, or what the default resolves to.</summary>
+    public string XxmiRootFolderText => string.IsNullOrWhiteSpace(XxmiRootFolderPath)
+        ? "默认（游戏所在盘符下的 XXMI 文件夹）"
+        : XxmiRootFolderPath!;
+
+    public bool HasCustomXxmiRootFolder => !string.IsNullOrWhiteSpace(XxmiRootFolderPath);
+
+    partial void OnXxmiRootFolderPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(XxmiRootFolderText));
+        OnPropertyChanged(nameof(HasCustomXxmiRootFolder));
+        UseDefaultXxmiRootFolderCommand.NotifyCanExecuteChanged();
+    }
+
     public ObservableCollection<GameComboBoxEntryVM> Games { get; } = new();
 
     public StartupViewModel(INavigationService navigationService, ILocalSettingsService localSettingsService,
@@ -100,6 +120,23 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     private bool ValidStartupSettings() => PathToGIMIFolderPicker.IsValid && PathToModsFolderPicker.IsValid &&
                                            PathToGIMIFolderPicker.Path != PathToModsFolderPicker.Path;
 
+    /// <summary>
+    /// Applies a new XXMI root (null = back to the default) and re-runs the detection: the paths and the
+    /// status line describe the location the next one-click run would touch.
+    /// </summary>
+    public async Task SetXxmiRootFolderAsync(string? path)
+    {
+        var normalized = string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
+        if (string.Equals(normalized, XxmiRootFolderPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        XxmiRootFolderPath = normalized;
+        await TryAutoFillModEnvPathsAsync();
+    }
+
+    [RelayCommand(CanExecute = nameof(HasCustomXxmiRootFolder))]
+    private async Task UseDefaultXxmiRootFolderAsync() => await SetXxmiRootFolderAsync(null);
+
 
     [RelayCommand(CanExecute = nameof(ValidStartupSettings))]
     private async Task SaveStartupSettings()
@@ -108,7 +145,8 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         {
             GimiRootFolderPath = PathToGIMIFolderPicker.Path,
             ModsFolderPath = PathToModsFolderPicker.Path,
-            UnloadedModsFolderPath = null
+            UnloadedModsFolderPath = null,
+            XxmiRootFolderPath = XxmiRootFolderPath
         };
 
         await _selectedGameService.SetSelectedGame(SelectedGame.Value.ToString());
@@ -193,7 +231,13 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
         }
 
         ShowModEnvSetupButton = true;
-        var pre = await _modEnvSetupFacade.PreCheckAsync(new ModEnvSetupRequest());
+
+        // Probing the same root the setup would use: a custom folder is empty until it is configured, and
+        // reporting the default location's state instead would contradict what the user just picked.
+        var pre = await _modEnvSetupFacade.PreCheckAsync(new ModEnvSetupRequest
+        {
+            CustomRootFolder = XxmiRootFolderPath
+        });
 
         var loaderOk = pre.MiFolder is not null && ModEnvInstallerService.IsGamePackagePresent(pre.MiFolder);
         var modsOk = pre.ModsFolder is not null && Directory.Exists(pre.ModsFolder);
@@ -226,6 +270,7 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
     {
         var dialog = App.GetService<ModEnvSetupDialog>();
         dialog.XamlRoot = App.MainWindow.Content.XamlRoot;
+        dialog.ViewModel.CustomRootFolder = XxmiRootFolderPath;
         await dialog.ShowAsync();
 
         if (dialog.MiFolder is not null && dialog.ModsFolder is not null)
@@ -333,6 +378,10 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
             PathToModsFolderPicker.Path = settings.ModsFolderPath;
         else
             PathToModsFolderPicker.Path = "";
+
+        XxmiRootFolderPath = string.IsNullOrWhiteSpace(settings.XxmiRootFolderPath)
+            ? null
+            : settings.XxmiRootFolderPath;
     }
 
 
