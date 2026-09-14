@@ -68,6 +68,45 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <!--  XXMI version picker: install an older version on purpose, or roll back after a bad update  -->
+            <StackPanel
+                Spacing="4"
+                Visibility="{x:Bind ViewModel.HasXxmiVersions, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{ThemeResource BodyTextBlockStyle}"
+                        Text="XXMI 版本" />
+                    <ComboBox
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                        ItemsSource="{x:Bind ViewModel.Versions, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedVersion, Mode=TwoWay}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+                <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.InstalledVersionText, Mode=OneWay}" />
+                <TextBlock
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.SelectionHint, Mode=OneWay}"
+                    TextWrapping="WrapWholeWords"
+                    Visibility="{x:Bind ViewModel.HasSelectionHint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <TextBlock
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.VersionNotes, Mode=OneWay}"
+                    TextWrapping="WrapWholeWords"
+                    Visibility="{x:Bind ViewModel.HasVersionNotes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+            </StackPanel>
+
             <!--  Manual game directory fallback  -->
             <StackPanel
                 Spacing="8"
@@ -141,6 +180,39 @@
                     Text="{x:Bind ViewModel.LogText, Mode=OneWay}"
                     TextWrapping="Wrap" />
             </ScrollViewer>
+
+            <!--  Version backups: the way back when a newly installed version breaks the mods  -->
+            <StackPanel
+                Spacing="4"
+                Visibility="{x:Bind ViewModel.HasBackups, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Style="{ThemeResource BodyTextBlockStyle}" Text="版本备份" />
+                <TextBlock
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Text="每次切换 XXMI 版本前都会自动备份当时可用的版本，可从这里恢复。恢复前也会先备份当前版本。"
+                    TextWrapping="WrapWholeWords" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox
+                        HorizontalAlignment="Stretch"
+                        IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                        ItemsSource="{x:Bind ViewModel.Backups, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedBackup, Mode=TwoWay}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button
+                        Grid.Column="1"
+                        Click="RestoreBackup_OnClick"
+                        Content="恢复此备份"
+                        IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}" />
+                </Grid>
+            </StackPanel>
 
             <!--  Actions  -->
             <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
