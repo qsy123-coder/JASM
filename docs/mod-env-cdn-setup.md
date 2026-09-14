@@ -30,6 +30,7 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 | `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」） |
 | `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）包，见下节「打 launcher 包」 |
 | `version.json` | 版本清单，见下节 |
+| `xxmi-versions.json` | **可选**。可选 XXMI 版本目录，让用户在向导里选版本 / 回退，见「生成 xxmi-versions.json」 |
 
 WWMi 包结构示意（干净基础包）：
 
@@ -139,6 +140,61 @@ Get-FileHash ".\wwmi-1.0.0.zip" -Algorithm SHA256 | Select-Object -ExpandPropert
   与它不一致时会弹**非阻断警告**（不会中断安装）。
 - 每次出新包：上传新 zip → 更新 `version.json` 里的版本号/url/sha256/size → 用户端再次点按钮即显示「可更新」。
 
+### 生成 xxmi-versions.json（可选：让用户选版本 / 回退）
+
+`version.json` 每个包只能描述**一个**版本，所以它表达不了「让用户装回旧版」。要开版本选择 / 回退，
+额外传一份 `xxmi-versions.json`，向导里就会出现 XXMI 版本下拉框 + 备份恢复区；不传（或传了取不到）
+则这两块都不显示，行为与加这个功能之前**完全一致**。
+
+**用仓库里的脚本生成，别手搓**——脚本按白名单打 zip、算 sha256、按包内 `d3d11.dll` 的修改时间推算
+发布日期，并带一道安全闸：
+
+```bash
+python Build/PackXxmiVersions.py --base-url https://<你的桶域名>/modenv/
+```
+
+默认从 `D:\BaiduNetdiskDownload\MC-MOD整合包\XXMI更新包（持续更新）` 读源包（可用 `--source` 覆盖），
+产物落在 `Build/out/xxmi-versions/`：
+
+| 文件 | 说明 |
+|---|---|
+| `xxmi-<版本>.zip` | 扁平包，**只含** `3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` |
+| `xxmi-versions.json` | 版本目录，直接传 CDN |
+| `xxmi-version-hashes.json` | 各版本逐文件 sha256，手测对照用 |
+
+> ⚠️ **安全闸**：脚本对每个 zip 断言「文件名集合 == 白名单这三个文件」，不等就删掉 zip 并退出。
+> 目的是防止把 `XXMI 更新包` 目录里的 `Security/private_key.der`（XXMI 的签名**私钥**，与「打 launcher 包」
+> 那节同源）打进可公开下载的包里。**不要**为了少一个版本而放宽这个断言。
+
+传上去的 `xxmi-versions.json` 形如（脚本已生成，必要时给版本填 `Notes`）：
+
+```json
+{
+  "CatalogVersion": 1,
+  "Versions": [
+    {
+      "Version": "1.1.7",
+      "DownloadUrl": "https://<桶域名>/modenv/xxmi-1.1.7.zip",
+      "Sha256": "7f9518eb……",
+      "SizeBytes": 3411769,
+      "ReleasedAt": "2026-09-13",
+      "Notes": ""
+    }
+  ]
+}
+```
+
+要点：
+- `Version` 用**数字点分**（如 `1.1.7`）。JASM 按段做数值比较而非字符串比较——字符串比较会把 `1.1.7`
+  排到 `0.9.2` 前面，于是「回退」会被显示成「更新」。
+- `Notes` 显示在向导的版本下拉框下方，用来写「这个版本已知有什么坑」，用户**选版本时就能看到**。
+- 顺序不用你排，JASM 按版本号从新到旧自己排；重复 / 缺字段的条目会被自动丢弃。
+- 下拉框的**默认选中项永远是 `version.json` 里那个版本**，所以「不动下拉框」= 加此功能之前的行为。
+  想让用户默认装哪个版本，改 `version.json` 即可。
+- ⚠️ **上线前先跑 `docs/mod-env-hand-test.md` §14.2 的兼容性矩阵**（每个版本 × 当前 wwmi 包），
+  **只把实测可用的版本放进目录**——目录里放了坏版本，用户回退过去照样是坏的。
+- 不必把全部历史版本都放上去，近期几个够用：每多一个版本，就多一份要验证、要托管的资产。
+
 ## 四、拿到访问地址，填进 JASM
 
 1. 控制台 → 存储桶 → **域名管理** → 「默认域名」一栏，形如
@@ -153,9 +209,14 @@ Get-FileHash ".\wwmi-1.0.0.zip" -Algorithm SHA256 | Select-Object -ExpandPropert
 ```json
 "ModEnv": {
   "ManifestUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/version.json",
+  "VersionCatalogUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/xxmi-versions.json",
   "BasePackageId": "xxmi"
 }
 ```
+
+`VersionCatalogUrl` **留空就关掉版本选择**（下拉框与备份区都不显示），此时向导行为与加这个功能之前一致。
+备份默认保留最近 5 份（`ModEnv:KeepBackupCount`），存放在
+`%LOCALAPPDATA%\JASM\ModEnvBackups\xxmi-<版本>-<时间戳>\`，只是基础包那几个 DLL（几 MB），随时可删。
 
 5. 重新编译运行，按 `docs/mod-env-hand-test.md` 手测一遍。
 
