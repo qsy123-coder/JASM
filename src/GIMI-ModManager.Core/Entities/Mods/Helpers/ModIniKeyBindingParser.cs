@@ -56,12 +56,29 @@ public static class ModIniKeyBindingParser
         return result;
     }
 
+    /// <summary>
+    /// 解析 ini 文本里的按键绑定。测试入口：不碰文件系统
+    /// （<see cref="ParseKeyBindingsFromFile"/> 只负责把行读出来）。
+    /// </summary>
+    public static List<ModIniKeyBindingEntry> ParseKeyBindingsFromText(string iniContent)
+    {
+        if (string.IsNullOrEmpty(iniContent))
+            return [];
+
+        // 同时吃 \r\n 与 \n，让调用方不必关心换行风格
+        var lines = iniContent.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+
+        return ParseKeyBindings(lines);
+    }
+
     private static List<ModIniKeyBindingEntry> ParseKeyBindingsFromFile(string iniFilePath)
+        => ParseKeyBindings(File.ReadAllLines(iniFilePath));
+
+    private static List<ModIniKeyBindingEntry> ParseKeyBindings(string[] lines)
     {
         var bindings = new List<ModIniKeyBindingEntry>();
         string? currentSection = null;
         string? lastComment = null;
-        var lines = File.ReadAllLines(iniFilePath);
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -115,7 +132,9 @@ public static class ModIniKeyBindingParser
                             ActionLabel = IsKeyActionSection(currentSection)
                                 ? SectionToAction(currentSection) : currentSection,
                             Description = lastComment ?? "",
-                            IsArrowKey = parsed?.IsArrow ?? IsArrowKeyValue(value)
+                            IsArrowKey = parsed?.IsArrow ?? IsArrowKeyValue(value),
+                            KeyCode = parsed?.KeyCode,
+                            ModifierKeyCodes = parsed?.ModifierKeyCodes ?? []
                         });
                         lastComment = null;
                     }
@@ -136,7 +155,9 @@ public static class ModIniKeyBindingParser
                             RawLine = trimmed,
                             ActionLabel = SectionToAction(currentSection),
                             Description = lastComment ?? "",
-                            IsArrowKey = parsed.Value.IsArrow
+                            IsArrowKey = parsed.Value.IsArrow,
+                            KeyCode = parsed.Value.KeyCode,
+                            ModifierKeyCodes = parsed.Value.ModifierKeyCodes
                         });
                         lastComment = null;
                     }
@@ -189,17 +210,29 @@ public static class ModIniKeyBindingParser
     }
 
     /// <summary>
-    /// 解析 modifier+key 行，如：
-    ///   "no_ctrl no_shift VK_RIGHT" → (KeyDisplay="→", IsArrow=true)
-    ///   "ctrl shift H"              → (KeyDisplay="Ctrl+Shift+H", IsArrow=false)
-    ///   "no_ctrl no_shift VK_LBUTTON" → (KeyDisplay="🖱 左键", IsArrow=false)
+    /// modifier+key 行的结构化解析结果。
+    /// <paramref name="ModifierKeyCodes"/> 只包含 ini 里**显式列出**的 ctrl / shift / alt；
+    /// <c>no_ctrl</c> / <c>no_shift</c> / <c>no_alt</c> 是「禁止条件」语义，不会进这个列表。
     /// </summary>
-    private static (string KeyDisplay, bool IsArrow)? ParseKeyActionLine(string line)
+    private readonly record struct ParsedKeyAction(
+        string KeyDisplay,
+        bool IsArrow,
+        ushort? KeyCode,
+        IReadOnlyList<ushort> ModifierKeyCodes);
+
+    /// <summary>
+    /// 解析 modifier+key 行，如：
+    ///   "no_ctrl no_shift VK_RIGHT"   → KeyDisplay="→", IsArrow=true, KeyCode=0x27, mods=[]
+    ///   "ctrl shift H"                → KeyDisplay="Ctrl+Shift+H", KeyCode=0x48, mods=[0x11,0x10]
+    ///   "no_ctrl no_shift VK_LBUTTON" → KeyDisplay="鼠标左键", KeyCode=null（鼠标键不合成发送）
+    /// 整行只有修饰键（如 "ctrl"）时返回 null，显示回退交给调用方。
+    /// </summary>
+    private static ParsedKeyAction? ParseKeyActionLine(string line)
     {
         var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return null;
 
-        var activeModifiers = new List<string>();
+        var activeModifiers = new List<VirtualKeyDefinition>();
         string? keyName = null;
         var skippedMods = new List<string>();
 
@@ -207,14 +240,15 @@ public static class ModIniKeyBindingParser
         {
             var lower = part.ToLowerInvariant();
 
+            // 否定修饰符表示「仅当这些键没有按下时才触发」，不是要按下的键 —— 只记日志
             if (lower is "no_ctrl" or "no_shift" or "no_alt")
             {
                 skippedMods.Add(part);
                 continue;
             }
 
-            if (lower is "ctrl" or "shift" or "alt")
-                activeModifiers.Add(MapModifier(lower));
+            if (VirtualKeyMap.TryResolveModifier(lower, out var modifier))
+                activeModifiers.Add(modifier);
             else
                 keyName = part;
         }
@@ -226,139 +260,21 @@ public static class ModIniKeyBindingParser
             return null;
         }
 
-        var (friendlyKey, isArrow) = MapKeyName(keyName);
+        var key = VirtualKeyMap.Resolve(keyName);
         var modPrefix = activeModifiers.Count > 0
-            ? string.Join("+", activeModifiers) + "+"
+            ? string.Join("+", activeModifiers.Select(m => m.Display)) + "+"
             : "";
 
-        var result = modPrefix + friendlyKey;
-        _logger.Information("[KeyBindingParser]     RAW='{Line}' → parts={Parts} | mods={Mods} | key='{Key}' → friendly='{Result}' isArrow={Arrow}",
-            line, string.Join(",", parts), string.Join(",", skippedMods), keyName, result, isArrow);
+        var result = modPrefix + key.Display;
+        var modifierKeyCodes = activeModifiers.Select(m => m.VirtualKeyCode!.Value).ToArray();
 
-        return (result, isArrow);
-    }
+        _logger.Information(
+            "[KeyBindingParser]     RAW='{Line}' → parts={Parts} | mods={Mods} | key='{Key}' → friendly='{Result}' "
+            + "isArrow={Arrow} vk={Vk} modVks={ModVks}",
+            line, string.Join(",", parts), string.Join(",", skippedMods), keyName, result, key.IsArrow,
+            key.VirtualKeyCode, string.Join(",", modifierKeyCodes));
 
-    private static string MapModifier(string mod) => mod.ToLowerInvariant() switch
-    {
-        "ctrl" => "Ctrl",
-        "shift" => "Shift",
-        "alt" => "Alt",
-        _ => mod
-    };
-
-    /// <summary>将 VK_xxx 按键名映射为小白友好的显示</summary>
-    private static (string display, bool isArrow) MapKeyName(string keyName)
-    {
-        var k = keyName.Trim().ToUpperInvariant();
-        return k switch
-        {
-            // 方向键 → 箭头图标字符
-            "VK_RIGHT" or "RIGHT" => ("→", true),
-            "VK_LEFT" or "LEFT" => ("←", true),
-            "VK_UP" or "UP" => ("↑", true),
-            "VK_DOWN" or "DOWN" => ("↓", true),
-
-            // 鼠标按键
-            "VK_LBUTTON" or "LBUTTON" => ("鼠标左键", false),
-            "VK_RBUTTON" or "RBUTTON" => ("鼠标右键", false),
-            "VK_MBUTTON" or "MBUTTON" => ("鼠标中键", false),
-
-            // 功能键
-            "VK_F1" or "F1" => ("F1", false),
-            "VK_F2" or "F2" => ("F2", false),
-            "VK_F3" or "F3" => ("F3", false),
-            "VK_F4" or "F4" => ("F4", false),
-            "VK_F5" or "F5" => ("F5", false),
-            "VK_F6" or "F6" => ("F6", false),
-            "VK_F7" or "F7" => ("F7", false),
-            "VK_F8" or "F8" => ("F8", false),
-            "VK_F9" or "F9" => ("F9", false),
-            "VK_F10" or "F10" => ("F10", false),
-            "VK_F11" or "F11" => ("F11", false),
-            "VK_F12" or "F12" => ("F12", false),
-
-            // 特殊键
-            "VK_SPACE" or "SPACE" => ("空格", false),
-            "VK_RETURN" or "RETURN" or "ENTER" => ("回车", false),
-            "VK_TAB" or "TAB" => ("Tab", false),
-            "VK_ESCAPE" or "ESCAPE" or "ESC" => ("Esc", false),
-            "VK_BACK" or "BACKSPACE" => ("退格", false),
-            "VK_DELETE" or "DELETE" => ("Delete", false),
-            "VK_HOME" => ("Home", false),
-            "VK_END" => ("End", false),
-            "VK_PRIOR" or "PAGEUP" => ("PgUp", false),
-            "VK_NEXT" or "PAGEDOWN" => ("PgDn", false),
-
-            // VK_数字
-            "VK_0" or "0" => ("0", false),
-            "VK_1" or "1" => ("1", false),
-            "VK_2" or "2" => ("2", false),
-            "VK_3" or "3" => ("3", false),
-            "VK_4" or "4" => ("4", false),
-            "VK_5" or "5" => ("5", false),
-            "VK_6" or "6" => ("6", false),
-            "VK_7" or "7" => ("7", false),
-            "VK_8" or "8" => ("8", false),
-            "VK_9" or "9" => ("9", false),
-
-            // 小键盘
-            "VK_NUMPAD0" or "NUMPAD0" => ("小键盘0", false),
-            "VK_NUMPAD1" or "NUMPAD1" => ("小键盘1", false),
-            "VK_NUMPAD2" or "NUMPAD2" => ("小键盘2", false),
-            "VK_NUMPAD3" or "NUMPAD3" => ("小键盘3", false),
-            "VK_NUMPAD4" or "NUMPAD4" => ("小键盘4", false),
-            "VK_NUMPAD5" or "NUMPAD5" => ("小键盘5", false),
-            "VK_NUMPAD6" or "NUMPAD6" => ("小键盘6", false),
-            "VK_NUMPAD7" or "NUMPAD7" => ("小键盘7", false),
-            "VK_NUMPAD8" or "NUMPAD8" => ("小键盘8", false),
-            "VK_NUMPAD9" or "NUMPAD9" => ("小键盘9", false),
-
-            // VK_字母
-            "VK_A" or "A" => ("A", false),
-            "VK_B" or "B" => ("B", false),
-            "VK_C" or "C" => ("C", false),
-            "VK_D" or "D" => ("D", false),
-            "VK_E" or "E" => ("E", false),
-            "VK_F" or "F" => ("F", false),
-            "VK_G" or "G" => ("G", false),
-            "VK_H" or "H" => ("H", false),
-            "VK_I" or "I" => ("I", false),
-            "VK_J" or "J" => ("J", false),
-            "VK_K" or "K" => ("K", false),
-            "VK_L" or "L" => ("L", false),
-            "VK_M" or "M" => ("M", false),
-            "VK_N" or "N" => ("N", false),
-            "VK_O" or "O" => ("O", false),
-            "VK_P" or "P" => ("P", false),
-            "VK_Q" or "Q" => ("Q", false),
-            "VK_R" or "R" => ("R", false),
-            "VK_S" or "S" => ("S", false),
-            "VK_T" or "T" => ("T", false),
-            "VK_U" or "U" => ("U", false),
-            "VK_V" or "V" => ("V", false),
-            "VK_W" or "W" => ("W", false),
-            "VK_X" or "X" => ("X", false),
-            "VK_Y" or "Y" => ("Y", false),
-            "VK_Z" or "Z" => ("Z", false),
-
-            // 其他常见 VK_
-            "VK_OEM_PERIOD" or "OEM_PERIOD" => (".", false),
-            "VK_OEM_COMMA" or "OEM_COMMA" => (",", false),
-            "VK_OEM_MINUS" or "OEM_MINUS" => ("-", false),
-            "VK_OEM_PLUS" or "OEM_PLUS" => ("=", false),
-            "VK_OEM_1" => (";", false),
-            "VK_OEM_2" => ("/", false),
-            "VK_OEM_3" => ("`", false),
-            "VK_OEM_4" => ("[", false),
-            "VK_OEM_5" => ("\\", false),
-            "VK_OEM_6" => ("]", false),
-            "VK_OEM_7" => ("'", false),
-
-            // 无修饰键的特殊情况
-            "NONE" or "DISABLED" => ("(无)", false),
-
-            _ => (keyName, false) // 无法识别则原样显示
-        };
+        return new ParsedKeyAction(result, key.IsArrow, key.VirtualKeyCode, modifierKeyCodes);
     }
 
     // ── 辅助方法 ────────────────────────────────────────
@@ -385,10 +301,7 @@ public static class ModIniKeyBindingParser
     }
 
     private static string FriendlyKeyName(string keyValue)
-    {
-        var (display, _) = MapKeyName(keyValue);
-        return display;
-    }
+        => VirtualKeyMap.Resolve(keyValue).Display;
 
     /// <summary>判断 key = value 中的值是否代表方向键</summary>
     private static bool IsArrowKeyValue(string keyValue)
@@ -494,4 +407,19 @@ public class ModIniKeyBindingEntry
 
     /// <summary>是否为方向键（UI 层用图标而非文字显示）</summary>
     public bool IsArrowKey { get; set; }
+
+    /// <summary>
+    /// 主键的 Windows 虚拟键码。为 <c>null</c> 表示该条目**无法**合成发送：
+    /// 鼠标键（VK_LBUTTON / RBUTTON / MBUTTON）、词表里没有的键名（如 <c>key = $swapvar</c>）。
+    /// </summary>
+    public ushort? KeyCode { get; set; }
+
+    /// <summary>
+    /// 发送前需要按住的修饰键虚拟键码（Ctrl=0x11 / Shift=0x10 / Alt=0x12），按 ini 里出现的顺序。
+    /// <c>no_ctrl</c> / <c>no_shift</c> / <c>no_alt</c> 是「禁止条件」语义，**不会**出现在这里。
+    /// </summary>
+    public IReadOnlyList<ushort> ModifierKeyCodes { get; set; } = [];
+
+    /// <summary>true = 可以合成发送（键盘键且解析出了虚拟键码）。UI 直接拿它做 IsEnabled。</summary>
+    public bool CanSendKey => KeyCode.HasValue;
 }
