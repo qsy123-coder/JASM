@@ -306,27 +306,39 @@
                                                                    VerticalAlignment="Center"
                                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                                                    Text="{x:Bind DisplayLabel}" />
-                                                        <!-- 箭头按键 → 圆角徽章 -->
-                                                        <Border Grid.Column="1" Padding="6,2" CornerRadius="4"
+                                                        <!-- 箭头按键 → 圆角徽章（点击 = 把该按键发给游戏） -->
+                                                        <Button Grid.Column="1" Padding="6,2" CornerRadius="4"
+                                                                MinWidth="0" MinHeight="0"
                                                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                                                 BorderThickness="0.5"
-                                                                Visibility="{x:Bind IsArrowKey, Converter={StaticResource ArrowKeyToIconVisibilityConverter}}">
+                                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                                Tag="{x:Bind}"
+                                                                IsEnabled="{x:Bind CanSendKey}"
+                                                                IsTabStop="False"
+                                                                ToolTipService.ToolTip="点击把这个按键发给游戏"
+                                                                Visibility="{x:Bind IsArrowKey, Converter={StaticResource ArrowKeyToIconVisibilityConverter}}"
+                                                                Click="SendKey_Click">
                                                             <TextBlock FontSize="16"
-                                                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                                                        VerticalAlignment="Center"
                                                                        Text="{x:Bind KeyValue}" />
-                                                        </Border>
-                                                        <!-- 普通按键 → 圆角徽章 -->
-                                                        <Border Grid.Column="1" Padding="8,3" CornerRadius="4"
+                                                        </Button>
+                                                        <!-- 普通按键 → 圆角徽章（点击 = 把该按键发给游戏） -->
+                                                        <Button Grid.Column="1" Padding="8,3" CornerRadius="4"
+                                                                MinWidth="0" MinHeight="0"
                                                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                                                 BorderThickness="0.5"
-                                                                Visibility="{x:Bind IsArrowKey, Converter={StaticResource ArrowKeyToVisibilityConverter}}">
+                                                                Tag="{x:Bind}"
+                                                                IsEnabled="{x:Bind CanSendKey}"
+                                                                IsTabStop="False"
+                                                                ToolTipService.ToolTip="点击把这个按键发给游戏"
+                                                                Visibility="{x:Bind IsArrowKey, Converter={StaticResource ArrowKeyToVisibilityConverter}}"
+                                                                Click="SendKey_Click">
                                                             <TextBlock FontSize="13" FontFamily="Consolas"
                                                                        FontWeight="SemiBold"
                                                                        Text="{x:Bind KeyValue}" />
-                                                        </Border>
+                                                        </Button>
                                                     </Grid>
                                                 </StackPanel>
                                             </DataTemplate>
