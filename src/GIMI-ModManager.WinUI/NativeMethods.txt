@@ -5,3 +5,8 @@ PlaySound
 PathFindOnPath
 AttachConsole
 GetWindowThreadProcessId
+SendInput
+EnumWindows
+IsWindowVisible
+IsIconic
+GetForegroundWindow
