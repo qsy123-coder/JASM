@@ -197,7 +197,7 @@
                                                     l:Uids.Uid="ModPane_ForwardKeyBox" />
 
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                    <TextBlock HorizontalAlignment="Center" Text="{x:Bind SectionKey}" />
+                                                    <TextBlock HorizontalAlignment="Center" Text="{x:Bind SectionKeyDisplay}" />
                                                     <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
                                                         <TextBlock Margin="0,0,4,0" Text="Variations: " l:Uids.Uid="ModPane_VariationsLabel" />
                                                         <TextBlock Text="{x:Bind VariationsCount, Mode=OneWay}" />
