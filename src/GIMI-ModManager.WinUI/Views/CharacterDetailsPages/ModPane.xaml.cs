@@ -1,5 +1,8 @@
 using System.Text;
 using Windows.ApplicationModel.DataTransfer;
+using GIMI_ModManager.Core.Entities.Mods.Helpers;
+using GIMI_ModManager.WinUI.Services.Input;
+using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -126,6 +129,60 @@ public sealed partial class ModPane : UserControl
         }
     }
 
+
+    /// <summary>
+    /// 点击按键徽章 → 把该按键合成发给正在运行的游戏（等于在真实键盘上按一次）。
+    /// 处理器放 code-behind 而不是 Core 的 POCO 上：SendInput 需要 windows TFM，
+    /// 而模板里的 x:Bind 也看不到外层的 ModPane.ViewModel。
+    /// </summary>
+    private async void SendKey_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (sender is not FrameworkElement element)
+                return;
+
+            // 条目优先从 Tag 取（模板里 Tag="{x:Bind}"，编译期写入，不依赖 ItemsRepeater 是否给
+            // 实现元素设置 DataContext —— 这一步在真机上不报错、只是静默什么都不做，不留隐患）；
+            // DataContext 作为兜底。
+            var entry = element.Tag as ModIniKeyBindingEntry ?? element.DataContext as ModIniKeyBindingEntry;
+            if (entry is null || !entry.CanSendKey)
+                return;
+
+            var status = await App.GetService<IGameKeySender>()
+                .SendKeyAsync(entry.KeyCode!.Value, entry.ModifierKeyCodes);
+
+            // 成功不打扰用户：游戏里已经能看到反应
+            if (status != GameKeySendStatus.Sent)
+                ShowKeySendFailure(status);
+        }
+        catch (Exception ex)
+        {
+            // 发按键失败绝不能把 UI 线程炸掉
+            System.Diagnostics.Debug.WriteLine($"[ModPane] SendKey_Click failed: {ex}");
+        }
+    }
+
+    private static void ShowKeySendFailure(GameKeySendStatus status)
+    {
+        // 只给用户能自己做点什么的话；具体失败的路径 / 进程名在 Serilog 里（见 GameKeySender）
+        var message = status switch
+        {
+            GameKeySendStatus.BlockedChord =>
+                "出于安全考虑没有发送这个组合键（Alt+F4 这类会直接把游戏关掉）。",
+            GameKeySendStatus.TargetNotConfigured =>
+                "找不到游戏信息，请先确认 JASM 里配置的游戏目录指向装了 mod 的 XXMI 目录。",
+            GameKeySendStatus.GameProcessNotRunning =>
+                "游戏当前没有运行，先把游戏开起来再点。",
+            GameKeySendStatus.GameWindowNotFound =>
+                "找到游戏进程了，但没有可用的游戏窗口。切回游戏画面后再试一次。",
+            GameKeySendStatus.SendInputFailed =>
+                "按键没能送进游戏。如果游戏是以管理员身份运行的，请也用管理员身份启动 JASM。",
+            _ => "按键没能送进游戏。"
+        };
+
+        App.GetService<NotificationManager>().ShowNotification("发送按键失败", message, TimeSpan.FromSeconds(6));
+    }
 
     private void KeySwapToggle_Click(object sender, RoutedEventArgs e)
     {
