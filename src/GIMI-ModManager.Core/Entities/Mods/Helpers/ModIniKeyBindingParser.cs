@@ -484,21 +484,13 @@ public class ModIniKeyBindingEntry
     /// <summary>描述文本（从注释提取），如 "切换头发"</summary>
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>UI 显示的标签：去掉 "Key" 前缀的段名，如 "[KeySwapTextures]" → "SwapTextures"</summary>
-    public string DisplayLabel
-    {
-        get
-        {
-            var name = SectionName.Trim('[', ']');
-            if (name.StartsWith("Key", StringComparison.OrdinalIgnoreCase))
-            {
-                name = name[3..];
-                if (name.StartsWith(' '))
-                    name = name[1..];
-            }
-            return name;
-        }
-    }
+    /// <summary>
+    /// UI 显示的标签：段名去掉方括号与 "Key" 前缀后翻译成中文，
+    /// 如 "[KeySwapTextures]" → "切换贴图"、"[KeyShoes]" → "鞋子"、"[Keyxiezi]" → "鞋子"。
+    /// 词表里没有的段名原样返回（详见 <see cref="KeyBindingLabelLocalizer"/>）。
+    /// 原始段名保存在 <see cref="SectionName"/>，调试面板照旧用它，不受翻译影响。
+    /// </summary>
+    public string DisplayLabel => KeyBindingLabelLocalizer.LocalizeSectionName(SectionName);
 
     /// <summary>是否为方向键（UI 层用图标而非文字显示）</summary>
     public bool IsArrowKey { get; set; }
