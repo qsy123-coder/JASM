@@ -18,6 +18,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.ModExport;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
+using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels;
@@ -138,6 +139,9 @@ public partial class App : Application
                 services.AddSingleton<ElevatorService>();
                 services.AddSingleton<GenshinProcessManager>();
                 services.AddSingleton<ThreeDMigtoProcessManager>();
+
+                // 点击按键徽章 → 合成按键发给游戏（见 GameKeySender 的注释：切前台必须在同步段做）
+                services.AddSingleton<IGameKeySender, GameKeySender>();
 
                 services.AddSingleton<UpdateChecker>();
                 services.AddSingleton<AutoUpdaterService>();
