@@ -771,4 +771,12 @@ public partial class ModPaneFieldsKeySwapVm : ObservableObject
     [ObservableProperty] private string? _backwardHotkey;
     [ObservableProperty] private string? _type;
     [ObservableProperty] private string _variationsCount = "Unknown";
+
+    /// <summary>
+    /// 只给界面展示用的段名：把含方括号的原始段名翻译成中文，如 "[KeySwapTextures]" → "切换贴图"。
+    /// 注意不要改成直接本地化 <see cref="SectionKey"/> —— 它是回写 ini 的数据源
+    /// （见 ModPaneVM 保存逻辑），翻译后会写坏 mod 的 ini。
+    /// </summary>
+    public string SectionKeyDisplay =>
+        Core.Entities.Mods.Helpers.KeyBindingLabelLocalizer.LocalizeSectionName(SectionKey);
 }
