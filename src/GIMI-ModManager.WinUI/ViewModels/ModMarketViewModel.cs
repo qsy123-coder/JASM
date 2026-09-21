@@ -44,6 +44,21 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private bool _isEmpty;
 
+    /// <summary>
+    /// 空状态那一屏显示什么。成功但 0 条是「没有找到 Mod」,加载失败是错误原因 ——
+    /// 之前失败时只写了 StatusMessage,而那个文案只在 IsInitialLoading 期间可见,
+    /// 于是整片区域全空、连重试按钮都没有。失败的可见性必须落在这一个属性上。
+    /// </summary>
+    [ObservableProperty]
+    private string _emptyStateMessage = "没有找到 Mod";
+
+    /// <summary>true = 当前这批数据来自 COS 兜底快照(Supabase 网关不可用)。</summary>
+    [ObservableProperty]
+    private bool _isDegraded;
+
+    [ObservableProperty]
+    private string _degradedMessage = string.Empty;
+
     // ─── Filters / Sort ────────────────────────────────────────
 
     [ObservableProperty]
@@ -185,6 +200,10 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     {
         _currentPage = 1;
         Mods.Clear();
+        // 横幅描述的是「当前这一屏数据」。数据都清了,横幅也必须跟着走,
+        // 否则会出现「快照模式下加载失败 → 空白页 + 快照横幅」这种自相矛盾的画面。
+        IsDegraded = false;
+        DegradedMessage = string.Empty;
         await LoadModsAsync(false);
     }
 
@@ -253,6 +272,14 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
             var mods = result.Mods;
             var total = result.TotalCount;
 
+            // 服务层把异常全收敛成 ErrorMessage 返回(它自己不抛),所以「失败」在这里而不在 catch 里。
+            // 必须显式判一次:否则失败会被当成「成功但 0 条」,界面显示"没有找到 Mod",真相被盖掉。
+            if (result.ErrorMessage is { Length: > 0 } error)
+            {
+                ShowLoadFailure(error, append);
+                return;
+            }
+
             if (!append) Mods.Clear();
             foreach (var m in mods)
             {
@@ -270,11 +297,17 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 
             IsEmpty = Mods.Count == 0;
             StatusMessage = IsEmpty ? "没有找到 Mod" : string.Empty;
+            EmptyStateMessage = IsEmpty ? "没有找到 Mod" : string.Empty;
+
+            // 快照降级是「能用」而不是「完美」—— 用横幅说明数据来源与快照时间,
+            // 别让用户以为几百条 mod 在一夜之间全被删了。
+            IsDegraded = result.IsFromSnapshot;
+            DegradedMessage = BuildDegradedMessage(result);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to load mods");
-            StatusMessage = $"加载失败：{ex.Message}";
+            ShowLoadFailure($"加载失败：{ex.Message}", append);
         }
         finally
         {
@@ -288,5 +321,41 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
                 _ = ReloadModsAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// 失败必须看得见。列表为空时把原因写进空状态区(那一屏带重试按钮);
+    /// 已经有卡片时(「加载更多」失败)空状态区是收起的,只能靠通知,
+    /// 但两条路都不能静默 —— 这正是这次事故里表现成「整片空白」的根因。
+    /// </summary>
+    private void ShowLoadFailure(string message, bool append)
+    {
+        _logger.Warning("Mod 市场加载失败:{Message}", message);
+
+        StatusMessage = message;
+        EmptyStateMessage = message;
+        IsEmpty = Mods.Count == 0;
+
+        // 这一页已经失败了,别让滚动事件反复重试同一页(那只会刷满日志)。
+        // 重试按钮/切分类都会走重载,HasMorePages 会按新结果重算,不会卡死。
+        if (append) HasMorePages = false;
+
+        if (Mods.Count > 0)
+            _notificationManager.ShowNotification("Mod 市场", message, TimeSpan.FromSeconds(6));
+    }
+
+    /// <summary>
+    /// 降级横幅的正文。时刻取快照的 Last-Modified 并换算到本地时区 ——
+    /// 用户关心的是"这堆数据有多旧",不是 UTC。
+    /// </summary>
+    private static string BuildDegradedMessage(ModMarketResult result)
+    {
+        if (!result.IsFromSnapshot) return string.Empty;
+
+        var when = result.SnapshotGeneratedAt is { } generatedAt
+            ? generatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+            : "未知时间";
+
+        return $"Supabase 暂不可用，当前显示 {when} 的数据快照";
     }
 }
