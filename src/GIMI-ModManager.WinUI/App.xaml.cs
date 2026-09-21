@@ -17,6 +17,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.ModExport;
 using GIMI_ModManager.WinUI.Services.ModHandling;
+using GIMI_ModManager.WinUI.Services.ModMarket;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModEnv;
@@ -252,6 +253,19 @@ public partial class App : Application
                         .WaitAndRetryAsync(Backoff.DecorrelatedJitterBackoffV2(
                             TimeSpan.FromMilliseconds(500), 3, null, true))
                 );
+
+                // Mod 市场兜底快照(COS 上的 gzip 对象)。必须是独立 client:
+                // "Supabase" client 的默认头里带着 anon key,拿它去请求 COS 等于把密钥发到别人域名上。
+                // 刻意不挂 Polly 重试:快照服务自己已有 60s 失败冷却,叠加重试只会拉长卡顿。
+                services.AddHttpClient(ModMarketSnapshotService.HttpClientName, client =>
+                    {
+                        // 对象本身就是 .gz,所以刻意不开 AutomaticDecompression ——
+                        // 多解一层只会得到乱码。解压由 ModMarketSnapshotService 里的 GZipStream 负责。
+                        client.DefaultRequestHeaders.Add("Accept", "*/*");
+                        client.Timeout = TimeSpan.FromSeconds(20); // 约 500KB;超时即进冷却,不会挂住 UI
+                    })
+                    .AddHttpMessageHandler<HttpLoggerHandler>();
+                services.AddSingleton<ModMarketSnapshotService>();
 
 
                 // Game Data Sync HttpClient
