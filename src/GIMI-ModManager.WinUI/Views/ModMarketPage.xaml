@@ -218,12 +218,28 @@
 
             <!-- Content Area -->
             <Grid Grid.Row="1">
-                <ScrollViewer x:Name="CardScrollViewer"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled"
-                              VerticalContentAlignment="Top"
-                              ViewChanged="ScrollViewer_ViewChanged">
-                    <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- 降级横幅:Supabase 网关不可用时,下面这些卡片来自 COS 兜底快照。
+                     必须放在这一层 —— 不能塞进下面那个"初始加载"面板,它在非初始加载时整体 Collapsed,
+                     而快照模式下滚动翻页时正是非初始加载状态。 -->
+                <InfoBar Grid.Row="0"
+                         IsClosable="False"
+                         Severity="Warning"
+                         Title="离线快照模式"
+                         Message="{x:Bind ViewModel.DegradedMessage, Mode=OneWay}"
+                         IsOpen="{x:Bind ViewModel.IsDegraded, Mode=OneWay}" />
+
+                <Grid Grid.Row="1">
+                    <ScrollViewer x:Name="CardScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalContentAlignment="Top"
+                                  ViewChanged="ScrollViewer_ViewChanged">
+                        <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -240,24 +256,32 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                         </Grid>
-                </ScrollViewer>
+                    </ScrollViewer>
 
-                <!-- 首次加载/重载指示器:仅初始加载时显示在顶部 -->
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"
-                            Visibility="{x:Bind ViewModel.IsInitialLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                    <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
-                    <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                               HorizontalAlignment="Center" Margin="0,4" FontSize="12"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
+                    <!-- 首次加载/重载指示器:仅初始加载时显示在顶部 -->
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"
+                                Visibility="{x:Bind ViewModel.IsInitialLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                        <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                                   HorizontalAlignment="Center" Margin="0,4" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
 
-                <Grid Background="#F5F7FA"
-                      Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
-                               FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="没有找到 Mod" />
+                    <!-- 空状态。文案绑 EmptyStateMessage(而不是写死):加载失败时这里显示失败原因 + 重试,
+                         之前失败只写了 StatusMessage,而那个文案仅在初始加载期间可见,结果是一片空白。 -->
+                    <Grid Background="#F5F7FA"
+                          Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="480">
+                            <TextBlock HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                                       FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="{x:Bind ViewModel.EmptyStateMessage, Mode=OneWay}" />
+                            <Button Content="重试" HorizontalAlignment="Center" Margin="0,12,0,0"
+                                    CornerRadius="6"
+                                    Command="{x:Bind ViewModel.RefreshCommand}" />
+                        </StackPanel>
+                    </Grid>
+
                 </Grid>
-
             </Grid>
         </Grid>
 
