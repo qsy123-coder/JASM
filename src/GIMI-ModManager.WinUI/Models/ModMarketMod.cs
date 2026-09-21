@@ -1,13 +1,18 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GIMI_ModManager.Core.ModMarket;
 
 namespace GIMI_ModManager.WinUI.Models;
 
 /// <summary>
 /// Represents a mod listing from the Supabase mods table.
 /// Maps to the "mods" table in the remote Supabase database.
+///
+/// 同时隐式实现 <see cref="IMarketModRow"/>：属性名与类型恰好一一对应，
+/// 所以快照降级路径可以直接对这同一批对象跑本地查询引擎，零映射、零 DTO 重复。
+/// 若将来改动本类的属性名/类型，编译器会在这里报错 —— 那正是提醒别把两条路径拆散。
 /// </summary>
-public class ModMarketMod
+public class ModMarketMod : IMarketModRow
 {
     [JsonPropertyName("id")]
     public Guid Id { get; set; }
