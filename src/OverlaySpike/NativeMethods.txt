@@ -1,0 +1,8 @@
+RegisterHotKey
+UnregisterHotKey
+GetWindowLongPtr
+SetWindowLongPtr
+GetForegroundWindow
+ShowWindow
+IsWindowVisible
+SetWindowPos
