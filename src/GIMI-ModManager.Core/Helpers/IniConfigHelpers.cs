@@ -38,13 +38,11 @@ public static class IniConfigHelpers
     {
         if (IsComment(line)) return null;
 
-        var split = line.Split('=');
+        // 只按**第一个** '=' 切：值本身可能含 '='。3dmigoto 里 `key = no_modifiers =` 就是绑 '=' 键，
+        // 旧写法 Split('=') 再把后半段拼回去会把 '=' 吃掉，值变成 "no_modifiers"（按键名就废了）。
+        var split = line.Split('=', 2);
 
-        if (split.Length <= 2) return split.Length != 2 ? null : split[1].Trim();
-
-
-        split[1] = string.Join("", split.Skip(1));
-        return split[1].Trim();
+        return split.Length != 2 ? null : split[1].Trim();
     }
 
     public static string? GetIniKey(string line)
