@@ -176,6 +176,9 @@ public sealed partial class ModPane : UserControl
                 "游戏当前没有运行，先把游戏开起来再点。",
             GameKeySendStatus.GameWindowNotFound =>
                 "找到游戏进程了，但没有可用的游戏窗口。切回游戏画面后再试一次。",
+            GameKeySendStatus.NeedsElevation =>
+                "游戏正以管理员身份运行，Windows 不允许 JASM 把按键送进去。"
+                + "请关掉 JASM，用「以管理员身份运行」重新打开再点一次（游戏不用重启）。",
             GameKeySendStatus.SendInputFailed =>
                 "按键没能送进游戏。如果游戏是以管理员身份运行的，请也用管理员身份启动 JASM。",
             _ => "按键没能送进游戏。"
