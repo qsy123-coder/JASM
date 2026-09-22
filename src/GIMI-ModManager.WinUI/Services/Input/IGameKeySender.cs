@@ -22,8 +22,13 @@ public enum GameKeySendStatus
     GameWindowNotFound,
 
     /// <summary>
-    /// SendInput 插入的事件数少于请求数（典型原因：目标游戏以管理员运行，未提权的 JASM 被 UIPI 拦下；
-    /// 或反作弊拦截合成输入）。
+    /// 目标游戏以管理员身份运行（完整性级别高于 JASM），UIPI 不允许把输入注入进去 ——
+    /// 这种情况**发也白发**，所以发之前就先拦下，让用户用管理员身份启动 JASM。
+    /// </summary>
+    NeedsElevation,
+
+    /// <summary>
+    /// SendInput 插入的事件数少于请求数（典型原因：反作弊拦截合成输入；或完整性级别判断拿不到时的兜底）。
     /// </summary>
     SendInputFailed
 }
