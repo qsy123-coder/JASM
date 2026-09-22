@@ -5,8 +5,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Helpers;
+using GIMI_ModManager.WinUI.Services.Input;
 using Microsoft.UI.Xaml;
 using Serilog;
+using Windows.Win32.Foundation;
 
 namespace GIMI_ModManager.WinUI.Services;
 
@@ -23,6 +25,15 @@ public partial class ElevatorService : ObservableRecipient
     [ObservableProperty] private ElevatorStatus _elevatorStatus = ElevatorStatus.NotRunning;
     [ObservableProperty] private bool _canStartElevator;
     private Process? _elevatorProcess;
+
+    /// <summary>
+    /// 磁盘上 Elevator.exe 的 FileVersion（<see cref="Initialize"/> 里读一次缓存），
+    /// 以及「它认不认带目标窗口的刷新命令」。正在运行的 exe 无法被覆盖（文件被锁），
+    /// 所以磁盘上的版本 == 正在跑的那个进程的版本。
+    /// </summary>
+    private string? _elevatorFileVersion;
+
+    private bool _supportsTargetedRefresh;
 
     public string? ErrorMessage { get; private set; }
 
@@ -44,6 +55,11 @@ public partial class ElevatorService : ObservableRecipient
         if (Path.Exists(elevatorPath))
         {
             _logger.Debug(ElevatorProcessName + " found at: " + elevatorPath);
+            _elevatorFileVersion = ReadElevatorFileVersion(elevatorPath);
+            _supportsTargetedRefresh = ElevatorRefreshProtocol.SupportsTargetedRefresh(_elevatorFileVersion);
+            _logger.Information(
+                "[ElevatorService] {ProcessName} FileVersion={FileVersion}，支持带目标窗口的刷新={SupportsTargetedRefresh}",
+                ElevatorProcessName, _elevatorFileVersion ?? "(读不到)", _supportsTargetedRefresh);
             App.MainWindow.DispatcherQueue.TryEnqueue(() => CanStartElevator = true);
             _IsInitialized = true;
             return;
@@ -53,6 +69,23 @@ public partial class ElevatorService : ObservableRecipient
         ErrorMessage = "Elevator.exe not found";
         ElevatorStatus = ElevatorStatus.InitializingFailed;
         App.MainWindow.DispatcherQueue.TryEnqueue(() => CanStartElevator = false);
+    }
+
+    /// <summary>
+    /// 读 Elevator.exe 的 FileVersion。读不到（没有版本信息 / 打不开文件）返回 null ——
+    /// 调用方 <see cref="ElevatorRefreshProtocol.SupportsTargetedRefresh"/> 按「旧版」处理，即保守地不改既有行为。
+    /// </summary>
+    private string? ReadElevatorFileVersion(string elevatorPath)
+    {
+        try
+        {
+            return FileVersionInfo.GetVersionInfo(elevatorPath).FileVersion;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _logger.Debug(e, "[ElevatorService] 读 {Path} 的版本信息失败", elevatorPath);
+            return null;
+        }
     }
 
     public bool StartElevator()
@@ -195,28 +228,178 @@ public partial class ElevatorService : ObservableRecipient
         }
     }
 
+    /// <summary>
+    /// 刷新当前游戏（模拟 F10）。名字沿用历史命名，实现已从「只刷原神」扩成「刷 ini 里配的那个游戏」；
+    /// 公开 API 的整体改名（约 12 个文件）单独一次做。
+    ///
+    /// 助手版本够新就带上目标窗口（原神 / 鸣潮都能刷），否则退回历史命令 <c>"0"</c>
+    /// （助手内部写死原神、不回执）。
+    /// </summary>
     private async Task InternalRefreshGenshinMods()
     {
+        var commandSent = false;
+
         try
         {
-            await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.Out);
-            await pipeClient.ConnectAsync(TimeSpan.FromSeconds(5), default);
-            await using var writer = new StreamWriter(pipeClient);
-            _logger.Debug("Sending command: {Command}", nameof(InternalRefreshGenshinMods));
-            await writer.WriteLineAsync("0");
-            await writer.FlushAsync();
-            _logger.Debug("Done");
-            App.MainWindow.DispatcherQueue.EnqueueAsync(async () =>
-            {
-                await Task.Delay(500);
-                App.MainWindow.SetForegroundWindow();
-                App.MainWindow.Activate();
-            });
+            commandSent = _supportsTargetedRefresh
+                ? await RefreshTargetedAsync().ConfigureAwait(false)
+                : await RefreshLegacyAsync().ConfigureAwait(false);
         }
-        catch (TimeoutException e)
+        catch (Exception e) when (e is IOException or TimeoutException)
         {
-            _logger.Error(e, "Failed to Refresh Genshin Mods");
+            // 服务端每轮连接都会重建管道实例，两次之间有一段没有实例的空窗，
+            // 此时 ConnectAsync 抛的是 FileNotFoundException（IOException 的子类）而不是 TimeoutException。
+            // 原来只 catch TimeoutException，于是刷新任务 fault，被上层显示成「应用预设失败」——是假失败。
+            _logger.Warning(e, "[ElevatorService] 刷新失败：连不上 {ProcessName} 或它中途断开", ElevatorProcessName);
         }
+
+        // 连都没连上就别抢用户的焦点
+        if (!commandSent) return;
+
+        // 刷新完把焦点还给 JASM。**必须排在读完回执之后**：这次 activate（自身还延迟 500ms）
+        // 若与助手的前台校验重叠，助手回读到的前台窗口就是 JASM，会把本来能刷新的场景判成「没抢到前台」而拒发 F10。
+        App.MainWindow.DispatcherQueue.EnqueueAsync(async () =>
+        {
+            await Task.Delay(500);
+            App.MainWindow.SetForegroundWindow();
+            App.MainWindow.Activate();
+        });
+    }
+
+    /// <summary>
+    /// 历史刷新命令 <c>"0"</c>：给版本过旧的助手用，单向无回执，助手内部写死目标（原神）。
+    /// 返回「命令是否已经写进管道」。
+    /// </summary>
+    private async Task<bool> RefreshLegacyAsync()
+    {
+        await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.Out);
+        await pipeClient.ConnectAsync(TimeSpan.FromSeconds(5), default);
+        await using var writer = new StreamWriter(pipeClient);
+        _logger.Debug("Sending command: {Command}", ElevatorRefreshProtocol.LegacyRefreshCommand);
+        await writer.WriteLineAsync(ElevatorRefreshProtocol.LegacyRefreshCommand);
+        await writer.FlushAsync();
+        _logger.Debug("Done");
+        return true;
+    }
+
+    /// <summary>
+    /// 带目标窗口的刷新命令 <c>"2"</c>：助手负责还原窗口 → 切前台 → 回读校验 → 发 F10，并回执结果。
+    ///
+    /// 目标（进程名 → 窗口句柄）在这里解析、不交给助手：只有主程序知道 d3dx.ini 在哪，
+    /// 而且窗口必须用 EnumWindows 现找。解析不出来时**仍然发 <c>"0"</c>** ——
+    /// 老路径下原神照旧能刷新，不能因为另一个游戏没配好就把它一起弄丢。
+    /// </summary>
+    private async Task<bool> RefreshTargetedAsync()
+    {
+        var targetWindow = ResolveTargetWindow(out var failureReason);
+        if (targetWindow is not { } window)
+        {
+            _logger.Warning("[ElevatorService] {Reason}；退回历史命令 {Command}（只能刷新助手内部写死的原神）",
+                failureReason, ElevatorRefreshProtocol.LegacyRefreshCommand);
+            return await RefreshLegacyAsync().ConfigureAwait(false);
+        }
+
+        await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
+        await pipeClient.ConnectAsync(TimeSpan.FromSeconds(5), default).ConfigureAwait(false);
+
+        using var reader = new StreamReader(pipeClient);
+        await using var writer = new StreamWriter(pipeClient) { AutoFlush = true };
+
+        _logger.Debug("[ElevatorService] 发送带目标的刷新命令 {Command}，目标窗口 {Window}",
+            ElevatorRefreshProtocol.TargetedRefreshCommand, WindowProcessQuery.FormatWindow(window));
+
+        // HWND → nint 走的是 CsWin32 生成的 implicit operator IntPtr，所以这里不用 unsafe
+        foreach (var line in ElevatorRefreshProtocol.BuildTargetedRefreshPayload(window))
+        {
+            await writer.WriteLineAsync(line).ConfigureAwait(false);
+        }
+
+        // 到这里命令已经送出去了：即使回执读不到，也按「刷新已触发」把焦点还给 JASM
+        await LogRefreshReplyAsync(reader).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// 等助手的回执并记日志。读超时只记 Warning、不往外抛 ——
+    /// 一来旧版助手收到新命令是**静默无视**（不回话也不断开），不设超时就会一直卡住；
+    /// 二来 <c>_refreshTask</c> 一旦卡在未完成状态，之后每次刷新都只会复用那个卡死的 task。
+    /// </summary>
+    private async Task LogRefreshReplyAsync(StreamReader reader)
+    {
+        using var readTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+        string? reply;
+        try
+        {
+            reply = await reader.ReadLineAsync(readTimeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Warning("[ElevatorService] {ProcessName} 没有在 {Seconds}s 内回执刷新命令 {Command}；"
+                            + "若游戏没有刷新，说明它可能版本过旧，请用含新版助手的完整包更新 JASM",
+                ElevatorProcessName, 3, ElevatorRefreshProtocol.TargetedRefreshCommand);
+            return;
+        }
+
+        switch (ElevatorRefreshProtocol.ParseReply(reply, out var failureReason))
+        {
+            case ElevatorRefreshReply.Ok:
+                _logger.Debug("[ElevatorService] {ProcessName} 已把目标切到前台并发出 F10", ElevatorProcessName);
+                break;
+            case ElevatorRefreshReply.Failure:
+                _logger.Warning("[ElevatorService] {ProcessName} 拒绝发送 F10：{Reason}",
+                    ElevatorProcessName, failureReason ?? "(未说明原因)");
+                break;
+            default:
+                _logger.Warning("[ElevatorService] {ProcessName} 没有回执刷新命令 {Command}（可能版本过旧或已退出）",
+                    ElevatorProcessName, ElevatorRefreshProtocol.TargetedRefreshCommand);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 解析「这次要刷新的游戏窗口」：d3dx.ini 里的 target 进程名 → 进程 → 可见顶层窗口。
+    /// 任何一步失败都返回 null 并写出 <paramref name="failureReason"/>（日志要能一眼看出卡在哪一步）。
+    ///
+    /// 路径取自 <see cref="ISkinManagerService"/> 而不是 <c>ModManagerOptions</c>：
+    /// 这个服务本来就持有它，不必为一个只读路径再往构造函数加依赖。
+    /// </summary>
+    private HWND? ResolveTargetWindow(out string failureReason)
+    {
+        var gimiRootFolderPath = _skinManagerService.ThreeMigotoRootfolder;
+        var modsFolderPath = _skinManagerService.ActiveModsFolderPath;
+
+        var iniPath = D3dxIniTargetResolver.ResolveD3dxIniPath(gimiRootFolderPath, modsFolderPath);
+        if (iniPath is null)
+        {
+            failureReason = $"找不到 {D3dxIniTargetResolver.D3dxIniFileName}"
+                            + $"（GIMI 根目录={gimiRootFolderPath}，Mods 目录={modsFolderPath}）";
+            return null;
+        }
+
+        var processName = D3dxIniTargetResolver.ReadTargetProcessName(iniPath);
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            failureReason = $"{iniPath} 里没有可用的 target";
+            return null;
+        }
+
+        var processIds = WindowProcessQuery.GetProcessIds(processName);
+        if (processIds.Length == 0)
+        {
+            failureReason = $"目标进程 {processName} 没有运行";
+            return null;
+        }
+
+        var gameWindow = WindowProcessQuery.FindGameWindow(processIds);
+        if (gameWindow.IsNull)
+        {
+            failureReason = $"目标进程 {processName} 没有可见的顶层窗口";
+            return null;
+        }
+
+        failureReason = string.Empty;
+        return gameWindow;
     }
 
     /// <summary>
