@@ -10,3 +10,7 @@ EnumWindows
 IsWindowVisible
 IsIconic
 GetForegroundWindow
+OpenProcess
+OpenProcessToken
+GetTokenInformation
+CloseHandle
