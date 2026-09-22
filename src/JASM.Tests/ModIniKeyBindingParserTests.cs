@@ -219,6 +219,113 @@ public class ModIniKeyBindingParserTests
         Assert.Equal(a.KeyCode, b.KeyCode);
     }
 
+    // ── `key =` 行写裸符号键 / 裸显示名（实测 161 个 ini 里的主流写法）──
+
+    [Fact]
+    public void ParsesBareSymbolKeyWithModifier()
+    {
+        // 用户报的「Alt + . 点不了」就是这条：ini 裸写 '.'，而词表里只有 VK_OEM_PERIOD，
+        // 于是解析退化成 KeyCode=null、徽章灰掉。
+        var entry = Assert.Single(Parse("""
+            [KeyArmThing]
+            condition = $object_detected
+            key = alt .
+            type = cycle
+            """));
+
+        Assert.Equal("[KeyArmThing]", entry.SectionName);
+        Assert.Equal("Alt+.", entry.KeyValue);
+        Assert.False(entry.IsArrowKey);
+        Assert.Equal((ushort)0xBE, entry.KeyCode);
+        Assert.Equal(new ushort[] { 0x12 }, entry.ModifierKeyCodes);
+        Assert.True(entry.CanSendKey);
+    }
+
+    [Theory]
+    [InlineData("key = .", ".", 0xBE)]
+    [InlineData("key = /", "/", 0xBF)]
+    [InlineData("key = ,", ",", 0xBC)]
+    [InlineData("key = ;", ";", 0xBA)]
+    [InlineData("key = [", "[", 0xDB)]
+    [InlineData("key = ]", "]", 0xDD)]
+    [InlineData("key = \\", "\\", 0xDC)]
+    [InlineData("key = '", "'", 0xDE)]
+    [InlineData("key = Home", "Home", 0x24)]
+    [InlineData("key = END", "End", 0x23)]
+    public void ParsesBareSymbolAndNamedKeys(string line, string expectedKeyValue, int expectedKeyCode)
+    {
+        var entry = Assert.Single(Parse($"""
+            [KeyThing]
+            {line}
+            """));
+
+        Assert.Equal(expectedKeyValue, entry.KeyValue);
+        Assert.Equal((ushort)expectedKeyCode, entry.KeyCode);
+        Assert.Empty(entry.ModifierKeyCodes);
+        Assert.True(entry.CanSendKey);
+    }
+
+    [Fact]
+    public void ParsesNoModifiersPrefixWithoutTreatingItAsAModifier()
+    {
+        // `no_modifiers` 既不是 ctrl/shift/alt，也不是 no_ctrl/no_shift/no_alt。
+        // 它只是「不按修饰键」的说明词，不能进 ModifierKeyCodes（否则会凭空按下修饰键）。
+        var entry = Assert.Single(Parse("""
+            [KeyBoobsize]
+            key = no_modifiers /
+            """));
+
+        Assert.Equal("/", entry.KeyValue);
+        Assert.Equal((ushort)0xBF, entry.KeyCode);
+        Assert.Empty(entry.ModifierKeyCodes);
+        Assert.True(entry.CanSendKey);
+    }
+
+    [Fact]
+    public void ParsesEqualsKeyWhenTheValueItselfContainsAnEqualsSign()
+    {
+        // `key = no_modifiers =` 是绑 '=' 键。值里含 '='，GetIniValue 只按第一个 '=' 切才不会吞掉它。
+        var entry = Assert.Single(Parse("""
+            [KeySwitch]
+            key = no_modifiers =
+            """));
+
+        Assert.Equal("=", entry.KeyValue);
+        Assert.Equal((ushort)0xBB, entry.KeyCode);
+        Assert.Empty(entry.ModifierKeyCodes);
+        Assert.True(entry.CanSendKey);
+    }
+
+    [Fact]
+    public void MarkedUnsendableWhenTheLineHasOnlyModifiers()
+    {
+        // `key = ctrl alt` 里没有主键，合成不出一次按键 —— 保持不可发送，但显示照旧。
+        var entry = Assert.Single(Parse("""
+            [KeyHelp]
+            key = ctrl alt
+            """));
+
+        Assert.Equal("ctrl alt", entry.KeyValue);
+        Assert.Null(entry.KeyCode);
+        Assert.False(entry.CanSendKey);
+    }
+
+    [Fact]
+    public void MarkedUnsendableForMouseButtons()
+    {
+        // 鼠标键是**有意**不发的：合成点击会打在光标当前位置，风险比发键盘大。
+        // 显示与修饰键仍要正确，用户才知道这个 mod 期望的是 Alt+左键。
+        var entry = Assert.Single(Parse("""
+            [KeyClick]
+            key = no_ctrl no_shift alt VK_LBUTTON
+            """));
+
+        Assert.Equal("Alt+鼠标左键", entry.KeyValue);
+        Assert.Null(entry.KeyCode);
+        Assert.Equal(new ushort[] { 0x12 }, entry.ModifierKeyCodes);
+        Assert.False(entry.CanSendKey);
+    }
+
     private static List<ModIniKeyBindingEntry> Parse(string iniContent)
         => ModIniKeyBindingParser.ParseKeyBindingsFromText(iniContent);
 }
