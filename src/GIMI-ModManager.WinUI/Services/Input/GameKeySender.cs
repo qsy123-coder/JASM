@@ -45,14 +45,6 @@ public sealed class GameKeySender : IGameKeySender
 
     private const string D3dxIniFileName = "d3dx.ini";
 
-    // 危险组合键用到的键码（VK 常量不会被 CsWin32 生成成完备枚举，这里按需声明）
-    private const ushort VkMenu = 0x12;   // Alt
-    private const ushort VkLWin = 0x5B;
-    private const ushort VkRWin = 0x5C;
-    private const ushort VkF4 = 0x73;
-    private const ushort VkTab = 0x09;
-    private const ushort VkEscape = 0x1B;
-
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
 
@@ -68,7 +60,7 @@ public sealed class GameKeySender : IGameKeySender
     public async Task<GameKeySendStatus> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
         CancellationToken ct = default)
     {
-        if (IsBlockedChord(virtualKey, modifierKeyCodes))
+        if (KeyChordGuard.IsBlockedChord(virtualKey, modifierKeyCodes))
         {
             _logger.Warning("[GameKeySender] 拒绝发送危险组合键 vk=0x{VirtualKey:X2} mods={Modifiers}",
                 virtualKey, string.Join(",", modifierKeyCodes));
@@ -180,19 +172,6 @@ public sealed class GameKeySender : IGameKeySender
     }
 
     // ── 目标定位 ────────────────────────────────────────────────
-
-    /// <summary>
-    /// 危险组合键护栏：写了 <c>key = alt F4</c> 的 mod 照发会把用户的游戏直接关掉。
-    /// </summary>
-    private static bool IsBlockedChord(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes)
-    {
-        // 没按 Alt 时：单发 Win 键也要拦（会把开始菜单 / 游戏栏叫出来）
-        if (!modifierKeyCodes.Contains(VkMenu))
-            return virtualKey is VkLWin or VkRWin;
-
-        // 按着 Alt：Alt+F4 关游戏，Alt+Tab / Alt+Esc 把焦点抢走
-        return virtualKey is VkF4 or VkTab or VkEscape;
-    }
 
     /// <summary>d3dx.ini 就在用户已配好的 GIMI 根目录正下方（与 Mods 同级）；取第一个真实存在的。</summary>
     private string? ResolveD3dxIniPath(ModManagerOptions options)
