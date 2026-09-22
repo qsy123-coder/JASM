@@ -10,6 +10,11 @@
 		<StripSymbols>true</StripSymbols>
 		<Platforms>x64</Platforms>
 		<BaseOutputPath></BaseOutputPath>
+		<!-- 能力标记，必须与 Core/Helpers/ElevatorRefreshProtocol.cs 的 MinimumFileVersionForTargetedRefresh 对齐：
+		     主程序靠这个版本号判断助手认不认 "2"（带目标窗口的刷新）命令。旧版 Elevator.exe 没有版本信息，
+		     读出来天然是 1.0.0.0，于是「低于 2.0.0.0」==「不认识 "2"」。
+		     注意正在运行的 exe 无法被覆盖（文件被锁），所以磁盘上的版本 == 正在跑的那个进程的版本。 -->
+		<FileVersion>2.0.0.0</FileVersion>
 	</PropertyGroup>
 
 	<ItemGroup>
