@@ -238,6 +238,8 @@ public static class KeyBindingLabelLocalizer
         ["armthing"] = "手臂配件",
         ["hideuid"] = "隐藏UID",
         ["boobsize"] = "胸部尺寸",
+        // "2nd layer" 里的数字把分词切成 "2" + "ndlayer"，逐词翻不出来，整串收
+        ["2ndlayer"] = "第二层",
     };
 
     /// <summary>英文词表（逐词匹配，大小写不敏感）</summary>
@@ -470,6 +472,93 @@ public static class KeyBindingLabelLocalizer
         ["shadow"] = "阴影",
         ["fog"] = "雾",
         ["alpha"] = "透明度",
+
+        // ── 实测补充 ──────────────────────────────────────
+        // 下面这批是扫本机真实 mod（247 个不重复段落名）后按缺口补的：补之前它们在面板上原样显示英文。
+        // 回归见 KeyBindingLabelLocalizerTests 的「实测补齐」两组，别把词删了。
+        ["clicked"] = "点击",
+        ["mouse"] = "鼠标",
+        ["drag"] = "拖拽",
+        ["menu"] = "菜单",
+        ["map"] = "地图",
+        ["slot"] = "插槽",
+        ["anim"] = "动画",
+        ["ani"] = "动画",   // 作者把 animation 写短了
+        ["animation"] = "动画",
+        ["speed"] = "速度",
+        ["scale"] = "缩放",
+        ["shape"] = "形状",
+        ["stat"] = "状态",
+        ["state"] = "状态",
+        ["position"] = "位置",
+        ["pos"] = "位置",
+        ["upper"] = "上部",
+        ["side"] = "侧面",
+        ["break"] = "破损",
+        ["costume"] = "服装",
+
+        ["armor"] = "护甲",
+        ["helm"] = "头盔",
+        ["casque"] = "头盔",       // 法语
+        ["crown"] = "王冠",
+        ["torso"] = "躯干",
+        ["ring"] = "戒指",
+        ["armlet"] = "臂环",
+        ["bracer"] = "护腕",
+        ["bracel"] = "手镯",       // 作者把 bracelet 写短了
+        ["brassard"] = "臂章",
+        ["brassards"] = "臂章",
+        ["shoe"] = "鞋子",
+        ["thorn"] = "荆棘",
+        ["thorns"] = "荆棘",
+        ["swords"] = "剑",
+        ["fin"] = "鳍",
+        ["fins"] = "鳍",
+        ["vine"] = "藤蔓",
+        ["star"] = "星星",
+        ["mermaid"] = "人鱼",
+        ["smol"] = "娇小",
+        ["pantsu"] = "内裤",
+        ["outer"] = "外层",
+        ["clothe"] = "衣物",
+        ["clothes"] = "衣物",
+        ["preg"] = "怀孕",
+        ["pregnant"] = "怀孕",
+        ["cum"] = "精液",
+        ["bukkake"] = "颜射",
+
+        // 法语段落名（Ceinture / Épaules / Tête / Couronne et cornes）
+        ["ceinture"] = "腰带",
+        ["epaule"] = "肩部",
+        ["epaules"] = "肩部",
+        ["tete"] = "头部",
+        ["couronne"] = "王冠",
+        ["corne"] = "角",
+        ["cornes"] = "角",
+        ["et"] = "与",             // 法语连词。只有驼峰切出来的 "Et" 会命中，不会误伤英文词
+
+        // 颜色：[KeyRed] 这类段名在实测里出现过，顺手补全同族
+        ["red"] = "红色",
+        ["blue"] = "蓝色",
+        ["green"] = "绿色",
+        ["yellow"] = "黄色",
+        ["purple"] = "紫色",
+        ["pink"] = "粉色",
+        ["orange"] = "橙色",
+        ["black"] = "黑色",
+        ["white"] = "白色",
+        ["gray"] = "灰色",
+        ["grey"] = "灰色",
+        ["gold"] = "金色",
+        ["silver"] = "银色",
+        ["brown"] = "棕色",
+
+        // 小写连写：全是小写字母，分词拆不出边界，只能整串收录
+        ["backflap"] = "后摆",
+        ["flappysleeve"] = "飘带袖",
+        ["innerclothes"] = "内衬",
+        ["outerclothe"] = "外衣",
+        ["armcloth"] = "手臂布料",
     };
 
     /// <summary>
@@ -564,5 +653,20 @@ public static class KeyBindingLabelLocalizer
         ["moban"] = "模板",
         ["shenti"] = "身体",
         ["pifu"] = "皮肤",
+
+        // ── 实测补充 ──
+        ["bihuan"] = "臂环",
+        ["diaozhui"] = "吊坠",
+        ["huahuan"] = "花环",
+        ["hubi"] = "护臂",
+        ["huwan"] = "护腕",
+        ["jiezhi"] = "戒指",
+        ["ruhuan"] = "乳环",
+        ["xionzhao"] = "胸罩",   // 作者把 xiongzhao 写成了 xionzhao
+        ["beidai"] = "背带",
+        ["shangban"] = "上半",
+        ["xiaban"] = "下半",
+        ["xiongdai"] = "胸带",
+        ["yinmao"] = "阴毛",
     };
 }
