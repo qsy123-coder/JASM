@@ -65,14 +65,12 @@ public class VirtualKeyMapTests
     }
 
     [Theory]
-    [InlineData("home")]
-    [InlineData("end")]
-    [InlineData("OEM_1")]
+    [InlineData("OEM_1")] // VK_OEM_1..7 只有 VK_ 前缀名，符号名已随显示名注册，前缀缩写没有
+    [InlineData("PRIOR")] // VK_PRIOR 同理：表里的显示名是 "PgUp"，不是 "PRIOR"
     [InlineData("Blorp")]
     public void Resolve_DoesNotGrowTheBareAliasSet(string keyName)
     {
-        // 旧表只给 VK_HOME / VK_END / VK_OEM_1..7 注册了带前缀的形式；裸别名必须继续原样回退。
-        // 这条最容易在加别名时被写坏。
+        // 词表里确实没有的名字仍要原样回退（显示不变 + 发不出去 + 徽章灰掉）。
         // ⚠️ 别把 "oem_period" 这类**已注册别名的小写**写进来：字典比较器是 OrdinalIgnoreCase，
         // 它命中 "OEM_PERIOD" 是正确行为（旧 MapKeyName 也是先 ToUpperInvariant 再 switch）。
         var definition = VirtualKeyMap.Resolve(keyName);
@@ -80,6 +78,41 @@ public class VirtualKeyMapTests
         Assert.Equal(keyName, definition.Display);
         Assert.Null(definition.VirtualKeyCode);
         Assert.False(definition.CanSend);
+    }
+
+    // ── 显示名即别名（裸写 `key = .` / `key = Home` 这类）──────────
+    //
+    // 不加这条时，表里只给 VK_HOME / VK_OEM_PERIOD 注册了带前缀的形式，而真实 mod 的 ini 写的是
+    // `key = Home`、`key = .`、`key = alt /` —— 解析退化成「显示原样、键码 null」，
+    // 徽章灰掉点不了。实测 161 个 ini / 432 条绑定里有 96 条是这个原因（符号键 + Home/End/PgUp/PgDn）。
+
+    [Theory]
+    [InlineData(".", 0xBE, ".")]
+    [InlineData(",", 0xBC, ",")]
+    [InlineData("-", 0xBD, "-")]
+    [InlineData("=", 0xBB, "=")]
+    [InlineData(";", 0xBA, ";")]
+    [InlineData("/", 0xBF, "/")]
+    [InlineData("`", 0xC0, "`")]
+    [InlineData("[", 0xDB, "[")]
+    [InlineData("\\", 0xDC, "\\")]
+    [InlineData("]", 0xDD, "]")]
+    [InlineData("'", 0xDE, "'")]
+    [InlineData("Home", 0x24, "Home")]
+    [InlineData("End", 0x23, "End")]
+    [InlineData("PgUp", 0x21, "PgUp")]
+    [InlineData("PgDn", 0x22, "PgDn")]
+    [InlineData("home", 0x24, "Home")] // 大小写不规范：归一到表里的写法（旧表原样回退成 "home"）
+    [InlineData("HOME", 0x24, "Home")]
+    [InlineData("END", 0x23, "End")]
+    public void Resolve_AcceptsTheBareDisplayNameAsAnAlias(string keyName, int expectedVirtualKeyCode,
+        string expectedDisplay)
+    {
+        var definition = VirtualKeyMap.Resolve(keyName);
+
+        Assert.Equal(expectedDisplay, definition.Display);
+        Assert.Equal((ushort)expectedVirtualKeyCode, definition.VirtualKeyCode);
+        Assert.True(definition.CanSend);
     }
 
     [Fact]
@@ -169,6 +202,45 @@ public class VirtualKeyMapTests
 
         Assert.Equal("F1", definition.Display);
         Assert.Equal((ushort)0x70, definition.VirtualKeyCode);
+    }
+
+    // ── 补齐旧表漏掉的键 ────────────────────────────────────────
+    //
+    // 这一批在实测的 432 条绑定里还没出现，属于「同一家族补齐」，免得下个 mod 又踩到同一类灰徽章。
+
+    [Theory]
+    [InlineData("F13", 0x7C)]
+    [InlineData("VK_F13", 0x7C)]
+    [InlineData("VK_F24", 0x87)]
+    [InlineData("VK_CAPITAL", 0x14)]
+    [InlineData("VK_NUMLOCK", 0x90)]
+    [InlineData("VK_SCROLL", 0x91)]
+    [InlineData("VK_SNAPSHOT", 0x2C)]
+    [InlineData("VK_PAUSE", 0x13)]
+    [InlineData("VK_APPS", 0x5D)]
+    [InlineData("VK_MULTIPLY", 0x6A)]
+    [InlineData("VK_ADD", 0x6B)]
+    [InlineData("VK_SUBTRACT", 0x6D)]
+    [InlineData("VK_DECIMAL", 0x6E)]
+    [InlineData("VK_DIVIDE", 0x6F)]
+    [InlineData("VK_OEM_8", 0xDF)]
+    [InlineData("VK_OEM_102", 0xE2)]
+    public void Resolve_MapsTheKeysTheOldTableMissed(string keyName, int expectedVirtualKeyCode)
+    {
+        var definition = VirtualKeyMap.Resolve(keyName);
+
+        Assert.Equal((ushort)expectedVirtualKeyCode, definition.VirtualKeyCode);
+        Assert.True(definition.CanSend);
+    }
+
+    [Fact]
+    public void Resolve_KeepsNumpadOperatorsDistinctFromTheMainKeyboard()
+    {
+        // 显示名带「小键盘」前缀就是为了不和主键盘区的 * + - . / 撞名
+        Assert.Equal("小键盘*", VirtualKeyMap.Resolve("VK_MULTIPLY").Display);
+        Assert.Equal("小键盘.", VirtualKeyMap.Resolve("VK_DECIMAL").Display);
+        Assert.Equal(".", VirtualKeyMap.Resolve("VK_OEM_PERIOD").Display);
+        Assert.Equal("-", VirtualKeyMap.Resolve("VK_OEM_MINUS").Display);
     }
 
     // ── 不可发送 ────────────────────────────────────────────────
