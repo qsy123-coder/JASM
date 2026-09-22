@@ -5,6 +5,8 @@ using GIMI_ModManager.WinUI.Models.Options;
 using Serilog;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Security;
+using Windows.Win32.System.Threading;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 using Windows.Win32.UI.WindowsAndMessaging;
 
@@ -20,12 +22,23 @@ namespace GIMI_ModManager.WinUI.Services.Input;
 /// <item><b>窗口句柄每次现找</b>（<c>EnumWindows</c>），不用 <c>Process.MainWindowHandle</c> ——
 /// 后者首次访问即缓存，游戏进出全屏 / 换分辨率重建窗口后拿到的句柄就陈旧了。</item>
 /// <item><b>只发键盘</b>：鼠标类绑定（<c>VK_LBUTTON</c> 等）在词表里就没有虚拟键码，UI 侧直接灰掉。</item>
+/// <item><b>完整性级别不够就别发</b>：游戏提权运行（XXMI 的 <c>d3dx.ini</c> 里 <c>require_admin = true</c>，
+/// 鸣潮就是）而 JASM 没提权时，UIPI 不允许把输入注入进去 —— 发送会「看起来成功」但游戏收不到，
+/// 用户只看到窗口切过去了、什么都没发生。所以在切前台之前先比两个进程的完整性级别，
+/// 级别不够直接返回 <see cref="GameKeySendStatus.NeedsElevation"/>。</item>
 /// </list>
 /// </summary>
 public sealed class GameKeySender : IGameKeySender
 {
     /// <summary>按下到抬起之间的保持时长。固定短按，不做「点一下按住、再点一下松开」。</summary>
     private const int HoldMilliseconds = 80;
+
+    /// <summary>Mandatory Integrity Control 的「中」级别 —— 本 app 的 manifest 是 asInvoker，不提权就是这个值。</summary>
+    private const uint MediumIntegrityRid = 0x2000;
+
+    /// <summary>本进程的完整性级别（低 0x1000 / 中 0x2000 / 高 0x3000）。进程生命周期内不变，读一次缓存。</summary>
+    private static readonly Lazy<uint> OwnIntegrityLevelRid =
+        new(() => TryReadIntegrityLevelRid((uint)Environment.ProcessId) ?? MediumIntegrityRid);
 
     /// <summary>切完前台后等焦点稳定，再发按键。</summary>
     private const int ForegroundSettleMilliseconds = 300;
@@ -99,6 +112,22 @@ public sealed class GameKeySender : IGameKeySender
                 return GameKeySendStatus.GameWindowNotFound;
             }
 
+            var gameProcessId = GetWindowProcessId(gameWindow);
+            var ownIntegrity = OwnIntegrityLevelRid.Value;
+            var gameIntegrity = TryReadIntegrityLevelRid(gameProcessId);
+
+            // UIPI 前置检查：目标进程级别更高就发不进去（而且发出去也「看起来成功」）。
+            // 放在切前台**之前** —— 既然注定送不到，就不要把用户的焦点从 JASM 抢走。
+            // 读不到级别（受保护进程等）时不拦，照常尝试发送。
+            if (gameIntegrity is { } targetIntegrity && targetIntegrity > ownIntegrity)
+            {
+                _logger.Warning(
+                    "[GameKeySender] 拒绝发送：目标进程 {ProcessName} 完整性级别 0x{TargetIntegrity:X4} "
+                    + "高于本进程 0x{OwnIntegrity:X4}，UIPI 会把注入的输入丢掉；需要以管理员身份运行 JASM",
+                    processName, targetIntegrity, ownIntegrity);
+                return GameKeySendStatus.NeedsElevation;
+            }
+
             if (PInvoke.IsIconic(gameWindow) != 0)
                 PInvoke.ShowWindow(gameWindow, SHOW_WINDOW_CMD.SW_RESTORE);
 
@@ -111,7 +140,11 @@ public sealed class GameKeySender : IGameKeySender
 
             await Task.Delay(ForegroundSettleMilliseconds, ct).ConfigureAwait(false);
 
-            var pressed = SendChord(virtualKey, modifierKeyCodes, keyUp: false);
+            // 真正送键那一刻的前台窗口：切前台没生效（或被别的窗口抢走）时，这行是唯一的线索
+            var foregroundWindow = PInvoke.GetForegroundWindow();
+
+            var keyCount = modifierKeyCodes.Count + 1;
+            var inserted = SendChord(virtualKey, modifierKeyCodes, keyUp: false);
             try
             {
                 // 抬起这一下**绝不能用 ct**：中途取消会让修饰键永远按着，游戏会一直以为 Alt 没松
@@ -119,17 +152,25 @@ public sealed class GameKeySender : IGameKeySender
             }
             finally
             {
-                if (!SendChord(virtualKey, modifierKeyCodes, keyUp: true))
+                if (SendChord(virtualKey, modifierKeyCodes, keyUp: true) == 0)
                     _logger.Warning("[GameKeySender] 抬起按键失败 vk=0x{VirtualKey:X2}", virtualKey);
             }
 
-            if (pressed)
+            _logger.Information(
+                "[GameKeySender] vk=0x{VirtualKey:X2} mods=[{Modifiers}] SendInput 插入 {Inserted}/{KeyCount} 个事件；"
+                + "目标窗口=0x{TargetWindow:X} 发送时前台窗口=0x{ForegroundWindow:X}"
+                + " 本进程完整性=0x{OwnIntegrity:X4} 目标完整性={GameIntegrity}",
+                virtualKey, string.Join(",", modifierKeyCodes), inserted, keyCount,
+                FormatWindow(gameWindow), FormatWindow(foregroundWindow), ownIntegrity,
+                gameIntegrity is { } il ? $"0x{il:X4}" : "未知");
+
+            if (inserted == keyCount)
                 return GameKeySendStatus.Sent;
 
             _logger.Warning(
-                "[GameKeySender] SendInput 被拒（插入 0 个事件）vk=0x{VirtualKey:X2} mods={Modifiers}；"
-                + "常见原因是目标游戏以管理员运行而 JASM 未提权（UIPI），或反作弊拦截合成输入",
-                virtualKey, string.Join(",", modifierKeyCodes));
+                "[GameKeySender] SendInput 只插入 {Inserted}/{KeyCount} 个事件 vk=0x{VirtualKey:X2} mods={Modifiers}；"
+                + "常见原因是反作弊拦截合成输入",
+                inserted, keyCount, virtualKey, string.Join(",", modifierKeyCodes));
             return GameKeySendStatus.SendInputFailed;
         }
         finally
@@ -256,10 +297,11 @@ public sealed class GameKeySender : IGameKeySender
     // ── 合成输入 ────────────────────────────────────────────────
 
     /// <summary>
-    /// 把整个和弦一次性提交。按下顺序是「先修饰键后主键」，抬起顺序**反过来** ——
+    /// 把整个和弦一次性提交，返回 <c>SendInput</c> 真正插入的事件数（= 请求数才算成功）。
+    /// 按下顺序是「先修饰键后主键」，抬起顺序**反过来** ——
     /// 否则游戏可能读到「主键还按着但修饰键已经松开」，把 Alt+↑ 认成单个 ↑。
     /// </summary>
-    private static unsafe bool SendChord(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes, bool keyUp)
+    private static unsafe uint SendChord(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes, bool keyUp)
     {
         var count = modifierKeyCodes.Count + 1;
         var inputs = stackalloc INPUT[count];
@@ -279,8 +321,57 @@ public sealed class GameKeySender : IGameKeySender
             inputs[index] = CreateKeyboardInput(virtualKey, false);
         }
 
-        var inserted = PInvoke.SendInput((uint)count, inputs, sizeof(INPUT));
-        return inserted == count;
+        return PInvoke.SendInput((uint)count, inputs, sizeof(INPUT));
+    }
+
+    /// <summary>HWND 的值在 CsWin32 里是裸指针，日志里要转成文本（指针不能进 Serilog 的参数数组）。</summary>
+    private static unsafe string FormatWindow(HWND window) => $"0x{(nint)window.Value:X}";
+
+    // ── 完整性级别（UIPI 判断）──────────────────────────────────
+
+    /// <summary>
+    /// 读某个进程的完整性级别（Mandatory Integrity Control 的最后一个 SubAuthority）。
+    /// 读不到（进程已退出 / 受保护进程 / 权限不够）返回 null —— 调用方当作「不知道」，照常尝试发送。
+    /// </summary>
+    private static unsafe uint? TryReadIntegrityLevelRid(uint processId)
+    {
+        var process = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (process.IsNull)
+            return null;
+
+        try
+        {
+            HANDLE token = default;
+            if (!PInvoke.OpenProcessToken(process, TOKEN_ACCESS_MASK.TOKEN_QUERY, &token))
+                return null;
+
+            try
+            {
+                // TOKEN_MANDATORY_LABEL { SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes } } + 变长 SID，
+                // 最大也就上百字节，固定 256 字节栈缓冲足够（长度传大不会报错）。
+                var buffer = stackalloc byte[256];
+                uint returnLength = 0;
+                if (!PInvoke.GetTokenInformation(token, TOKEN_INFORMATION_CLASS.TokenIntegrityLevel, buffer,
+                        256, &returnLength))
+                    return null;
+
+                // SID 布局：Revision(1) SubAuthorityCount(1) IdentifierAuthority(6) SubAuthority[](4 * N)
+                var sid = *(byte**)buffer;
+                var subAuthorityCount = sid is null ? 0 : sid[1];
+                if (subAuthorityCount == 0)
+                    return null;
+
+                return *(uint*)(sid + 8 + (subAuthorityCount - 1) * 4);
+            }
+            finally
+            {
+                PInvoke.CloseHandle(token);
+            }
+        }
+        finally
+        {
+            PInvoke.CloseHandle(process);
+        }
     }
 
     private static INPUT CreateKeyboardInput(ushort virtualKey, bool keyUp) => new()
