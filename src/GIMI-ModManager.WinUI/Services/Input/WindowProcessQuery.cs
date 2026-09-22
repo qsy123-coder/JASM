@@ -1,12 +1,15 @@
+using System.Diagnostics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Security;
 using Windows.Win32.System.Threading;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace GIMI_ModManager.WinUI.Services.Input;
 
 /// <summary>
-/// 窗口 / 进程的只读 win32 查询 —— 主程序与提权助手共用（助手要用它做「目标是不是那个游戏」的校验）。
+/// 窗口 / 进程的只读 win32 查询 —— 按键合成（<c>GameKeySender</c>）与提权刷新（<c>ElevatorService</c>）
+/// 共用「目标游戏在不在跑 / 窗口在哪」这套定位逻辑。
 /// 这里全是**读**操作：读不到就返回 null / 保守值，不抛异常、不改任何状态。
 /// </summary>
 internal static unsafe class WindowProcessQuery
@@ -38,6 +41,58 @@ internal static unsafe class WindowProcessQuery
 
     /// <summary>HWND 的值在 CsWin32 里是裸指针，日志里要转成文本（指针不能进 Serilog 的参数数组）。</summary>
     internal static string FormatWindow(HWND window) => $"0x{(nint)window.Value:X}";
+
+    /// <summary>
+    /// 按进程名取所有进程 id（进程名**不含** <c>.exe</c>）。
+    /// 进程不存在 / 查询被拒都返回空数组 —— 调用方按「没在跑」处理，不必区分。
+    /// </summary>
+    internal static uint[] GetProcessIds(string processName)
+    {
+        Process[] processes;
+        try
+        {
+            processes = Process.GetProcessesByName(processName);
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return [];
+        }
+
+        try
+        {
+            return processes.Select(process => (uint)process.Id).ToArray();
+        }
+        finally
+        {
+            foreach (var process in processes)
+                process.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 找游戏窗口：先看「已经是前台的窗口」（避免误选 overlay / 启动器残留窗口），
+    /// 否则枚举顶层窗口，取第一个「可见 + 属于目标进程」的。
+    /// 不用 <c>Process.MainWindowHandle</c>：它首次访问即缓存，游戏重建窗口后就陈旧了。
+    /// </summary>
+    internal static HWND FindGameWindow(uint[] processIds)
+    {
+        var foreground = PInvoke.GetForegroundWindow();
+        if (!foreground.IsNull && processIds.Contains(GetWindowProcessId(foreground)))
+            return foreground;
+
+        HWND found = HWND.Null;
+        PInvoke.EnumWindows((window, _) =>
+        {
+            if (found.IsNull && PInvoke.IsWindowVisible(window) != 0
+                             && processIds.Contains(GetWindowProcessId(window)))
+                found = window;
+
+            // 返回 0 = 停止枚举：已经找到就没必要继续
+            return new BOOL(found.IsNull ? 1 : 0);
+        }, default);
+
+        return found;
+    }
 
     /// <summary>
     /// 读某个进程的完整性级别（Mandatory Integrity Control 的最后一个 SubAuthority）。
