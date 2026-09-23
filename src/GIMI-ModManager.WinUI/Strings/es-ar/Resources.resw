@@ -254,4 +254,10 @@
   <data name="Waiting" xml:space="preserve">
     <value>Esperando</value>
   </data>
+  <data name="Overlay_Title.Text" xml:space="preserve">
+    <value>Cambiador de skins</value>
+  </data>
+  <data name="Overlay_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>Buscar mods</value>
+  </data>
 </root>
