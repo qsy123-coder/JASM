@@ -11,9 +11,17 @@
     x:Name="RootWindow"
     mc:Ignorable="d">
 
-    <Page>
-        <!--  背景刻意不透明（不是 Mica/亚克力）：浮窗压在游戏画面上，半透明会让文字糊进背景里读不清。  -->
-        <Grid x:Name="RootGrid" Background="#F0101016">
+    <!--  RequestedTheme="Dark" 是**必须**的，不是审美偏好：底下的面板是深色的，而 ComboBox/TextBox/ListViewItem
+          里那些没显式写颜色的文字（角色名、Mod 名、下拉项）取的是主题默认前景色。跟随浅色主题时它们是黑的，
+          压在近黑的底上就是「字都看不清」。钉死 Dark 之后这些默认前景才会是浅色。  -->
+    <Page RequestedTheme="Dark">
+        <!--  背景刻意不透明（不是 Mica/亚克力）：浮窗压在游戏画面上，半透明会让文字糊进背景里读不清。
+              描边也是为可读性服务的：亮色游戏画面里，没有描边的深色块边界会糊成一片。  -->
+        <Grid
+            x:Name="RootGrid"
+            Background="#FF101016"
+            BorderBrush="#40FFFFFF"
+            BorderThickness="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -44,6 +52,7 @@
                     Margin="12,0,0,0"
                     VerticalAlignment="Center"
                     FontWeight="SemiBold"
+                    Foreground="White"
                     Text="Skin Switcher"
                     l:Uids.Uid="Overlay_Title" />
 
@@ -55,7 +64,7 @@
                     Margin="8,0,8,0"
                     VerticalAlignment="Center"
                     FontSize="11"
-                    Foreground="#99FFFFFF" />
+                    Foreground="#C8FFFFFF" />
 
                 <Button
                     x:Name="HideButton"
@@ -86,31 +95,49 @@
             <!--  状态区：刷新那边的成败（协调器）与勾选失败（ViewModel）各占一行，
                   都为空时这两行自己塌掉，不占地方。  -->
             <StackPanel Grid.Row="3" Margin="12,0,12,6" Spacing="2">
-                <StackPanel Orientation="Horizontal" Spacing="6">
+                <!--  图标 + 文字用 Grid 而不是横向 StackPanel：StackPanel 给子元素的可用宽度是"无限"，
+                      于是文字的 TextWrapping="Wrap" 永远等不到该换行的宽度 —— 实测长文案（"提权助手没在运行…"）
+                      就这样被窗口右边缘硬生生切掉。Grid 的 * 列才会把真实剩余宽度交给 TextBlock。  -->
+                <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!--  图标一律对齐顶（不是居中）：文字换行后会有第二行，居中的图标会飘到两行之间，
+                          而它标记的是"这一条状态"，理应贴着第一行。  -->
                     <ProgressRing
+                        Grid.Column="0"
                         Width="14"
                         Height="14"
-                        VerticalAlignment="Center"
+                        Margin="0,1,0,0"
+                        VerticalAlignment="Top"
                         IsActive="{x:Bind ViewModel.RefreshCoordinator.IsRefreshing, Mode=OneWay}" />
                     <FontIcon
-                        VerticalAlignment="Center"
+                        Grid.Column="1"
+                        Margin="0,1,0,0"
+                        VerticalAlignment="Top"
                         FontSize="12"
                         Foreground="#FF6CCB5F"
                         Glyph="&#xE73E;"
                         Visibility="{x:Bind ViewModel.RefreshCoordinator.ShowSuccessIcon, Mode=OneWay}" />
                     <FontIcon
-                        VerticalAlignment="Center"
+                        Grid.Column="2"
+                        Margin="0,1,0,0"
+                        VerticalAlignment="Top"
                         FontSize="12"
                         Foreground="#FFE8A33D"
                         Glyph="&#xE7BA;"
                         Visibility="{x:Bind ViewModel.RefreshCoordinator.ShowFailureIcon, Mode=OneWay}" />
                     <TextBlock
-                        VerticalAlignment="Center"
+                        Grid.Column="3"
                         FontSize="11"
-                        Foreground="#CCFFFFFF"
+                        Foreground="#E6FFFFFF"
                         Text="{x:Bind ViewModel.RefreshCoordinator.StatusMessage, Mode=OneWay}"
                         TextWrapping="Wrap" />
-                </StackPanel>
+                </Grid>
 
                 <TextBlock
                     FontSize="11"
@@ -169,7 +196,7 @@
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
                                     FontSize="11"
-                                    Foreground="#99FFFFFF"
+                                    Foreground="#B3FFFFFF"
                                     MaxLines="1"
                                     Text="{x:Bind Author}"
                                     TextTrimming="CharacterEllipsis"
@@ -185,7 +212,7 @@
                 Margin="24"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Foreground="#99FFFFFF"
+                Foreground="#B3FFFFFF"
                 IsHitTestVisible="False"
                 Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}"
                 TextAlignment="Center"
