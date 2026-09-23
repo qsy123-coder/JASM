@@ -1,3 +1,4 @@
+using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
@@ -60,6 +61,20 @@ internal sealed class OverlayWindowService : IDisposable
             return;
         }
 
+        // 到这里为止只碰文件与内存，可以继续待在线程池上；下面要碰 XAML 与窗口了，先回 UI 线程
+        await App.MainWindow.DispatcherQueue.EnqueueAsync(InitializeOnUiThreadAsync);
+    }
+
+    /// <summary>
+    /// 建窗口、注册热键、把窗口收起来。**必须在 UI 线程上跑**。
+    ///
+    /// 为什么这里要自己切线程，而不是指望调用方本来就在 UI 线程上：<c>ActivationService.StartupAsync</c>
+    /// 里前面几步带着 <c>ConfigureAwait(false)</c>，续体会落到线程池上；而在线程池上 <c>new Window()</c>
+    /// 会以 <c>RPC_E_WRONG_THREAD</c> 失败 —— 这种失败不是普通异常，它变成 stowed exception
+    /// （<c>0xc000027b</c>）**直接把进程打掉**，日志里连一行都不留（本机冒烟测试踩到，查了半天事件查看器）。
+    /// </summary>
+    private async Task InitializeOnUiThreadAsync()
+    {
         // 先把设置与角色列表读出来：窗口的构造与首次摆位都依赖设置里的坐标
         await _viewModel.InitializeAsync();
 
