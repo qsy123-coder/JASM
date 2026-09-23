@@ -59,6 +59,8 @@ public sealed partial class OverlayWindow : WindowEx
 
         InitializeComponent();
 
+        InitializePageBindings();
+
         _styles = new OverlayWindowStyles(_logger);
         _hwnd = (HWND)WinRT.Interop.WindowNative.GetWindowHandle(this);
 
@@ -70,6 +72,24 @@ public sealed partial class OverlayWindow : WindowEx
 
         Closed += OnClosed;
     }
+
+    /// <summary>
+    /// 手动把页面级 <c>x:Bind</c> 初始化掉。**这一行不能删 —— 删了浮窗就是个空壳。**
+    ///
+    /// 生成的绑定代码把"初始化"挂在**本窗口的 <c>Activated</c> 事件**上（<c>GetBindingConnector</c> 里
+    /// <c>element1.Activated += bindings.Activated</c>，<c>element1</c> 取的是 XAML 根元素，
+    /// 也就是本窗口自己 —— 根是 <c>Window</c> 时编译器就认这个事件）。而本窗口的设计恰恰是**永不激活**
+    /// （见类注释：<c>WS_EX_NOACTIVATE</c> + <c>SW_SHOWNOACTIVATE</c>，全程不调 <c>Activate()</c>），
+    /// 那个事件就永远不会触发，初始化也就永远不会发生。
+    ///
+    /// 症状是所有页面级绑定一条都不生效：角色下拉空、Mod 列表空、状态文案空、图标显隐停在默认值 ——
+    /// 而静态文字（标题、搜索框占位符）照常显示，看上去像"数据没加载"，其实 ViewModel 里角色 / Mod 一个不少。
+    /// 实测定位：下拉的 <c>ItemsSource</c> 压根不是 ViewModel 的那个集合。
+    ///
+    /// <c>Bindings</c> 是 XAML 编译器生成的私有字段（与本文件同属一个偏类），<c>Initialize()</c> 自带
+    /// "初始化过就不再重复"的标志（以及数据源变更订阅），所以这一句与编译器期待的那一次激活等价，重复调用无害。
+    /// </summary>
+    private void InitializePageBindings() => Bindings?.Initialize();
 
     /// <summary>
     /// 把这扇窗配置成浮窗形态。顺序有讲究：先边框、再置顶、**最后** NOACTIVATE ——
