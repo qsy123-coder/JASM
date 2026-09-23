@@ -91,6 +91,14 @@ checkSuccessfulExitCode(os.system(jasmPublishCommand))
 print()
 print("Finished building JASM")
 
+# 先清空上一次运行的残留再建目录。不清的话有两处会出错：
+#   · 上一次 folder 运行留下的 output/JASM/Elevator.exe 会混进后面的单文件 zip（体积/内容都对不上，
+#     自更新只挑 exe 所以无害，但会让人以为「单文件包里怎么有两个文件」）；
+#   · 下面 JASM - Auto Updater 那步用的是 os.mkdir（不带 exist_ok），目录已存在会直接抛异常。
+if os.path.isdir(RELEASE_DIR):
+    print("Cleaning " + RELEASE_DIR)
+    shutil.rmtree(RELEASE_DIR)
+
 # Create release directory
 os.makedirs(RELEASE_DIR, exist_ok=True)
 os.makedirs(JASM_RELEASE_DIR, exist_ok=True)
@@ -132,6 +140,11 @@ if SingleFile:
     releaseArchiveName = "SingleFile_JASM_v" + versionNumber + ".zip"
 elif SelfContained:
     releaseArchiveName = "SelfContained_" + releaseArchiveName
+
+# 同名旧包必须先删：7z a 是「追加/更新」而不是重建，留着旧包会把上一版的内容一起带进去
+if os.path.exists(releaseArchiveName):
+    print("Removing stale archive " + releaseArchiveName)
+    os.remove(releaseArchiveName)
 
 checkSuccessfulExitCode(os.system(f'7z a -mx4 {releaseArchiveName} ./{RELEASE_DIR}/*'))
 print()
