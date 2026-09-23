@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Options;
@@ -43,16 +42,6 @@ public sealed class GameKeySender : IGameKeySender
     /// <summary>切完前台后等焦点稳定，再发按键。</summary>
     private const int ForegroundSettleMilliseconds = 300;
 
-    private const string D3dxIniFileName = "d3dx.ini";
-
-    // 危险组合键用到的键码（VK 常量不会被 CsWin32 生成成完备枚举，这里按需声明）
-    private const ushort VkMenu = 0x12;   // Alt
-    private const ushort VkLWin = 0x5B;
-    private const ushort VkRWin = 0x5C;
-    private const ushort VkF4 = 0x73;
-    private const ushort VkTab = 0x09;
-    private const ushort VkEscape = 0x1B;
-
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
 
@@ -68,7 +57,7 @@ public sealed class GameKeySender : IGameKeySender
     public async Task<GameKeySendStatus> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
         CancellationToken ct = default)
     {
-        if (IsBlockedChord(virtualKey, modifierKeyCodes))
+        if (KeyChordGuard.IsBlockedChord(virtualKey, modifierKeyCodes))
         {
             _logger.Warning("[GameKeySender] 拒绝发送危险组合键 vk=0x{VirtualKey:X2} mods={Modifiers}",
                 virtualKey, string.Join(",", modifierKeyCodes));
@@ -87,7 +76,7 @@ public sealed class GameKeySender : IGameKeySender
             if (iniPath is null)
             {
                 _logger.Warning("[GameKeySender] 找不到 {FileName}（GimiRootFolderPath={Root}, ModsFolderPath={Mods}）",
-                    D3dxIniFileName, options.GimiRootFolderPath, options.ModsFolderPath);
+                    D3dxIniTargetResolver.D3dxIniFileName, options.GimiRootFolderPath, options.ModsFolderPath);
                 return GameKeySendStatus.TargetNotConfigured;
             }
 
@@ -98,21 +87,21 @@ public sealed class GameKeySender : IGameKeySender
                 return GameKeySendStatus.TargetNotConfigured;
             }
 
-            var processIds = GetProcessIds(processName);
+            var processIds = WindowProcessQuery.GetProcessIds(processName);
             if (processIds.Length == 0)
             {
                 _logger.Warning("[GameKeySender] 目标进程 {ProcessName} 没有运行", processName);
                 return GameKeySendStatus.GameProcessNotRunning;
             }
 
-            var gameWindow = FindGameWindow(processIds);
+            var gameWindow = WindowProcessQuery.FindGameWindow(processIds);
             if (gameWindow.IsNull)
             {
                 _logger.Warning("[GameKeySender] 目标进程 {ProcessName} 没有可见的顶层窗口", processName);
                 return GameKeySendStatus.GameWindowNotFound;
             }
 
-            var gameProcessId = GetWindowProcessId(gameWindow);
+            var gameProcessId = WindowProcessQuery.GetWindowProcessId(gameWindow);
             var ownIntegrity = OwnIntegrityLevelRid.Value;
             var gameIntegrity = TryReadIntegrityLevelRid(gameProcessId);
 
@@ -182,50 +171,31 @@ public sealed class GameKeySender : IGameKeySender
     // ── 目标定位 ────────────────────────────────────────────────
 
     /// <summary>
-    /// 危险组合键护栏：写了 <c>key = alt F4</c> 的 mod 照发会把用户的游戏直接关掉。
+    /// 取第一个真实存在的候选 ini；候选集合与顺序由 <see cref="D3dxIniTargetResolver"/> 定
+    /// （提权刷新那条路径也用同一份判断，不能有两份）。
+    /// 这里逐条 Debug 记「哪个候选不存在」是排查安装问题的线索，所以没直接调 Core 的 ResolveD3dxIniPath。
     /// </summary>
-    private static bool IsBlockedChord(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes)
-    {
-        // 没按 Alt 时：单发 Win 键也要拦（会把开始菜单 / 游戏栏叫出来）
-        if (!modifierKeyCodes.Contains(VkMenu))
-            return virtualKey is VkLWin or VkRWin;
-
-        // 按着 Alt：Alt+F4 关游戏，Alt+Tab / Alt+Esc 把焦点抢走
-        return virtualKey is VkF4 or VkTab or VkEscape;
-    }
-
-    /// <summary>d3dx.ini 就在用户已配好的 GIMI 根目录正下方（与 Mods 同级）；取第一个真实存在的。</summary>
     private string? ResolveD3dxIniPath(ModManagerOptions options)
     {
-        foreach (var candidate in GetD3dxIniCandidates(options))
+        foreach (var candidate in D3dxIniTargetResolver.GetD3dxIniCandidates(
+                     options.GimiRootFolderPath, options.ModsFolderPath))
         {
             if (File.Exists(candidate))
                 return candidate;
 
-            _logger.Debug("[GameKeySender] 候选 {FileName} 不存在: {Path}", D3dxIniFileName, candidate);
+            _logger.Debug("[GameKeySender] 候选 {FileName} 不存在: {Path}",
+                D3dxIniTargetResolver.D3dxIniFileName, candidate);
         }
 
         return null;
     }
 
     /// <summary>
-    /// 候选路径：GIMI 根目录正下方，兜底 Mods 的父目录。
-    /// 不用 <see cref="ModManagerOptions.XxmiRootFolderPath"/>（多数机器上是 null，本机就是）。
+    /// 读 ini 解析出目标进程名。读不了记 Warning 后按「没配好」处理
+    /// （游戏运行中 d3dx.ini 也可能被独占打开）——
+    /// Core 里 <see cref="D3dxIniTargetResolver.ReadTargetProcessName"/> 是同一逻辑的静默版，
+    /// 提权刷新路径用它（那边由调用方统一记日志，这里要保留异常详情）。
     /// </summary>
-    private static IEnumerable<string> GetD3dxIniCandidates(ModManagerOptions options)
-    {
-        if (!string.IsNullOrWhiteSpace(options.GimiRootFolderPath))
-            yield return Path.Combine(options.GimiRootFolderPath, D3dxIniFileName);
-
-        var modsFolderPath = options.ModsFolderPath?.TrimEnd('\\', '/');
-        var modsRootFolder = string.IsNullOrWhiteSpace(modsFolderPath)
-            ? null
-            : Path.GetDirectoryName(modsFolderPath);
-
-        if (!string.IsNullOrWhiteSpace(modsRootFolder))
-            yield return Path.Combine(modsRootFolder, D3dxIniFileName);
-    }
-
     private string? ReadTargetProcessName(string iniPath)
     {
         try
@@ -234,64 +204,9 @@ public sealed class GameKeySender : IGameKeySender
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // 游戏运行中 d3dx.ini 也可能被独占打开 —— 当作没配好处理
             _logger.Warning(e, "[GameKeySender] 读取 {IniPath} 失败", iniPath);
             return null;
         }
-    }
-
-    private static uint[] GetProcessIds(string processName)
-    {
-        Process[] processes;
-        try
-        {
-            processes = Process.GetProcessesByName(processName);
-        }
-        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            return [];
-        }
-
-        try
-        {
-            return processes.Select(process => (uint)process.Id).ToArray();
-        }
-        finally
-        {
-            foreach (var process in processes)
-                process.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// 找游戏窗口：先看「已经是前台的窗口」（避免误选 overlay / 启动器残留窗口），
-    /// 否则枚举顶层窗口，取第一个「可见 + 属于目标进程」的。
-    /// </summary>
-    private static HWND FindGameWindow(uint[] processIds)
-    {
-        var foreground = PInvoke.GetForegroundWindow();
-        if (!foreground.IsNull && processIds.Contains(GetWindowProcessId(foreground)))
-            return foreground;
-
-        HWND found = HWND.Null;
-        PInvoke.EnumWindows((window, _) =>
-        {
-            if (found.IsNull && PInvoke.IsWindowVisible(window) != 0
-                             && processIds.Contains(GetWindowProcessId(window)))
-                found = window;
-
-            // 返回 0 = 停止枚举：已经找到就没必要继续
-            return new BOOL(found.IsNull ? 1 : 0);
-        }, default);
-
-        return found;
-    }
-
-    private static unsafe uint GetWindowProcessId(HWND window)
-    {
-        uint processId;
-        PInvoke.GetWindowThreadProcessId(window, &processId);
-        return processId;
     }
 
     // ── 合成输入 ────────────────────────────────────────────────

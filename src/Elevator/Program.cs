@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
@@ -14,8 +15,9 @@ using WindowsInput;
 // Commands:
 // -2: Alive check
 // -1: Exit
-// 0: RefreshActiveGenshinMods
+// 0: RefreshActiveGenshinMods (legacy: the target is hardcoded and there is no reply)
 // 1: CopyDirectory (<src> and <dst> follow on their own lines; replies "OK" or "FAIL:<msg>")
+// 2: TargetedRefresh (<hwnd> follows on its own line; replies "OK" or "FAIL:<reason>")
 
 internal class Program
 {
@@ -57,42 +59,59 @@ internal class Program
 
         while (true)
         {
-            // InOut so we can reply to commands that need a result (e.g. CopyDirectory).
-            using var pipeServer = NamedPipeServerStreamConstructors.New("MyPipess", PipeDirection.InOut, 1,
-                PipeTransmissionMode.Message,
-                PipeOptions.Asynchronous, pipeSecurity: ps);
-            Console.WriteLine("Waiting for connection...");
-
-            pipeServer.WaitForConnection();
-            Console.WriteLine("Connected!");
-            Console.WriteLine("----------------------");
-
-
-            using var reader = new StreamReader(pipeServer);
-            var command = reader.ReadLine();
-            Console.WriteLine("Received command: " + command);
-            Console.WriteLine("From user: " + pipeServer.GetImpersonationUserName());
-
-            switch (command)
+            // 每条连接都要能失败而不带走这个提权进程：客户端超时放弃时会直接断开管道，
+            // 此时读命令 / 写回执都会抛（IOException 一类），而异常冒到 Main 就是 Environment.Exit(1) ——
+            // 助手一死，用户之后所有需要提权的刷新/复制都静默失效。
+            try
             {
-                case "-2":
-                    break;
-                case "-1":
-                    Console.WriteLine("Exiting");
-                    Environment.Exit(0);
-                    return;
-                case "0":
-                    Console.WriteLine("Refreshing Genshin Mods");
-                    RefreshGenshinMods();
-                    break;
-                case "1":
-                    Console.WriteLine("Copying directory");
-                    HandleCopyCommand(pipeServer, reader);
-                    break;
+                // InOut so we can reply to commands that need a result (e.g. CopyDirectory).
+                using var pipeServer = NamedPipeServerStreamConstructors.New("MyPipess", PipeDirection.InOut, 1,
+                    PipeTransmissionMode.Message,
+                    PipeOptions.Asynchronous, pipeSecurity: ps);
+                Console.WriteLine("Waiting for connection...");
 
-                default:
-                    Console.Error.WriteLine($"Unknown command: {command}");
-                    break;
+                pipeServer.WaitForConnection();
+                Console.WriteLine("Connected!");
+                Console.WriteLine("----------------------");
+
+
+                using var reader = new StreamReader(pipeServer);
+                var command = reader.ReadLine();
+                Console.WriteLine("Received command: " + command);
+                Console.WriteLine("From user: " + pipeServer.GetImpersonationUserName());
+
+                switch (command)
+                {
+                    case "-2":
+                        break;
+                    case "-1":
+                        Console.WriteLine("Exiting");
+                        Environment.Exit(0);
+                        return;
+                    case "0":
+                        Console.WriteLine("Refreshing Genshin Mods");
+                        RefreshGenshinMods();
+                        break;
+                    case "1":
+                        Console.WriteLine("Copying directory");
+                        HandleCopyCommand(pipeServer, reader);
+                        break;
+                    case "2":
+                        Console.WriteLine("Refreshing the targeted game");
+                        HandleTargetedRefreshCommand(pipeServer, reader);
+                        break;
+
+                    default:
+                        // 旧版主程序以外的未知命令照旧只记日志：新加命令时别在这里报错给客户端，
+                        // 客户端那条「无回复 = 助手版本过旧」的判断依赖「不回话」这个行为
+                        Console.Error.WriteLine($"Unknown command: {command}");
+                        break;
+                }
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine("Connection failed, waiting for the next client");
+                Console.Error.WriteLine(e);
             }
         }
     }
@@ -144,7 +163,33 @@ internal class Program
     [DllImport("User32.dll")]
     static extern int SetForegroundWindow(IntPtr point);
 
+    [DllImport("User32.dll")]
+    static extern IntPtr GetForegroundWindow();
 
+    [DllImport("User32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("User32.dll")]
+    static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("User32.dll")]
+    static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("User32.dll")]
+    static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    /// <summary>ShowWindow 的参数：还原最小化的窗口（不激活它）。</summary>
+    const int SW_RESTORE = 9;
+
+    /// <summary>前台校验的轮询：10 次 × 50ms，够游戏把窗口切上来。</summary>
+    const int ForegroundCheckAttempts = 10;
+    const int ForegroundCheckIntervalMs = 50;
+
+
+    /// <summary>
+    /// 历史命令 "0" 的实现：目标写死为原神，窗口也照旧用 <see cref="Process.MainWindowHandle"/> 找。
+    /// 保留原语义只为兼容旧版主程序/旧命令，新路径请走 <see cref="HandleTargetedRefreshCommand"/>。
+    /// </summary>
     static void RefreshGenshinMods()
     {
         var ptr = GetGenshinProcess();
@@ -154,6 +199,95 @@ internal class Program
 
         _ = SetForegroundWindow(ptr.Value);
 
+        SendF10();
+    }
+
+    /// <summary>
+    /// 带目标的刷新：载荷是目标窗口句柄（十进制一行）。
+    ///
+    /// 「哪个游戏、d3dx.ini 在哪」由主程序解析（只有它读得到 JASM 设置），窗口句柄也必须由它现找 ——
+    /// <see cref="Process.MainWindowHandle"/> 首次访问即缓存，游戏进出全屏 / 换分辨率重建窗口后就陈旧了。
+    /// 助手只做提权才能做的那一段：还原窗口 → 切前台 → 回读校验 → 发 F10，并把结果回执给主程序。
+    /// 前台没抢到就**不发 F10**（那时按键会打进别的窗口，比如 JASM 自己），回执让主程序去报错。
+    /// </summary>
+    static void HandleTargetedRefreshCommand(PipeStream pipe, StreamReader reader)
+    {
+        using var writer = new StreamWriter(pipe) { AutoFlush = true };
+
+        var payload = reader.ReadLine();
+
+        if (!long.TryParse(payload?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var rawHandle)
+            || !IsWindow(new IntPtr(rawHandle)))
+        {
+            Console.Error.WriteLine($"Bad target window handle: {payload}");
+            writer.WriteLine("FAIL:bad-payload");
+            return;
+        }
+
+        var targetWindow = new IntPtr(rawHandle);
+
+        if (IsIconic(targetWindow))
+        {
+            // 最小化的窗口也能被 SetForegroundWindow 选中，但仍然是「最小化」状态，F10 打不进窗口
+            Console.WriteLine("Restoring the minimized target window");
+            ShowWindow(targetWindow, SW_RESTORE);
+        }
+
+        // 返回值不可信（前台锁会让它返回 0，而窗口其实已经切过去了），所以下面以回读为准。
+        // 与 0 比较而不是取反：DllImport 声明的是 int（BOOL 原样传回），不动历史路径的声明
+        if (SetForegroundWindow(targetWindow) == 0)
+        {
+            Console.WriteLine("SetForegroundWindow returned false; verifying by reading the window back");
+        }
+
+        if (!WaitForForeground(targetWindow))
+        {
+            Console.Error.WriteLine("The target window never became the foreground window, not sending F10");
+            writer.WriteLine("FAIL:not-foreground");
+            return;
+        }
+
+        Console.WriteLine("The target window is in the foreground, sending F10");
+        SendF10();
+
+        // 回执放在按键之后：主程序读到 "OK" 就等于 F10 真的发出去了
+        writer.WriteLine("OK");
+    }
+
+    /// <summary>
+    /// 轮询等目标窗口所属的进程拿到前台（最多 ~500ms）。
+    /// 按**进程 id** 比而不是按窗口句柄比：等待期间游戏可能重建窗口，句柄会变，进程不会。
+    /// </summary>
+    static bool WaitForForeground(IntPtr targetWindow)
+    {
+        GetWindowThreadProcessId(targetWindow, out var targetProcessId);
+        if (targetProcessId == 0)
+        {
+            // 窗口在发命令与这次读取之间被销毁了
+            return false;
+        }
+
+        for (var attempt = 0; attempt < ForegroundCheckAttempts; attempt++)
+        {
+            var foregroundWindow = GetForegroundWindow();
+            if (foregroundWindow != IntPtr.Zero)
+            {
+                GetWindowThreadProcessId(foregroundWindow, out var foregroundProcessId);
+                if (foregroundProcessId == targetProcessId)
+                {
+                    return true;
+                }
+            }
+
+            Thread.Sleep(ForegroundCheckIntervalMs);
+        }
+
+        return false;
+    }
+
+    /// <summary>按下 F10（3DMigoto 的重载键）。新老两条路径共用这一份，发键机制本身没变。</summary>
+    static void SendF10()
+    {
         new InputSimulator().Keyboard
             .KeyDown(VirtualKeyCode.F10)
             .Sleep(100)
