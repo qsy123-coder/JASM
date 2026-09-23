@@ -35,8 +35,10 @@ jobs:
     - name: Test
       run: dotnet test ${{ github.workspace }}\src
 
+    # 不传 ExcludeElevator：自包含版同样需要提权助手（理由见 dotnet-desktop.yml 的同一处注释）。
+    # Release.py 的构建门是「非 ExcludeElevator 且非 SingleFile」，SelfContained 不设 SingleFile，故助手会被构建并复制。
     - name: Build, publish and zip the app
-      run: python ${{ github.workspace }}\Build\Release.py SelfContained ExcludeElevator
+      run: python ${{ github.workspace }}\Build\Release.py SelfContained
       shell: cmd
 
     # Upload the app
