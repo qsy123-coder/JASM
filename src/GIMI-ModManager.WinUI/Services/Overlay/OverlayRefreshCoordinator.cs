@@ -45,6 +45,12 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
     /// <summary>状态行前面的警告图标要不要露出来。还没刷过时为 false（此时状态行本来就是空的，没有可警告的事）。</summary>
     public bool ShowFailureIcon => IsLastOutcomeFailure;
 
+    /// <summary>
+    /// 「刷新」按钮现在能不能点。点了也只是被合并进正在跑的那一次（见 <see cref="RequestRefreshAsync"/>），
+    /// 与其让用户对着一个看着没反应的按钮连点，不如刷新期间直接把它灰掉。
+    /// </summary>
+    public bool CanRequestRefresh => !IsRefreshing;
+
     public OverlayRefreshCoordinator(ElevatorService elevatorService, ILogger logger)
     {
         _elevatorService = elevatorService;
@@ -61,6 +67,9 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
         OnPropertyChanged(nameof(ShowSuccessIcon));
         OnPropertyChanged(nameof(ShowFailureIcon));
     }
+
+    /// <summary>同 <see cref="OnLastOutcomeChanged"/>：<see cref="CanRequestRefresh"/> 是从这里算出来的。</summary>
+    partial void OnIsRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRequestRefresh));
 
     /// <summary>
     /// 请求一次刷新。可以进行多次调用：
