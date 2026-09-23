@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
@@ -23,6 +24,11 @@ namespace GIMI_ModManager.WinUI.ViewModels.Overlay;
 /// </summary>
 internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient<ModChangedMessage>
 {
+    /// <summary>下拉右侧模式控件里的序号。取值与 <c>Segmented</c> 里两个 <c>SegmentedItem</c> 的先后一致。</summary>
+    private const int SingleSelectModeIndex = 0;
+
+    private const int MultiSelectModeIndex = 1;
+
     private readonly ISkinManagerService _skinManagerService;
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
@@ -61,6 +67,22 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// <summary>勾选失败时的提示。刷新那边的成败由 <see cref="RefreshCoordinator"/> 负责，这里只管动盘失败。</summary>
     [ObservableProperty] private string? _errorMessage;
 
+    /// <summary>
+    /// 0 = 单选（默认），1 = 多选。界面直接绑 <c>Segmented.SelectedIndex</c>，所以这里用序号而不是布尔 ——
+    /// 界面的"第几个"与语义的"哪种模式"只在这一个地方换算，别处一律看 <see cref="IsMultiSelectMode"/>。
+    /// </summary>
+    [ObservableProperty] private int _modeIndex = SingleSelectModeIndex;
+
+    /// <summary>
+    /// 多选模式下攒着还没刷的改动。刷新按钮旁边据此亮个点 —— 多选模式把"什么时候刷"交给用户，
+    /// 就得有人提醒他还欠一次刷新。
+    /// 单选模式下恒为 false：勾完就刷掉了。
+    /// </summary>
+    [ObservableProperty] private bool _hasPendingChanges;
+
+    /// <summary>是不是多选模式。策略判断都用它；界面不绑它，所以不必替它发通知。</summary>
+    public bool IsMultiSelectMode => ModeIndex == MultiSelectModeIndex;
+
     public OverlayViewModel(ISkinManagerService skinManagerService, OverlayRefreshCoordinator refreshCoordinator,
         ILocalSettingsService localSettingsService, ILogger logger)
     {
@@ -77,6 +99,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     {
         Settings = await _localSettingsService
             .ReadOrCreateSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App);
+
+        // 把存下来的模式读进界面。页面级绑定读的是 ModeIndex 的当前值，
+        // 而本方法一定在窗口显示之前跑完，所以在这一步赋值是够的。
+        ModeIndex = Settings.MultiSelectMode ? MultiSelectModeIndex : SingleSelectModeIndex;
 
         BuildCharacterList();
 
@@ -145,6 +171,22 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 #pragma warning restore CS4014
     }
 
+    partial void OnModeIndexChanged(int value)
+    {
+        Settings.MultiSelectMode = value == MultiSelectModeIndex;
+
+        // 刻意**不**在这里做两件事：
+        //   1. 不把当前角色已勾的 Mod 收成一件 —— 独占只在"勾选"这个动作上发生，
+        //      否则用户拨一下模式开关，磁盘上就有一堆文件夹被改名；
+        //   2. 不清 HasPendingChanges —— 攒下的改动是真的没刷过，拨开关不会让它们生效。
+        // 于是从多选切回单选时，那个待刷新提示会继续亮着，直到用户点一次「刷新」。
+
+        // 不 await：这里只该把模式记下来，落盘慢一点无所谓，不能卡住拨开关
+#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+        SaveSettingsAsync();
+#pragma warning restore CS4014
+    }
+
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
     private void LoadMods(IModdableObject? character)
@@ -204,6 +246,11 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         {
             // 改文件夹名（加/去 DISABLED_ 前缀）是磁盘操作，别放 UI 线程上
             item.IsEnabled = await Task.Run(() => modList.ToggleMod(item.Id));
+
+            // 单选模式的独占：勾上新的，就把同角色其它还开着的收起来。
+            // 取消勾选不动别人 —— 用户取消时想要的是"这件不要了"，不是"随便给我换一件"。
+            if (item.IsEnabled && !IsMultiSelectMode)
+                await DisableOtherModsAsync(modList, item);
         }
         catch (Exception e)
         {
@@ -216,8 +263,74 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         // 让主窗口把它那边的同一个 Mod 也更新掉（画廊 / 详情页 / 预设面板都在收这条消息）
         Messenger.Send(new ModChangedMessage(this, entry, null));
 
-        // 勾了就让游戏里立刻生效。合并与失败文案都交给协调器，这里不等它跑完也不重复触发
+        if (IsMultiSelectMode)
+        {
+            // 多选：攒着，等用户点「刷新」。这里不刷是有意的 —— 他多半还要再勾几个，
+            // 而每刷一次都要让游戏重载一遍 Mod 池，代价不小。
+            HasPendingChanges = true;
+            return;
+        }
+
+        // 单选：勾了就让游戏里立刻生效。合并与失败文案都交给协调器，这里不等它跑完也不重复触发
         await RefreshCoordinator.RequestRefreshAsync();
+        HasPendingChanges = false;
+    }
+
+    /// <summary>
+    /// 单选模式的独占收尾：把同角色其它还开着的 Mod 关掉，只留刚勾上的那件。
+    ///
+    /// 一次勾选因此可能连带改掉 N 个文件夹名 —— 这正是「一次只开一件皮肤」的含义，不是漏了副作用。
+    /// 用 <c>DisableMod</c> 的显式接口而不是再调一次 <c>ToggleMod</c>：不靠"我记的状态"去猜该翻成哪边。
+    /// 关不掉的继续处理下一个，并把是哪件没关掉写进状态行 —— 静默的半成功比整体失败更难查。
+    /// </summary>
+    private async Task DisableOtherModsAsync(ICharacterModList modList, OverlayModItemViewModel justEnabled)
+    {
+        var others = _allMods
+            .Where(row => row.Id != justEnabled.Id && row.IsEnabled)
+            .ToList();
+
+        if (others.Count == 0)
+            return;
+
+        var failed = new List<string>();
+
+        foreach (var other in others)
+        {
+            // 行上的对象与 Mod 列表里的条目是两份：改盘要条目，发变更消息也要条目
+            var entry = modList.Mods.FirstOrDefault(m => m.Id == other.Id);
+            if (entry is null)
+                continue;
+
+            try
+            {
+                await Task.Run(() => modList.DisableMod(other.Id));
+                other.IsEnabled = false;
+                Messenger.Send(new ModChangedMessage(this, entry, null));
+            }
+            catch (Exception e)
+            {
+                // 失败的行保持原样（勾还在）：界面上显示的就是磁盘上的真实状态
+                _logger.Error(e, "[浮窗] 单选模式：关掉 {Mod} 失败", other.Name);
+                failed.Add(other.Name);
+            }
+        }
+
+        if (failed.Count > 0)
+            ErrorMessage = $"单选模式一次只留一件，但「{string.Join("」「", failed)}」没能关掉，详情见日志。";
+    }
+
+    /// <summary>
+    /// 手动刷新。多选模式下这是必经的一步；单选模式下也留着 —— 刷新失败之后再点一次就是重试，
+    /// 免得用户为了重试还得去动某个 Mod 的勾。
+    ///
+    /// 刷新期间按钮会被 <see cref="OverlayRefreshCoordinator.CanRequestRefresh"/> 灰掉；即便还是被点进来，
+    /// 协调器也只会把它合并进正在跑的那一次（不会并发），所以这里不需要自己防抖。
+    /// </summary>
+    [RelayCommand]
+    private async Task RefreshNowAsync()
+    {
+        await RefreshCoordinator.RequestRefreshAsync();
+        HasPendingChanges = false;
     }
 
     /// <summary>
