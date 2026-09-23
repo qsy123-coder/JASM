@@ -260,4 +260,13 @@
   <data name="Overlay_SearchPlaceholder.PlaceholderText" xml:space="preserve">
     <value>Buscar mods</value>
   </data>
+  <data name="Overlay_ModeSingle.Content" xml:space="preserve">
+    <value>Único</value>
+  </data>
+  <data name="Overlay_ModeMulti.Content" xml:space="preserve">
+    <value>Múltiple</value>
+  </data>
+  <data name="Overlay_RefreshNow.Content" xml:space="preserve">
+    <value>Actualizar</value>
+  </data>
 </root>
