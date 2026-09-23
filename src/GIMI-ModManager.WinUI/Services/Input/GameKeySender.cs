@@ -21,10 +21,11 @@ namespace GIMI_ModManager.WinUI.Services.Input;
 /// <item><b>窗口句柄每次现找</b>（<c>EnumWindows</c>），不用 <c>Process.MainWindowHandle</c> ——
 /// 后者首次访问即缓存，游戏进出全屏 / 换分辨率重建窗口后拿到的句柄就陈旧了。</item>
 /// <item><b>只发键盘</b>：鼠标类绑定（<c>VK_LBUTTON</c> 等）在词表里就没有虚拟键码，UI 侧直接灰掉。</item>
-/// <item><b>完整性级别不够就别发</b>：游戏提权运行（XXMI 的 <c>d3dx.ini</c> 里 <c>require_admin = true</c>，
+/// <item><b>完整性级别不够就别自己发</b>：游戏提权运行（XXMI 的 <c>d3dx.ini</c> 里 <c>require_admin = true</c>，
 /// 鸣潮就是）而 JASM 没提权时，UIPI 不允许把输入注入进去 —— 发送会「看起来成功」但游戏收不到，
 /// 用户只看到窗口切过去了、什么都没发生。所以在切前台之前先比两个进程的完整性级别，
-/// 级别不够直接返回 <see cref="GameKeySendStatus.NeedsElevation"/>。</item>
+/// 级别不够就**改请提权助手代发**（见 <see cref="ElevatorService.TrySendKeyChordAsync"/>）；
+/// 只有助手那条路也走不通时才返回 <see cref="GameKeySendStatus.NeedsElevation"/>。</item>
 /// </list>
 /// </summary>
 public sealed class GameKeySender : IGameKeySender
@@ -45,23 +46,31 @@ public sealed class GameKeySender : IGameKeySender
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
 
+    /// <summary>
+    /// 游戏提权运行时的唯一送键出路。本进程是 asInvoker（「中」完整性），
+    /// UIPI 会把「中 → 高」的 <c>SendInput</c> 静默丢掉，只有提权助手发的才进得去。
+    /// </summary>
+    private readonly ElevatorService _elevatorService;
+
     /// <summary>连点串行化：两次注入交错会按出「修饰键还没抬起就再次按下」的怪状态。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public GameKeySender(ILocalSettingsService localSettingsService, ILogger logger)
+    public GameKeySender(ILocalSettingsService localSettingsService, ElevatorService elevatorService,
+        ILogger logger)
     {
         _localSettingsService = localSettingsService;
+        _elevatorService = elevatorService;
         _logger = logger.ForContext<GameKeySender>();
     }
 
-    public async Task<GameKeySendStatus> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
+    public async Task<GameKeySendResult> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
         CancellationToken ct = default)
     {
         if (KeyChordGuard.IsBlockedChord(virtualKey, modifierKeyCodes))
         {
             _logger.Warning("[GameKeySender] 拒绝发送危险组合键 vk=0x{VirtualKey:X2} mods={Modifiers}",
                 virtualKey, string.Join(",", modifierKeyCodes));
-            return GameKeySendStatus.BlockedChord;
+            return GameKeySendResult.From(GameKeySendStatus.BlockedChord);
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -77,28 +86,28 @@ public sealed class GameKeySender : IGameKeySender
             {
                 _logger.Warning("[GameKeySender] 找不到 {FileName}（GimiRootFolderPath={Root}, ModsFolderPath={Mods}）",
                     D3dxIniTargetResolver.D3dxIniFileName, options.GimiRootFolderPath, options.ModsFolderPath);
-                return GameKeySendStatus.TargetNotConfigured;
+                return GameKeySendResult.From(GameKeySendStatus.TargetNotConfigured);
             }
 
             var processName = ReadTargetProcessName(iniPath);
             if (processName is null)
             {
                 _logger.Warning("[GameKeySender] {IniPath} 里没有可用的 target", iniPath);
-                return GameKeySendStatus.TargetNotConfigured;
+                return GameKeySendResult.From(GameKeySendStatus.TargetNotConfigured);
             }
 
             var processIds = WindowProcessQuery.GetProcessIds(processName);
             if (processIds.Length == 0)
             {
                 _logger.Warning("[GameKeySender] 目标进程 {ProcessName} 没有运行", processName);
-                return GameKeySendStatus.GameProcessNotRunning;
+                return GameKeySendResult.From(GameKeySendStatus.GameProcessNotRunning);
             }
 
             var gameWindow = WindowProcessQuery.FindGameWindow(processIds);
             if (gameWindow.IsNull)
             {
                 _logger.Warning("[GameKeySender] 目标进程 {ProcessName} 没有可见的顶层窗口", processName);
-                return GameKeySendStatus.GameWindowNotFound;
+                return GameKeySendResult.From(GameKeySendStatus.GameWindowNotFound);
             }
 
             var gameProcessId = WindowProcessQuery.GetWindowProcessId(gameWindow);
@@ -106,26 +115,40 @@ public sealed class GameKeySender : IGameKeySender
             var gameIntegrity = TryReadIntegrityLevelRid(gameProcessId);
 
             // UIPI 前置检查：目标进程级别更高就发不进去（而且发出去也「看起来成功」）。
-            // 放在切前台**之前** —— 既然注定送不到，就不要把用户的焦点从 JASM 抢走。
+            // 放在切前台**之前** —— 既然本进程注定送不到，就不要把用户的焦点从 JASM 抢走。
             // 读不到级别（受保护进程等）时不拦，照常尝试发送。
+            var needsElevation = false;
             if (gameIntegrity is { } targetIntegrity && targetIntegrity > ownIntegrity)
             {
+                needsElevation = true;
+
+                // **这一支刻意不 await、也不切前台**：本段是「同步段」（见类注释约束 1/2）。
+                // 代发交给提权助手，它自己会去抢前台 —— 它是提权进程，不受前台锁约束，
+                // 本进程的前台身份对它没有意义。
                 _logger.Warning(
-                    "[GameKeySender] 拒绝发送：目标进程 {ProcessName} 完整性级别 0x{TargetIntegrity:X4} "
-                    + "高于本进程 0x{OwnIntegrity:X4}，UIPI 会把注入的输入丢掉；需要以管理员身份运行 JASM",
+                    "[GameKeySender] 目标进程 {ProcessName} 完整性级别 0x{TargetIntegrity:X4} "
+                    + "高于本进程 0x{OwnIntegrity:X4}，本进程的 SendInput 会被 UIPI 丢掉；改请提权助手代发",
                     processName, targetIntegrity, ownIntegrity);
-                return GameKeySendStatus.NeedsElevation;
             }
-
-            if (PInvoke.IsIconic(gameWindow) != 0)
-                PInvoke.ShowWindow(gameWindow, SHOW_WINDOW_CMD.SW_RESTORE);
-
-            if (PInvoke.SetForegroundWindow(gameWindow) == 0)
+            else
             {
-                // 切不过去不中断：按键仍然会进当时真正的前台窗口，用户可能只是没把游戏调出来
-                _logger.Warning("[GameKeySender] SetForegroundWindow 被拒，仍按当前前台窗口继续发送");
+                if (PInvoke.IsIconic(gameWindow) != 0)
+                    PInvoke.ShowWindow(gameWindow, SHOW_WINDOW_CMD.SW_RESTORE);
+
+                if (PInvoke.SetForegroundWindow(gameWindow) == 0)
+                {
+                    // 切不过去不中断：按键仍然会进当时真正的前台窗口，用户可能只是没把游戏调出来
+                    _logger.Warning("[GameKeySender] SetForegroundWindow 被拒，仍按当前前台窗口继续发送");
+                }
             }
             // ══ 同步段结束 ══
+
+            // 提权那一支到这里才 await（理由见上面注释）
+            if (needsElevation)
+            {
+                return await SendViaElevatedHelperAsync(virtualKey, modifierKeyCodes, gameWindow, ct)
+                    .ConfigureAwait(false);
+            }
 
             await Task.Delay(ForegroundSettleMilliseconds, ct).ConfigureAwait(false);
 
@@ -154,18 +177,45 @@ public sealed class GameKeySender : IGameKeySender
                 gameIntegrity is { } il ? $"0x{il:X4}" : "未知");
 
             if (inserted == keyCount)
-                return GameKeySendStatus.Sent;
+                return GameKeySendResult.Sent;
 
             _logger.Warning(
                 "[GameKeySender] SendInput 只插入 {Inserted}/{KeyCount} 个事件 vk=0x{VirtualKey:X2} mods={Modifiers}；"
                 + "常见原因是反作弊拦截合成输入",
                 inserted, keyCount, virtualKey, string.Join(",", modifierKeyCodes));
-            return GameKeySendStatus.SendInputFailed;
+            return GameKeySendResult.From(GameKeySendStatus.SendInputFailed);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// 游戏提权运行时改由提权助手代发按键 —— 这是唯一能把键送进去的路径
+    /// （理由与线路格式见 <see cref="ElevatorService.TrySendKeyChordAsync"/>）。
+    ///
+    /// 结果刻意分两档，因为用户该做的事不同：
+    /// <list type="bullet">
+    /// <item>助手压根走不通（没随包安装 / 版本过旧 / 拉不起来 / 用户在 UAC 上点了否）
+    /// → <see cref="GameKeySendStatus.NeedsElevation"/>，退回既有建议「自己以管理员身份运行 JASM」。</item>
+    /// <item>助手在跑但拒发（没抢到前台、被反作弊拦下）→ <see cref="GameKeySendStatus.SendInputFailed"/>，
+    /// 这类「再试一次多半就好」的问题不该把用户赶去重启 JASM。</item>
+    /// </list>
+    /// </summary>
+    private async Task<GameKeySendResult> SendViaElevatedHelperAsync(ushort virtualKey,
+        IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, CancellationToken ct)
+    {
+        var outcome = await _elevatorService
+            .TrySendKeyChordAsync(virtualKey, modifierKeyCodes, gameWindow, ct).ConfigureAwait(false);
+
+        return outcome.Result switch
+        {
+            ElevatedKeySendResult.Sent => GameKeySendResult.Sent,
+            ElevatedKeySendResult.Unavailable =>
+                GameKeySendResult.WithDetail(GameKeySendStatus.NeedsElevation, outcome.Message),
+            _ => GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed, outcome.Message)
+        };
     }
 
     // ── 目标定位 ────────────────────────────────────────────────
