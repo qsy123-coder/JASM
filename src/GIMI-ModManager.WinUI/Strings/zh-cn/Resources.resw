@@ -2203,4 +2203,13 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="Overlay_SearchPlaceholder.PlaceholderText" xml:space="preserve">
     <value>搜索 Mod</value>
   </data>
+  <data name="Overlay_ModeSingle.Content" xml:space="preserve">
+    <value>单选</value>
+  </data>
+  <data name="Overlay_ModeMulti.Content" xml:space="preserve">
+    <value>多选</value>
+  </data>
+  <data name="Overlay_RefreshNow.Content" xml:space="preserve">
+    <value>刷新</value>
+  </data>
 </root>
