@@ -342,56 +342,6 @@ public partial class ElevatorService : ObservableRecipient
     }
 
     /// <summary>
-    /// 浮窗「勾选即刷新」用的一次刷新。与 <see cref="RefreshGenshinMods"/> 共用同一段切前台逻辑
-    /// 与同一条管道，差别只有两点：
-    ///
-    ///   1. **把结局返回**给调用方。浮窗要把「为什么没刷新」显示在状态行上；只记日志的话，
-    ///      用户在游戏里看不到任何提示，只能去翻日志。
-    ///   2. 不自作主张退回历史命令 <c>"0"</c>。那个命令只能刷原神（助手内部写死），而浮窗只服务鸣潮，
-    ///      发过去等于静默失败 —— 不如让浮窗明说「没找到游戏窗口」。
-    ///
-    /// 完成后**不把焦点还给 JASM**（<see cref="InternalRefreshGenshinMods"/> 会还）：浮窗是
-    /// <c>WS_EX_NOACTIVATE</c> 的，全程游戏都该留在前台，抢回来反而把用户从游戏里踢出去。
-    ///
-    /// 目标解析与切前台都在**同步段**里完成（第一次 await 之前）：前台身份属于刚点了浮窗的那个进程，
-    /// 一旦让出就可能易主（理由与现场签名见 <see cref="ForegroundWindowActivator"/>）。
-    /// 所以调用方必须从 UI 线程直接 await 本方法，不能先丢进 <c>Task.Run</c>。
-    /// </summary>
-    internal async Task<(OverlayRefreshOutcome Outcome, string? ReasonToken)> RefreshForOverlayAsync()
-    {
-        // 刻意不用 CheckStatus()：它会写 ObservableProperty，而本方法的续体可能落在后台线程上
-        if (_elevatorProcess is not { HasExited: false })
-            return (OverlayRefreshOutcome.ElevatorNotRunning, null);
-
-        if (!_supportsTargetedRefresh)
-        {
-            _logger.Warning("[ElevatorService] 助手 FileVersion={Version} 低于 {Minimum}，不认识带目标的刷新命令，浮窗刷新不可用",
-                _elevatorFileVersion ?? "(读不到)", ElevatorRefreshProtocol.MinimumFileVersionForTargetedRefresh);
-            return (OverlayRefreshOutcome.HelperTooOld, null);
-        }
-
-        var targetWindow = ResolveTargetWindow(out var failureReason);
-        if (targetWindow is not { } window)
-        {
-            _logger.Warning("[ElevatorService] 浮窗刷新：{Reason}", failureReason);
-            return (OverlayRefreshOutcome.TargetNotFound, null);
-        }
-
-        ForegroundWindowActivator.Activate(window, handOverRightToSetForeground: true, _logger);
-
-        try
-        {
-            var (reply, reasonToken) = await SendTargetedRefreshAsync(window).ConfigureAwait(false);
-            return (OverlayRefreshOutcomeProtocol.FromReply(reply), reasonToken);
-        }
-        catch (Exception e) when (e is IOException or TimeoutException)
-        {
-            _logger.Warning(e, "[ElevatorService] 浮窗刷新失败：连不上 {ProcessName} 或它中途断开", ElevatorProcessName);
-            return (OverlayRefreshOutcome.Failed, null);
-        }
-    }
-
-    /// <summary>
     /// 历史刷新命令 <c>"0"</c>：给版本过旧的助手用，单向无回执，助手内部写死目标（原神）。
     /// 返回「命令是否已经写进管道」。
     /// </summary>
@@ -418,8 +368,9 @@ public partial class ElevatorService : ObservableRecipient
     /// 而且窗口必须用 EnumWindows 现找（<c>Process.MainWindowHandle</c> 首次访问即缓存，
     /// 游戏重建窗口后就陈旧了）。
     ///
-    /// 回执**返回**给调用方（日志照旧在这里记）：既有路径只关心"命令送出去没有"，
-    /// 而浮窗还要把结局显示给用户，两种语义共用一个实现。
+    /// 回执**返回**给调用方（日志照旧在这里记）：调用方按自己的语义用它 ——
+    /// 原神那条刷新路只关心"命令送出去没有"，回执读不到也不算它失败。
+    /// （浮窗的「勾选即刷新」已改走 <c>GameKeySender</c>，不再经过这里。）
     /// </summary>
     private async Task<(ElevatorRefreshReply Reply, string? ReasonToken)> SendTargetedRefreshAsync(HWND window)
     {
