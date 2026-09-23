@@ -210,6 +210,22 @@ public partial class ElevatorService : ObservableRecipient
             return Task.CompletedTask;
         }
 
+        // 目标窗口在这里解析、并**同步**切到前台（不 await、也不丢进下面的 Task.Run）：
+        // 前台身份属于「刚点了 / 按了 JASM 的那个进程」，一旦让出就可能易主；而助手是后台进程，
+        // 前台锁与提权无关，它自己抢不到 —— 理由与现场签名见 ForegroundWindowActivator。
+        // 解析不出来就照旧退回历史命令 "0"：老路径下原神照旧能刷新，
+        // 不能因为另一个游戏没配好就把它一起弄丢。
+        var targetWindow = ResolveTargetWindow(out var failureReason);
+        if (targetWindow is { } window)
+        {
+            ForegroundWindowActivator.Activate(window, handOverRightToSetForeground: true, _logger);
+        }
+        else
+        {
+            _logger.Warning("[ElevatorService] {Reason}；退回历史命令 {Command}（只能刷新助手内部写死的原神）",
+                failureReason, ElevatorRefreshProtocol.LegacyRefreshCommand);
+        }
+
         lock (_refreshLock)
         {
             if (_refreshTask is { IsCompleted: false })
@@ -219,7 +235,7 @@ public partial class ElevatorService : ObservableRecipient
 
             _refreshTask = Task.Run(async () =>
             {
-                await InternalRefreshGenshinMods().ConfigureAwait(false);
+                await InternalRefreshGenshinMods(targetWindow).ConfigureAwait(false);
                 await Task.Delay(500).ConfigureAwait(false); // Debounce
             });
 
@@ -284,17 +300,18 @@ public partial class ElevatorService : ObservableRecipient
     /// 刷新当前游戏（模拟 F10）。名字沿用历史命名，实现已从「只刷原神」扩成「刷 ini 里配的那个游戏」；
     /// 公开 API 的整体改名（约 12 个文件）单独一次做。
     ///
-    /// 助手版本够新就带上目标窗口（原神 / 鸣潮都能刷），否则退回历史命令 <c>"0"</c>
-    /// （助手内部写死原神、不回执）。
+    /// <paramref name="targetWindow"/> 是调用方 <see cref="RefreshGenshinMods"/> 解析好的目标窗口
+    /// （它同时已经把这个窗口切到前台了）。为 null 表示没解析出来 —— 那就退回历史命令 <c>"0"</c>
+    /// （助手内部写死原神、不回执），老路径下原神照旧能刷新。
     /// </summary>
-    private async Task InternalRefreshGenshinMods()
+    private async Task InternalRefreshGenshinMods(HWND? targetWindow)
     {
         var commandSent = false;
 
         try
         {
-            commandSent = _supportsTargetedRefresh
-                ? await RefreshTargetedAsync().ConfigureAwait(false)
+            commandSent = targetWindow is { } window
+                ? await RefreshTargetedAsync(window).ConfigureAwait(false)
                 : await RefreshLegacyAsync().ConfigureAwait(false);
         }
         catch (Exception e) when (e is IOException or TimeoutException)
@@ -335,22 +352,18 @@ public partial class ElevatorService : ObservableRecipient
     }
 
     /// <summary>
-    /// 带目标窗口的刷新命令 <c>"2"</c>：助手负责还原窗口 → 切前台 → 回读校验 → 发 F10，并回执结果。
+    /// 带目标窗口的刷新命令 <c>"2"</c>：助手负责（再）还原窗口 → 回读校验 → 发 F10，并回执结果。
     ///
-    /// 目标（进程名 → 窗口句柄）在这里解析、不交给助手：只有主程序知道 d3dx.ini 在哪，
-    /// 而且窗口必须用 EnumWindows 现找。解析不出来时**仍然发 <c>"0"</c>** ——
-    /// 老路径下原神照旧能刷新，不能因为另一个游戏没配好就把它一起弄丢。
+    /// 切前台**已经由调用方在同步段里做完**，并把这次的权利让了出去；助手是后台进程，
+    /// 自己抢不到（理由见 <see cref="ForegroundWindowActivator"/>），它这里的
+    /// <c>SetForegroundWindow</c> 只是白捡的一手，真正的判定仍以回读为准。
+    ///
+    /// 目标窗口（进程名 → 句柄）由调用方解析后传进来，不交给助手：只有主程序知道 d3dx.ini 在哪，
+    /// 而且窗口必须用 EnumWindows 现找（<c>Process.MainWindowHandle</c> 首次访问即缓存，
+    /// 游戏重建窗口后就陈旧了）。
     /// </summary>
-    private async Task<bool> RefreshTargetedAsync()
+    private async Task<bool> RefreshTargetedAsync(HWND window)
     {
-        var targetWindow = ResolveTargetWindow(out var failureReason);
-        if (targetWindow is not { } window)
-        {
-            _logger.Warning("[ElevatorService] {Reason}；退回历史命令 {Command}（只能刷新助手内部写死的原神）",
-                failureReason, ElevatorRefreshProtocol.LegacyRefreshCommand);
-            return await RefreshLegacyAsync().ConfigureAwait(false);
-        }
-
         await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
         await pipeClient.ConnectAsync(TimeSpan.FromSeconds(5), default).ConfigureAwait(false);
 
@@ -529,6 +542,11 @@ public partial class ElevatorService : ObservableRecipient
     ///
     /// 为什么非助手不可：UIPI 会把「中 → 高」的 <c>SendInput</c> 静默丢弃，主程序自己发
     /// 拿到的返回值是成功的、游戏却收不到（见 <see cref="ElevatorKeySendProtocol"/> 的类注释）。
+    ///
+    /// **但抢前台不归助手管**：前台锁只认「自己就是前台进程 / 最近收到输入的那个进程」，与提权
+    /// 与否无关，助手是个后台进程，它自己抢是抢不到的（回执就是 <c>not-foreground</c>）。
+    /// 所以切前台由调用方 <c>GameKeySender</c> 在同步段里做完，并用 <c>AllowSetForegroundWindow</c>
+    /// 把这一次的权利让出来；助手这边只负责「发之前回读校验」，校验不过就拒发。
     ///
     /// 助手没在跑就**先把它拉起来**，那一次会弹 UAC；之后整个会话复用同一个提权进程。
     /// 三种结果的含义见 <see cref="ElevatedKeySendResult"/>，调用方据此决定给用户看什么。
