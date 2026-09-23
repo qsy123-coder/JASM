@@ -299,4 +299,10 @@
   <data name="ModMarket_LoadMore.Content" xml:space="preserve">
     <value>Load More</value>
   </data>
+  <data name="Overlay_Title.Text" xml:space="preserve">
+    <value>Skin Switcher</value>
+  </data>
+  <data name="Overlay_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>Search mods</value>
+  </data>
 </root>
