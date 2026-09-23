@@ -36,10 +36,22 @@ jobs:
       run: dotnet test ${{ github.workspace }}\src
 
     # 不传 ExcludeElevator：自包含版同样需要提权助手（理由见 dotnet-desktop.yml 的同一处注释）。
-    # Release.py 的构建门是「非 ExcludeElevator 且非 SingleFile」，SelfContained 不设 SingleFile，故助手会被构建并复制。
+    # Release.py 的构建门就是「非 ExcludeElevator」，助手会被构建并复制到包内、同时内嵌进主 exe。
+    #
+    # 下面的 MSVC 探测与 IlcUseEnvironmentalTools 与 dotnet-desktop.yml 同一块，改动请同步三处
+    # （原因：windows-latest 迁到 VS 2026 后 ILCompiler 的 [16,18) 版本范围失效）。
     - name: Build, publish and zip the app
-      run: python ${{ github.workspace }}\Build\Release.py SelfContained
       shell: cmd
+      run: |
+        set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        if not exist "%VSWHERE%" (echo vswhere.exe not found & exit /b 1)
+        for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+        if not defined VSDIR (echo No Visual Studio with C++ tools found & exit /b 1)
+        echo Visual Studio: %VSDIR%
+        call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" > nul
+        where link || exit /b 1
+        set "IlcUseEnvironmentalTools=true"
+        python ${{ github.workspace }}\Build\Release.py SelfContained
 
     # Upload the app
     - name: Upload JASM Self Contained
