@@ -7,26 +7,35 @@ namespace JASM.Tests;
 ///
 /// 这条文案是用户失败后**唯一**的线索（浮窗很小、不会展开日志），所以它不能只是"刷新失败" ——
 /// 必须说清发生了什么、以及下一步能做什么。
+///
+/// 结局词表跟着**送键**那条路走（<c>GameKeySender</c>）：助手到底回了什么、为什么拒发，都是随
+/// <c>GameKeySendResult.Detail</c> 上来的动态原因，由状态行原文显示。所以这里覆盖的是
+/// "没有动态原因时"的那几句兜底话，不覆盖任何助手回执 token 的翻译（那层在
+/// <c>ElevatorKeySendProtocol</c>，写两份就会失配）。
 /// </summary>
 public class OverlayRefreshOutcomeProtocolTests
 {
-    [Theory]
-    [InlineData(ElevatorRefreshReply.Ok, OverlayRefreshOutcome.Refreshed)]
-    [InlineData(ElevatorRefreshReply.Failure, OverlayRefreshOutcome.Rejected)]
-    [InlineData(ElevatorRefreshReply.None, OverlayRefreshOutcome.NoReply)]
-    public void ClassifiesTheElevatorReply(ElevatorRefreshReply reply, OverlayRefreshOutcome expected)
-        => Assert.Equal(expected, OverlayRefreshOutcomeProtocol.FromReply(reply));
+    [Fact]
+    public void PointsAtElevationAsTheCauseWhenTheGameRunsAsAdministrator()
+    {
+        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.NeedsElevation);
+
+        Assert.Contains("管理员", text);
+
+        // 助手是内嵌在主 exe 里、版本跟着主程序走的，所以"更新 JASM"才是能真正改变结果的那一步；
+        // 而"直接以管理员身份运行 JASM"是绕开整条提权通道的第二条路，也得留着。
+        Assert.Contains("更新", text);
+        Assert.Contains("管理员身份运行 JASM", text);
+    }
 
     [Fact]
-    public void TellsTheUserWhereToStartTheElevatorAndWarnsAboutTheFullscreenInterruption()
+    public void CallsOutSyntheticInputAsTheLikelyCauseWhenTheKeyNeverLanded()
     {
-        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.ElevatorNotRunning);
+        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.SendInputFailed);
 
-        Assert.Contains("助手", text);
-        Assert.Contains("设置页", text);
-
-        // UAC 弹窗会打断独占全屏 —— 这条提醒是有价值的，不该在精简文案时被删掉
-        Assert.Contains("进游戏前", text);
+        // 这一支最可能的成因是反作弊拦下合成输入、或没能把游戏切到前台 —— 用户看得懂的两个词都该在
+        Assert.Contains("反作弊", text);
+        Assert.Contains("前台", text);
     }
 
     [Fact]
@@ -39,46 +48,6 @@ public class OverlayRefreshOutcomeProtocolTests
     }
 
     [Fact]
-    public void NeverSuggestsClickingTheGameAgainAfterAForegroundFailure()
-    {
-        var text = OverlayRefreshOutcomeProtocol.Describe(
-            OverlayRefreshOutcome.Rejected, ElevatorRefreshProtocol.ReasonNotForeground);
-
-        // 「先点一下游戏画面再试」是条死路（再点一下前台就回到游戏，JASM 那边依旧切不动）——
-        // 送键那条路上已经删掉过这个建议一次，别在浮窗这边又写回来
-        Assert.DoesNotContain("点一下游戏", text);
-
-        // 给出的是真能改变结果的办法：把游戏切成窗口化/无边框
-        Assert.Contains("窗口化", text);
-    }
-
-    [Fact]
-    public void ExplainsAStaleWindowHandleAsTheGameHavingBeenClosed()
-    {
-        var text = OverlayRefreshOutcomeProtocol.Describe(
-            OverlayRefreshOutcome.Rejected, ElevatorRefreshProtocol.ReasonBadPayload);
-
-        Assert.Contains("句柄", text);
-    }
-
-    [Fact]
-    public void SaysSoWhenTheElevatorRejectedWithoutAGivenReason()
-    {
-        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.Rejected, reasonToken: null);
-
-        Assert.Contains("没有说明原因", text);
-    }
-
-    [Fact]
-    public void PassesAnUnknownReasonTokenThroughInsteadOfSwallowingIt()
-    {
-        // 助手将来加了新原因，用户至少还能看到原文，而不是一句没有信息量的「刷新失败」
-        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.Rejected, "brand-new-reason");
-
-        Assert.Contains("brand-new-reason", text);
-    }
-
-    [Fact]
     public void PointsAtTheLogForOutcomesWithoutASpecificRemedy()
     {
         Assert.Contains("日志", OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.Failed));
@@ -87,25 +56,4 @@ public class OverlayRefreshOutcomeProtocolTests
     [Fact]
     public void ReportsSuccessInThePastTenseSoTheStatusLineReadsAsAStatus()
         => Assert.Equal("已刷新", OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.Refreshed));
-
-    /// <summary>
-    /// 助手过旧时必须让用户去**更新 JASM**，而不是像「没回话」那样叫他重启助手 ——
-    /// 助手是内嵌在主 exe 里、版本跟着主程序走的，重启同一个旧助手不会让它多认识一条命令。
-    /// </summary>
-    [Fact]
-    public void TellsTheUserToUpdateJasmRatherThanRestartingAStaleElevator()
-    {
-        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.HelperTooOld);
-
-        Assert.Contains("更新", text);
-        Assert.DoesNotContain("重启", text);
-    }
-
-    [Fact]
-    public void TellsTheUserToRestartTheElevatorWhenItStayedSilent()
-    {
-        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.NoReply);
-
-        Assert.Contains("重启", text);
-    }
 }
