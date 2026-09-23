@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.Entities;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Models;
@@ -31,6 +32,9 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     /// 勾选状态。**可变**（勾一下要立刻反映在界面上），所以是 ObservableProperty 而不是只读属性。
     /// </summary>
     [ObservableProperty] private bool _isEnabled;
+
+    /// <summary>勾选这一行时要执行的动作，由浮窗的 ViewModel 在造行时注入。</summary>
+    private Func<OverlayModItemViewModel, Task>? _toggleMod;
 
     /// <summary>作者为空时界面上把那行藏掉，免得整行多出一个空行。</summary>
     public bool HasAuthor => !string.IsNullOrWhiteSpace(Author);
@@ -73,6 +77,32 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
 
         return new OverlayModItemViewModel(entry.Id, folderName, name, author, entry.IsEnabled, imagePath);
     }
+
+    /// <summary>
+    /// 挂上"勾了这一行要做什么"的回调。造行时由浮窗的 ViewModel 注入 ——
+    /// 行自己不该知道 <c>ISkinManagerService</c>，它只负责把点击转出去。
+    /// </summary>
+    public OverlayModItemViewModel WithToggleHandler(Func<OverlayModItemViewModel, Task> toggleMod)
+    {
+        _toggleMod = toggleMod;
+        return this;
+    }
+
+    /// <summary>
+    /// 勾选框的点击。每个行各自持有一个命令实例，而生成的 <c>AsyncRelayCommand</c> 默认**不允许并发**，
+    /// 于是"同一个 Mod 连点两下"天然被挡住，不同行之间又互不阻塞 —— 正是想要的行为，不必再加一把全局锁。
+    /// </summary>
+    [RelayCommand]
+    private Task ToggleMod() => _toggleMod?.Invoke(this) ?? Task.CompletedTask;
+
+    /// <summary>
+    /// 把真实状态重新推给界面。
+    ///
+    /// 勾选框的 <c>IsChecked</c> 是**单向**绑到 <see cref="IsEnabled"/> 的，用户点一下时控件自己先翻了过去；
+    /// 若这次切换其实失败了，<see cref="IsEnabled"/> 的值没有变、也就不会发通知，界面会停在一个假的勾上。
+    /// 切换失败时调一下这个方法，把真实值重新压回去。
+    /// </summary>
+    public void RefreshEnabledState() => OnPropertyChanged(nameof(IsEnabled));
 
     public override string ToString() => "OverlayModItem: " + Name + " (" + Id + ")";
 }
