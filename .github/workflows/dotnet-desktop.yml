@@ -40,13 +40,28 @@ jobs:
     - name: Test
       run: dotnet test ${{ github.workspace }}\src
 
-    # 不传 ExcludeElevator：Elevator.exe 必须进包。它是提权刷新（F10）的唯一执行体，
+    # 不传 ExcludeElevator：Elevator.exe 必须进包。它是提权刷新（F10）与代发按键的唯一执行体，
     # 而 AutoUpdater 的 doNotDeleteFiles 只能"保留"旧助手、靠解压覆盖来更新它 ——
-    # zip 里没有就永远更新不了，用户手上会一直是 1.0.0.0 的旧版（不认识带目标窗口的新命令）。
-    # Elevator 是 AOT 发布，需要 MSVC，只有 windows-latest 跑得动（本机无 MSVC）。
+    # zip 里没有就永远更新不了，用户手上会一直是 1.0.0.0 的旧版（不认识新命令）。
+    #
+    # 助手是 AOT 发布，需要 MSVC，而 windows-latest 已在 2026-06 迁到 Visual Studio 2026（v18）：
+    # net7.0 的 microsoft.dotnet.ilcompiler 把 vswhere 的版本范围钉死在 [16,18)（见其 findvcvarsall.bat），
+    # VS 18 落在范围外 → 即便 C++ 工作负载装了也报 "Platform linker not found"。
+    # 这里自己跑一遍 vswhere（不带上限）+ vcvars64，再用 IlcUseEnvironmentalTools=true
+    # 让 ILCompiler 直接用环境里的 link.exe，绕开它那段过期的版本探测。
+    # 注意必须与 python 同一步：env 不跨 step 传递。改回 windows-2022 也能绕过，但那只是把问题推后。
     - name: Build, publish and zip the app
-      run: python ${{ github.workspace }}\Build\Release.py
       shell: cmd
+      run: |
+        set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        if not exist "%VSWHERE%" (echo vswhere.exe not found & exit /b 1)
+        for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+        if not defined VSDIR (echo No Visual Studio with C++ tools found & exit /b 1)
+        echo Visual Studio: %VSDIR%
+        call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" > nul
+        where link || exit /b 1
+        set "IlcUseEnvironmentalTools=true"
+        python ${{ github.workspace }}\Build\Release.py
 
     # Upload the app
     - name: Upload JASM
