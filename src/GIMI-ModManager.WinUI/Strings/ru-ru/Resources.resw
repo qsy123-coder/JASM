@@ -132,4 +132,10 @@
   <data name="Waiting" xml:space="preserve">
     <value>Ожидание</value>
   </data>
+  <data name="Overlay_Title.Text" xml:space="preserve">
+    <value>Переключатель скинов</value>
+  </data>
+  <data name="Overlay_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>Поиск модов</value>
+  </data>
 </root>
