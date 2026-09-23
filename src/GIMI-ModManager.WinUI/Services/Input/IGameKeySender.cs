@@ -22,15 +22,35 @@ public enum GameKeySendStatus
     GameWindowNotFound,
 
     /// <summary>
-    /// 目标游戏以管理员身份运行（完整性级别高于 JASM），UIPI 不允许把输入注入进去 ——
-    /// 这种情况**发也白发**，所以发之前就先拦下，让用户用管理员身份启动 JASM。
+    /// 目标游戏以管理员身份运行（完整性级别高于 JASM），UIPI 不允许把输入注入进去，
+    /// **而提权助手也没能把按键代发出去** —— 没随包安装 / 版本过旧 / 拉不起来 / 用户在 UAC 上点了否。
+    /// 到这一步只剩「用户自己以管理员身份运行 JASM」这一条路了，具体是哪种见
+    /// <see cref="GameKeySendResult.Detail"/>。
     /// </summary>
     NeedsElevation,
 
     /// <summary>
-    /// SendInput 插入的事件数少于请求数（典型原因：反作弊拦截合成输入；或完整性级别判断拿不到时的兜底）。
+    /// 按键没能送达：本进程 <c>SendInput</c> 插入的事件数少于请求数（典型原因：反作弊拦截合成输入），
+    /// 或提权助手在跑但拒发 / 没回话。具体原因见 <see cref="GameKeySendResult.Detail"/>。
     /// </summary>
     SendInputFailed
+}
+
+/// <summary>
+/// 送键的结果。
+///
+/// <see cref="Detail"/> 是**给用户看**的一句话，只在失败原因**动态**时才有值 ——
+/// 提权助手回执里的 token（没抢到前台 / 被反作弊拦下 / 版本过旧…）每种都对应不同的下一步动作
+/// （「先点一下游戏画面再试」和「更新 JASM」不是一回事），一句写死的文案盖不住。
+/// 为 null 时调用方按 <see cref="Status"/> 取通用文案。
+/// </summary>
+public readonly record struct GameKeySendResult(GameKeySendStatus Status, string? Detail = null)
+{
+    public static GameKeySendResult Sent { get; } = new(GameKeySendStatus.Sent);
+
+    public static GameKeySendResult From(GameKeySendStatus status) => new(status);
+
+    public static GameKeySendResult WithDetail(GameKeySendStatus status, string? detail) => new(status, detail);
 }
 
 public interface IGameKeySender
@@ -41,9 +61,13 @@ public interface IGameKeySender
     /// 行为：先把游戏窗口切到前台 → 等焦点稳定 → 按下 → 保持约 80ms → 抬起。
     /// 焦点**留在游戏上**，不会把 JASM 抢回前台。
     ///
+    /// 游戏以管理员身份运行时，本进程的 <c>SendInput</c> 会被 UIPI 静默丢弃，
+    /// 这时改由提权助手代发（见 <c>ElevatorService.TrySendKeyChordAsync</c>）——
+    /// 首次会弹一次 UAC，之后整个会话复用同一个提权进程。
+    ///
     /// 只有 <paramref name="ct"/> 被取消会抛 <see cref="OperationCanceledException"/>，
-    /// 其余失败一律返回状态码（不抛异常）。
+    /// 其余失败一律返回结果（不抛异常）。
     /// </summary>
-    Task<GameKeySendStatus> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
+    Task<GameKeySendResult> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
         CancellationToken ct = default);
 }
