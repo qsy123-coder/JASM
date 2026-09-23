@@ -2197,4 +2197,10 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModMarket_LoadMore.Content" xml:space="preserve">
     <value>加载更多</value>
   </data>
+  <data name="Overlay_Title.Text" xml:space="preserve">
+    <value>换肤浮窗</value>
+  </data>
+  <data name="Overlay_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>搜索 Mod</value>
+  </data>
 </root>
