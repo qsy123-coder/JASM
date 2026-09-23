@@ -34,6 +34,15 @@ public class OverlaySettings
     public string? LastSelectedCharacter { get; set; }
 
     /// <summary>
+    /// <c>false</c>（默认）= <b>单选</b>：勾一下立刻生效（自动 F10），且同角色只留一件 ——
+    /// 勾上新的会把其它已勾的收起来。<c>true</c> = <b>多选</b>：自由勾选，攒够了点浮窗上的「刷新」。
+    ///
+    /// 用 bool 而不是 0/1 序号之类的魔数：设置文件是给人看的，序号还得配一张表才读得懂。
+    /// 老设置文件里没有这个字段 → 反序列化成 <c>false</c>，正是我们要的默认值（单选），不需要额外迁移。
+    /// </summary>
+    public bool MultiSelectMode { get; set; }
+
+    /// <summary>
     /// 两个座标都存过才算数。只存下一个（比如文件被手改坏）时宁可当没存过、重新居中，
     /// 也不要拿半份座标去摆窗口 —— 那会把浮窗摆到一个没人预期的地方。
     /// </summary>
