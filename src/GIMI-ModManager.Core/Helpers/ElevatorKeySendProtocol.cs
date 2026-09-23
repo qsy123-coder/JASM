@@ -114,8 +114,12 @@ public static class ElevatorKeySendProtocol
                 "提权助手收到的送键请求不合法（内部错误）。",
             KeyHelperProtocol.ReasonBlockedChord =>
                 "出于安全考虑没有发送这个组合键（Alt+F4 这类会直接把游戏关掉）。",
+            // 别再说「请先点一下游戏画面再试」：再点徽章，前台又回到 JASM，照旧切不过去 ——
+            // 那条建议是死路。切前台本来就由 JASM 自己尝试（见 ForegroundWindowActivator），
+            // 真走到这里说明连它也切不动，用户能做的是让那个窗口变得可激活。
             KeyHelperProtocol.ReasonNotForeground =>
-                "提权助手没能把游戏切到前台，按键会打进别的窗口，所以没有发送。请先点一下游戏画面再试。",
+                "没能在送键前把游戏切到前台，按键会打进别的窗口，所以没有发送。"
+                + "请再点一次；如果每次都失败，先把游戏切成窗口化（或无边框）再试。",
             KeyHelperProtocol.ReasonTargetMismatch =>
                 "当前前台窗口不是当初那个游戏，提权助手拒发。请先点一下游戏画面再试。",
             KeyHelperProtocol.ReasonInjectionFailed =>
