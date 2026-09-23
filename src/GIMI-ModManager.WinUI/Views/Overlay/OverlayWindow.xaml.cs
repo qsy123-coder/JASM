@@ -46,6 +46,9 @@ public sealed partial class OverlayWindow : WindowEx
     private PointInt32 _dragOriginWindow;
     private bool _isDragging;
 
+    /// <summary>是否已经做过"首次显示"的那套收尾（摆位置 + 确认置顶）。见 <see cref="ShowOverlay"/>。</summary>
+    private bool _hasShownOnce;
+
     /// <summary>浮窗的 ViewModel（internal：它和它手上的协调器都只在本程序集里用）。</summary>
     internal OverlayViewModel ViewModel { get; }
 
@@ -66,10 +69,6 @@ public sealed partial class OverlayWindow : WindowEx
         _topMostTimer.Start();
 
         Closed += OnClosed;
-
-        // 尺寸/位置要等窗口真的显示出来之后才算得准：构造阶段 AppWindow.Size 还是 0，
-        // 那时算出来的"居中"会跑到屏幕左上角（原型踩过）。
-        Activated += OnFirstActivated;
     }
 
     /// <summary>
@@ -112,6 +111,23 @@ public sealed partial class OverlayWindow : WindowEx
 
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
 
+        // 首次显示才做的收尾，刻意放在 ShowWindow **之后**：
+        //   1. 构造阶段 AppWindow.Size 不可信（原型实测：那时算出来的"居中"会跑到屏幕左上角）；
+        //   2. 本窗口从不调 Activate()（那会把游戏的前台挤掉），所以原型那种"挂在 Activated 事件上等它"
+        //      的路子在浮窗里根本不会触发 —— 只能由"第一次显示"这个动作自己把该做的做了。
+        if (!_hasShownOnce)
+        {
+            _hasShownOnce = true;
+
+            RestorePosition();
+
+            // 同样放在显示之后：这时窗口才真的建出来，样式位才是可信的（原型实测构造阶段读到的是中间态）
+            EnsureTopMost("首次显示后");
+
+            _logger.Information("浮窗就绪：位置={X},{Y} 尺寸={Width}x{Height}（物理像素）",
+                AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
+        }
+
         // 记下"系统实际的"可见性与前台归属：ShowWindow 不返回成功与否，而"前台有没有被我们抢走"
         // 只有回读才算数 —— 这条日志也是实机验收"点了浮窗游戏没掉全屏"的证据。
         _logger.Debug("浮窗显示：IsWindowVisible={IsVisible} 前台是否本窗口={IsForeground}",
@@ -142,20 +158,6 @@ public sealed partial class OverlayWindow : WindowEx
 
         _logger.Debug("浮窗置顶位在「{Stage}」时缺失，已补回：0x{Before:X16} -> 0x{After:X16}，TOPMOST={HasTopMost}",
             stage, (long)current, (long)after, OverlayWindowStyles.HasTopMost(after));
-    }
-
-    private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
-    {
-        Activated -= OnFirstActivated;
-
-        RestorePosition();
-
-        // 放在首次激活之后：这时窗口已经真的显示出来了，样式位才是可信的。
-        // 构造阶段读到的值可能是"还没应用"的中间态（原型实测就是这个坑）。
-        EnsureTopMost("首次激活后");
-
-        _logger.Information("浮窗就绪：位置={X},{Y} 尺寸={Width}x{Height}（物理像素）",
-            AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
     }
 
     /// <summary>
