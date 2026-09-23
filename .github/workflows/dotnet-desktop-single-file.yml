@@ -1,0 +1,49 @@
+# 产出单 exe 便携版（SingleFile_JASM_v*.zip）。这条 workflow 存在的理由：
+# 用户手上的分发形态主要就是单 exe，而它需要 AOT 编译的提权助手内嵌进主 exe ——
+# 助手是 AOT 发布、需要 MSVC，本机编不出来，只有 windows-latest 跑得动。
+name: Test,Build And Release JASM Single File
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [ master ]
+    paths:
+      - 'src/**'
+      - 'CHANGELOG.md'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        configuration: [Release]
+        platform: [x64]
+
+    runs-on: windows-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install .NET Core
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.x
+
+    - name: Test
+      run: dotnet test ${{ github.workspace }}\src
+
+    # 不传 ExcludeElevator：SingleFile 模式同样要先构建助手，它会被内嵌进主 exe，
+    # 运行时由 ElevatorProvisioner 释放到 %LOCALAPPDATA%\JASM（单 exe 版没有散文件可放）。
+    # 产物名 SingleFile_JASM_v*.zip 与 SingleFileSelfUpdater 认的前缀一致，用户端自更新才认。
+    - name: Build, publish and zip the app
+      run: python ${{ github.workspace }}\Build\Release.py SingleFile
+      shell: cmd
+
+    # 只传 artifact，不挂 release：release 资产按仓库惯例手动 gh release upload
+    - name: Upload JASM Single File
+      uses: actions/upload-artifact@v4
+      with:
+        name: JASM Single File
+        path: ${{ github.workspace }}\${{ env.zipFile }}
