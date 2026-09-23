@@ -310,9 +310,15 @@ public partial class ElevatorService : ObservableRecipient
 
         try
         {
-            commandSent = targetWindow is { } window
-                ? await RefreshTargetedAsync(window).ConfigureAwait(false)
-                : await RefreshLegacyAsync().ConfigureAwait(false);
+            if (targetWindow is { } window)
+            {
+                await SendTargetedRefreshAsync(window).ConfigureAwait(false);
+                commandSent = true;
+            }
+            else
+            {
+                commandSent = await RefreshLegacyAsync().ConfigureAwait(false);
+            }
         }
         catch (Exception e) when (e is IOException or TimeoutException)
         {
@@ -333,6 +339,56 @@ public partial class ElevatorService : ObservableRecipient
             App.MainWindow.SetForegroundWindow();
             App.MainWindow.Activate();
         });
+    }
+
+    /// <summary>
+    /// 浮窗「勾选即刷新」用的一次刷新。与 <see cref="RefreshGenshinMods"/> 共用同一段切前台逻辑
+    /// 与同一条管道，差别只有两点：
+    ///
+    ///   1. **把结局返回**给调用方。浮窗要把「为什么没刷新」显示在状态行上；只记日志的话，
+    ///      用户在游戏里看不到任何提示，只能去翻日志。
+    ///   2. 不自作主张退回历史命令 <c>"0"</c>。那个命令只能刷原神（助手内部写死），而浮窗只服务鸣潮，
+    ///      发过去等于静默失败 —— 不如让浮窗明说「没找到游戏窗口」。
+    ///
+    /// 完成后**不把焦点还给 JASM**（<see cref="InternalRefreshGenshinMods"/> 会还）：浮窗是
+    /// <c>WS_EX_NOACTIVATE</c> 的，全程游戏都该留在前台，抢回来反而把用户从游戏里踢出去。
+    ///
+    /// 目标解析与切前台都在**同步段**里完成（第一次 await 之前）：前台身份属于刚点了浮窗的那个进程，
+    /// 一旦让出就可能易主（理由与现场签名见 <see cref="ForegroundWindowActivator"/>）。
+    /// 所以调用方必须从 UI 线程直接 await 本方法，不能先丢进 <c>Task.Run</c>。
+    /// </summary>
+    internal async Task<(OverlayRefreshOutcome Outcome, string? ReasonToken)> RefreshForOverlayAsync()
+    {
+        // 刻意不用 CheckStatus()：它会写 ObservableProperty，而本方法的续体可能落在后台线程上
+        if (_elevatorProcess is not { HasExited: false })
+            return (OverlayRefreshOutcome.ElevatorNotRunning, null);
+
+        if (!_supportsTargetedRefresh)
+        {
+            _logger.Warning("[ElevatorService] 助手 FileVersion={Version} 低于 {Minimum}，不认识带目标的刷新命令，浮窗刷新不可用",
+                _elevatorFileVersion ?? "(读不到)", ElevatorRefreshProtocol.MinimumFileVersionForTargetedRefresh);
+            return (OverlayRefreshOutcome.HelperTooOld, null);
+        }
+
+        var targetWindow = ResolveTargetWindow(out var failureReason);
+        if (targetWindow is not { } window)
+        {
+            _logger.Warning("[ElevatorService] 浮窗刷新：{Reason}", failureReason);
+            return (OverlayRefreshOutcome.TargetNotFound, null);
+        }
+
+        ForegroundWindowActivator.Activate(window, handOverRightToSetForeground: true, _logger);
+
+        try
+        {
+            var (reply, reasonToken) = await SendTargetedRefreshAsync(window).ConfigureAwait(false);
+            return (OverlayRefreshOutcomeProtocol.FromReply(reply), reasonToken);
+        }
+        catch (Exception e) when (e is IOException or TimeoutException)
+        {
+            _logger.Warning(e, "[ElevatorService] 浮窗刷新失败：连不上 {ProcessName} 或它中途断开", ElevatorProcessName);
+            return (OverlayRefreshOutcome.Failed, null);
+        }
     }
 
     /// <summary>
@@ -361,8 +417,11 @@ public partial class ElevatorService : ObservableRecipient
     /// 目标窗口（进程名 → 句柄）由调用方解析后传进来，不交给助手：只有主程序知道 d3dx.ini 在哪，
     /// 而且窗口必须用 EnumWindows 现找（<c>Process.MainWindowHandle</c> 首次访问即缓存，
     /// 游戏重建窗口后就陈旧了）。
+    ///
+    /// 回执**返回**给调用方（日志照旧在这里记）：既有路径只关心"命令送出去没有"，
+    /// 而浮窗还要把结局显示给用户，两种语义共用一个实现。
     /// </summary>
-    private async Task<bool> RefreshTargetedAsync(HWND window)
+    private async Task<(ElevatorRefreshReply Reply, string? ReasonToken)> SendTargetedRefreshAsync(HWND window)
     {
         await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
         await pipeClient.ConnectAsync(TimeSpan.FromSeconds(5), default).ConfigureAwait(false);
@@ -380,16 +439,15 @@ public partial class ElevatorService : ObservableRecipient
         }
 
         // 到这里命令已经送出去了：即使回执读不到，也按「刷新已触发」把焦点还给 JASM
-        await LogRefreshReplyAsync(reader).ConfigureAwait(false);
-        return true;
+        return await ReadRefreshReplyAsync(reader).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 等助手的回执并记日志。读超时只记 Warning、不往外抛 ——
+    /// 等助手的回执、记日志，并把它返回给调用方。读超时只记 Warning、不往外抛 ——
     /// 一来旧版助手收到新命令是**静默无视**（不回话也不断开），不设超时就会一直卡住；
     /// 二来 <c>_refreshTask</c> 一旦卡在未完成状态，之后每次刷新都只会复用那个卡死的 task。
     /// </summary>
-    private async Task LogRefreshReplyAsync(StreamReader reader)
+    private async Task<(ElevatorRefreshReply Reply, string? ReasonToken)> ReadRefreshReplyAsync(StreamReader reader)
     {
         using var readTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
 
@@ -403,10 +461,12 @@ public partial class ElevatorService : ObservableRecipient
             _logger.Warning("[ElevatorService] {ProcessName} 没有在 {Seconds}s 内回执刷新命令 {Command}；"
                             + "若游戏没有刷新，说明它可能版本过旧，更新 JASM 即可（助手随主 exe 一起更新）",
                 ElevatorProcessName, 3, ElevatorRefreshProtocol.TargetedRefreshCommand);
-            return;
+            return (ElevatorRefreshReply.None, null);
         }
 
-        switch (ElevatorRefreshProtocol.ParseReply(reply, out var failureReason))
+        var parsed = ElevatorRefreshProtocol.ParseReply(reply, out var failureReason);
+
+        switch (parsed)
         {
             case ElevatorRefreshReply.Ok:
                 _logger.Debug("[ElevatorService] {ProcessName} 已把目标切到前台并发出 F10", ElevatorProcessName);
@@ -420,6 +480,8 @@ public partial class ElevatorService : ObservableRecipient
                     ElevatorProcessName, ElevatorRefreshProtocol.TargetedRefreshCommand);
                 break;
         }
+
+        return (parsed, failureReason);
     }
 
     /// <summary>
