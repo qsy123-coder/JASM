@@ -137,6 +137,8 @@ public partial class App : Application
                 services.AddTransient<ModDragAndDropService>();
                 services.AddSingleton<CharacterSkinService>();
 
+                // 单 exe 版的提权助手只能从主 exe 内嵌资源释放出来，先于 ElevatorService 注册（后者构造时注入）
+                services.AddSingleton<ElevatorProvisioner>();
                 services.AddSingleton<ElevatorService>();
                 services.AddSingleton<GenshinProcessManager>();
                 services.AddSingleton<ThreeDMigtoProcessManager>();
