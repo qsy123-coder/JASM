@@ -81,9 +81,25 @@
                 Grid.Row="1"
                 Margin="12,0,12,8"
                 HorizontalAlignment="Stretch"
-                DisplayMemberPath="DisplayName"
                 ItemsSource="{x:Bind ViewModel.Characters}"
-                SelectedItem="{x:Bind ViewModel.SelectedCharacter, Mode=TwoWay}" />
+                SelectedItem="{x:Bind ViewModel.SelectedCharacter, Mode=TwoWay}">
+                <!--  头像 + 名字。DisplayMemberPath 与 ItemTemplate 互斥（同时给会抛异常），要头像就只能改用模板。
+                      ComboBox 收起时显示选中项也走这个模板，所以闭着的时候一样能看到头像。  -->
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="overlayVm:OverlayCharacterItem">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <!--  只钉高度、不钉宽度：角色立绘是长条图，钉成正方形会把脸裁掉或者压扁。
+                                  DecodePixelHeight 按显示高度的两倍给（留给高 DPI），既不糊也不至于白解一张大图。  -->
+                            <Image Height="22">
+                                <Image.Source>
+                                    <BitmapImage DecodePixelHeight="44" UriSource="{x:Bind ImageUri}" />
+                                </Image.Source>
+                            </Image>
+                            <TextBlock VerticalAlignment="Center" Text="{x:Bind DisplayName}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
 
             <TextBox
                 Grid.Row="2"
