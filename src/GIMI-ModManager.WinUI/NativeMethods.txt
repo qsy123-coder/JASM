@@ -21,3 +21,5 @@ UnregisterHotKey
 WINDOW_LONG_PTR_INDEX
 GetWindowLongW
 SetWindowLongW
+GetCursorPos
+GetWindowRect
