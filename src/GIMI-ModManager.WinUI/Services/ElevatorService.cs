@@ -388,7 +388,7 @@ public partial class ElevatorService : ObservableRecipient
         catch (OperationCanceledException)
         {
             _logger.Warning("[ElevatorService] {ProcessName} 没有在 {Seconds}s 内回执刷新命令 {Command}；"
-                            + "若游戏没有刷新，说明它可能版本过旧，请用含新版助手的完整包更新 JASM",
+                            + "若游戏没有刷新，说明它可能版本过旧，更新 JASM 即可（助手随主 exe 一起更新）",
                 ElevatorProcessName, 3, ElevatorRefreshProtocol.TargetedRefreshCommand);
             return;
         }
