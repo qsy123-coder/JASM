@@ -48,6 +48,12 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// <summary>列表空掉时给一句话说明为什么空 —— 「没有 Mod」和「搜不到」是两件事，不能共用一句。</summary>
     [ObservableProperty] private string? _emptyMessage;
 
+    /// <summary>
+    /// 列表是不是空的。<see cref="EmptyMessage"/> 本身是个字符串、绑不了 <c>Visibility</c>，
+    /// 所以再给界面一个布尔值去控制那段提示的显隐。
+    /// </summary>
+    [ObservableProperty] private bool _isListEmpty;
+
     /// <summary>勾选失败时的提示。刷新那边的成败由 <see cref="RefreshCoordinator"/> 负责，这里只管动盘失败。</summary>
     [ObservableProperty] private string? _errorMessage;
 
@@ -73,6 +79,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         if (Characters.Count == 0)
         {
             EmptyMessage = "没有找到任何 Mod。先在 JASM 主窗口里导入 Mod 吧。";
+            IsListEmpty = true;
             return;
         }
 
@@ -154,6 +161,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         Mods.Clear();
         foreach (var mod in filtered)
             Mods.Add(mod);
+
+        IsListEmpty = Mods.Count == 0;
 
         // 先判搜索："搜不到" 和 "这个角色没有 Mod" 是两件事，用户要据此决定是改搜索词还是去装 Mod
         EmptyMessage = Mods.Count > 0
