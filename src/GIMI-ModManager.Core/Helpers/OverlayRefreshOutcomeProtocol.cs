@@ -9,6 +9,13 @@ public enum OverlayRefreshOutcome
     /// <summary>提权助手没在运行，按键根本没人代发。</summary>
     ElevatorNotRunning,
 
+    /// <summary>
+    /// 助手版本过旧，不认识带目标窗口的刷新命令（<c>"2"</c>）。旧助手收到不认识的命令是**静默无视**，
+    /// 所以必须在发出之前就据此拦下 —— 否则用户等到的只是「没有回话」，而去重启一个版本本来就旧的助手
+    /// 解决不了任何问题。
+    /// </summary>
+    HelperTooOld,
+
     /// <summary>没找到游戏窗口：游戏没跑 / Mod 环境没配好 / 没从 d3dx.ini 解析出目标进程。</summary>
     TargetNotFound,
 
@@ -55,6 +62,11 @@ public static class OverlayRefreshOutcomeProtocol
         OverlayRefreshOutcome.ElevatorNotRunning =>
             "提权助手没在运行，游戏里不会重载。请在设置页启动助手后重试（建议进游戏前先启动，"
             + "否则全屏下会弹 UAC 打断画面）。",
+
+        // 让用户「更新 JASM」而不是「重启助手」：助手是内嵌在主 exe 里的，版本跟着主程序走，
+        // 重启同一个旧助手不会让它多认识一条命令。
+        OverlayRefreshOutcome.HelperTooOld =>
+            "提权助手版本过旧，不认识带目标的刷新命令，游戏里不会重载。更新 JASM 即可（助手随主程序一起更新）。",
 
         OverlayRefreshOutcome.TargetNotFound =>
             "没找到游戏窗口：确认游戏已经启动；如果刚改过 Mod 环境，先在设置页重跑一次一键配置。",
