@@ -115,32 +115,21 @@ public sealed class GameKeySender : IGameKeySender
             var gameIntegrity = TryReadIntegrityLevelRid(gameProcessId);
 
             // UIPI 前置检查：目标进程级别更高就发不进去（而且发出去也「看起来成功」）。
-            // 放在切前台**之前** —— 既然本进程注定送不到，就不要把用户的焦点从 JASM 抢走。
             // 读不到级别（受保护进程等）时不拦，照常尝试发送。
             var needsElevation = false;
             if (gameIntegrity is { } targetIntegrity && targetIntegrity > ownIntegrity)
             {
                 needsElevation = true;
-
-                // **这一支刻意不 await、也不切前台**：本段是「同步段」（见类注释约束 1/2）。
-                // 代发交给提权助手，它自己会去抢前台 —— 它是提权进程，不受前台锁约束，
-                // 本进程的前台身份对它没有意义。
                 _logger.Warning(
                     "[GameKeySender] 目标进程 {ProcessName} 完整性级别 0x{TargetIntegrity:X4} "
                     + "高于本进程 0x{OwnIntegrity:X4}，本进程的 SendInput 会被 UIPI 丢掉；改请提权助手代发",
                     processName, targetIntegrity, ownIntegrity);
             }
-            else
-            {
-                if (PInvoke.IsIconic(gameWindow) != 0)
-                    PInvoke.ShowWindow(gameWindow, SHOW_WINDOW_CMD.SW_RESTORE);
 
-                if (PInvoke.SetForegroundWindow(gameWindow) == 0)
-                {
-                    // 切不过去不中断：按键仍然会进当时真正的前台窗口，用户可能只是没把游戏调出来
-                    _logger.Warning("[GameKeySender] SetForegroundWindow 被拒，仍按当前前台窗口继续发送");
-                }
-            }
+            // **两条路都在这里切前台**，而且必须在同步段里（见类注释约束 1）。
+            // 提权那一支不能指望助手自己去抢，理由与现场签名见 ForegroundWindowActivator；
+            // 它额外要把这次切前台的权利让出去，让助手有一手可补。
+            ForegroundWindowActivator.Activate(gameWindow, needsElevation, _logger);
             // ══ 同步段结束 ══
 
             // 提权那一支到这里才 await（理由见上面注释）
