@@ -35,6 +35,9 @@ public partial class ElevatorService : ObservableRecipient
 
     private bool _supportsTargetedRefresh;
 
+    /// <summary>助手认不认送键命令 <c>"3"</c>；不认识就只能退回「请用户自己以管理员身份运行 JASM」。</summary>
+    private bool _supportsKeySend;
+
     public string? ErrorMessage { get; private set; }
 
     private bool _exitHandlerRegistered;
@@ -57,9 +60,11 @@ public partial class ElevatorService : ObservableRecipient
             _logger.Debug(ElevatorProcessName + " found at: " + elevatorPath);
             _elevatorFileVersion = ReadElevatorFileVersion(elevatorPath);
             _supportsTargetedRefresh = ElevatorRefreshProtocol.SupportsTargetedRefresh(_elevatorFileVersion);
+            _supportsKeySend = ElevatorKeySendProtocol.SupportsKeySend(_elevatorFileVersion);
             _logger.Information(
-                "[ElevatorService] {ProcessName} FileVersion={FileVersion}，支持带目标窗口的刷新={SupportsTargetedRefresh}",
-                ElevatorProcessName, _elevatorFileVersion ?? "(读不到)", _supportsTargetedRefresh);
+                "[ElevatorService] {ProcessName} FileVersion={FileVersion}，支持带目标窗口的刷新={SupportsTargetedRefresh}，"
+                + "支持代发按键={SupportsKeySend}",
+                ElevatorProcessName, _elevatorFileVersion ?? "(读不到)", _supportsTargetedRefresh, _supportsKeySend);
             App.MainWindow.DispatcherQueue.TryEnqueue(() => CanStartElevator = true);
             _IsInitialized = true;
             return;
@@ -472,6 +477,118 @@ public partial class ElevatorService : ObservableRecipient
         }
     }
 
+    /// <summary>
+    /// 请提权助手代发一个按键和弦 —— 游戏以管理员身份运行时**唯一**能送进按键的路径。
+    ///
+    /// 为什么非助手不可：UIPI 会把「中 → 高」的 <c>SendInput</c> 静默丢弃，主程序自己发
+    /// 拿到的返回值是成功的、游戏却收不到（见 <see cref="ElevatorKeySendProtocol"/> 的类注释）。
+    ///
+    /// 助手没在跑就**先把它拉起来**，那一次会弹 UAC；之后整个会话复用同一个提权进程。
+    /// 三种结果的含义见 <see cref="ElevatedKeySendResult"/>，调用方据此决定给用户看什么。
+    ///
+    /// 可见性是 <c>internal</c> 而不是 <c>public</c>：参数里的 <c>HWND</c> 是 CsWin32 生成的 internal 类型，
+    /// 放进 public 签名会直接 CS0051。唯一调用方 <c>GameKeySender</c> 在同一程序集里，internal 足够。
+    /// </summary>
+    internal async Task<ElevatedKeySendOutcome> TrySendKeyChordAsync(ushort virtualKey,
+        IReadOnlyList<ushort> modifierKeyCodes, HWND targetWindow, CancellationToken ct = default)
+    {
+        // 先分辨「没装」与「版本旧」—— 两者给用户的建议不同（更新 JASM vs 更新 JASM），
+        // 但日志里必须能一眼区分，否则用户报「送不了键」时无从查起。
+        if (_elevatorFileVersion is null)
+        {
+            _logger.Warning("[ElevatorService] 提权助手没随包安装（或版本读不到），无法代发按键");
+            return ElevatedKeySendOutcome.Unavailable(
+                "这份 JASM 里没有提权助手，送不进提权运行的游戏。请用含提权助手的完整包（folder 版）更新。");
+        }
+
+        if (!_supportsKeySend)
+        {
+            _logger.Warning("[ElevatorService] 助手 FileVersion={Version} 低于 {Minimum}，不认识送键命令 {Command}",
+                _elevatorFileVersion, ElevatorKeySendProtocol.MinimumFileVersionForKeySend,
+                ElevatorKeySendProtocol.SendKeyCommand);
+            return ElevatedKeySendOutcome.Unavailable(
+                $"提权助手版本过旧（{_elevatorFileVersion}），不认识送键命令。请用含新版助手的完整包更新 JASM。");
+        }
+
+        if (_elevatorProcess is not { HasExited: false })
+        {
+            if (!CanStartElevator)
+            {
+                _logger.Warning("[ElevatorService] 提权助手不可用（起不来），无法代发按键");
+                return ElevatedKeySendOutcome.Unavailable("提权助手不可用，按键没有发送。");
+            }
+
+            try
+            {
+                StartElevator();
+            }
+            catch (Exception ex)
+            {
+                // 用户在 UAC 上点「否」也走这里（Win32Exception: 操作已被用户取消）——
+                // 那是选择不是故障，日志按 Information 记，别在用户日志里留下像是崩溃的东西
+                _logger.Information(ex, "[ElevatorService] 启动提权助手被取消或失败，无法代发按键");
+                return ElevatedKeySendOutcome.Unavailable("启动提权助手被取消，按键没有发送。");
+            }
+
+            // StartElevator 的返回值不可信（「本来就在跑」同样返回 false），以进程状态为准
+            if (_elevatorProcess is not { HasExited: false })
+            {
+                _logger.Warning("[ElevatorService] 提权助手没能起来，无法代发按键");
+                return ElevatedKeySendOutcome.Unavailable("提权助手没能启动，按键没有发送。");
+            }
+        }
+
+        try
+        {
+            await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
+
+            // 助手是单连接串行的：它正忙于复制目录时，这里的 Connect 会一直等，
+            // 所以要设超时。15s 已经远超正常送键所需（还原窗口 + 500ms 前台轮询 + 300ms 稳定 + 80ms 按住）。
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            await pipeClient.ConnectAsync(linkedCts.Token).ConfigureAwait(false);
+
+            using var reader = new StreamReader(pipeClient);
+            await using var writer = new StreamWriter(pipeClient) { AutoFlush = true };
+
+            // HWND → nint 走 CsWin32 生成的隐式转换，所以这里不用 unsafe
+            foreach (var line in ElevatorKeySendProtocol.BuildSendKeyPayload(virtualKey, modifierKeyCodes,
+                         targetWindow))
+            {
+                await writer.WriteLineAsync(line.AsMemory(), linkedCts.Token).ConfigureAwait(false);
+            }
+
+            var reply = await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+
+            switch (ElevatorKeySendProtocol.ParseReply(reply, out var failureReason))
+            {
+                case ElevatorKeySendReply.Ok:
+                    _logger.Information(
+                        "[ElevatorService] 提权助手已代发按键 vk=0x{VirtualKey:X2} mods=[{Modifiers}] 目标窗口={Window}",
+                        virtualKey, string.Join(",", modifierKeyCodes),
+                        WindowProcessQuery.FormatWindow(targetWindow));
+                    return ElevatedKeySendOutcome.Sent;
+
+                case ElevatorKeySendReply.Failure:
+                    // 原因 token 原样记日志（将来助手加了原因，这里不用改），给用户的文案单独映射
+                    _logger.Warning("[ElevatorService] 提权助手拒绝代发按键：{Reason}", failureReason);
+                    return ElevatedKeySendOutcome.Failed(
+                        ElevatorKeySendProtocol.DescribeFailure(failureReason));
+
+                default:
+                    _logger.Warning(
+                        "[ElevatorService] 提权助手没有回执送键命令 {Command}（可能版本过旧或已退出）",
+                        ElevatorKeySendProtocol.SendKeyCommand);
+                    return ElevatedKeySendOutcome.Unavailable("提权助手没有响应送键请求，请重试。");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or OperationCanceledException)
+        {
+            _logger.Warning(ex, "[ElevatorService] 请提权助手代发按键失败");
+            return ElevatedKeySendOutcome.Unavailable("连不上提权助手，按键没有发送。");
+        }
+    }
+
     public ElevatorStatus CheckStatus()
     {
         ElevatorStatus = _elevatorProcess is { HasExited: false } ? ElevatorStatus.Running : ElevatorStatus.NotRunning;
@@ -484,4 +601,36 @@ public enum ElevatorStatus
     InitializingFailed = -1,
     NotRunning = 0,
     Running
+}
+
+/// <summary>请提权助手代发按键的结果。</summary>
+public enum ElevatedKeySendResult
+{
+    /// <summary>助手已把按键发出 —— 这是唯一不需要打扰用户的结局。</summary>
+    Sent,
+
+    /// <summary>
+    /// 助手这条路压根走不通（没随包安装 / 版本过旧 / 拉不起来）。
+    /// 调用方据此退回既有行为：提示用户自己以管理员身份运行 JASM。
+    /// </summary>
+    Unavailable,
+
+    /// <summary>助手在跑，但拒发或没回话。原因见 <see cref="ElevatedKeySendOutcome.Message"/>。</summary>
+    Failed
+}
+
+/// <summary>
+/// 代发按键的结果。<see cref="Message"/> 是**给用户看**的一句话，只有失败时才有值 ——
+/// 失败原因是助手回执里的动态 token（没抢到前台 / 被反作弊拦下…），一句写死的文案盖不住，
+/// 而每种原因对应的下一步动作并不相同（「点一下游戏画面再试」≠「更新 JASM」）。
+/// </summary>
+public readonly record struct ElevatedKeySendOutcome(ElevatedKeySendResult Result, string? Message)
+{
+    public static ElevatedKeySendOutcome Sent { get; } = new(ElevatedKeySendResult.Sent, null);
+
+    public static ElevatedKeySendOutcome Unavailable(string message)
+        => new(ElevatedKeySendResult.Unavailable, message);
+
+    public static ElevatedKeySendOutcome Failed(string message)
+        => new(ElevatedKeySendResult.Failed, message);
 }
