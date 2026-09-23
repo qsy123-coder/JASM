@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<winUiEx:WindowEx
+    x:Class="GIMI_ModManager.WinUI.Views.Overlay.OverlayWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:overlayVm="using:GIMI_ModManager.WinUI.ViewModels.Overlay"
+    xmlns:winUiEx="using:WinUIEx"
+    x:Name="RootWindow"
+    mc:Ignorable="d">
+
+    <Page>
+        <!--  背景刻意不透明（不是 Mica/亚克力）：浮窗压在游戏画面上，半透明会让文字糊进背景里读不清。  -->
+        <Grid x:Name="RootGrid" Background="#F0101016">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!--  拖动条：整条都能拖窗口（无边框窗口没有标题栏可拖，拖出屏幕外就再也抓不回来了）。
+                  关闭按钮放在这一层里，它会把 PointerPressed 标记为已处理，所以点它**不会**顺带开始拖动 —— 正是想要的。  -->
+            <Grid
+                x:Name="DragStrip"
+                Grid.Row="0"
+                Height="38"
+                Background="Transparent"
+                PointerCaptureLost="OnDragStripPointerCaptureLost"
+                PointerMoved="OnDragStripPointerMoved"
+                PointerPressed="OnDragStripPointerPressed"
+                PointerReleased="OnDragStripPointerReleased">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock
+                    Grid.Column="0"
+                    Margin="12,0,0,0"
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    Text="Skin Switcher"
+                    l:Uids.Uid="Overlay_Title" />
+
+                <!--  热键名由 OverlayWindowService 在窗口建好后填进来（它才知道注册到了哪个键）。
+                      不写死：候选键会因为被别的程序占用而退到备选，写死了就会骗用户。  -->
+                <TextBlock
+                    x:Name="HotkeyHintText"
+                    Grid.Column="1"
+                    Margin="8,0,8,0"
+                    VerticalAlignment="Center"
+                    FontSize="11"
+                    Foreground="#99FFFFFF" />
+
+                <Button
+                    x:Name="HideButton"
+                    Grid.Column="2"
+                    Margin="0,0,6,0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnHideClick">
+                    <FontIcon FontSize="12" Glyph="&#xE711;" />
+                </Button>
+            </Grid>
+
+            <ComboBox
+                Grid.Row="1"
+                Margin="12,0,12,8"
+                HorizontalAlignment="Stretch"
+                DisplayMemberPath="DisplayName"
+                ItemsSource="{x:Bind ViewModel.Characters}"
+                SelectedItem="{x:Bind ViewModel.SelectedCharacter, Mode=TwoWay}" />
+
+            <TextBox
+                Grid.Row="2"
+                Margin="12,0,12,8"
+                PlaceholderText="Search mods"
+                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                l:Uids.Uid="Overlay_SearchPlaceholder" />
+
+            <!--  状态区：刷新那边的成败（协调器）与勾选失败（ViewModel）各占一行，
+                  都为空时这两行自己塌掉，不占地方。  -->
+            <StackPanel Grid.Row="3" Margin="12,0,12,6" Spacing="2">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ProgressRing
+                        Width="14"
+                        Height="14"
+                        VerticalAlignment="Center"
+                        IsActive="{x:Bind ViewModel.RefreshCoordinator.IsRefreshing, Mode=OneWay}" />
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="#FF6CCB5F"
+                        Glyph="&#xE73E;"
+                        Visibility="{x:Bind ViewModel.RefreshCoordinator.ShowSuccessIcon, Mode=OneWay}" />
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="#FFE8A33D"
+                        Glyph="&#xE7BA;"
+                        Visibility="{x:Bind ViewModel.RefreshCoordinator.ShowFailureIcon, Mode=OneWay}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        Foreground="#CCFFFFFF"
+                        Text="{x:Bind ViewModel.RefreshCoordinator.StatusMessage, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#FFE8A33D"
+                    Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <ListView
+                Grid.Row="4"
+                Margin="6,0,6,8"
+                ItemsSource="{x:Bind ViewModel.Mods}"
+                SelectionMode="None">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="Padding" Value="4,2" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="overlayVm:OverlayModItemViewModel">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!--  CheckBox 的 Command 落在行自己身上：每个行一个命令实例，
+                                  所以"同一个 Mod 连点"被挡住、不同行之间互不阻塞。
+                                  IsChecked 是单向绑的，切换失败时由行自己重新推一次真实值（见 RefreshEnabledState）。  -->
+                            <CheckBox
+                                Grid.Column="0"
+                                MinWidth="0"
+                                Command="{x:Bind ToggleModCommand}"
+                                IsChecked="{x:Bind IsEnabled, Mode=OneWay}" />
+
+                            <!--  缩略图。用 BitmapImage + UriSource：由 WinUI 自己异步解码，
+                                  只在行被虚拟化出来时才加载，不需要外面再搭一套懒加载。
+                                  DecodePixelWidth 是原图可能是 4K 截图，不限制就白解一张大图。  -->
+                            <Image
+                                Grid.Column="1"
+                                Width="40"
+                                Height="40"
+                                Stretch="UniformToFill">
+                                <Image.Source>
+                                    <BitmapImage DecodePixelWidth="80" UriSource="{x:Bind ImagePath}" />
+                                </Image.Source>
+                            </Image>
+
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock
+                                    MaxLines="1"
+                                    Text="{x:Bind Name}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="#99FFFFFF"
+                                    MaxLines="1"
+                                    Text="{x:Bind Author}"
+                                    TextTrimming="CharacterEllipsis"
+                                    Visibility="{x:Bind HasAuthor}" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <TextBlock
+                Grid.Row="4"
+                Margin="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Foreground="#99FFFFFF"
+                IsHitTestVisible="False"
+                Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}"
+                TextAlignment="Center"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.IsListEmpty, Mode=OneWay}" />
+        </Grid>
+    </Page>
+</winUiEx:WindowEx>
