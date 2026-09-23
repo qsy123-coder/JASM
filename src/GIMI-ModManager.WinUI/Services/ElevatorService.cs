@@ -15,6 +15,13 @@ namespace GIMI_ModManager.WinUI.Services;
 public partial class ElevatorService : ObservableRecipient
 {
     private readonly ISkinManagerService _skinManagerService;
+
+    /// <summary>
+    /// 单 exe 版没有随包的 <c>Elevator.exe</c>，助手只能靠它从主 exe 的内嵌资源里释放出来。
+    /// folder 版同目录那份就够用，它会一行都不写（见 <see cref="ElevatorProvisioning.ShouldProvision"/>）。
+    /// </summary>
+    private readonly ElevatorProvisioner _provisioner;
+
     public const string ElevatorPipeName = "MyPipess";
     public const string ElevatorProcessName = "Elevator.exe";
     private readonly ILogger _logger;
@@ -27,7 +34,14 @@ public partial class ElevatorService : ObservableRecipient
     private Process? _elevatorProcess;
 
     /// <summary>
-    /// 磁盘上 Elevator.exe 的 FileVersion（<see cref="Initialize"/> 里读一次缓存），
+    /// 实际要用的那个助手的绝对路径（<see cref="Initialize"/> 里定一次）。
+    /// 两个候选里选出来的：folder 版是 exe 同目录那份，单 exe 版是释放到 <c>%LOCALAPPDATA%</c> 的副本。
+    /// <c>null</c> = 没有可用助手，走「启动不了」的既有分支。
+    /// </summary>
+    private string? _elevatorPath;
+
+    /// <summary>
+    /// <see cref="_elevatorPath"/> 那个助手的 FileVersion（<see cref="Initialize"/> 里读一次缓存），
     /// 以及「它认不认带目标窗口的刷新命令」。正在运行的 exe 无法被覆盖（文件被锁），
     /// 所以磁盘上的版本 == 正在跑的那个进程的版本。
     /// </summary>
@@ -44,9 +58,10 @@ public partial class ElevatorService : ObservableRecipient
 
     private bool _IsInitialized;
 
-    public ElevatorService(ILogger logger, ISkinManagerService skinManagerService)
+    public ElevatorService(ILogger logger, ISkinManagerService skinManagerService, ElevatorProvisioner provisioner)
     {
         _skinManagerService = skinManagerService;
+        _provisioner = provisioner;
         _logger = logger.ForContext<ElevatorService>();
     }
 
@@ -54,17 +69,37 @@ public partial class ElevatorService : ObservableRecipient
     {
         if (_IsInitialized) throw new InvalidOperationException("ElevatorService is already initialized");
         _logger.Debug("Initializing ElevatorService");
-        var elevatorPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ElevatorProcessName);
-        if (Path.Exists(elevatorPath))
+
+        // 候选一：随包安装的同目录助手（folder 版 / 开发机）
+        string? siblingPath = null;
+        string? siblingVersion = null;
+        var siblingCandidate = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ElevatorProcessName);
+        if (Path.Exists(siblingCandidate))
         {
-            _logger.Debug(ElevatorProcessName + " found at: " + elevatorPath);
-            _elevatorFileVersion = ReadElevatorFileVersion(elevatorPath);
+            siblingPath = siblingCandidate;
+            siblingVersion = ReadElevatorFileVersion(siblingCandidate);
+        }
+
+        // 候选二：从主 exe 的内嵌资源释放到 %LOCALAPPDATA% 的副本（单 exe 版的唯一来源）。
+        // 把同目录那份的版本传进去：它已经够用时这一步一行都不会写盘。
+        var extractedPath = _provisioner.EnsureProvisioned(siblingVersion);
+        var extractedVersion = extractedPath is null ? null : ReadElevatorFileVersion(extractedPath);
+
+        // 取版本高的那个。**不能**简单地「同目录优先」：单 exe 用户的目录里可能残留着旧 folder 安装
+        // 留下的 1.0.0.0 助手，那样会把刚从内嵌资源写出来的、能用的新助手盖掉（理由见 Select 的注释）。
+        (_elevatorPath, _elevatorFileVersion) =
+            ElevatorProvisioning.Select(siblingPath, siblingVersion, extractedPath, extractedVersion);
+
+        if (_elevatorPath is not null)
+        {
+            _logger.Debug(ElevatorProcessName + " found at: " + _elevatorPath);
             _supportsTargetedRefresh = ElevatorRefreshProtocol.SupportsTargetedRefresh(_elevatorFileVersion);
             _supportsKeySend = ElevatorKeySendProtocol.SupportsKeySend(_elevatorFileVersion);
             _logger.Information(
-                "[ElevatorService] {ProcessName} FileVersion={FileVersion}，支持带目标窗口的刷新={SupportsTargetedRefresh}，"
+                "[ElevatorService] {ProcessName} FileVersion={FileVersion}（路径 {Path}），支持带目标窗口的刷新={SupportsTargetedRefresh}，"
                 + "支持代发按键={SupportsKeySend}",
-                ElevatorProcessName, _elevatorFileVersion ?? "(读不到)", _supportsTargetedRefresh, _supportsKeySend);
+                ElevatorProcessName, _elevatorFileVersion ?? "(读不到)", _elevatorPath, _supportsTargetedRefresh,
+                _supportsKeySend);
             App.MainWindow.DispatcherQueue.TryEnqueue(() => CanStartElevator = true);
             _IsInitialized = true;
             return;
@@ -101,14 +136,26 @@ public partial class ElevatorService : ObservableRecipient
             return false;
         }
 
+        // 绝对路径是必需的：UseShellExecute=true 时裸名靠 shell / CWD 解析，而助手现在可能住在
+        // %LOCALAPPDATA%\JASM（只有 folder 版才在 exe 同目录）。WorkingDirectory 同理 —— 不设的话
+        // 会把调用方的当前目录传染给提权进程。
+        if (_elevatorPath is null)
+        {
+            _logger.Error("[ElevatorService] 没有可用的助手路径，无法启动 " + ElevatorProcessName);
+            App.MainWindow.DispatcherQueue.TryEnqueue(() => ElevatorStatus = ElevatorStatus.InitializingFailed);
+            ErrorMessage = "Elevator.exe not found";
+            return false;
+        }
+
         var currentUser = WindowsIdentity.GetCurrent().Name;
         currentUser = currentUser.Split("\\").LastOrDefault() ?? currentUser;
 
-        _elevatorProcess = Process.Start(new ProcessStartInfo(ElevatorProcessName)
+        _elevatorProcess = Process.Start(new ProcessStartInfo(_elevatorPath)
         {
             UseShellExecute = true,
             CreateNoWindow = false,
             WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Path.GetDirectoryName(_elevatorPath) ?? string.Empty,
             Verb = "runas",
             ArgumentList = { currentUser }
         });
@@ -492,13 +539,15 @@ public partial class ElevatorService : ObservableRecipient
     internal async Task<ElevatedKeySendOutcome> TrySendKeyChordAsync(ushort virtualKey,
         IReadOnlyList<ushort> modifierKeyCodes, HWND targetWindow, CancellationToken ct = default)
     {
-        // 先分辨「没装」与「版本旧」—— 两者给用户的建议不同（更新 JASM vs 更新 JASM），
-        // 但日志里必须能一眼区分，否则用户报「送不了键」时无从查起。
+        // 先分辨「没拿到助手」与「版本旧」—— 两者都是叫用户更新，但日志里必须能一眼区分，
+        // 否则用户报「送不了键」时无从查起。
         if (_elevatorFileVersion is null)
         {
-            _logger.Warning("[ElevatorService] 提权助手没随包安装（或版本读不到），无法代发按键");
-            return ElevatedKeySendOutcome.Unavailable(
-                "这份 JASM 里没有提权助手，送不进提权运行的游戏。请用含提权助手的完整包（folder 版）更新。");
+            // 走到这里只有一种可能：同目录没有助手（单 exe 版），且内嵌副本也没能释放出来
+            //（没有内嵌资源，或写盘被锁 / 被拦）。路径不写进用户可见文案，只记日志。
+            _logger.Warning("[ElevatorService] 没有可用助手：同目录无 Elevator.exe，内嵌副本也没能释放到 {Path}，无法代发按键",
+                ElevatorProvisioner.ProvisionedHelperPath);
+            return ElevatedKeySendOutcome.Unavailable("提权助手不可用，按键没有发送。请更新 JASM 后重试。");
         }
 
         if (!_supportsKeySend)
@@ -507,7 +556,7 @@ public partial class ElevatorService : ObservableRecipient
                 _elevatorFileVersion, ElevatorKeySendProtocol.MinimumFileVersionForKeySend,
                 ElevatorKeySendProtocol.SendKeyCommand);
             return ElevatedKeySendOutcome.Unavailable(
-                $"提权助手版本过旧（{_elevatorFileVersion}），不认识送键命令。请用含新版助手的完整包更新 JASM。");
+                $"提权助手版本过旧（{_elevatorFileVersion}），不认识送键命令。请更新 JASM 后重试。");
         }
 
         if (_elevatorProcess is not { HasExited: false })
