@@ -4,6 +4,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using GIMI_ModManager.Core.Helpers;
 using WindowsInput;
 
 
@@ -18,6 +19,7 @@ using WindowsInput;
 // 0: RefreshActiveGenshinMods (legacy: the target is hardcoded and there is no reply)
 // 1: CopyDirectory (<src> and <dst> follow on their own lines; replies "OK" or "FAIL:<msg>")
 // 2: TargetedRefresh (<hwnd> follows on its own line; replies "OK" or "FAIL:<reason>")
+// 3: SendKey (<vk>, <mods> and <hwnd> follow on their own lines; replies "OK" or "FAIL:<reason>")
 
 internal class Program
 {
@@ -99,6 +101,10 @@ internal class Program
                     case "2":
                         Console.WriteLine("Refreshing the targeted game");
                         HandleTargetedRefreshCommand(pipeServer, reader);
+                        break;
+                    case "3":
+                        Console.WriteLine("Sending a key chord");
+                        HandleSendKeyCommand(pipeServer, reader);
                         break;
 
                     default:
@@ -185,6 +191,16 @@ internal class Program
     const int ForegroundCheckAttempts = 10;
     const int ForegroundCheckIntervalMs = 50;
 
+    /// <summary>送键时按住 / 抬起之间的保持时长，与主程序 <c>GameKeySender.HoldMilliseconds</c> 取同一个值。</summary>
+    const int KeyHoldMilliseconds = 80;
+
+    /// <summary>
+    /// 抢到前台后再等这一小会儿才送键，与主程序 <c>GameKeySender.ForegroundSettleMilliseconds</c> 同值 ——
+    /// 前台刚切过去时游戏还在处理激活消息，立刻送键会被丢掉，现象就是「点了没反应」。
+    /// 刷新路径不需要这一步（F10 是重载，早一点晚一点都吃得下），送键必须等。
+    /// </summary>
+    const int ForegroundSettleMilliseconds = 300;
+
 
     /// <summary>
     /// 历史命令 "0" 的实现：目标写死为原神，窗口也照旧用 <see cref="Process.MainWindowHandle"/> 找。
@@ -255,6 +271,75 @@ internal class Program
     }
 
     /// <summary>
+    /// 送键：载荷三行（vk / mods / hwnd）由 <see cref="KeyHelperProtocol"/> 负责解析与护栏。
+    ///
+    /// **为什么这件事非助手不可**：游戏是提权运行的，UIPI 会把「中 → 高」的 <c>SendInput</c> 静默丢弃 ——
+    /// 主程序发出去看起来成功、游戏却收不到。助手是提权进程，它发的才进得去。
+    /// 助手只做提权才能做的那一段：还原窗口 → 切前台 → 回读校验 → 送键；
+    /// 「哪个游戏、窗口句柄是多少」由主程序现找（只有它读得到 d3dx.ini，也只有它会用 EnumWindows）。
+    /// </summary>
+    static void HandleSendKeyCommand(PipeStream pipe, StreamReader reader)
+    {
+        using var writer = new StreamWriter(pipe) { AutoFlush = true };
+
+        // 三行一次性读出来再交给协议解析：这样失败出口只有下面那几个，不会中途漏掉回执
+        var virtualKeyLine = reader.ReadLine();
+        var modifiersLine = reader.ReadLine();
+        var windowLine = reader.ReadLine();
+
+        if (!KeyHelperProtocol.TryParseSendKeyRequest(virtualKeyLine, modifiersLine, windowLine,
+                out var request, out var failureReason))
+        {
+            // 载荷不合法、危险组合键都从这里出来。护栏在这里是**重复**过了一遍的：
+            // 主程序发之前已经拦过，规则同一份（KeyChordGuard），等于白送一道防线。
+            Console.Error.WriteLine($"Rejected the key chord: {failureReason}");
+            writer.WriteLine(KeyHelperProtocol.BuildFailureReply(
+                failureReason ?? KeyHelperProtocol.ReasonBadPayload));
+            return;
+        }
+
+        IntPtr targetWindow = request.TargetWindow;
+
+        // 句柄是主程序刚现找的，但从它写进管道到助手读到，中间隔着一次进程切换，
+        // 游戏可能已经重建了窗口（进出全屏 / 改分辨率）。陈旧句柄必须在这里挡掉 ——
+        // 放下去的话 SetForegroundWindow 会失败得毫无线索。
+        if (!IsWindow(targetWindow))
+        {
+            Console.Error.WriteLine($"Bad target window handle: {request.TargetWindow}");
+            writer.WriteLine(KeyHelperProtocol.BuildFailureReply(KeyHelperProtocol.ReasonBadPayload));
+            return;
+        }
+
+        if (IsIconic(targetWindow))
+        {
+            Console.WriteLine("Restoring the minimized target window");
+            ShowWindow(targetWindow, SW_RESTORE);
+        }
+
+        // 返回值不可信（前台锁会让它返回 0，而窗口其实已经切过去了），所以下面以回读为准
+        if (SetForegroundWindow(targetWindow) == 0)
+        {
+            Console.WriteLine("SetForegroundWindow returned false; verifying by reading the window back");
+        }
+
+        if (!WaitForForeground(targetWindow))
+        {
+            // 与刷新同一条理由：前台没抢到，按键会打进别的窗口（比如 JASM 自己），拒发
+            Console.Error.WriteLine("The target window never became the foreground window, not sending the key");
+            writer.WriteLine(KeyHelperProtocol.BuildFailureReply(KeyHelperProtocol.ReasonNotForeground));
+            return;
+        }
+
+        Thread.Sleep(ForegroundSettleMilliseconds);
+
+        Console.WriteLine($"The target window is in the foreground, sending vk=0x{request.VirtualKey:X2}");
+        SendChord(request.VirtualKey, request.ModifierKeyCodes);
+
+        // 回执放在按键之后：主程序读到 "OK" 就等于按键真的发出去了
+        writer.WriteLine(KeyHelperProtocol.BuildOkReply());
+    }
+
+    /// <summary>
     /// 轮询等目标窗口所属的进程拿到前台（最多 ~500ms）。
     /// 按**进程 id** 比而不是按窗口句柄比：等待期间游戏可能重建窗口，句柄会变，进程不会。
     /// </summary>
@@ -293,6 +378,34 @@ internal class Program
             .Sleep(100)
             .KeyUp(VirtualKeyCode.F10)
             .Sleep(100);
+    }
+
+    /// <summary>
+    /// 送一个「修饰键 + 主键」的和弦。
+    ///
+    /// 顺序与主程序 <c>GameKeySender.SendChord</c> 逐字一致：按下时**先修饰键后主键**，
+    /// 抬起时**反过来** —— 否则游戏可能读到「主键还按着、修饰键已经松开」，
+    /// 把 Alt+↑ 认成单个 ↑。这里没有复用那份实现，是因为它在 WinUI 工程里、
+    /// 且依赖 CsWin32 生成的 INPUT 结构；助手这边沿用自己的 WindowsInput（SendF10 用的同一套）。
+    /// </summary>
+    static void SendChord(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes)
+    {
+        var keyboard = new InputSimulator().Keyboard;
+
+        foreach (var modifier in modifierKeyCodes)
+        {
+            keyboard.KeyDown((VirtualKeyCode)modifier);
+        }
+
+        keyboard.KeyDown((VirtualKeyCode)virtualKey);
+        Thread.Sleep(KeyHoldMilliseconds);
+        keyboard.KeyUp((VirtualKeyCode)virtualKey);
+
+        // 抬起顺序反过来，理由见上面的注释
+        for (var i = modifierKeyCodes.Count - 1; i >= 0; i--)
+        {
+            keyboard.KeyUp((VirtualKeyCode)modifierKeyCodes[i]);
+        }
     }
 
 
