@@ -1,6 +1,7 @@
 ﻿ShowWindow
 SetWindowPos
 SetForegroundWindow
+AllowSetForegroundWindow
 PlaySound
 PathFindOnPath
 AttachConsole
