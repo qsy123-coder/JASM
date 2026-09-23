@@ -33,10 +33,33 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
     /// </summary>
     [ObservableProperty] private OverlayRefreshOutcome? _lastOutcome;
 
+    /// <summary>
+    /// 最近一次结局算不算"没刷成"。浮窗很小，状态行只有一行字，光靠读完整句才知道成没成太费劲，
+    /// 所以再给一个能直接换成图标/颜色的布尔值。
+    /// </summary>
+    public bool IsLastOutcomeFailure => LastOutcome is not null and not OverlayRefreshOutcome.Refreshed;
+
+    /// <summary>状态行前面的对勾要不要露出来：只有真刷成了才露。</summary>
+    public bool ShowSuccessIcon => LastOutcome == OverlayRefreshOutcome.Refreshed;
+
+    /// <summary>状态行前面的警告图标要不要露出来。还没刷过时为 false（此时状态行本来就是空的，没有可警告的事）。</summary>
+    public bool ShowFailureIcon => IsLastOutcomeFailure;
+
     public OverlayRefreshCoordinator(ElevatorService elevatorService, ILogger logger)
     {
         _elevatorService = elevatorService;
         _logger = logger.ForContext<OverlayRefreshCoordinator>();
+    }
+
+    /// <summary>
+    /// 上面三个属性都是从 <see cref="LastOutcome"/> 算出来的，源生成器不会替它们发通知 ——
+    /// 不手动补一下，状态行换了结局但图标/颜色停在旧的那次。
+    /// </summary>
+    partial void OnLastOutcomeChanged(OverlayRefreshOutcome? value)
+    {
+        OnPropertyChanged(nameof(IsLastOutcomeFailure));
+        OnPropertyChanged(nameof(ShowSuccessIcon));
+        OnPropertyChanged(nameof(ShowFailureIcon));
     }
 
     /// <summary>
