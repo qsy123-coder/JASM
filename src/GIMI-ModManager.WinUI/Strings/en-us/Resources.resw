@@ -305,4 +305,13 @@
   <data name="Overlay_SearchPlaceholder.PlaceholderText" xml:space="preserve">
     <value>Search mods</value>
   </data>
+  <data name="Overlay_ModeSingle.Content" xml:space="preserve">
+    <value>Single</value>
+  </data>
+  <data name="Overlay_ModeMulti.Content" xml:space="preserve">
+    <value>Multi</value>
+  </data>
+  <data name="Overlay_RefreshNow.Content" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
 </root>
