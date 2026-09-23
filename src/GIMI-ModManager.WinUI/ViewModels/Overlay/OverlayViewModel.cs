@@ -36,13 +36,17 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// <summary>「勾选即刷新」的执行体。由构造它的那一层复用，浮窗与设置页看到的是同一次刷新的状态。</summary>
     public OverlayRefreshCoordinator RefreshCoordinator { get; }
 
-    /// <summary>可选的角色：**只列有 Mod 的**。浮窗是用来换皮肤的，没有 Mod 的角色在列表里纯属噪音。</summary>
-    public ObservableCollection<IModdableObject> Characters { get; } = new();
+    /// <summary>
+    /// 可选的角色：**只列有 Mod 的**。浮窗是用来换皮肤的，没有 Mod 的角色在列表里纯属噪音。
+    /// 装的是 <see cref="OverlayCharacterItem" /> 而不是角色本身 —— 下拉要在角色名左边显示头像，
+    /// 而头像的兜底（<c>ImageUri</c> 可空）在包装里做了。
+    /// </summary>
+    public ObservableCollection<OverlayCharacterItem> Characters { get; } = new();
 
     /// <summary>当前显示（已过滤 + 已启用前移）的 Mod 行。</summary>
     public ObservableCollection<OverlayModItemViewModel> Mods { get; } = new();
 
-    [ObservableProperty] private IModdableObject? _selectedCharacter;
+    [ObservableProperty] private OverlayCharacterItem? _selectedCharacter;
     [ObservableProperty] private string _searchText = string.Empty;
 
     /// <summary>列表空掉时给一句话说明为什么空 —— 「没有 Mod」和「搜不到」是两件事，不能共用一句。</summary>
@@ -84,8 +88,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         }
 
         // 上次那个角色可能已经被删掉/改名了（换了游戏、清了 Mod 文件夹），退化成第一个而不是报错
-        SelectedCharacter = Characters.FirstOrDefault(c => c.InternalNameEquals(Settings.LastSelectedCharacter))
-                            ?? Characters[0];
+        SelectedCharacter =
+            Characters.FirstOrDefault(c => c.Character.InternalNameEquals(Settings.LastSelectedCharacter))
+            ?? Characters[0];
 
         // 订阅主窗口发出的变化（画廊、预设、随机化都会发），这样两个界面不会各显示一套状态
         IsActive = true;
@@ -123,16 +128,16 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             .OrderBy(character => character.DisplayName, StringComparer.CurrentCultureIgnoreCase);
 
         foreach (var character in characters)
-            Characters.Add(character);
+            Characters.Add(new OverlayCharacterItem(character));
     }
 
-    partial void OnSelectedCharacterChanged(IModdableObject? value)
+    partial void OnSelectedCharacterChanged(OverlayCharacterItem? value)
     {
-        LoadMods(value);
+        LoadMods(value?.Character);
 
         if (value is null) return;
 
-        Settings.LastSelectedCharacter = value.InternalName;
+        Settings.LastSelectedCharacter = value.Character.InternalName;
 
         // 不 await：这里只该更新一下内存里的字段，落盘慢一点无所谓，不能卡住切换角色
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
@@ -184,7 +189,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     {
         ErrorMessage = null;
 
-        var modList = ResolveModList(SelectedCharacter);
+        var modList = ResolveModList(SelectedCharacter?.Character);
         var entry = modList?.Mods.FirstOrDefault(m => m.Id == item.Id);
 
         if (modList is null || entry is null)
