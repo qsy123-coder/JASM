@@ -88,6 +88,19 @@ public class OverlayRefreshOutcomeProtocolTests
     public void ReportsSuccessInThePastTenseSoTheStatusLineReadsAsAStatus()
         => Assert.Equal("已刷新", OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.Refreshed));
 
+    /// <summary>
+    /// 助手过旧时必须让用户去**更新 JASM**，而不是像「没回话」那样叫他重启助手 ——
+    /// 助手是内嵌在主 exe 里、版本跟着主程序走的，重启同一个旧助手不会让它多认识一条命令。
+    /// </summary>
+    [Fact]
+    public void TellsTheUserToUpdateJasmRatherThanRestartingAStaleElevator()
+    {
+        var text = OverlayRefreshOutcomeProtocol.Describe(OverlayRefreshOutcome.HelperTooOld);
+
+        Assert.Contains("更新", text);
+        Assert.DoesNotContain("重启", text);
+    }
+
     [Fact]
     public void TellsTheUserToRestartTheElevatorWhenItStayedSilent()
     {
