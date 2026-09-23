@@ -1,4 +1,3 @@
-using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -41,9 +40,13 @@ public sealed partial class OverlayWindow : WindowEx
     private readonly HWND _hwnd;
     private readonly DispatcherTimer _topMostTimer;
 
-    // 拖动用：按下瞬间的指针位置（DIP）与窗口位置（物理像素）。两者单位不同，换算见 OnDragStripPointerMoved。
-    private Point _dragOriginPointer;
+    // 拖动用：按下瞬间的光标**屏幕**坐标与窗口位置。两边都是物理像素、同一个坐标系，因此全程不需要 DPI 换算。
+    private PointInt32 _dragOriginCursor;
     private PointInt32 _dragOriginWindow;
+
+    /// <summary>最近一次真正下发给窗口的位置，用来跳过"光标抖了一格但窗口该待在原地"的重复调用。</summary>
+    private PointInt32 _lastDragPosition;
+
     private bool _isDragging;
 
     /// <summary>是否已经做过"首次显示"的那套收尾（摆位置 + 确认置顶）。见 <see cref="ShowOverlay"/>。</summary>
@@ -208,25 +211,47 @@ public sealed partial class OverlayWindow : WindowEx
         if (!((UIElement)sender).CapturePointer(e.Pointer))
             return;
 
-        _dragOriginPointer = e.GetCurrentPoint(null).Position;
-        _dragOriginWindow = AppWindow.Position;
+        if (!PInvoke.GetCursorPos(out var cursor))
+        {
+            _logger.Warning("拖动：读光标位置失败，这一次拖动不生效");
+            return;
+        }
+
+        _dragOriginCursor = new PointInt32(cursor.X, cursor.Y);
+        _dragOriginWindow = ReadWindowPosition();
+        _lastDragPosition = _dragOriginWindow;
         _isDragging = true;
     }
 
     private void OnDragStripPointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (!_isDragging)
+        if (!_isDragging || !PInvoke.GetCursorPos(out var cursor))
             return;
 
-        var current = e.GetCurrentPoint(null).Position;
+        // 目标位置一律用「按下时的窗口位置 + 光标从按下到现在的位移」算，**不用**指针在窗口内的坐标累积增量：
+        // 窗口跟着指针走，指针在窗口里的坐标就几乎不涨，增量会自我抵消 —— 手感上就是发飘、一顿一顿。
+        // 这里两端都是屏幕物理像素，所以原来那步 XamlRoot.RasterizationScale 换算整个不需要了
+        // （它还有个隐患：多显示器下两个屏幕缩放不同时，取到的未必是光标所在那块屏的比例）。
+        var target = new PointInt32(
+            _dragOriginWindow.X + cursor.X - _dragOriginCursor.X,
+            _dragOriginWindow.Y + cursor.Y - _dragOriginCursor.Y);
 
-        // 指针坐标是 DIP（逻辑像素），AppWindow.Move 收的是物理像素 ——
-        // 不做这一步换算，在非 100% 缩放的屏幕上拖动会明显跟不上手。
-        var scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
-        var dx = (int)Math.Round((current.X - _dragOriginPointer.X) * scale);
-        var dy = (int)Math.Round((current.Y - _dragOriginPointer.Y) * scale);
+        // 窗口位置本来就是整数物理像素，光标抖动产生的"同位置"重复下发直接跳过
+        if (target.X == _lastDragPosition.X && target.Y == _lastDragPosition.Y)
+            return;
 
-        AppWindow.Move(new PointInt32(_dragOriginWindow.X + dx, _dragOriginWindow.Y + dy));
+        // 走 SetWindowPos 而不是 AppWindow.Move：少一层托管记账，拖起来更跟手。
+        // SWP_NOZORDER 必带 —— 不带会把置顶位顶掉；SWP_NOACTIVATE 也必带 —— 不带可能顺手把游戏的前台抢走。
+        PInvoke.SetWindowPos(
+            _hwnd,
+            HWND.Null,
+            target.X,
+            target.Y,
+            0,
+            0,
+            SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+
+        _lastDragPosition = target;
     }
 
     private void OnDragStripPointerReleased(object sender, PointerRoutedEventArgs e)
@@ -252,9 +277,22 @@ public sealed partial class OverlayWindow : WindowEx
         RememberPosition();
     }
 
+    /// <summary>
+    /// 窗口此刻的真实位置（物理像素）。直接问系统，不读 <c>AppWindow.Position</c> ——
+    /// 拖动期间窗口是用 <c>SetWindowPos</c> 挪的，绕开了 AppWindow 自己那套记账，回读未必跟得上。
+    /// </summary>
+    private PointInt32 ReadWindowPosition()
+    {
+        if (PInvoke.GetWindowRect(_hwnd, out var rect))
+            return new PointInt32(rect.left, rect.top);
+
+        _logger.Debug("拖动：读窗口位置失败，回退到 AppWindow.Position");
+        return AppWindow.Position;
+    }
+
     private void RememberPosition()
     {
-        var position = AppWindow.Position;
+        var position = ReadWindowPosition();
 
         // 不 await：落盘慢一点无所谓，拖动结束时界面不该卡一下。
         // RememberWindowPositionAsync 自己吞掉异常，不会变成未观察的异常。
