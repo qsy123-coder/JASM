@@ -46,15 +46,22 @@ if versionNumber is None or len(versionNumber) == 0:
     exit(1)
 versionNumber = versionNumber[0]
 
-if ExcludeElevator == False and SingleFile == False:
+if ExcludeElevator == False:
     print("Building Elevator...")
     elevatorPublishCommand = f'dotnet publish {ELEVATOR_CSPROJ} -o {ELEVATOR_OUTPUT_DIR} /p:PublishProfile=FolderProfile.pubxml -c Release'
     print(elevatorPublishCommand)
     checkSuccessfulExitCode(os.system(elevatorPublishCommand))
     print()
     print("Finished building Elevator")
+
+    # 主程序把助手当内嵌资源打进 exe（见 GIMI-ModManager.WinUI.csproj 的 EmbeddedResource），
+    # 所以这里没产出 = 打包出的包**天生没有助手**，而且从 exe 里也拿不回来 —— 必须当场失败，
+    # 不能让它悄悄发出一个送不了按键的包。
+    if not os.path.isfile(ELEVATOR_OUTPUT_FILE):
+        print("ERROR: " + ELEVATOR_OUTPUT_FILE + " not found after building Elevator")
+        exit(1)
 else:
-    print("Skipping Elevator")
+    print("Skipping Elevator (ExcludeElevator)：本次构建不含助手，主 exe 也不会内嵌它")
     print()
 
 if SelfContained == False and SingleFile == False:
@@ -83,6 +90,14 @@ print(jasmPublishCommand)
 checkSuccessfulExitCode(os.system(jasmPublishCommand))
 print()
 print("Finished building JASM")
+
+# 先清空上一次运行的残留再建目录。不清的话有两处会出错：
+#   · 上一次 folder 运行留下的 output/JASM/Elevator.exe 会混进后面的单文件 zip（体积/内容都对不上，
+#     自更新只挑 exe 所以无害，但会让人以为「单文件包里怎么有两个文件」）；
+#   · 下面 JASM - Auto Updater 那步用的是 os.mkdir（不带 exist_ok），目录已存在会直接抛异常。
+if os.path.isdir(RELEASE_DIR):
+    print("Cleaning " + RELEASE_DIR)
+    shutil.rmtree(RELEASE_DIR)
 
 # Create release directory
 os.makedirs(RELEASE_DIR, exist_ok=True)
@@ -125,6 +140,11 @@ if SingleFile:
     releaseArchiveName = "SingleFile_JASM_v" + versionNumber + ".zip"
 elif SelfContained:
     releaseArchiveName = "SelfContained_" + releaseArchiveName
+
+# 同名旧包必须先删：7z a 是「追加/更新」而不是重建，留着旧包会把上一版的内容一起带进去
+if os.path.exists(releaseArchiveName):
+    print("Removing stale archive " + releaseArchiveName)
+    os.remove(releaseArchiveName)
 
 checkSuccessfulExitCode(os.system(f'7z a -mx4 {releaseArchiveName} ./{RELEASE_DIR}/*'))
 print()

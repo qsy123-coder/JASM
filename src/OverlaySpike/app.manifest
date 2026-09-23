@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+	与主工程 GIMI-ModManager.WinUI/app.manifest 保持一致：
+	PerMonitorV2 DPI 感知 —— 浮窗要按 DPI 换算位置和尺寸，否则在多显示器 / 缩放不同的屏幕上会跑偏。
+	注意这里**不写 requestedExecutionLevel**，即默认 asInvoker（不提权）：
+	要验证的正是"非提权的 JASM 能不能把浮窗盖在提权的鸣潮上"，
+	如果自己先提权了，这个前提就没了。
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="JASM.OverlaySpike.app"/>
+    <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+      <application>
+        <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      </application>
+    </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/PM</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>

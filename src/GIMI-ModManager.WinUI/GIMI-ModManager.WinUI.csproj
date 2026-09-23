@@ -287,6 +287,21 @@
 		<EmbeddedResource Include="Assets\easterEgg.mp3" />
 	</ItemGroup>
 
+	<!-- 提权助手 Elevator.exe 内嵌进主 exe：单 exe 版磁盘上只有一个文件，助手只能这样交付，
+	     运行时由 ElevatorProvisioner 释放到 %LOCALAPPDATA%\JASM。见 ElevatorProvisioning 的类注释。
+
+	     Condition 是必需的：Release.py 在发布主程序之前构建助手，所以 CI 上这个文件一定存在；
+	     而日常 dotnet build（开发机 / ExcludeElevator 构建）没有它，那些构建不能因此失败 ——
+	     产出的 exe 里没有内嵌资源，运行时会退回「只找 exe 同目录」的既有行为。
+
+	     LogicalName 必须显式钉死（与 ElevatorProvisioning.EmbeddedResourceName 一致）：
+	     Include 指向项目目录之外，MSBuild 默认推导出的资源名不稳定，改错就静默拿不到助手。 -->
+	<ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\Elevator\bin\Release\Publish\Elevator.exe')">
+		<EmbeddedResource Include="..\Elevator\bin\Release\Publish\Elevator.exe">
+			<LogicalName>JASM.Elevator.exe</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
 	<ItemGroup>
 		<PRIResource Remove="Views\ModInstaller\**" />
 	</ItemGroup>

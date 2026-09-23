@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Options;
@@ -22,10 +21,11 @@ namespace GIMI_ModManager.WinUI.Services.Input;
 /// <item><b>窗口句柄每次现找</b>（<c>EnumWindows</c>），不用 <c>Process.MainWindowHandle</c> ——
 /// 后者首次访问即缓存，游戏进出全屏 / 换分辨率重建窗口后拿到的句柄就陈旧了。</item>
 /// <item><b>只发键盘</b>：鼠标类绑定（<c>VK_LBUTTON</c> 等）在词表里就没有虚拟键码，UI 侧直接灰掉。</item>
-/// <item><b>完整性级别不够就别发</b>：游戏提权运行（XXMI 的 <c>d3dx.ini</c> 里 <c>require_admin = true</c>，
+/// <item><b>完整性级别不够就别自己发</b>：游戏提权运行（XXMI 的 <c>d3dx.ini</c> 里 <c>require_admin = true</c>，
 /// 鸣潮就是）而 JASM 没提权时，UIPI 不允许把输入注入进去 —— 发送会「看起来成功」但游戏收不到，
 /// 用户只看到窗口切过去了、什么都没发生。所以在切前台之前先比两个进程的完整性级别，
-/// 级别不够直接返回 <see cref="GameKeySendStatus.NeedsElevation"/>。</item>
+/// 级别不够就**改请提权助手代发**（见 <see cref="ElevatorService.TrySendKeyChordAsync"/>）；
+/// 只有助手那条路也走不通时才返回 <see cref="GameKeySendStatus.NeedsElevation"/>。</item>
 /// </list>
 /// </summary>
 public sealed class GameKeySender : IGameKeySender
@@ -43,36 +43,34 @@ public sealed class GameKeySender : IGameKeySender
     /// <summary>切完前台后等焦点稳定，再发按键。</summary>
     private const int ForegroundSettleMilliseconds = 300;
 
-    private const string D3dxIniFileName = "d3dx.ini";
-
-    // 危险组合键用到的键码（VK 常量不会被 CsWin32 生成成完备枚举，这里按需声明）
-    private const ushort VkMenu = 0x12;   // Alt
-    private const ushort VkLWin = 0x5B;
-    private const ushort VkRWin = 0x5C;
-    private const ushort VkF4 = 0x73;
-    private const ushort VkTab = 0x09;
-    private const ushort VkEscape = 0x1B;
-
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
+
+    /// <summary>
+    /// 游戏提权运行时的唯一送键出路。本进程是 asInvoker（「中」完整性），
+    /// UIPI 会把「中 → 高」的 <c>SendInput</c> 静默丢掉，只有提权助手发的才进得去。
+    /// </summary>
+    private readonly ElevatorService _elevatorService;
 
     /// <summary>连点串行化：两次注入交错会按出「修饰键还没抬起就再次按下」的怪状态。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public GameKeySender(ILocalSettingsService localSettingsService, ILogger logger)
+    public GameKeySender(ILocalSettingsService localSettingsService, ElevatorService elevatorService,
+        ILogger logger)
     {
         _localSettingsService = localSettingsService;
+        _elevatorService = elevatorService;
         _logger = logger.ForContext<GameKeySender>();
     }
 
-    public async Task<GameKeySendStatus> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
+    public async Task<GameKeySendResult> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
         CancellationToken ct = default)
     {
-        if (IsBlockedChord(virtualKey, modifierKeyCodes))
+        if (KeyChordGuard.IsBlockedChord(virtualKey, modifierKeyCodes))
         {
             _logger.Warning("[GameKeySender] 拒绝发送危险组合键 vk=0x{VirtualKey:X2} mods={Modifiers}",
                 virtualKey, string.Join(",", modifierKeyCodes));
-            return GameKeySendStatus.BlockedChord;
+            return GameKeySendResult.From(GameKeySendStatus.BlockedChord);
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -87,56 +85,59 @@ public sealed class GameKeySender : IGameKeySender
             if (iniPath is null)
             {
                 _logger.Warning("[GameKeySender] 找不到 {FileName}（GimiRootFolderPath={Root}, ModsFolderPath={Mods}）",
-                    D3dxIniFileName, options.GimiRootFolderPath, options.ModsFolderPath);
-                return GameKeySendStatus.TargetNotConfigured;
+                    D3dxIniTargetResolver.D3dxIniFileName, options.GimiRootFolderPath, options.ModsFolderPath);
+                return GameKeySendResult.From(GameKeySendStatus.TargetNotConfigured);
             }
 
             var processName = ReadTargetProcessName(iniPath);
             if (processName is null)
             {
                 _logger.Warning("[GameKeySender] {IniPath} 里没有可用的 target", iniPath);
-                return GameKeySendStatus.TargetNotConfigured;
+                return GameKeySendResult.From(GameKeySendStatus.TargetNotConfigured);
             }
 
-            var processIds = GetProcessIds(processName);
+            var processIds = WindowProcessQuery.GetProcessIds(processName);
             if (processIds.Length == 0)
             {
                 _logger.Warning("[GameKeySender] 目标进程 {ProcessName} 没有运行", processName);
-                return GameKeySendStatus.GameProcessNotRunning;
+                return GameKeySendResult.From(GameKeySendStatus.GameProcessNotRunning);
             }
 
-            var gameWindow = FindGameWindow(processIds);
+            var gameWindow = WindowProcessQuery.FindGameWindow(processIds);
             if (gameWindow.IsNull)
             {
                 _logger.Warning("[GameKeySender] 目标进程 {ProcessName} 没有可见的顶层窗口", processName);
-                return GameKeySendStatus.GameWindowNotFound;
+                return GameKeySendResult.From(GameKeySendStatus.GameWindowNotFound);
             }
 
-            var gameProcessId = GetWindowProcessId(gameWindow);
+            var gameProcessId = WindowProcessQuery.GetWindowProcessId(gameWindow);
             var ownIntegrity = OwnIntegrityLevelRid.Value;
             var gameIntegrity = TryReadIntegrityLevelRid(gameProcessId);
 
             // UIPI 前置检查：目标进程级别更高就发不进去（而且发出去也「看起来成功」）。
-            // 放在切前台**之前** —— 既然注定送不到，就不要把用户的焦点从 JASM 抢走。
             // 读不到级别（受保护进程等）时不拦，照常尝试发送。
+            var needsElevation = false;
             if (gameIntegrity is { } targetIntegrity && targetIntegrity > ownIntegrity)
             {
+                needsElevation = true;
                 _logger.Warning(
-                    "[GameKeySender] 拒绝发送：目标进程 {ProcessName} 完整性级别 0x{TargetIntegrity:X4} "
-                    + "高于本进程 0x{OwnIntegrity:X4}，UIPI 会把注入的输入丢掉；需要以管理员身份运行 JASM",
+                    "[GameKeySender] 目标进程 {ProcessName} 完整性级别 0x{TargetIntegrity:X4} "
+                    + "高于本进程 0x{OwnIntegrity:X4}，本进程的 SendInput 会被 UIPI 丢掉；改请提权助手代发",
                     processName, targetIntegrity, ownIntegrity);
-                return GameKeySendStatus.NeedsElevation;
             }
 
-            if (PInvoke.IsIconic(gameWindow) != 0)
-                PInvoke.ShowWindow(gameWindow, SHOW_WINDOW_CMD.SW_RESTORE);
-
-            if (PInvoke.SetForegroundWindow(gameWindow) == 0)
-            {
-                // 切不过去不中断：按键仍然会进当时真正的前台窗口，用户可能只是没把游戏调出来
-                _logger.Warning("[GameKeySender] SetForegroundWindow 被拒，仍按当前前台窗口继续发送");
-            }
+            // **两条路都在这里切前台**，而且必须在同步段里（见类注释约束 1）。
+            // 提权那一支不能指望助手自己去抢，理由与现场签名见 ForegroundWindowActivator；
+            // 它额外要把这次切前台的权利让出去，让助手有一手可补。
+            ForegroundWindowActivator.Activate(gameWindow, needsElevation, _logger);
             // ══ 同步段结束 ══
+
+            // 提权那一支到这里才 await（理由见上面注释）
+            if (needsElevation)
+            {
+                return await SendViaElevatedHelperAsync(virtualKey, modifierKeyCodes, gameWindow, ct)
+                    .ConfigureAwait(false);
+            }
 
             await Task.Delay(ForegroundSettleMilliseconds, ct).ConfigureAwait(false);
 
@@ -165,13 +166,13 @@ public sealed class GameKeySender : IGameKeySender
                 gameIntegrity is { } il ? $"0x{il:X4}" : "未知");
 
             if (inserted == keyCount)
-                return GameKeySendStatus.Sent;
+                return GameKeySendResult.Sent;
 
             _logger.Warning(
                 "[GameKeySender] SendInput 只插入 {Inserted}/{KeyCount} 个事件 vk=0x{VirtualKey:X2} mods={Modifiers}；"
                 + "常见原因是反作弊拦截合成输入",
                 inserted, keyCount, virtualKey, string.Join(",", modifierKeyCodes));
-            return GameKeySendStatus.SendInputFailed;
+            return GameKeySendResult.From(GameKeySendStatus.SendInputFailed);
         }
         finally
         {
@@ -179,53 +180,61 @@ public sealed class GameKeySender : IGameKeySender
         }
     }
 
+    /// <summary>
+    /// 游戏提权运行时改由提权助手代发按键 —— 这是唯一能把键送进去的路径
+    /// （理由与线路格式见 <see cref="ElevatorService.TrySendKeyChordAsync"/>）。
+    ///
+    /// 结果刻意分两档，因为用户该做的事不同：
+    /// <list type="bullet">
+    /// <item>助手压根走不通（没随包安装 / 版本过旧 / 拉不起来 / 用户在 UAC 上点了否）
+    /// → <see cref="GameKeySendStatus.NeedsElevation"/>，退回既有建议「自己以管理员身份运行 JASM」。</item>
+    /// <item>助手在跑但拒发（没抢到前台、被反作弊拦下）→ <see cref="GameKeySendStatus.SendInputFailed"/>，
+    /// 这类「再试一次多半就好」的问题不该把用户赶去重启 JASM。</item>
+    /// </list>
+    /// </summary>
+    private async Task<GameKeySendResult> SendViaElevatedHelperAsync(ushort virtualKey,
+        IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, CancellationToken ct)
+    {
+        var outcome = await _elevatorService
+            .TrySendKeyChordAsync(virtualKey, modifierKeyCodes, gameWindow, ct).ConfigureAwait(false);
+
+        return outcome.Result switch
+        {
+            ElevatedKeySendResult.Sent => GameKeySendResult.Sent,
+            ElevatedKeySendResult.Unavailable =>
+                GameKeySendResult.WithDetail(GameKeySendStatus.NeedsElevation, outcome.Message),
+            _ => GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed, outcome.Message)
+        };
+    }
+
     // ── 目标定位 ────────────────────────────────────────────────
 
     /// <summary>
-    /// 危险组合键护栏：写了 <c>key = alt F4</c> 的 mod 照发会把用户的游戏直接关掉。
+    /// 取第一个真实存在的候选 ini；候选集合与顺序由 <see cref="D3dxIniTargetResolver"/> 定
+    /// （提权刷新那条路径也用同一份判断，不能有两份）。
+    /// 这里逐条 Debug 记「哪个候选不存在」是排查安装问题的线索，所以没直接调 Core 的 ResolveD3dxIniPath。
     /// </summary>
-    private static bool IsBlockedChord(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes)
-    {
-        // 没按 Alt 时：单发 Win 键也要拦（会把开始菜单 / 游戏栏叫出来）
-        if (!modifierKeyCodes.Contains(VkMenu))
-            return virtualKey is VkLWin or VkRWin;
-
-        // 按着 Alt：Alt+F4 关游戏，Alt+Tab / Alt+Esc 把焦点抢走
-        return virtualKey is VkF4 or VkTab or VkEscape;
-    }
-
-    /// <summary>d3dx.ini 就在用户已配好的 GIMI 根目录正下方（与 Mods 同级）；取第一个真实存在的。</summary>
     private string? ResolveD3dxIniPath(ModManagerOptions options)
     {
-        foreach (var candidate in GetD3dxIniCandidates(options))
+        foreach (var candidate in D3dxIniTargetResolver.GetD3dxIniCandidates(
+                     options.GimiRootFolderPath, options.ModsFolderPath))
         {
             if (File.Exists(candidate))
                 return candidate;
 
-            _logger.Debug("[GameKeySender] 候选 {FileName} 不存在: {Path}", D3dxIniFileName, candidate);
+            _logger.Debug("[GameKeySender] 候选 {FileName} 不存在: {Path}",
+                D3dxIniTargetResolver.D3dxIniFileName, candidate);
         }
 
         return null;
     }
 
     /// <summary>
-    /// 候选路径：GIMI 根目录正下方，兜底 Mods 的父目录。
-    /// 不用 <see cref="ModManagerOptions.XxmiRootFolderPath"/>（多数机器上是 null，本机就是）。
+    /// 读 ini 解析出目标进程名。读不了记 Warning 后按「没配好」处理
+    /// （游戏运行中 d3dx.ini 也可能被独占打开）——
+    /// Core 里 <see cref="D3dxIniTargetResolver.ReadTargetProcessName"/> 是同一逻辑的静默版，
+    /// 提权刷新路径用它（那边由调用方统一记日志，这里要保留异常详情）。
     /// </summary>
-    private static IEnumerable<string> GetD3dxIniCandidates(ModManagerOptions options)
-    {
-        if (!string.IsNullOrWhiteSpace(options.GimiRootFolderPath))
-            yield return Path.Combine(options.GimiRootFolderPath, D3dxIniFileName);
-
-        var modsFolderPath = options.ModsFolderPath?.TrimEnd('\\', '/');
-        var modsRootFolder = string.IsNullOrWhiteSpace(modsFolderPath)
-            ? null
-            : Path.GetDirectoryName(modsFolderPath);
-
-        if (!string.IsNullOrWhiteSpace(modsRootFolder))
-            yield return Path.Combine(modsRootFolder, D3dxIniFileName);
-    }
-
     private string? ReadTargetProcessName(string iniPath)
     {
         try
@@ -234,64 +243,9 @@ public sealed class GameKeySender : IGameKeySender
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // 游戏运行中 d3dx.ini 也可能被独占打开 —— 当作没配好处理
             _logger.Warning(e, "[GameKeySender] 读取 {IniPath} 失败", iniPath);
             return null;
         }
-    }
-
-    private static uint[] GetProcessIds(string processName)
-    {
-        Process[] processes;
-        try
-        {
-            processes = Process.GetProcessesByName(processName);
-        }
-        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            return [];
-        }
-
-        try
-        {
-            return processes.Select(process => (uint)process.Id).ToArray();
-        }
-        finally
-        {
-            foreach (var process in processes)
-                process.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// 找游戏窗口：先看「已经是前台的窗口」（避免误选 overlay / 启动器残留窗口），
-    /// 否则枚举顶层窗口，取第一个「可见 + 属于目标进程」的。
-    /// </summary>
-    private static HWND FindGameWindow(uint[] processIds)
-    {
-        var foreground = PInvoke.GetForegroundWindow();
-        if (!foreground.IsNull && processIds.Contains(GetWindowProcessId(foreground)))
-            return foreground;
-
-        HWND found = HWND.Null;
-        PInvoke.EnumWindows((window, _) =>
-        {
-            if (found.IsNull && PInvoke.IsWindowVisible(window) != 0
-                             && processIds.Contains(GetWindowProcessId(window)))
-                found = window;
-
-            // 返回 0 = 停止枚举：已经找到就没必要继续
-            return new BOOL(found.IsNull ? 1 : 0);
-        }, default);
-
-        return found;
-    }
-
-    private static unsafe uint GetWindowProcessId(HWND window)
-    {
-        uint processId;
-        PInvoke.GetWindowThreadProcessId(window, &processId);
-        return processId;
     }
 
     // ── 合成输入 ────────────────────────────────────────────────

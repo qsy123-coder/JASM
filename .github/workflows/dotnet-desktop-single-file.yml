@@ -1,15 +1,16 @@
-# This workflow will build and publish a WinUI 3 unpackaged desktop application
-# built on .NET.
-
-name: Build And Release JASM Self Contained
+# 产出单 exe 便携版（SingleFile_JASM_v*.zip）。这条 workflow 存在的理由：
+# 用户手上的分发形态主要就是单 exe，而它需要 AOT 编译的提权助手内嵌进主 exe ——
+# 助手是 AOT 发布、需要 MSVC，本机编不出来，只有 windows-latest 跑得动。
+name: Test,Build And Release JASM Single File
 
 on:
-  push:
-    tags:
-      - '*'
   workflow_dispatch:
-  release:
-    types: [published]
+
+  push:
+    branches: [ master ]
+    paths:
+      - 'src/**'
+      - 'CHANGELOG.md'
 
 jobs:
   build:
@@ -18,15 +19,13 @@ jobs:
         configuration: [Release]
         platform: [x64]
 
-    runs-on: windows-latest  # For a list of available runner types, refer to
-                             # https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idruns-on
+    runs-on: windows-latest
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    # Install the .NET Core workload
     - name: Install .NET Core
       uses: actions/setup-dotnet@v4
       with:
@@ -35,8 +34,9 @@ jobs:
     - name: Test
       run: dotnet test ${{ github.workspace }}\src
 
-    # 不传 ExcludeElevator：自包含版同样需要提权助手（理由见 dotnet-desktop.yml 的同一处注释）。
-    # Release.py 的构建门就是「非 ExcludeElevator」，助手会被构建并复制到包内、同时内嵌进主 exe。
+    # 不传 ExcludeElevator：SingleFile 模式同样要先构建助手，它会被内嵌进主 exe，
+    # 运行时由 ElevatorProvisioner 释放到 %LOCALAPPDATA%\JASM（单 exe 版没有散文件可放）。
+    # 产物名 SingleFile_JASM_v*.zip 与 SingleFileSelfUpdater 认的前缀一致，用户端自更新才认。
     #
     # 下面的 MSVC 探测与 IlcUseEnvironmentalTools 与 dotnet-desktop.yml 同一块，改动请同步三处
     # （原因：windows-latest 迁到 VS 2026 后 ILCompiler 的 [16,18) 版本范围失效）。
@@ -51,12 +51,11 @@ jobs:
         call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" > nul
         where link || exit /b 1
         set "IlcUseEnvironmentalTools=true"
-        python ${{ github.workspace }}\Build\Release.py SelfContained
+        python ${{ github.workspace }}\Build\Release.py SingleFile
 
-    # Upload the app
-    - name: Upload JASM Self Contained
+    # 只传 artifact，不挂 release：release 资产按仓库惯例手动 gh release upload
+    - name: Upload JASM Single File
       uses: actions/upload-artifact@v4
       with:
-        name: JASM Self Contained
-        path: ${{ github.workspace }}\\${{ env.zipFile }}
-        
+        name: JASM Single File
+        path: ${{ github.workspace }}\${{ env.zipFile }}

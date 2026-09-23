@@ -149,12 +149,12 @@ public sealed partial class ModPane : UserControl
             if (entry is null || !entry.CanSendKey)
                 return;
 
-            var status = await App.GetService<IGameKeySender>()
+            var result = await App.GetService<IGameKeySender>()
                 .SendKeyAsync(entry.KeyCode!.Value, entry.ModifierKeyCodes);
 
             // 成功不打扰用户：游戏里已经能看到反应
-            if (status != GameKeySendStatus.Sent)
-                ShowKeySendFailure(status);
+            if (result.Status != GameKeySendStatus.Sent)
+                ShowKeySendFailure(result);
         }
         catch (Exception ex)
         {
@@ -163,10 +163,10 @@ public sealed partial class ModPane : UserControl
         }
     }
 
-    private static void ShowKeySendFailure(GameKeySendStatus status)
+    private static void ShowKeySendFailure(GameKeySendResult result)
     {
         // 只给用户能自己做点什么的话；具体失败的路径 / 进程名在 Serilog 里（见 GameKeySender）
-        var message = status switch
+        var fallback = result.Status switch
         {
             GameKeySendStatus.BlockedChord =>
                 "出于安全考虑没有发送这个组合键（Alt+F4 这类会直接把游戏关掉）。",
@@ -177,12 +177,16 @@ public sealed partial class ModPane : UserControl
             GameKeySendStatus.GameWindowNotFound =>
                 "找到游戏进程了，但没有可用的游戏窗口。切回游戏画面后再试一次。",
             GameKeySendStatus.NeedsElevation =>
-                "游戏正以管理员身份运行，Windows 不允许 JASM 把按键送进去。"
-                + "请关掉 JASM，用「以管理员身份运行」重新打开再点一次（游戏不用重启）。",
+                "游戏正以管理员身份运行，JASM 自己和提权助手都没能把按键送进去。"
+                + "请更新 JASM 后重试；或关掉 JASM，用「以管理员身份运行」重新打开再点一次（游戏不用重启）。",
             GameKeySendStatus.SendInputFailed =>
                 "按键没能送进游戏。如果游戏是以管理员身份运行的，请也用管理员身份启动 JASM。",
             _ => "按键没能送进游戏。"
         };
+
+        // 提权 / 助手的失败原因是**动态**的（助手回执里的 token 决定下一步是「先点一下游戏画面」
+        // 还是「更新 JASM」），这时用它带出来的那句话，别让上面那句泛泛的 fallback 盖掉。
+        var message = result.Detail ?? fallback;
 
         App.GetService<NotificationManager>().ShowNotification("发送按键失败", message, TimeSpan.FromSeconds(6));
     }
