@@ -20,6 +20,7 @@ using WindowsInput;
 // 1: CopyDirectory (<src> and <dst> follow on their own lines; replies "OK" or "FAIL:<msg>")
 // 2: TargetedRefresh (<hwnd> follows on its own line; replies "OK" or "FAIL:<reason>")
 // 3: SendKey (<vk>, <mods> and <hwnd> follow on their own lines; replies "OK" or "FAIL:<reason>")
+// 4: ForegroundHandback (<hwnd> follows on its own line; replies "OK" or "FAIL:<reason>")
 
 internal class Program
 {
@@ -105,6 +106,10 @@ internal class Program
                     case "3":
                         Console.WriteLine("Sending a key chord");
                         HandleSendKeyCommand(pipeServer, reader);
+                        break;
+                    case "4":
+                        Console.WriteLine("Handing the foreground back");
+                        HandleForegroundHandbackCommand(pipeServer, reader);
                         break;
 
                     default:
@@ -336,6 +341,52 @@ internal class Program
         SendChord(request.VirtualKey, request.ModifierKeyCodes);
 
         // 回执放在按键之后：主程序读到 "OK" 就等于按键真的发出去了
+        writer.WriteLine(KeyHelperProtocol.BuildOkReply());
+    }
+
+    /// <summary>
+    /// 归还前台：载荷一行（hwnd 十六进制）——把前台交给这个窗口，**不发任何键**。
+    ///
+    /// **为什么这件事只有助手做得到**：前台锁只认「自己就是前台进程 / 最近收到输入的那个进程」，
+    /// 而**注入的输入算在注入者头上**。送键（<see cref="HandleSendKeyCommand"/>）之后前台留在游戏手里，
+    /// 而那个游戏往往以管理员身份运行：主程序（「中」完整性）既抢不回前台，也没法用「先注入一次输入
+    /// 把身份拿回来」那一招 —— 那个注入会被 UIPI **静默丢弃**。助手刚刚注入过按键，
+    /// 此刻正是「最近收到输入的那个进程」，所以它这一句 SetForegroundWindow 立刻生效
+    /// （与主程序注释里记的「助手刚被 UAC 拉起那一次抢得动」是同一条规则）。
+    ///
+    /// 与前两条命令一样**以回读为准**：返回值不可信（前台锁会让它返回 0，而窗口其实已经切过去了）。
+    /// 交还失败不是错误、也不影响已经送出去的按键 —— 主程序那边只把它记进日志。
+    /// </summary>
+    static void HandleForegroundHandbackCommand(PipeStream pipe, StreamReader reader)
+    {
+        using var writer = new StreamWriter(pipe) { AutoFlush = true };
+
+        var windowLine = reader.ReadLine();
+
+        // 句柄那一行与送键命令共用同一个解析（本工程把 KeyHelperProtocol.cs 直接编了进来），
+        // 格式只有一份，两边不会各写各的
+        if (!KeyHelperProtocol.TryParseWindowLine(windowLine, out var targetWindow)
+            || !IsWindow(targetWindow))
+        {
+            Console.Error.WriteLine($"Bad foreground handback window handle: {windowLine}");
+            writer.WriteLine(KeyHelperProtocol.BuildFailureReply(KeyHelperProtocol.ReasonBadPayload));
+            return;
+        }
+
+        Console.WriteLine($"Handing the foreground back to 0x{targetWindow:X}");
+
+        if (SetForegroundWindow(targetWindow) == 0)
+        {
+            Console.WriteLine("SetForegroundWindow returned false; verifying by reading the window back");
+        }
+
+        if (!WaitForForeground(targetWindow))
+        {
+            Console.Error.WriteLine("The window never became the foreground window");
+            writer.WriteLine(KeyHelperProtocol.BuildFailureReply(KeyHelperProtocol.ReasonForegroundNotTaken));
+            return;
+        }
+
         writer.WriteLine(KeyHelperProtocol.BuildOkReply());
     }
 
