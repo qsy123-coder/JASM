@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Services.Input;
 using Serilog;
+using Windows.Win32.Foundation;
 
 namespace GIMI_ModManager.WinUI.Services.Overlay;
 
@@ -17,8 +18,11 @@ namespace GIMI_ModManager.WinUI.Services.Overlay;
 /// 切前台、UIPI 前置判断，全部走 <see cref="IGameKeySender"/> —— 与点 Mod 的「按键徽章」是同一条
 /// 已实机验证过的路。这里只发一个 F10（不带修饰键）。
 ///
-/// 焦点：送完**不把焦点还给 JASM**。浮窗是 <c>WS_EX_NOACTIVATE</c> 的，全程游戏都该留在前台，
-/// 抢回来等于把用户从游戏里踢出去。
+/// 焦点：**送完要把前台交还浮窗**（条件见 <see cref="OverlayWindowHandle"/> 与
+/// <see cref="ResolveForegroundHandbackTarget"/>）。送键前的同步段必然把游戏切到前台（F10 要打到前台
+/// 窗口上，d3dx 才认），而游戏是提权运行的话，之后浮窗自己再也拿不回来 —— 前台锁只认「最近收到输入的
+/// 那个进程」，而那一刻的所有者是刚注入按键的**提权助手**；本进程既抢不回前台，注入解锁那一手又会被
+/// UIPI 静默丢掉（实测）。所以交还只能请助手做。不交还的话，用户每勾选一次都得重新唤出浮窗。
 ///
 /// 线程：**只从 UI 线程调用**（浮窗的点击处理）。状态属性直接绑到界面，所以内部刻意不写
 /// <c>ConfigureAwait(false)</c>，让 await 的续体留在 UI 线程上。切前台那一段要求调用方在**同步段**
@@ -68,6 +72,15 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
     /// </summary>
     public bool CanRequestRefresh => !IsRefreshing;
 
+    /// <summary>
+    /// 浮窗自己的窗口句柄（<c>OverlayWindow</c> 拿到 hwnd 时写一次；<c>0</c> = 还不知道）。
+    ///
+    /// 只是把句柄转交给 <see cref="RequestRefreshAsync"/>：刷新完之后要把前台交还给谁，
+    /// 只有浮窗自己知道。写成属性而不是给 <see cref="RequestRefreshAsync"/> 加参数，
+    /// 是因为两个调用点都在 ViewModel 里，而 ViewModel 手上没有窗口 —— 句柄本来只有窗口知道。
+    /// </summary>
+    public nint OverlayWindowHandle { get; set; }
+
     public OverlayRefreshCoordinator(IGameKeySender gameKeySender, ILogger logger)
     {
         _gameKeySender = gameKeySender;
@@ -112,10 +125,13 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
             {
                 IsRefreshing = true;
 
+                // 每次送键前重新判一次：交还与否取决于光标此刻在不在浮窗上（见 ResolveForegroundHandbackTarget）
+                var handbackTarget = ResolveForegroundHandbackTarget();
+
                 // 不 ConfigureAwait(false)：本方法的调用方是浮窗的点击处理（UI 线程），
                 // 状态属性要绑到界面，续体留在 UI 线程上最省事，也免得每次赋值都往 DispatcherQueue 里丢。
                 var result = await _gameKeySender
-                    .SendKeyAsync(ReloadHotkeyVirtualKey, Array.Empty<ushort>());
+                    .SendKeyAsync(ReloadHotkeyVirtualKey, Array.Empty<ushort>(), handbackTarget);
 
                 // 先算成局部变量再赋给属性：属性是 OverlayRefreshOutcome?（"还没刷过"要能表达），
                 // 而 Describe 收的是非空 —— 直接拿属性去调会被可空性挡住。
@@ -148,6 +164,26 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
         {
             IsRefreshing = false;
         }
+    }
+
+    /// <summary>
+    /// 这次刷新要不要把前台交还给浮窗（要 → 返回浮窗句柄；不要 → <c>0</c>）。
+    ///
+    /// 两个条件都满足才交还：① 句柄已经知道（浮窗建过窗口）；② **光标此刻压在浮窗上**。
+    ///
+    /// ② 与 <c>OverlayWindow.EnsureForeground</c> 用同一条判据（<see cref="OverlayStackProbe"/> 的
+    /// 那个只读查询），理由也一样：光标在浮窗上 = 用户正打算点它，前台就该归他；
+    /// 光标不在（键盘导航时用户人在游戏里）就不该把前台从游戏手里拿走 —— 那等于把用户从游戏里踢出去。
+    /// 顺带挡住另一个情形：用户勾完立刻用热键把浮窗收起来了，下一拍不该再让一个看不见的窗口抢前台。
+    /// </summary>
+    private nint ResolveForegroundHandbackTarget()
+    {
+        if (OverlayWindowHandle == 0)
+            return 0;
+
+        return OverlayStackProbe.IsCursorOverOwnProcessWindow((HWND)OverlayWindowHandle)
+            ? OverlayWindowHandle
+            : 0;
     }
 
     /// <summary>
