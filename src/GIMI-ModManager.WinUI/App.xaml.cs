@@ -143,6 +143,11 @@ public partial class App : Application
                 services.AddSingleton<GenshinProcessManager>();
                 services.AddSingleton<ThreeDMigtoProcessManager>();
 
+                // 游戏内浮窗（换肤用的置顶小窗）。刷新协调器是单例：浮窗的"勾选即刷新"与将来的设置页
+                // 必须共用同一次刷新，各持一份就会出现"两边状态不一致"和重复刷新。
+                services.AddSingleton<Services.Overlay.OverlayRefreshCoordinator>();
+                services.AddSingleton<Services.Overlay.OverlayWindowService>();
+
                 // 点击按键徽章 → 合成按键发给游戏（见 GameKeySender 的注释：切前台必须在同步段做）
                 services.AddSingleton<IGameKeySender, GameKeySender>();
 

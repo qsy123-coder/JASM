@@ -51,8 +51,8 @@ If you don't have these downloaded the application will prompt you to download n
 
 ### Elevator process
 The elevator process is a small program that can be started as an elevated process from the app. It is completely optional and is kind of a niche feature.
-It is used to send the F10 key to the game to refresh the mods. Enabling and disabling mods in JASM will also automatically refresh the mods. This is done through named pipes. 
-The process does not listen for keybinds it only waits for a simple "1" command from the app. This makes it send the F10 key to the game.
+It is used to send the F10 key to the game to refresh the mods, and to copy files with administrator rights. Applying a mod preset or using the randomization feature will also ask it to refresh, but only while the elevator is running and `AutoSyncMods` is enabled in the settings (it is off by default). Toggling a single mod does **not** refresh on its own — press F10 or use the refresh button. All of this goes through named pipes. 
+The process does not listen for keybinds: it only waits for simple text commands from the app (copy a directory, refresh the game configured in `d3dx.ini`, or send a key chord).
 
 The [H.InputSimulator](https://github.com/HavenDV/H.InputSimulator) library is used to send keyboard input.
 

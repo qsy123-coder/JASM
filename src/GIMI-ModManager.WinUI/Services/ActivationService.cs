@@ -15,6 +15,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
+using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.Views;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
@@ -206,6 +207,11 @@ public class ActivationService : IActivationService
         await _modUpdateAvailableChecker.InitializeAsync().ConfigureAwait(false);
         await Task.Run(() => _autoUpdaterService.UpdateAutoUpdater()).ConfigureAwait(false);
         await Task.Run(() => _elevatorService.Initialize()).ConfigureAwait(false);
+
+        // 游戏内浮窗：建窗口 + 注册全局热键（当前只有鸣潮会真的建，见 OverlayWindowService）。
+        // 走 GetService 而不是构造注入：这个服务是 internal 的，塞进本类 public 的构造函数会撞上可访问性检查；
+        // 它也只是"启动时装一次"，没必要把 ActivationService 的构造函数撑得更长。
+        await App.GetService<OverlayWindowService>().InitializeAsync();
     }
 
     const int MinimizedPosition = -32000;

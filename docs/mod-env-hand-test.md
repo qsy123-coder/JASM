@@ -441,3 +441,32 @@ JASM 在 `ModEnvSetupFacade.EnsureLauncherConfigPathsAsync` 里顺带对齐：**
 `Process.GetProcessesByName("GenshinImpact")`，鸣潮下必然找不到进程 ⇒
 「勾选后立刻 F10 刷新」这条链在鸣潮上走不通，必须一并改（这正是本功能的核心动作）。
 
+> **状态更新（2026-09-24）**：此阻塞项已解 —— 鸣潮不再走「助手命令 1（内部写死 `GenshinImpact`）」
+> 那条老刷新链，改走送键命令（目标窗口由 JASM 侧解析后随命令传入）。见 §18。
+> `GetGenshinProcess()` 仍留在 `src/Elevator/Program.cs`，只服务命令 1 的老路径，与浮窗无关。
+
+## 18. 游戏内浮窗切换 Mod（Phase 1 正式实现，实机验收 2026-09-24）
+
+对应 `docs/wuwa-overlay-mod-switcher-prd.md` 的 Phase 1 MVP。§17 记的是 Phase 0 原型对
+「独立无边框置顶小窗 + `WS_EX_NOACTIVATE`」这条技术路线的可行性基线，这一节是**正式实现**在鸣潮
+实机里的验收结果。以后改动浮窗的热键 / 勾选 / 刷新 / 模式切换，回来重跑这张表。
+
+**环境**：同 §17（2560x1600 @150%、Windows 11 26200）；游戏以**管理员身份**运行 —— 也就是把
+「提权游戏」这条最难的路一起覆盖了（送键必须在提权进程里代发，理由见 §17.4）。
+
+| # | 验收项 | 结果 | 对应实现 |
+|---|---|---|---|
+| 1 | 提权游戏占着前台时，热键唤出 / 隐藏浮窗 | ✅ | `OverlayHotkeyRegistrar`：候选键列表，注册失败退到下一个可用的（§17.4 第 3 个坑） |
+| 2 | 浮窗可见、点击不被夺焦点、不把游戏踢出全屏 | ✅ | `OverlayWindowStyles`：`WS_EX_NOACTIVATE` + 置顶只认扩展样式并每秒自愈（§17.4 第 1 个坑） |
+| 3 | 角色下拉（带头像）切角色，位置记忆生效 | ✅ | `OverlayCharacterItem` + `OverlayPlacement`（拖动按窗口真实位置算，不飘） |
+| 4 | 勾选 Mod → 游戏内看到效果，不用手按 F10 | ✅ | `OverlayRefreshCoordinator` → `IGameKeySender`：与「按键徽章」同一条送键链路，提权时代发；`RefreshCoalescer` 防连点 |
+| 5 | 单选模式互斥 / 多选模式并存；切单选自动刷新 | ✅ | `OverlayModFilter` + `OverlaySettings.MultiSelectMode`（默认单选） |
+| 6 | 手动刷新按钮可用；刷新进行中置灰 | ✅ | `OverlayRefreshCoordinator.CanRequestRefresh` |
+| 7 | 失败提示（游戏未运行 / 目标未配 / 需提权 / 送键被拒）文案明确 | ✅ | `OverlayRefreshOutcomeProtocol` 分类，助手给的动态原因优先于通用文案 |
+
+**结论**：PRD 的 MVP Definition —— 在鸣潮里用热键叫出浮窗、切角色、勾选 Mod 并在游戏内看到效果，
+全程不 Alt+Tab、不手按 F10，且失败有明确解释 —— **实机通过**。
+
+**跑这张表的前置**：游戏先按「一键配置」配好（`d3dx.ini` 能解析出目标窗口）；刷新走的送键链路
+在游戏提权时会请助手代发，助手不可用或拒发时状态行直接写原因，不会静默失败。
+

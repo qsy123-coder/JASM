@@ -310,9 +310,15 @@ public partial class ElevatorService : ObservableRecipient
 
         try
         {
-            commandSent = targetWindow is { } window
-                ? await RefreshTargetedAsync(window).ConfigureAwait(false)
-                : await RefreshLegacyAsync().ConfigureAwait(false);
+            if (targetWindow is { } window)
+            {
+                await SendTargetedRefreshAsync(window).ConfigureAwait(false);
+                commandSent = true;
+            }
+            else
+            {
+                commandSent = await RefreshLegacyAsync().ConfigureAwait(false);
+            }
         }
         catch (Exception e) when (e is IOException or TimeoutException)
         {
@@ -361,8 +367,12 @@ public partial class ElevatorService : ObservableRecipient
     /// 目标窗口（进程名 → 句柄）由调用方解析后传进来，不交给助手：只有主程序知道 d3dx.ini 在哪，
     /// 而且窗口必须用 EnumWindows 现找（<c>Process.MainWindowHandle</c> 首次访问即缓存，
     /// 游戏重建窗口后就陈旧了）。
+    ///
+    /// 回执**返回**给调用方（日志照旧在这里记）：调用方按自己的语义用它 ——
+    /// 原神那条刷新路只关心"命令送出去没有"，回执读不到也不算它失败。
+    /// （浮窗的「勾选即刷新」已改走 <c>GameKeySender</c>，不再经过这里。）
     /// </summary>
-    private async Task<bool> RefreshTargetedAsync(HWND window)
+    private async Task<(ElevatorRefreshReply Reply, string? ReasonToken)> SendTargetedRefreshAsync(HWND window)
     {
         await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
         await pipeClient.ConnectAsync(TimeSpan.FromSeconds(5), default).ConfigureAwait(false);
@@ -380,16 +390,15 @@ public partial class ElevatorService : ObservableRecipient
         }
 
         // 到这里命令已经送出去了：即使回执读不到，也按「刷新已触发」把焦点还给 JASM
-        await LogRefreshReplyAsync(reader).ConfigureAwait(false);
-        return true;
+        return await ReadRefreshReplyAsync(reader).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 等助手的回执并记日志。读超时只记 Warning、不往外抛 ——
+    /// 等助手的回执、记日志，并把它返回给调用方。读超时只记 Warning、不往外抛 ——
     /// 一来旧版助手收到新命令是**静默无视**（不回话也不断开），不设超时就会一直卡住；
     /// 二来 <c>_refreshTask</c> 一旦卡在未完成状态，之后每次刷新都只会复用那个卡死的 task。
     /// </summary>
-    private async Task LogRefreshReplyAsync(StreamReader reader)
+    private async Task<(ElevatorRefreshReply Reply, string? ReasonToken)> ReadRefreshReplyAsync(StreamReader reader)
     {
         using var readTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
 
@@ -403,10 +412,12 @@ public partial class ElevatorService : ObservableRecipient
             _logger.Warning("[ElevatorService] {ProcessName} 没有在 {Seconds}s 内回执刷新命令 {Command}；"
                             + "若游戏没有刷新，说明它可能版本过旧，更新 JASM 即可（助手随主 exe 一起更新）",
                 ElevatorProcessName, 3, ElevatorRefreshProtocol.TargetedRefreshCommand);
-            return;
+            return (ElevatorRefreshReply.None, null);
         }
 
-        switch (ElevatorRefreshProtocol.ParseReply(reply, out var failureReason))
+        var parsed = ElevatorRefreshProtocol.ParseReply(reply, out var failureReason);
+
+        switch (parsed)
         {
             case ElevatorRefreshReply.Ok:
                 _logger.Debug("[ElevatorService] {ProcessName} 已把目标切到前台并发出 F10", ElevatorProcessName);
@@ -420,6 +431,8 @@ public partial class ElevatorService : ObservableRecipient
                     ElevatorProcessName, ElevatorRefreshProtocol.TargetedRefreshCommand);
                 break;
         }
+
+        return (parsed, failureReason);
     }
 
     /// <summary>
