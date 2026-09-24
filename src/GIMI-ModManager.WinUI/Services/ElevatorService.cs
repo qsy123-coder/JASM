@@ -469,7 +469,7 @@ public partial class ElevatorService : ObservableRecipient
             return null;
         }
 
-        var gameWindow = WindowProcessQuery.FindGameWindow(processIds);
+        var gameWindow = WindowProcessQuery.FindGameWindow(processIds, _logger);
         if (gameWindow.IsNull)
         {
             failureReason = $"目标进程 {processName} 没有可见的顶层窗口";
