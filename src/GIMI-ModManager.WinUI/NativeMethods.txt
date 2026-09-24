@@ -30,3 +30,4 @@ GET_WINDOW_CMD
 WindowFromPoint
 GetGUIThreadInfo
 GetClipCursor
+GetAsyncKeyState
