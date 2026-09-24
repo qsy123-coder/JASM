@@ -27,3 +27,6 @@ GetClassName
 GetTopWindow
 GetWindow
 GET_WINDOW_CMD
+WindowFromPoint
+GetGUIThreadInfo
+GetClipCursor
