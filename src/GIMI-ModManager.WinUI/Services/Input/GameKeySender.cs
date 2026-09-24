@@ -70,7 +70,7 @@ public sealed class GameKeySender : IGameKeySender
     }
 
     public async Task<GameKeySendResult> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
-        CancellationToken ct = default)
+        nint foregroundToHandBack = 0, CancellationToken ct = default)
     {
         if (KeyChordGuard.IsBlockedChord(virtualKey, modifierKeyCodes))
         {
@@ -153,8 +153,8 @@ public sealed class GameKeySender : IGameKeySender
             // 提权那一支到这里才 await（理由见上面注释）
             if (needsElevation)
             {
-                return await SendViaElevatedHelperAsync(virtualKey, modifierKeyCodes, gameWindow, ct)
-                    .ConfigureAwait(false);
+                return await SendViaElevatedHelperAsync(virtualKey, modifierKeyCodes, gameWindow,
+                    foregroundToHandBack, ct).ConfigureAwait(false);
             }
 
             await Task.Delay(ForegroundSettleMilliseconds, ct).ConfigureAwait(false);
@@ -173,6 +173,17 @@ public sealed class GameKeySender : IGameKeySender
             {
                 if (SendChord(virtualKey, modifierKeyCodes, keyUp: true) == 0)
                     _logger.Warning("[GameKeySender] 抬起按键失败 vk=0x{VirtualKey:X2}", virtualKey);
+            }
+
+            // 交还前台（只有浮窗那条路会传句柄，见 IGameKeySender）。
+            // 位置有两处讲究：① 必须在**送键之后** —— 键要打到游戏上，先切走就成了打给浮窗自己；
+            // ② 这里开 nudgeInputForForegroundLock 是允许的，因为键已经发完了（送键路径不许开它，
+            // 是因为它后面紧跟着 F10）。本进程刚注入过按键，注入那一手就能让前台锁放行 ——
+            // 即便没放行，浮窗自己那句「光标压在我身上就拿回前台」的自愈下一拍也会接手。
+            if (foregroundToHandBack != 0)
+            {
+                ForegroundWindowActivator.Activate((HWND)foregroundToHandBack,
+                    handOverRightToSetForeground: false, _logger, nudgeInputForForegroundLock: true);
             }
 
             _logger.Information(
@@ -202,6 +213,9 @@ public sealed class GameKeySender : IGameKeySender
     /// 游戏提权运行时改由提权助手代发按键 —— 这是唯一能把键送进去的路径
     /// （理由与线路格式见 <see cref="ElevatorService.TrySendKeyChordAsync"/>）。
     ///
+    /// <paramref name="foregroundToHandBack"/> 非 0 时，送完键再请助手把前台交给它
+    /// （见 <see cref="IGameKeySender.SendKeyAsync"/>：浮窗那条路必须交还，徽章那条路传 0、焦点留在游戏上）。
+    ///
     /// 结果刻意分两档，因为用户该做的事不同：
     /// <list type="bullet">
     /// <item>助手压根走不通（没随包安装 / 版本过旧 / 拉不起来 / 用户在 UAC 上点了否）
@@ -211,25 +225,42 @@ public sealed class GameKeySender : IGameKeySender
     /// </list>
     /// </summary>
     private async Task<GameKeySendResult> SendViaElevatedHelperAsync(ushort virtualKey,
-        IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, CancellationToken ct)
+        IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, nint foregroundToHandBack,
+        CancellationToken ct)
     {
         // 助手是另一个进程：它抢前台 / 送键的中间状态 JASM 看不到，所以把「交办前」和
-        // 「助手回来时」两个前台窗口都记下来 —— 目标是 A、助手说发了、回来时前台却是同进程的
+        // 「助手送完时」两个前台窗口都记下来 —— 目标是 A、助手说发了、前台却是同进程的
         // 另一个窗口，就是「键被打进错窗口」的铁证（表现是「刷新了但没变化」，助手却报成功）。
         var foregroundBefore = PInvoke.GetForegroundWindow();
 
         var outcome = await _elevatorService
             .TrySendKeyChordAsync(virtualKey, modifierKeyCodes, gameWindow, ct).ConfigureAwait(false);
 
+        // 这个读数必须在交还**之前**取：交还成功之后前台已经是浮窗，上面那条诊断依据就没了
+        var foregroundAfterSend = PInvoke.GetForegroundWindow();
+
+        // 交还前台：只有助手做得到（那一刻的输入所有者是刚注入按键的它，理由见 IGameKeySender 与
+        // ElevatorForegroundHandbackProtocol）。交还没成只记日志 —— 已经送出去的按键不该被它影响，
+        // 所以返回值完全不参与下面的结论。
+        var handedBack = false;
+        if (foregroundToHandBack != 0)
+        {
+            handedBack = await _elevatorService
+                .TryHandbackForegroundAsync((HWND)foregroundToHandBack, ct).ConfigureAwait(false);
+        }
+
         _logger.Information(
             "[GameKeySender] 提权助手送键 vk=0x{VirtualKey:X2} mods=[{Modifiers}] 目标窗口={TargetWindow}"
-            + " 交办前前台={ForegroundBefore} 助手回来时前台={ForegroundAfter}"
-            + " 助手结果={Result}（{Message}）",
+            + " 交办前前台={ForegroundBefore} 助手送完时前台={ForegroundAfter} 交还前台={HandbackTarget}"
+            + " 交还结果={HandedBack} 助手结果={Result}（{Message}）",
             virtualKey, string.Join(",", modifierKeyCodes),
             WindowProcessQuery.DescribeWindow(gameWindow),
             WindowProcessQuery.DescribeWindow(foregroundBefore),
-            WindowProcessQuery.DescribeWindow(PInvoke.GetForegroundWindow()),
-            outcome.Result, outcome.Message);
+            WindowProcessQuery.DescribeWindow(foregroundAfterSend),
+            foregroundToHandBack == 0
+                ? "(未要求)"
+                : WindowProcessQuery.DescribeWindow((HWND)foregroundToHandBack),
+            handedBack, outcome.Result, outcome.Message);
 
         return outcome.Result switch
         {
