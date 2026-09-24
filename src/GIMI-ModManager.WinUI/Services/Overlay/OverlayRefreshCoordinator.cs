@@ -24,6 +24,10 @@ namespace GIMI_ModManager.WinUI.Services.Overlay;
 /// 那个进程」，而那一刻的所有者是刚注入按键的**提权助手**；本进程既抢不回前台，注入解锁那一手又会被
 /// UIPI 静默丢掉（实测）。所以交还只能请助手做。不交还的话，用户每勾选一次都得重新唤出浮窗。
 ///
+/// 节奏：两发 F10 之间由 <see cref="RefreshSendPacer"/> 把关（至少隔 <see cref="RefreshSendPacer.MinimumInterval"/>）。
+/// 合并器决定"连着来的一串请求发几次"，拦不住"第二发比游戏的重载还快" —— 那种白送的 F10
+/// 看着和成功一模一样（助手回 Sent），游戏却停在上一件上。
+///
 /// 线程：**只从 UI 线程调用**（浮窗的点击处理）。状态属性直接绑到界面，所以内部刻意不写
 /// <c>ConfigureAwait(false)</c>，让 await 的续体留在 UI 线程上。切前台那一段要求调用方在**同步段**
 /// 里就发起（见 <see cref="IGameKeySender"/> 与 <c>ForegroundWindowActivator</c> 的注释），
@@ -41,6 +45,12 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
     private readonly IGameKeySender _gameKeySender;
     private readonly ILogger _logger;
     private readonly RefreshCoalescer _coalescer = new();
+
+    /// <summary>
+    /// 送键闸门：两次 F10 之间至少隔 <see cref="RefreshSendPacer.MinimumInterval"/>。
+    /// 合并器只管"发几次"，管不了"后一发砸在游戏还没跑完的重载上"—— 那才是连点失效的模样。
+    /// </summary>
+    private readonly RefreshSendPacer _sendPacer = new();
 
     /// <summary>是否正在刷新（含已排上的那次补发）。浮窗据此显示"进行中"，避免连点看起来像卡死。</summary>
     [ObservableProperty] private bool _isRefreshing;
@@ -107,6 +117,9 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
     ///   - 当前没人在刷 → 立刻发（并在结束后把期间攒下的请求补发一次）；
     ///   - 当前正在刷 → 只记一笔账、**立刻返回**（不排队、不并发），结果照样会是最新的。
     ///
+    /// 补发那一发要过送键闸门（见 <see cref="WaitForSendSlotAsync"/>）：连点时它是被**推迟**的，
+    /// 不是不发 —— 所以「最后一次勾选一定生效」这条没有变，只是慢一点落地。
+    ///
     /// 所以调用方（浮窗的点击处理）不必自己防抖，也不要等它跑完才允许下一次点击。
     /// </summary>
     public async Task RequestRefreshAsync()
@@ -125,13 +138,19 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
             {
                 IsRefreshing = true;
 
-                // 每次送键前重新判一次：交还与否取决于光标此刻在不在浮窗上（见 ResolveForegroundHandbackTarget）
+                await WaitForSendSlotAsync();
+
+                // 每次送键前重新判一次：交还与否取决于光标此刻在不在浮窗上（见 ResolveForegroundHandbackTarget）。
+                // 这一步必须在等闸门**之后**：等的那几秒里光标可能已经移开浮窗、或者浮窗已经被热键收起来了。
                 var handbackTarget = ResolveForegroundHandbackTarget();
 
                 // 不 ConfigureAwait(false)：本方法的调用方是浮窗的点击处理（UI 线程），
                 // 状态属性要绑到界面，续体留在 UI 线程上最省事，也免得每次赋值都往 DispatcherQueue 里丢。
                 var result = await _gameKeySender
                     .SendKeyAsync(ReloadHotkeyVirtualKey, Array.Empty<ushort>(), handbackTarget);
+
+                // 送键结束（无论成败）都要记：失败那一发也可能已经让游戏开始重载，那口重载一样会吃掉下一发
+                _sendPacer.MarkSent(DateTimeOffset.UtcNow);
 
                 // 先算成局部变量再赋给属性：属性是 OverlayRefreshOutcome?（"还没刷过"要能表达），
                 // 而 Describe 收的是非空 —— 直接拿属性去调会被可空性挡住。
@@ -164,6 +183,30 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
         {
             IsRefreshing = false;
         }
+    }
+
+    /// <summary>
+    /// 等送键闸门放行（见 <see cref="RefreshSendPacer"/>）。离上一发 F10 太近就等够了再发 ——
+    /// 不等的话，连点产生的补发会砸进游戏还没跑完的那口重载里：键送出去了、日志一切正常，
+    /// 游戏却不切（用户报的原话是「勾上了，但游戏里没切过去」）。
+    ///
+    /// 第一次送键永远不等待（闸门自己保证），所以单次勾选的手感不受影响。
+    /// 等待期间 <see cref="IsRefreshing"/> 保持 true（由调用方设）：这会儿确实还没刷完，界面该显示进行中。
+    /// 每次等待都记一行 Information：阈值合不合适只能从实机日志看，靠猜改不出来。
+    /// </summary>
+    private async Task WaitForSendSlotAsync()
+    {
+        var wait = _sendPacer.GetWaitBeforeSend(DateTimeOffset.UtcNow);
+        if (wait <= TimeSpan.Zero)
+            return;
+
+        _logger.Information(
+            "[浮窗] 距上一发 F10 不足 {Interval} 秒，等 {Wait:0.0} 秒再发（避开游戏的重载窗口）",
+            RefreshSendPacer.MinimumInterval.TotalSeconds,
+            wait.TotalSeconds);
+
+        // 不 ConfigureAwait(false)：理由同 RequestRefreshAsync 里的那条 —— 续体要留在 UI 线程上
+        await Task.Delay(wait);
     }
 
     /// <summary>
