@@ -1,5 +1,76 @@
 # Changelog
 
+## [2.29.0](https://github.com/qsy123-coder/JASM/compare/v2.28.0...v2.29.0) (2026-09-24)
+
+
+### Features
+
+* **core:** 新增 CursorRecenterGuard，判定光标是不是被游戏挪到了窗口中心 ([ab2fa5f](https://github.com/qsy123-coder/JASM/commit/ab2fa5fde6a707d01bdf97e92e779033758f295f))
+* **core:** 新增提权助手「归还前台」命令 4 的协议 ([8466de8](https://github.com/qsy123-coder/JASM/commit/8466de86b4e6ced32e094966c7a83274a5faaf56))
+* **core:** 新增送键闸门 RefreshSendPacer（两发 F10 之间至少隔 2.5 秒） ([36507c4](https://github.com/qsy123-coder/JASM/commit/36507c41d52c7c5328d26a8c4bc59d8c3aab0e62))
+* **elevator:** 新命令 4 —— 把前台交还给指定窗口 ([b00e12c](https://github.com/qsy123-coder/JASM/commit/b00e12c29bb06bf713d310e0b3b5a852e710d994))
+* **input:** ForegroundWindowActivator 支持切前台前先注入一次空输入 ([6f7abec](https://github.com/qsy123-coder/JASM/commit/6f7abec8b14126d15744d087383d98d82b337edd))
+* **input:** 合成输入加一次零位移鼠标移动，用于解锁前台锁 ([5644613](https://github.com/qsy123-coder/JASM/commit/5644613dad076c7f36c1f1f29626c3e057d3849b))
+* **overlay:** 列表加名字以供滚动 + 选中行高亮 ([13faa89](https://github.com/qsy123-coder/JASM/commit/13faa89c0bab92b21e18d747f8673a1c95542a86))
+* **overlay:** 勾选刷新送完键把前台收回浮窗 ([021607f](https://github.com/qsy123-coder/JASM/commit/021607f5e3a28720ef2a1ef14065acc2ec333274))
+* **overlay:** 把导航热键接到浮窗的选中 / 切换 / 刷新 ([386d1d5](https://github.com/qsy123-coder/JASM/commit/386d1d52270c76785e48902e6a2aa21b9fc76968))
+* **overlay:** 把浮窗句柄交给刷新协调器 ([acaa069](https://github.com/qsy123-coder/JASM/commit/acaa069215cfa2fd2f1aaa70bbda68b9e257267e))
+* **overlay:** 探针增加「光标是否压在本进程窗口上」的只读查询 ([77ed3db](https://github.com/qsy123-coder/JASM/commit/77ed3dbecc1eb622cfa3fe62cfd73994b949aa29))
+* **overlay:** 注册器扩到唤出键 + 四个导航键（导航键随显隐注册） ([adebfea](https://github.com/qsy123-coder/JASM/commit/adebfead763360cfe44ec30535d19a560e17b1d7))
+* **overlay:** 现场补记「点击门槛」—— 看得见点不到是输入归属问题 ([07d8896](https://github.com/qsy123-coder/JASM/commit/07d8896e331a9309782dd8d47f4e2f93e4a95055))
+* **overlay:** 行 VM 加 IsSelected，供键盘选中的高亮 ([a00e9f7](https://github.com/qsy123-coder/JASM/commit/a00e9f7c2f01cb4126449964aa4b1307501d9a1f))
+* **overlay:** 送键前过闸门，补发不再砸进游戏的重载窗口 ([449f8f5](https://github.com/qsy123-coder/JASM/commit/449f8f5b65e4c46e1d349c3e4091a8847258245c))
+* **overlay:** 选中行变化时滚进视野 ([666dd81](https://github.com/qsy123-coder/JASM/commit/666dd81fdaf2a14a833a7596547694b5cbe3c1ad))
+* **overlay:** 键盘选中行（上下移动 / 回车切换），过滤后重定位 ([9e39ee6](https://github.com/qsy123-coder/JASM/commit/9e39ee660b0cfe235a99e777ca858c844c7d41b1))
+* **winui:** SendKeyAsync 增加「送完键把前台交给谁」参数 ([62f9567](https://github.com/qsy123-coder/JASM/commit/62f9567a1dd067006fd1b82a768ddb115a83235c))
+* **winui:** 新增请助手交还前台的调用（命令 4），并按版本门控 ([6a0c25d](https://github.com/qsy123-coder/JASM/commit/6a0c25d568a7053c65d559e6284b620dbbec0da5))
+* **winui:** 送完键按调用方要求交还前台（提权支走助手，直发支自己来） ([9787535](https://github.com/qsy123-coder/JASM/commit/9787535c5b29cd58822a145ca911a731362424ae))
+
+
+### Bug Fixes
+
+* **elevator:** 目标刷新定位窗口时带上 logger，复用候选窗口日志 ([b4494a0](https://github.com/qsy123-coder/JASM/commit/b4494a05b0d6f8f4dd0ee0f3fe46b5dff23393f0))
+* **input:** 送键前等用户松开修饰键，别把 F10 发成 Alt+F10 ([39aebf3](https://github.com/qsy123-coder/JASM/commit/39aebf30314f9bee9240833a7653a25e332869c8))
+* **keyinput:** 找游戏窗口改挑面积最大的渲染主窗口，并逐条记录候选 ([88e6905](https://github.com/qsy123-coder/JASM/commit/88e6905aa4c78603aa15422f801276d0b4f192de))
+* **keyinput:** 提权助手送键补记目标窗口与交办前后台窗口 ([a789e80](https://github.com/qsy123-coder/JASM/commit/a789e80eabbbb8cd96c6e91bd9db120685dc6060))
+* **overlay:** 刷新热键给候选，R 被占时退到 Space ([c80b079](https://github.com/qsy123-coder/JASM/commit/c80b0799a560e267d192e8b9beede5e311a7506d))
+* **overlay:** 前台被抢走后一秒内拿回来（光标在浮窗上时） ([6931e83](https://github.com/qsy123-coder/JASM/commit/6931e83929c0bd95cbe81e33e53eae999a5dfecd))
+* **overlay:** 层级现场改走真 Z 序链，EnumWindows 的枚举位置会漏掉 IME 那一块 ([093be97](https://github.com/qsy123-coder/JASM/commit/093be974d4a5f6d0b99369491b64169deebb0dd2))
+* **overlay:** 撤掉无效的置顶重申，订正被实测推翻的注释 ([1677b61](https://github.com/qsy123-coder/JASM/commit/1677b6163eb1fbd51eb6bcf17d3808d9928f5866))
+* **overlay:** 置顶自愈改为每秒无条件重申，并定期把层级现场写进日志 ([9fdf9c8](https://github.com/qsy123-coder/JASM/commit/9fdf9c8f7b7396e67f11424c89b454e1329f6588))
+* **overlay:** 送键切前台前记下光标，交还前台后若被游戏挪到窗口中心就放回原位 ([d6f049e](https://github.com/qsy123-coder/JASM/commit/d6f049e433db04a4b9e44eae4b8b2fa1bed4748b))
+
+
+### Miscellaneous
+
+* **elevator:** FileVersion 抬到 4.0.0.0（能力标记：认识归还前台 4） ([ef04c01](https://github.com/qsy123-coder/JASM/commit/ef04c012786ddceb3b85afb435f963a702d60ad4))
+* **input:** 注册 GetAsyncKeyState ([09ff37a](https://github.com/qsy123-coder/JASM/commit/09ff37ad69a8880adfdb0c8580685143a9804143))
+* **keyinput:** NativeMethods 补 GetClassName（窗口诊断要读类名） ([69e890f](https://github.com/qsy123-coder/JASM/commit/69e890f5463fb616ef8f372810cad5936e5c5a4a))
+* **overlay:** 新增浮窗层级现场探针，用于区分置顶带被压与被合成器绕开 ([2022789](https://github.com/qsy123-coder/JASM/commit/202278932bd25543d09b9bf011a344e9422762b9))
+* **overlay:** 注册 GetTopWindow / GetWindow，供真 Z 序链遍历 ([09b996b](https://github.com/qsy123-coder/JASM/commit/09b996be6de3dfe41167c94bfe645e81dfec218b))
+* **overlay:** 注册 WindowFromPoint / GetGUIThreadInfo / GetClipCursor ([09f2c3a](https://github.com/qsy123-coder/JASM/commit/09f2c3a4f214c381a14fa5cdd303f2e3404901c1))
+* **winui:** NativeMethods.txt 补 SetCursorPos ([e314279](https://github.com/qsy123-coder/JASM/commit/e3142790b52b257d981a3bd73dd3f3eb0048950a))
+
+
+### Documentation
+
+* **overlay:** 把单选刷新那行的注释改成代码的实际行为 ([0e2c2db](https://github.com/qsy123-coder/JASM/commit/0e2c2db27f5dc1a8a4545dc54edfc66175ce6c4d))
+* **overlay:** 探针里那句「多半是完整性级别挡的」猜错了原因 ([fd2760b](https://github.com/qsy123-coder/JASM/commit/fd2760b6c0baae490cb44e0cdb26708236180d7b))
+* **overlay:** 订正「前台=我」的读法，实测它会自发出现 ([846323e](https://github.com/qsy123-coder/JASM/commit/846323e6a8895f13dc98b45ba1d91d0a1e661019))
+* 第 10 节补助手命令 4（归还前台）与 4.0.0.0 版本门控 ([f9604a7](https://github.com/qsy123-coder/JASM/commit/f9604a74f2128da71c16524d0ffd9d16bf95213b))
+
+
+### Tests
+
+* **core:** CursorRecenterGuard 单测（没动不还原 / 贴着中心才还原 / 用户自己挪走一律放过） ([ab0fe20](https://github.com/qsy123-coder/JASM/commit/ab0fe20ff9b86a7211446eab44a65f604c66eddc))
+* **core:** RefreshSendPacer 单测（首发送键不等待 / 等满阈值 / 边界 / 补发被推后） ([6735179](https://github.com/qsy123-coder/JASM/commit/67351796b5a78acc5771a2c4ca5e2ef3b166ca71))
+* **core:** 补归还前台命令 4 的协议测试 ([6fd7279](https://github.com/qsy123-coder/JASM/commit/6fd72791da31f0ca2e35fcdae89fadfd9aff26a0))
+
+
+### Code Refactoring
+
+* **core:** 窗口句柄行的编解码抽成一份，并加「前台没交还」原因 token ([53e08b2](https://github.com/qsy123-coder/JASM/commit/53e08b2cbdef12547e9ea385b526b931681f87c3))
+
 ## [2.28.0](https://github.com/qsy123-coder/JASM/compare/v2.27.1...v2.28.0) (2026-09-24)
 
 
