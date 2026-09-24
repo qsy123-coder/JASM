@@ -301,7 +301,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             return;
         }
 
-        // 单选：勾了就让游戏里立刻生效。合并与失败文案都交给协调器，这里不等它跑完也不重复触发
+        // 单选：勾了就让游戏里立刻生效。合并与失败文案都交给协调器，这里不重复触发。
+        // await 的是整段刷新（含送键闸门那段等待与补发），所以**这一行**的命令在刷新跑完前不重入
+        // （行 VM 那边的命令语义），点它没反应；别的行是各自独立的命令实例，不受影响 ——
+        // 连点同一个角色的不同 Mod 正是靠这一点才点得动。
         await RefreshCoordinator.RequestRefreshAsync();
         HasPendingChanges = false;
     }
