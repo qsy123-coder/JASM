@@ -125,11 +125,39 @@ public class ActivationService : IActivationService
 
     private async Task CheckIfAlreadyRunningAsync()
     {
-        var isJasmRunningHWND = await IsJasmRunning();
+        var otherInstance = _lifeCycleService.FindOtherInstance();
 
-        if (!isJasmRunningHWND.HasValue) return;
+        if (otherInstance is null) return;
 
-        var hWnd = isJasmRunningHWND.Value;
+        var instance = otherInstance.Value;
+
+        if (!instance.IsSameApp)
+        {
+            // 另一个安装的 JASM 也在跑（进程名同样是 JASM，但 exe 不是本程序这一份）。
+            // **不**把对方的窗口拉到前台 —— 那正是用户报的毛病：以为启动成功了，看到的却是另一个
+            // 安装的界面。但也不能放行：两份 JASM 共用 %LOCALAPPDATA%\JASM（设置、Mod 环境备份、
+            // 提权助手都在那儿），同时跑会互相覆盖。所以拦住，并把"是谁在跑"讲清楚。
+            _logger.Warning(
+                "Another JASM installation is already running, refusing to start: {OtherImagePath} (this instance: {OwnImagePath})",
+                instance.ImagePath, Environment.ProcessPath);
+
+            PInvoke.MessageBox(HWND.Null,
+                $"另一个 JASM 正在运行（不是本程序这一份）：\n{instance.ImagePath}\n\n"
+                + "两份 JASM 共用同一份数据目录（%LOCALAPPDATA%\\JASM），同时运行会互相覆盖设置与 Mod 环境备份，"
+                + "所以本程序无法启动。\n请先关闭上面那个 JASM，再启动本程序。\n\n"
+                + "Another JASM installation is already running:\n"
+                + $"{instance.ImagePath}\n\n"
+                + "Both installations share the same data folder (%LOCALAPPDATA%\\JASM), so they cannot run at the same time. "
+                + "Please close the other JASM first.",
+                "JASM",
+                MESSAGEBOX_STYLE.MB_ICONWARNING | MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_SETFOREGROUND);
+
+            Application.Current.Exit();
+            await Task.Delay(-1);
+            return;
+        }
+
+        var hWnd = new HWND(instance.WindowHandle);
 
         _logger.Information("JASM is already running, exiting...");
         try
@@ -149,24 +177,6 @@ public class ActivationService : IActivationService
         await Task.Delay(-1);
     }
 
-
-    private async Task<HWND?> IsJasmRunning()
-    {
-        nint? processHandle;
-        try
-        {
-            processHandle = await _lifeCycleService.CheckIfAlreadyRunningAsync();
-        }
-        catch (Exception e)
-        {
-            _logger.Error(e, "Could not determine if JASM is already running. Assuming not");
-            return null;
-        }
-
-        if (processHandle == null) return null;
-
-        return new HWND(processHandle.Value);
-    }
 
     private async Task HandleActivationAsync(object activationArgs)
     {
