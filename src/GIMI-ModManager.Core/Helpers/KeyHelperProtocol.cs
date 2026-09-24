@@ -74,6 +74,12 @@ public static class KeyHelperProtocol
     /// <summary>SendInput 插入的事件数少于请求数。</summary>
     public const string ReasonInjectionFailed = "injection-failed";
 
+    /// <summary>
+    /// 「把前台交给指定窗口」没做成（<see cref="ElevatorForegroundHandbackProtocol.HandbackCommand"/>）：
+    /// <c>SetForegroundWindow</c> 之后回读，前台还是别的窗口。
+    /// </summary>
+    public const string ReasonForegroundNotTaken = "foreground-not-taken";
+
     /// <summary>把一条发送请求编成 <see cref="SendKeyPayloadLineCount"/> 行载荷（不含命令行的 <c>SENDKEY</c>）。</summary>
     public static string[] BuildSendKeyPayload(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
         nint targetWindow)
@@ -86,8 +92,39 @@ public static class KeyHelperProtocol
         [
             virtualKey.ToString(CultureInfo.InvariantCulture),
             modifiers,
-            ((long)targetWindow).ToString("X", CultureInfo.InvariantCulture)
+            BuildWindowLine(targetWindow)
         ];
+    }
+
+    /// <summary>
+    /// 窗口句柄那一行的写法：十六进制、**不带 <c>0x</c> 前缀**（线路格式里就这么定的，见类注释）。
+    ///
+    /// 单独抽出来是因为往来里不止一处要传句柄（送键 <c>3</c>、归还前台
+    /// <see cref="ElevatorForegroundHandbackProtocol.HandbackCommand"/>），而本文件是**两侧共用**的那一份
+    /// （提权助手工程直接把本文件 <c>Compile Include</c> 进去）。各写一份格式，
+    /// 迟早会出现"主程序写得对、助手解析不了"这种只在真机上现形的问题。
+    /// </summary>
+    public static string BuildWindowLine(nint window) =>
+        ((long)window).ToString("X", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// 解析窗口句柄那一行，与 <see cref="BuildWindowLine"/> 是同一份格式的读法。
+    /// 十六进制里最高位为 1 的地址在窗口句柄的允许范围之外，所以按有符号 <see cref="long"/> 解析后再判正负；
+    /// 认不出 / 不是正数一律 false（调用方按 <see cref="ReasonBadPayload"/> 回执）。
+    /// </summary>
+    public static bool TryParseWindowLine(string? line, out nint window)
+    {
+        window = 0;
+
+        var windowText = line?.TrimEnd('\r') ?? string.Empty;
+        if (!long.TryParse(windowText, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var value)
+            || value <= 0)
+        {
+            return false;
+        }
+
+        window = (nint)value;
+        return true;
     }
 
     /// <summary>识别命令行（大小写不敏感，容忍行尾的 <c>\r</c> —— 万一对面用了 CRLF）。</summary>
@@ -154,10 +191,8 @@ public static class KeyHelperProtocol
             }
         }
 
-        // ③ 窗口句柄：十六进制（最高位为 1 的地址在允许范围之外，故此按有符号 long 解析后再判正负）
-        var windowText = windowLine?.TrimEnd('\r') ?? string.Empty;
-        if (!long.TryParse(windowText, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var window)
-            || window <= 0)
+        // ③ 窗口句柄：走与 BuildWindowLine 同一份格式的解析（归还前台那条命令也用它）
+        if (!TryParseWindowLine(windowLine, out var window))
         {
             failureReason = ReasonBadPayload;
             return false;
@@ -170,7 +205,7 @@ public static class KeyHelperProtocol
             return false;
         }
 
-        request = new KeyHelperSendRequest(virtualKey, modifiers, (nint)window);
+        request = new KeyHelperSendRequest(virtualKey, modifiers, window);
         return true;
     }
 
