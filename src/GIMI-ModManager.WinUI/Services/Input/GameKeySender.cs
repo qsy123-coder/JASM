@@ -195,8 +195,23 @@ public sealed class GameKeySender : IGameKeySender
     private async Task<GameKeySendResult> SendViaElevatedHelperAsync(ushort virtualKey,
         IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, CancellationToken ct)
     {
+        // 助手是另一个进程：它抢前台 / 送键的中间状态 JASM 看不到，所以把「交办前」和
+        // 「助手回来时」两个前台窗口都记下来 —— 目标是 A、助手说发了、回来时前台却是同进程的
+        // 另一个窗口，就是「键被打进错窗口」的铁证（表现是「刷新了但没变化」，助手却报成功）。
+        var foregroundBefore = PInvoke.GetForegroundWindow();
+
         var outcome = await _elevatorService
             .TrySendKeyChordAsync(virtualKey, modifierKeyCodes, gameWindow, ct).ConfigureAwait(false);
+
+        _logger.Information(
+            "[GameKeySender] 提权助手送键 vk=0x{VirtualKey:X2} mods=[{Modifiers}] 目标窗口={TargetWindow}"
+            + " 交办前前台={ForegroundBefore} 助手回来时前台={ForegroundAfter}"
+            + " 助手结果={Result}（{Message}）",
+            virtualKey, string.Join(",", modifierKeyCodes),
+            WindowProcessQuery.DescribeWindow(gameWindow),
+            WindowProcessQuery.DescribeWindow(foregroundBefore),
+            WindowProcessQuery.DescribeWindow(PInvoke.GetForegroundWindow()),
+            outcome.Result, outcome.Message);
 
         return outcome.Result switch
         {
