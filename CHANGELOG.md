@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.30.0](https://github.com/qsy123-coder/JASM/compare/v2.29.0...v2.30.0) (2026-09-24)
+
+
+### Features
+
+* **core:** 新增 InstanceIdentity —— 判另一个同名进程是不是本程序自己的实例 ([9df8ffb](https://github.com/qsy123-coder/JASM/commit/9df8ffb0e6f284d2c29eb319e78ec2847373dd3c))
+* **winui:** LifeCycleService 加 FindOtherInstance()，返回同名的那个进程的身份 ([3a80277](https://github.com/qsy123-coder/JASM/commit/3a802772cd186ff277c3effe6130c1ff35fca54d))
+
+
+### Bug Fixes
+
+* **winui:** 同名但非本程序的 JASM 在跑时弹窗说明并退出，不再把对方窗口拉前台冒充启动成功 ([c07f2a7](https://github.com/qsy123-coder/JASM/commit/c07f2a75879e6bd6e1e4879aabadebae781f2146))
+
+
+### Miscellaneous
+
+* **winui:** NativeMethods.txt 补 MessageBox（启动时提示另一个 JASM 在跑） ([0ab4f53](https://github.com/qsy123-coder/JASM/commit/0ab4f530e7ff2202437560a224da2e218c9a16e3))
+
+
+### Tests
+
+* **core:** InstanceIdentity 单测（同路径 / 大小写 / 同名不同目录 / 点段归一 / 读不到路径） ([0a78963](https://github.com/qsy123-coder/JASM/commit/0a78963b559a05b15ed654daf848a291ef1271a1))
+
 ## [2.29.0](https://github.com/qsy123-coder/JASM/compare/v2.28.0...v2.29.0) (2026-09-24)
 
 
