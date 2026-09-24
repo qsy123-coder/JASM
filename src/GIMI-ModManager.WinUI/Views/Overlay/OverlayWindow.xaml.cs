@@ -20,10 +20,11 @@ namespace GIMI_ModManager.WinUI.Views.Overlay;
 ///
 ///   1. **置顶只认扩展样式**：<c>OverlappedPresenter.IsAlwaysOnTop</c> 与 WinUIEx 的
 ///      <c>WindowEx.IsAlwaysOnTop</c> 都不写 <c>WS_EX_TOPMOST</c>，而两者都读回 true。
-///   2. **置顶位要定期自愈，而且每次都得真的重申**：实测它在窗口显示之后会被抹掉，抹掉的表现就是
+///   2. **置顶位要定期自愈**：实测它在窗口显示之后会被抹掉，抹掉的表现就是
 ///      "浮窗被别的窗口盖住／看起来消失了"，而热键只切显隐、修不了样式，唤出也白搭。
-///      重申不能省成"样式位还在就什么都不做"：置顶位只说明"我在置顶带里"，不说明"我在置顶带的最前面" ——
-///      游戏窗口自己也带置顶位、还排在前面时（进游戏之后就是这个形态），只看样式位的自愈毫无反应。
+///      自愈能做的只有"把置顶位补回来"：想用 <c>SetWindowPos</c> 把自己在置顶带里重新排到最前
+///      是**做不到的**（实测三种写法都返回成功、位置一动不动，见 <see cref="EnsureTopMost"/> 的说明），
+///      所以"到底有没有被压住"只能靠现场日志（<see cref="OverlayStackProbe"/>）判断，不能靠猜。
 ///   3. **显隐走 <c>ShowWindow(SW_*)</c>**，不走 <c>AppWindow.Show()</c>／<c>Window.Activate()</c> 那一套 ——
 ///      后者可能顺带激活窗口，一唤出就把游戏的前台挤掉。
 ///   4. **层级现场定期记进日志**（<see cref="OverlayStackProbe"/>，可见时约 5 秒一次）：浮窗被盖住时用户
@@ -185,24 +186,27 @@ public sealed partial class OverlayWindow : WindowEx
     public bool IsOverlayVisible => PInvoke.IsWindowVisible(_hwnd);
 
     /// <summary>
-    /// 确认窗口**真的**排在置顶带的最前面，不够就重申一次置顶。
+    /// 确认浮窗的**置顶位**还在，不在就补回来。
     /// 详见类注释第 1、2 条 —— 这里一律以扩展样式为准做证伪。
     ///
-    /// **每次调用都真的重申**（<c>SetWindowPos(HWND_TOPMOST)</c>），不做"样式位还在就不动"的短路：
-    /// 短路只防得住"置顶位被抹掉"，防不住"位还在、却排在另一个置顶窗口后面" —— 后者才是进游戏之后的形态
-    /// （游戏窗口自己也带置顶位，进世界那一刻把自己摆到了我们前面）。重申会把浮窗提到置顶带的最前面，
-    /// 正好治这一种；被抹掉的那种也顺带补回来。代价是每秒一次 <c>SetWindowPos</c>：
-    /// 只动 Z 序、不改几何、不激活窗口，实测没有可见副作用。
+    /// **为什么不做"顺手重申一次、让它排到最前"**：那件事 <c>SetWindowPos</c> 做不到。
+    /// 按文档 <c>HWND_TOPMOST</c> 的语义只是"置于所有非置顶窗口之上"（= 成为置顶窗口），
+    /// 对已经在置顶带里的窗口没有任何排队作用；而 <c>HWND_TOP</c>、以及"先撤置顶再置顶"
+    /// 这两种看起来更狠的写法也一样 —— 2026-09-24 在本机浮窗上逐个实测过（三种写法调用都返回
+    /// 成功、扩展样式也如实变化），位置一动不动：浮窗上面那一块是系统的 IME / shell 辅助窗口
+    /// （<c>MSCTFIME UI</c> / <c>IME</c> / <c>XamlExplorerHostIslandWindow</c> / <c>ForegroundStaging</c> /
+    /// <c>ThumbnailDeviceHelperWnd</c>），应用层本来就抢不过去、也不该去抢。
+    /// 所以这里只维护"我还是不是置顶窗口"；"有没有被压住"交给
+    /// <see cref="OverlayStackProbe"/> 定期把现场记进日志，由证据说话。
     /// </summary>
     private void EnsureTopMost(string stage)
     {
         var current = OverlayWindowStyles.ReadExStyle(_hwnd);
-        var hadTopMost = OverlayWindowStyles.HasTopMost(current);
+
+        if (OverlayWindowStyles.HasTopMost(current))
+            return;
 
         var after = _styles.SetTopMost(_hwnd, onTop: true);
-
-        if (hadTopMost)
-            return;
 
         // 置顶位被抹掉是异常，而且它是"浮窗看起来消失了"的直接原因 —— 记 Warning 级：
         // Debug 级不进日志文件（文件 sink 的门槛是 Information），真出事时反而看不到。
