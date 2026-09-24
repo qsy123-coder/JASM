@@ -126,6 +126,25 @@ internal static unsafe class OverlayStackProbe
     /// 不在 → 层级上根本没输，盖住画面的只能是合成器。
     /// </summary>
     /// <summary>
+    /// 光标此刻是不是压在本进程的窗口上。给"用户正准备点浮窗"这类判断用（<see cref="OverlayWindow"/> 拿它决定
+    /// 要不要把前台从游戏手里拿回来）—— 判据与下面 <see cref="SameProcessMark"/> 完全一致，理由同它。
+    ///
+    /// 读不到一律返回 <c>false</c>（"说不准"按"没有"处理：不为了一个读不到的状态去动前台）。
+    /// </summary>
+    internal static bool IsCursorOverOwnProcessWindow(HWND overlay)
+    {
+        if (overlay.IsNull || !PInvoke.GetCursorPos(out var cursor))
+            return false;
+
+        var underCursor = PInvoke.WindowFromPoint(cursor);
+        if (underCursor.IsNull)
+            return false;
+
+        var underCursorPid = WindowProcessQuery.GetWindowProcessId(underCursor);
+        return underCursorPid != 0 && underCursorPid == WindowProcessQuery.GetWindowProcessId(overlay);
+    }
+
+    /// <summary>
     /// 这个窗口是不是我们自己进程的（浮窗所在进程），供「点击落没落到浮窗上」按进程判。
     ///
     /// **为什么不能按句柄或类名判**：实测光标压在浮窗上时，<c>WindowFromPoint</c> 回的并不是那个
