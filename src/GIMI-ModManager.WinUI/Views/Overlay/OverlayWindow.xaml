@@ -207,7 +207,10 @@
                     TextWrapping="Wrap" />
             </StackPanel>
 
+            <!--  x:Name 是给代码后置用的：键盘选中换行时要把那一行滚进视野，
+                  而浮窗只有 440 高、列表比它长，选中的行可能整行都在屏幕外。  -->
             <ListView
+                x:Name="ModList"
                 Grid.Row="5"
                 Margin="6,0,6,8"
                 ItemsSource="{x:Bind ViewModel.Mods}"
@@ -227,6 +230,20 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
+
+                            <!--  键盘选中行的高亮：铺在最底层（先声明的在下层），横跨三列、不参与布局。
+                                  负外边距是为了盖住 ListViewItem 的 Padding(4,2)，让底色顶到行的边上。
+                                  用 Visibility 而不是条件改 Background：WinUI 没有 DataTrigger，
+                                  为两态去写转换器或 VisualState 都不如一层可显隐的底直白。  -->
+                            <Border
+                                Grid.Column="0"
+                                Grid.ColumnSpan="3"
+                                Margin="-4,-2"
+                                Background="#33FFFFFF"
+                                BorderBrush="#FFE8A33D"
+                                BorderThickness="2,0,0,0"
+                                CornerRadius="3"
+                                Visibility="{x:Bind IsSelected, Mode=OneWay}" />
 
                             <!--  CheckBox 的 Command 落在行自己身上：每个行一个命令实例，
                                   所以"同一个 Mod 连点"被挡住、不同行之间互不阻塞。

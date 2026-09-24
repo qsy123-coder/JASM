@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Serilog;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Security;
@@ -22,6 +23,9 @@ internal static unsafe class WindowProcessQuery
 
     /// <summary>映像路径缓冲。Windows 路径上限 260 上下，给 1024 个字符足够且只是栈上一点开销。</summary>
     private const int ImagePathBufferLength = 1024;
+
+    /// <summary>窗口类名缓冲。Windows 的类名上限就是 256 个字符。</summary>
+    private const int WindowClassNameBufferLength = 256;
 
     /// <summary>本进程的完整性级别（低 0x1000 / 中 0x2000 / 高 0x3000）。进程生命周期内不变，读一次缓存。</summary>
     private static readonly Lazy<uint> OwnIntegrityLevelRidLazy =
@@ -70,28 +74,132 @@ internal static unsafe class WindowProcessQuery
     }
 
     /// <summary>
-    /// 找游戏窗口：先看「已经是前台的窗口」（避免误选 overlay / 启动器残留窗口），
-    /// 否则枚举顶层窗口，取第一个「可见 + 属于目标进程」的。
+    /// 找游戏窗口：枚举目标进程的**全部**顶层窗口，取「可见 + 有面积」里**面积最大**的那个
+    /// （未最小化的优先）。
+    ///
+    /// 判据为什么不是「当前前台那个」也不是「枚举到的第一个」：游戏进世界 / 切显示模式时
+    /// 常常多出别的顶层窗口，它一旦成了前台，按「前台优先」就会选中一个**不是渲染主窗口**的
+    /// 窗口 —— 而渲染窗口才是 3DMigoto 挂消息钩子、游戏读键盘输入的那个。键打进别的窗口
+    /// 没人接，用户只看到「刷新了但没变化」；提权助手只比进程 id，同进程的错窗口还会被判成
+    /// 发送成功。（现场签名：加载界面能成、进游戏不成。）真全屏 / 无边框全屏的渲染窗口必然
+    /// 面积最大，所以面积是最稳的判据。
+    ///
+    /// 候选全都被最小化时（游戏最小化着）退化成「面积最大的那个」：助手会先 SW_RESTORE 再送键。
     /// 不用 <c>Process.MainWindowHandle</c>：它首次访问即缓存，游戏重建窗口后就陈旧了。
     /// </summary>
-    internal static HWND FindGameWindow(uint[] processIds)
+    internal static HWND FindGameWindow(uint[] processIds, ILogger? logger = null)
     {
         var foreground = PInvoke.GetForegroundWindow();
-        if (!foreground.IsNull && processIds.Contains(GetWindowProcessId(foreground)))
-            return foreground;
+        var candidates = new List<WindowCandidate>();
 
-        HWND found = HWND.Null;
         PInvoke.EnumWindows((window, _) =>
         {
-            if (found.IsNull && PInvoke.IsWindowVisible(window) != 0
-                             && processIds.Contains(GetWindowProcessId(window)))
-                found = window;
+            // 只看目标进程的可见顶层窗口；零面积的（IME / 工具窗口）不可能是渲染窗口
+            if (PInvoke.IsWindowVisible(window) == 0
+                || !processIds.Contains(GetWindowProcessId(window)))
+                return new BOOL(1);
 
-            // 返回 0 = 停止枚举：已经找到就没必要继续
-            return new BOOL(found.IsNull ? 1 : 0);
+            if (TryGetWindowSize(window, out var width, out var height) && width > 0 && height > 0)
+                candidates.Add(new WindowCandidate(window, width, height,
+                    PInvoke.IsIconic(window) != 0, window.Value == foreground.Value));
+
+            // 返回 1 = 继续枚举：要把所有候选都收齐才能比面积
+            return new BOOL(1);
         }, default);
 
-        return found;
+        if (candidates.Count == 0)
+        {
+            logger?.Warning("[窗口] 目标进程 [{ProcessIds}] 没有可用的顶层窗口（可见 + 有面积）",
+                string.Join(",", processIds));
+            return HWND.Null;
+        }
+
+        var picked = candidates
+            .OrderBy(candidate => candidate.IsIconic)       // 未最小化的优先：最小化窗口的尺寸不可信
+            .ThenByDescending(candidate => candidate.Area)  // 面积最大的最可能是渲染主窗口
+            .ThenByDescending(candidate => candidate.IsForeground)
+            .First();
+
+        if (logger is not null)
+        {
+            // 现场诊断：日志必须能看出「同进程有几个窗口、挑中的是哪个、枚举时前台是哪个」，
+            // 否则「键打进错窗口」这件事在日志里完全不可见（助手只比进程 id，错窗口也报成功）。
+            foreach (var candidate in candidates)
+                logger.Information("[窗口] 候选 {Window}{Picked}", DescribeWindow(candidate.Window),
+                    candidate.Window.Value == picked.Window.Value ? " ←选中" : string.Empty);
+
+            if (candidates.Count > 1)
+                logger.Warning("[窗口] 目标进程有 {Count} 个可用顶层窗口，按面积选了 {Window}；"
+                               + "选中的若不是渲染主窗口，按键会被打进没人接的窗口（表现是「刷新了但没变化」）",
+                    candidates.Count, DescribeWindow(picked.Window));
+        }
+
+        return picked.Window;
+    }
+
+    /// <summary>
+    /// 把窗口写成一行诊断文本：hwnd + 进程 id + 尺寸 + 类名 + 前台 / 最小化标记。
+    ///
+    /// 只读类名（<c>GetClassName</c> 读的是内核里的类原子，不打扰目标窗口），**不读标题**：
+    /// <c>GetWindowText</c> 会向目标窗口发 WM_GETTEXT，游戏正忙（加载界面正好在忙）时
+    /// 可能把调用它的那个线程卡住 —— 这里是在 JASM 的同步段里调的，卡不起。
+    /// </summary>
+    internal static string DescribeWindow(HWND window)
+    {
+        if (window.IsNull)
+            return "<无窗口>";
+
+        var text = $"0x{(nint)window.Value:X} pid={GetWindowProcessId(window)}";
+        if (TryGetWindowSize(window, out var width, out var height))
+            text += $" {width}x{height}";
+
+        text += $" class={ReadWindowClassName(window)}";
+
+        if (window.Value == PInvoke.GetForegroundWindow().Value)
+            text += " [前台]";
+
+        if (PInvoke.IsIconic(window) != 0)
+            text += " [最小化]";
+
+        return text;
+    }
+
+    /// <summary>读窗口类名（游戏渲染窗口通常是 <c>UnrealWindow</c>）。读不到返回 <c>?</c>。</summary>
+    private static string ReadWindowClassName(HWND window)
+    {
+        var buffer = stackalloc char[WindowClassNameBufferLength];
+        var length = PInvoke.GetClassName(window, buffer, WindowClassNameBufferLength);
+
+        return length <= 0 ? "?" : new string(buffer, 0, Math.Min(length, WindowClassNameBufferLength));
+    }
+
+    /// <summary>读窗口外框尺寸（物理像素）。窗口已销毁 / 查询被拒时返回 false。</summary>
+    private static bool TryGetWindowSize(HWND window, out int width, out int height)
+    {
+        RECT rect;
+        if (!PInvoke.GetWindowRect(window, &rect))
+        {
+            width = 0;
+            height = 0;
+            return false;
+        }
+
+        width = rect.right - rect.left;
+        height = rect.bottom - rect.top;
+        return true;
+    }
+
+    /// <summary>候选窗口（枚举阶段收集）：选主窗口只看尺寸和「是不是最小化了」。</summary>
+    /// <param name="Window">窗口句柄。</param>
+    /// <param name="Width">外框宽（物理像素）。</param>
+    /// <param name="Height">外框高（物理像素）。</param>
+    /// <param name="IsIconic">是否已最小化 —— 最小化时 <c>GetWindowRect</c> 给的是图标位置，尺寸不可信。</param>
+    /// <param name="IsForeground">枚举那一刻它是不是前台窗口。</param>
+    private readonly record struct WindowCandidate(HWND Window, int Width, int Height, bool IsIconic,
+        bool IsForeground)
+    {
+        /// <summary>外框面积，用来挑主窗口。</summary>
+        internal int Area => Width * Height;
     }
 
     /// <summary>

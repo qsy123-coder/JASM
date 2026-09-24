@@ -38,8 +38,23 @@ internal static class ForegroundWindowActivator
     /// 还原（若最小化）→ 切前台 → 视需要把这次的权利让出去。
     /// <paramref name="handOverRightToSetForeground"/> 只在**要请别人（提权助手）也试着切**时为 true；
     /// 自己发键、不需要助手的场景别设，免得白白把系统级权利发给所有进程。
+    /// <paramref name="nudgeInputForForegroundLock"/> 见下面的说明 —— **只有浮窗那条"前台被抢走后再拿回来"的路该设 true**。
     /// </summary>
-    internal static void Activate(HWND window, bool handOverRightToSetForeground, ILogger logger)
+    /// <remarks>
+    /// <b>什么时候才设 <paramref name="nudgeInputForForegroundLock"/></b>：本进程刚"收到过输入"时（用户按了热键、
+    /// 点了我们自己的窗口）它就是输入所有者，直接调 <c>SetForegroundWindow</c> 系统就放行 —— 那时不需要注入任何东西。
+    /// 但如果前台是**被别人**拿走的（游戏自己抢回去 / 用户点了别的窗口），本进程的输入身份已经过期，
+    /// 上面那句会被前台锁拒掉，而它**不会**因为再调几次就放行（实测连撞 16 拍全被拒，直到抢走它的那个进程退出）。
+    /// 唯一的解是把身份拿回来：先注入一次输入（<see cref="KeyChordSender.SendNeutralMouseMove"/>，
+    /// 一次零位移鼠标移动，无按键语义），紧接着的那句 <c>SetForegroundWindow</c> 就通过了 —— 同一组实测里
+    /// 这一步是"立刻成功"。
+    ///
+    /// <b>送键路径（提权助手那一档在内）绝不能设 true</b>：它的下一句就是 F10；在它前面注入哪怕一次键类事件，
+    /// 都可能把那次刷新变成组合键（Alt+F10 会触发英伟达 App 的录屏，本仓库明令不许）。
+    /// 现在用的是鼠标事件，撞拍的风险已经不存在 —— 但这条界线照旧：送键路径只做"切前台"这一件事。
+    /// </remarks>
+    internal static void Activate(HWND window, bool handOverRightToSetForeground, ILogger logger,
+        bool nudgeInputForForegroundLock = false)
     {
         if (window.IsNull)
             return;
@@ -47,6 +62,13 @@ internal static class ForegroundWindowActivator
         // 最小化的窗口也能被 SetForegroundWindow 选中，但那之后仍然是「最小化」状态，按键打不进窗口
         if (PInvoke.IsIconic(window) != 0)
             PInvoke.ShowWindow(window, SHOW_WINDOW_CMD.SW_RESTORE);
+
+        // 必须在 SetForegroundWindow **之前**：前台锁是在调用那一刻评判"谁最近收到过输入"的
+        if (nudgeInputForForegroundLock && KeyChordSender.SendNeutralMouseMove() == 0)
+        {
+            logger.Warning("[ForegroundWindowActivator] 注入空鼠标事件失败，"
+                           + "这次 SetForegroundWindow 多半会被前台锁拒绝");
+        }
 
         // 返回值不可信（前台锁会让它返回 0，而窗口其实已经切过去了），所以只记日志、不当失败处理，
         // 真正的判定交给之后的回读校验。Win32 错误码留给排查：被拒时它通常是 ERROR_ACCESS_DENIED。

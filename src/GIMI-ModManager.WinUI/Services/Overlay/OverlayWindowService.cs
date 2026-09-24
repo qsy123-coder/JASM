@@ -100,6 +100,7 @@ internal sealed class OverlayWindowService : IDisposable
         }
 
         hotkeys.Pressed += ToggleOverlay;
+        hotkeys.NavigationPressed += OnNavigationPressed;
 
         // 热键名由这里填：只有注册完才知道最终用的是首选键还是被挤到了备选键
         window.SetHotkeyHint(hotkeys.Description);
@@ -129,9 +130,75 @@ internal sealed class OverlayWindowService : IDisposable
             return;
 
         if (window.IsOverlayVisible)
-            window.HideOverlay();
+            HideOverlay();
         else
-            window.ShowOverlay();
+            ShowOverlay();
+    }
+
+    /// <summary>
+    /// 唤出浮窗。导航键**在这里才注册**（理由见 <see cref="OverlayHotkeyRegistrar.RegisterNavigationHotkeys"/>），
+    /// 注册完再把这一族键写进提示行 —— 只有这样提示里写的才是**真注册上**的那几个，
+    /// 某个键被别的程序占了就不会被白纸黑字地承诺出去。
+    /// </summary>
+    private void ShowOverlay()
+    {
+        var window = _window;
+        if (window is null)
+            return;
+
+        _hotkeys?.RegisterNavigationHotkeys();
+        window.SetHotkeyHint(_hotkeys?.Hint ?? string.Empty);
+        window.ShowOverlay();
+    }
+
+    /// <summary>
+    /// 藏起浮窗，并把导航键还回系统。顺序是先藏后还：藏在先，这一拍里迟到的 <c>WM_HOTKEY</c>
+    /// 就会被 <see cref="OnNavigationPressed"/> 的可见性判断挡掉，不会让一个已经看不见的浮窗去刷新游戏。
+    /// </summary>
+    private void HideOverlay()
+    {
+        _window?.HideOverlay();
+        _hotkeys?.UnregisterNavigationHotkeys();
+    }
+
+    /// <summary>
+    /// 导航热键回调：上下移动选中行、切换勾选、手动刷新。
+    ///
+    /// 自己再判一次可见性：注册本来就随显隐走，但注销那一刻队列里可能还留着一条迟到的
+    /// <c>WM_HOTKEY</c>；而这一支里有两条会**碰游戏**（切换、刷新都会让游戏重载 Mod 池），
+    /// 让一个藏起来的浮窗去动游戏是明确的错误。
+    /// </summary>
+    private void OnNavigationPressed(OverlayHotkeyAction action)
+    {
+        var window = _window;
+        if (window is null || !window.IsOverlayVisible)
+            return;
+
+        switch (action)
+        {
+            case OverlayHotkeyAction.SelectPrevious:
+                window.ViewModel.MoveSelection(-1);
+                break;
+
+            case OverlayHotkeyAction.SelectNext:
+                window.ViewModel.MoveSelection(1);
+                break;
+
+            // 这两个走 ViewModel 的命令而不是普通方法：命令自带"运行中不重入"，
+            // 连按回车 / 连按刷新不会让同一次动盘或同一次刷新叠着跑。
+            case OverlayHotkeyAction.ToggleSelected:
+                window.ViewModel.ToggleSelectedCommand.Execute(null);
+                break;
+
+            case OverlayHotkeyAction.Refresh:
+                window.ViewModel.RefreshNowCommand.Execute(null);
+                break;
+
+            default:
+                // ToggleVisibility 走的是 Pressed 那条路，不该出现在这里
+                _logger.Debug("[浮窗] 收到不归导航处理的动作 {Action}", action);
+                break;
+        }
     }
 
     public void Dispose()
@@ -145,6 +212,7 @@ internal sealed class OverlayWindowService : IDisposable
         if (_hotkeys is not null)
         {
             _hotkeys.Pressed -= ToggleOverlay;
+            _hotkeys.NavigationPressed -= OnNavigationPressed;
             _hotkeys.Dispose();
             _hotkeys = null;
         }

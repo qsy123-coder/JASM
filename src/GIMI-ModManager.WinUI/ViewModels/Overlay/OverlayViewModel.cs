@@ -83,6 +83,15 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// <summary>是不是多选模式。策略判断都用它；界面不绑它，所以不必替它发通知。</summary>
     public bool IsMultiSelectMode => ModeIndex == MultiSelectModeIndex;
 
+    /// <summary>
+    /// 键盘当前选中的那一行。
+    ///
+    /// **浮窗永远拿不到键盘焦点**（<c>WS_EX_NOACTIVATE</c> + 从不 <c>Activate()</c>），键盘操作因此只能走
+    /// 全局热键，「选中」也就不可能交给列表控件 —— 它是 <c>SelectionMode="None"</c>，没有选中态可言。
+    /// 列表为空 / 搜索没结果时是 <c>null</c>；过滤过之后由 <see cref="ApplyFilter"/> 重新定位。
+    /// </summary>
+    [ObservableProperty] private OverlayModItemViewModel? _selectedMod;
+
     public OverlayViewModel(ISkinManagerService skinManagerService, OverlayRefreshCoordinator refreshCoordinator,
         ILocalSettingsService localSettingsService, ILogger logger)
     {
@@ -189,6 +198,21 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
+    /// <summary>
+    /// 选中行一换就把高亮标记同步过去。
+    ///
+    /// 放在这里而不是"赋值处顺手写一行"：这样任何一条改 <see cref="SelectedMod"/> 的路径
+    /// （热键、过滤后重定位、将来别的入口）都不可能留下两个高亮或零个高亮。
+    /// </summary>
+    partial void OnSelectedModChanged(OverlayModItemViewModel? oldValue, OverlayModItemViewModel? newValue)
+    {
+        if (oldValue is not null)
+            oldValue.IsSelected = false;
+
+        if (newValue is not null)
+            newValue.IsSelected = true;
+    }
+
     private void LoadMods(IModdableObject? character)
     {
         _allMods = character is null
@@ -210,6 +234,12 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             Mods.Add(mod);
 
         IsListEmpty = Mods.Count == 0;
+
+        // 过滤会整体重建 Mods（行对象是复用的，但成员与顺序都变了），选中项必须重新定位：
+        // 还在列表里就不动它，不在就退到第一行 —— 否则键盘「回车切换」会作用到一行已经
+        // 从界面上消失的 Mod 上，用户看到的是「按了回车，不知改了哪一件」。
+        if (SelectedMod is null || !Mods.Contains(SelectedMod))
+            SelectedMod = Mods.Count > 0 ? Mods[0] : null;
 
         // 先判搜索："搜不到" 和 "这个角色没有 Mod" 是两件事，用户要据此决定是改搜索词还是去装 Mod
         EmptyMessage = Mods.Count > 0
@@ -271,7 +301,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             return;
         }
 
-        // 单选：勾了就让游戏里立刻生效。合并与失败文案都交给协调器，这里不等它跑完也不重复触发
+        // 单选：勾了就让游戏里立刻生效。合并与失败文案都交给协调器，这里不重复触发。
+        // await 的是整段刷新（含送键闸门那段等待与补发），所以**这一行**的命令在刷新跑完前不重入
+        // （行 VM 那边的命令语义），点它没反应；别的行是各自独立的命令实例，不受影响 ——
+        // 连点同一个角色的不同 Mod 正是靠这一点才点得动。
         await RefreshCoordinator.RequestRefreshAsync();
         HasPendingChanges = false;
     }
@@ -331,6 +364,42 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     {
         await RefreshCoordinator.RequestRefreshAsync();
         HasPendingChanges = false;
+    }
+
+    /// <summary>
+    /// 键盘热键：把选中行上移 / 下移 <paramref name="delta"/> 行（<c>-1</c> / <c>+1</c>）。
+    ///
+    /// 到边界**停住不回绕**：回绕会让"按住上键"变成"跳到列表最后一行"，而游戏里用户看不到指针，
+    /// 选中的是哪一行全靠那一条高亮 —— 位置突然跳到另一端会让人以为自己按错了。
+    /// 还没有选中时（列表刚被过滤过）往下落在第一行、往上落在最后一行：
+    /// 用户的意图是"开始选"，不是"什么都没发生"。
+    /// </summary>
+    internal void MoveSelection(int delta)
+    {
+        if (Mods.Count == 0)
+            return;
+
+        // 选中项不在当前列表里时 IndexOf 会给 -1，与"还没选中"同样处理
+        var current = SelectedMod is null ? -1 : Mods.IndexOf(SelectedMod);
+
+        SelectedMod = current < 0
+            ? Mods[delta >= 0 ? 0 : Mods.Count - 1]
+            : Mods[Math.Clamp(current + delta, 0, Mods.Count - 1)];
+    }
+
+    /// <summary>
+    /// 键盘热键「切换选中行」：与鼠标点勾选框**走同一条路**（<see cref="ToggleModAsync"/> ——
+    /// 动盘改名、通知主窗口、单选模式下顺带刷新游戏）。
+    ///
+    /// 做成命令而不是普通方法，图的是生成器给的那份"运行中不重入"：连按回车不该让同一件 Mod
+    /// 的文件夹名被改两次（点勾选框那条路本来就是靠命令的这一性质，见行 VM 的说明）。
+    /// 选中的行已经不在列表里（刚被搜索词过滤掉）时什么都不做。
+    /// </summary>
+    [RelayCommand]
+    private async Task ToggleSelectedAsync()
+    {
+        if (SelectedMod is { } item && Mods.Contains(item))
+            await ToggleModAsync(item);
     }
 
     /// <summary>

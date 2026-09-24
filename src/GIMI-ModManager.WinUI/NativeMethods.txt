@@ -22,4 +22,13 @@ WINDOW_LONG_PTR_INDEX
 GetWindowLongW
 SetWindowLongW
 GetCursorPos
+SetCursorPos
 GetWindowRect
+GetClassName
+GetTopWindow
+GetWindow
+GET_WINDOW_CMD
+WindowFromPoint
+GetGUIThreadInfo
+GetClipCursor
+GetAsyncKeyState

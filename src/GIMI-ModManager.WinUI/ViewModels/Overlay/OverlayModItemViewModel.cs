@@ -33,6 +33,15 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     /// </summary>
     [ObservableProperty] private bool _isEnabled;
 
+    /// <summary>
+    /// 这一行是不是**键盘**选中的那一行，界面据此画高亮。
+    ///
+    /// 浮窗永不被激活（<c>WS_EX_NOACTIVATE</c>），拿不到键盘焦点，所以键盘操作只能走全局热键
+    /// （见 <c>OverlayHotkeyRegistrar</c>）—— 「选中」这件事因此只能由 ViewModel 记：
+    /// 列表那边是 <c>SelectionMode="None"</c>，控件自己的选中态压根不存在。
+    /// </summary>
+    [ObservableProperty] private bool _isSelected;
+
     /// <summary>勾选这一行时要执行的动作，由浮窗的 ViewModel 在造行时注入。</summary>
     private Func<OverlayModItemViewModel, Task>? _toggleMod;
 

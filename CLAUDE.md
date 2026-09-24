@@ -146,7 +146,8 @@ release 的 asset 不会自动挂（见第 4 节），**每次手动挂载，把
 - 内嵌：`GIMI-ModManager.WinUI.csproj` 的 `EmbeddedResource` + 显式 `LogicalName=JASM.Elevator.exe`（必须与 `ElevatorProvisioning.EmbeddedResourceName` 一致）。带 `Exists()` 条件：日常 `dotnet build` 没有助手产物，不能因此失败。
 - 释放：`ElevatorProvisioner`（读内嵌资源 → 版本门控 → 临时文件 + `File.Move(overwrite)` 原子落盘）。标记文件 `Elevator.version` 存的是**主程序**版本，因此自更新换掉主 exe 后标记失配、下次启动自动重写助手 —— 助手版本永远跟着主程序走。
 - 选路：`ElevatorProvisioning.Select` 按 FileVersion 取高者，**不能**简单的「同目录优先」——单 exe 用户的目录里可能残留旧 folder 安装留下的 `1.0.0.0` 助手（用户实机上就有），那样会盖掉能用的新助手。同目录那份只要 `SupportsKeySend` 就**一行都不写盘**（folder 版用户不该平白多出一个文件）。
-- 版本标记只增不改：`ElevatorRefreshProtocol.MinimumFileVersionForTargetedRefresh = 2.0.0.0`、`ElevatorKeySendProtocol.MinimumFileVersionForKeySend = 3.0.0.0`，对应 `Elevator.csproj` 的 `<FileVersion>`。
+- 版本标记只增不改：`ElevatorRefreshProtocol.MinimumFileVersionForTargetedRefresh = 2.0.0.0`、`ElevatorKeySendProtocol.MinimumFileVersionForKeySend = 3.0.0.0`、`ElevatorForegroundHandbackProtocol.MinimumFileVersionForForegroundHandback = 4.0.0.0`，对应 `Elevator.csproj` 的 `<FileVersion>`。
+- **命令 `4` = 归还前台**（浮窗勾选刷新的收尾）：送键前必须先把游戏切到前台（F10 得打到前台窗口上），而游戏是提权运行时，送完键**浮窗自己再也拿不回前台** —— 前台锁只认「最近收到输入的那个进程」，那一刻的所有者是刚注入按键的助手；本进程既抢不回前台，注入解锁那一手又会被 UIPI 静默丢掉（实测）。所以只能请刚注入过的助手 `SetForegroundWindow`。载荷 `4` + 一句柄（与命令 `3` 同格式），回 `OK` / `FAIL:<reason>`；只在「光标压在浮窗上」时才发（键盘导航时用户人在游戏里，抢回来等于把他踢出游戏）。助手版本低于 `4.0.0.0` 时退回旧行为（前台留在游戏上）+ 一条 Warning。
 - **助手是 AOT 发布，需要 MSVC**：只有 CI 的 `windows-latest` 编得动，本机 `dotnet publish ... /p:PublishProfile=FolderProfile.pubxml` 会报 `Platform linker not found`。因此**单 exe 包只能由 CI 产出**（第 9 节）。
 
 ## Claude 工作要求

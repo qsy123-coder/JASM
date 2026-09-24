@@ -43,6 +43,12 @@ public sealed class GameKeySender : IGameKeySender
     /// <summary>切完前台后等焦点稳定，再发按键。</summary>
     private const int ForegroundSettleMilliseconds = 300;
 
+    /// <summary>送键前等用户松开修饰键的上限（见 <see cref="WaitForModifierReleaseAsync"/>）。</summary>
+    private const int ModifierReleaseTimeoutMilliseconds = 1500;
+
+    /// <summary>等待期间轮询修饰键状态的间隔。</summary>
+    private const int ModifierReleasePollMilliseconds = 30;
+
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
 
@@ -64,7 +70,7 @@ public sealed class GameKeySender : IGameKeySender
     }
 
     public async Task<GameKeySendResult> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
-        CancellationToken ct = default)
+        nint foregroundToHandBack = 0, CancellationToken ct = default)
     {
         if (KeyChordGuard.IsBlockedChord(virtualKey, modifierKeyCodes))
         {
@@ -77,6 +83,18 @@ public sealed class GameKeySender : IGameKeySender
 
         try
         {
+            // 修饰键防线必须在**读设置/进同步段之前**：往后挪会让"等用户松手"横在
+            // 切前台与真正送键之间，前台身份就在这段等待里没了（见类注释约束 1）。
+            if (!await WaitForModifierReleaseAsync(ct).ConfigureAwait(false))
+            {
+                _logger.Warning(
+                    "[GameKeySender] 用户仍按着修饰键（Alt/Ctrl/Shift/Win），"
+                    + "此时发 vk=0x{VirtualKey:X2} 会变成组合键（Alt+F10 那类会触发系统 / 第三方热键），所以没有发送",
+                    virtualKey);
+                return GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed,
+                    "你正按着 Alt / Ctrl / Shift / Win，发出去会变成组合键，先松开再试");
+            }
+
             var options = await _localSettingsService
                 .ReadOrCreateSettingAsync<ModManagerOptions>(ModManagerOptions.Section).ConfigureAwait(false);
 
@@ -126,6 +144,10 @@ public sealed class GameKeySender : IGameKeySender
                     processName, targetIntegrity, ownIntegrity);
             }
 
+            // 送键前把光标位置记下来（浮窗那条路才需要）：切游戏前台那一下，常会把光标撂到游戏窗口
+            // 的中心去，送完之后据此放回原处 —— 见 RestoreCursorIfGameRecentered。
+            var cursorBeforeSend = foregroundToHandBack != 0 ? ReadCursorPosition() : null;
+
             // **两条路都在这里切前台**，而且必须在同步段里（见类注释约束 1）。
             // 提权那一支不能指望助手自己去抢，理由与现场签名见 ForegroundWindowActivator；
             // 它额外要把这次切前台的权利让出去，让助手有一手可补。
@@ -135,8 +157,8 @@ public sealed class GameKeySender : IGameKeySender
             // 提权那一支到这里才 await（理由见上面注释）
             if (needsElevation)
             {
-                return await SendViaElevatedHelperAsync(virtualKey, modifierKeyCodes, gameWindow, ct)
-                    .ConfigureAwait(false);
+                return await SendViaElevatedHelperAsync(virtualKey, modifierKeyCodes, gameWindow,
+                    foregroundToHandBack, cursorBeforeSend, ct).ConfigureAwait(false);
             }
 
             await Task.Delay(ForegroundSettleMilliseconds, ct).ConfigureAwait(false);
@@ -155,6 +177,19 @@ public sealed class GameKeySender : IGameKeySender
             {
                 if (SendChord(virtualKey, modifierKeyCodes, keyUp: true) == 0)
                     _logger.Warning("[GameKeySender] 抬起按键失败 vk=0x{VirtualKey:X2}", virtualKey);
+            }
+
+            // 交还前台（只有浮窗那条路会传句柄，见 IGameKeySender）。
+            // 位置有两处讲究：① 必须在**送键之后** —— 键要打到游戏上，先切走就成了打给浮窗自己；
+            // ② 这里开 nudgeInputForForegroundLock 是允许的，因为键已经发完了（送键路径不许开它，
+            // 是因为它后面紧跟着 F10）。本进程刚注入过按键，注入那一手就能让前台锁放行 ——
+            // 即便没放行，浮窗自己那句「光标压在我身上就拿回前台」的自愈下一拍也会接手。
+            if (foregroundToHandBack != 0)
+            {
+                ForegroundWindowActivator.Activate((HWND)foregroundToHandBack,
+                    handOverRightToSetForeground: false, _logger, nudgeInputForForegroundLock: true);
+
+                RestoreCursorIfGameRecentered(cursorBeforeSend, gameWindow, foregroundToHandBack);
             }
 
             _logger.Information(
@@ -184,6 +219,9 @@ public sealed class GameKeySender : IGameKeySender
     /// 游戏提权运行时改由提权助手代发按键 —— 这是唯一能把键送进去的路径
     /// （理由与线路格式见 <see cref="ElevatorService.TrySendKeyChordAsync"/>）。
     ///
+    /// <paramref name="foregroundToHandBack"/> 非 0 时，送完键再请助手把前台交给它
+    /// （见 <see cref="IGameKeySender.SendKeyAsync"/>：浮窗那条路必须交还，徽章那条路传 0、焦点留在游戏上）。
+    ///
     /// 结果刻意分两档，因为用户该做的事不同：
     /// <list type="bullet">
     /// <item>助手压根走不通（没随包安装 / 版本过旧 / 拉不起来 / 用户在 UAC 上点了否）
@@ -193,10 +231,44 @@ public sealed class GameKeySender : IGameKeySender
     /// </list>
     /// </summary>
     private async Task<GameKeySendResult> SendViaElevatedHelperAsync(ushort virtualKey,
-        IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, CancellationToken ct)
+        IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, nint foregroundToHandBack,
+        CursorSnapshot? cursorBeforeSend, CancellationToken ct)
     {
+        // 助手是另一个进程：它抢前台 / 送键的中间状态 JASM 看不到，所以把「交办前」和
+        // 「助手送完时」两个前台窗口都记下来 —— 目标是 A、助手说发了、前台却是同进程的
+        // 另一个窗口，就是「键被打进错窗口」的铁证（表现是「刷新了但没变化」，助手却报成功）。
+        var foregroundBefore = PInvoke.GetForegroundWindow();
+
         var outcome = await _elevatorService
             .TrySendKeyChordAsync(virtualKey, modifierKeyCodes, gameWindow, ct).ConfigureAwait(false);
+
+        // 这个读数必须在交还**之前**取：交还成功之后前台已经是浮窗，上面那条诊断依据就没了
+        var foregroundAfterSend = PInvoke.GetForegroundWindow();
+
+        // 交还前台：只有助手做得到（那一刻的输入所有者是刚注入按键的它，理由见 IGameKeySender 与
+        // ElevatorForegroundHandbackProtocol）。交还没成只记日志 —— 已经送出去的按键不该被它影响，
+        // 所以返回值完全不参与下面的结论。
+        var handedBack = false;
+        if (foregroundToHandBack != 0)
+        {
+            handedBack = await _elevatorService
+                .TryHandbackForegroundAsync((HWND)foregroundToHandBack, ct).ConfigureAwait(false);
+
+            RestoreCursorIfGameRecentered(cursorBeforeSend, gameWindow, foregroundToHandBack);
+        }
+
+        _logger.Information(
+            "[GameKeySender] 提权助手送键 vk=0x{VirtualKey:X2} mods=[{Modifiers}] 目标窗口={TargetWindow}"
+            + " 交办前前台={ForegroundBefore} 助手送完时前台={ForegroundAfter} 交还前台={HandbackTarget}"
+            + " 交还结果={HandedBack} 助手结果={Result}（{Message}）",
+            virtualKey, string.Join(",", modifierKeyCodes),
+            WindowProcessQuery.DescribeWindow(gameWindow),
+            WindowProcessQuery.DescribeWindow(foregroundBefore),
+            WindowProcessQuery.DescribeWindow(foregroundAfterSend),
+            foregroundToHandBack == 0
+                ? "(未要求)"
+                : WindowProcessQuery.DescribeWindow((HWND)foregroundToHandBack),
+            handedBack, outcome.Result, outcome.Message);
 
         return outcome.Result switch
         {
@@ -206,6 +278,131 @@ public sealed class GameKeySender : IGameKeySender
             _ => GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed, outcome.Message)
         };
     }
+
+    // ── 光标还原 ────────────────────────────────────────────────
+
+    /// <summary>
+    /// 送键前后要对比的光标位置（物理像素）。没有直接用 win32 那个坐标类型：<c>PInvoke.GetCursorPos</c>
+    /// 交给我们的是份只有 X/Y 两格的友好类型，而这里要的是「可空、能跨方法传」的取值，
+    /// 自己写两格更省事（读出来那句照旧用 <c>var</c> 接，类型名一次都不写）。
+    /// </summary>
+    private readonly record struct CursorSnapshot(int X, int Y);
+
+    /// <summary>读当前光标位置（物理像素）。读不到返回 <c>null</c>。</summary>
+    private static CursorSnapshot? ReadCursorPosition()
+        => PInvoke.GetCursorPos(out var cursor) ? new CursorSnapshot(cursor.X, cursor.Y) : null;
+
+    /// <summary>
+    /// 送完键、前台也交还成之后：**光标如果被游戏挪到了它自己窗口的中心，就放回原处**
+    /// （判据与理由见 <see cref="CursorRecenterGuard"/>；只有浮窗那条路会记 <paramref name="cursorBeforeSend"/>）。
+    ///
+    /// 为什么只在浮窗那条路做：交还前台之后前台在**我们**手上，游戏不再重新居中，放回去就留得住；
+    /// 徽章那条路刻意把焦点留在游戏上，这时把光标放回去只会跟游戏下一帧的重新居中互相打架。
+    ///
+    /// 三个前置条件缺一不可：① 送键前记过位置；② 前台确实落在请求交还的那个窗口上（交还没成 /
+    /// 浮窗已被热键收起来 → 游戏还在前台 → 不碰光标）；③ 光标的位置变了，且新位置贴着游戏窗口中心。
+    ///
+    /// 每一次"光标移动了"都记一行（含前后坐标与游戏窗口中心），容差要不要调有数可依 ——
+    /// 这条判据宁可漏判（毛病照旧）也不误判（把用户正在移动的光标拽回去）。
+    /// </summary>
+    /// <remarks>标 <c>unsafe</c> 只因为要比对句柄（<c>HWND.Value</c> 是裸指针），与本方法要做的事无关。</remarks>
+    private unsafe void RestoreCursorIfGameRecentered(CursorSnapshot? cursorBeforeSend, HWND gameWindow,
+        nint foregroundToHandBack)
+    {
+        if (cursorBeforeSend is not { } before || !PInvoke.GetCursorPos(out var now))
+            return;
+
+        if ((nint)PInvoke.GetForegroundWindow().Value != foregroundToHandBack)
+        {
+            _logger.Debug("[GameKeySender] 前台没交还到请求的窗口上，跳过光标还原");
+            return;
+        }
+
+        // 外框中心：全屏时它就是屏幕中心（实测那台是 2560x1600），窗口模式下游戏自己居中也是按这块算的
+        if (!PInvoke.GetWindowRect(gameWindow, out var rect))
+        {
+            _logger.Warning("[GameKeySender] 读游戏窗口位置失败，跳过光标还原");
+            return;
+        }
+
+        var centerX = (rect.left + rect.right) / 2;
+        var centerY = (rect.top + rect.bottom) / 2;
+
+        if (!CursorRecenterGuard.IsRecenteredToGameCenter(before.X, before.Y, now.X, now.Y, centerX, centerY))
+        {
+            // 没动过是绝大多数情形（不记，免得刷日志）；动了但不在中心 = 用户自己挪的，留一行备查
+            if (before.X != now.X || before.Y != now.Y)
+            {
+                _logger.Information(
+                    "[GameKeySender] 送键期间光标从 ({BeforeX},{BeforeY}) 移到 ({NowX},{NowY})，"
+                    + "不在游戏窗口中心 ({CenterX},{CenterY}) 附近，按用户自己挪动处理，不还原",
+                    before.X, before.Y, now.X, now.Y, centerX, centerY);
+            }
+
+            return;
+        }
+
+        if (!PInvoke.SetCursorPos(before.X, before.Y))
+        {
+            _logger.Warning("[GameKeySender] 光标被挪到了游戏窗口中心 ({NowX},{NowY})，但放回原位失败",
+                now.X, now.Y);
+            return;
+        }
+
+        _logger.Information(
+            "[GameKeySender] 光标在送键时被挪到了游戏窗口中心 ({NowX},{NowY})，已放回原位 ({BeforeX},{BeforeY})",
+            now.X, now.Y, before.X, before.Y);
+    }
+
+    // ── 修饰键防线 ──────────────────────────────────────────────
+
+    /// <summary>
+    /// 送键前等用户把物理上按着的修饰键松开，返回是否已经松开（超时仍按着 = false）。
+    ///
+    /// **为什么必须等**：我们发的是一个「裸」和弦 —— d3dx 里那句刷新就是
+    /// <c>no_modifiers VK_F10</c>，要的正是没有修饰键的 F10。用户此刻按着 Alt / Ctrl / Shift 时，
+    /// 送出去的会变成 Alt+F10 / Ctrl+F10，两个后果都不轻：
+    /// <list type="bullet">
+    /// <item>轻则 d3dx 那句 <c>no_modifiers</c> 不匹配 —— 刷新**静默失效**，界面却报「已发送」；</item>
+    /// <item>重则撞上系统 / 第三方热键 —— 实测场景：按住 Alt 点浮窗里的勾选，浮窗自动发出的
+    /// F10 变成 Alt+F10，直接触发英伟达 App 的录屏。</item>
+    /// </list>
+    ///
+    /// 「等一小会儿」能同时解决这两件事：用户按完热键自然会松手，松手那一刻发出去的就是干净的 F10。
+    /// 等不到（一直按着）就**不发** —— 不发比发错键安全得多，调用方把原因带回界面。
+    ///
+    /// 注意这里等的是**用户的手**，不是我们自己的按键：<see cref="SendChord"/> 的按下与抬起
+    /// 都在 <see cref="HoldMilliseconds"/> 内成对完成，不会把自己按住的修饰键留到下一次调用。
+    /// </summary>
+    private async Task<bool> WaitForModifierReleaseAsync(CancellationToken ct)
+    {
+        var waited = 0;
+        while (waited < ModifierReleaseTimeoutMilliseconds)
+        {
+            if (!IsAnyModifierHeld())
+                return true;
+
+            await Task.Delay(ModifierReleasePollMilliseconds, ct).ConfigureAwait(false);
+            waited += ModifierReleasePollMilliseconds;
+        }
+
+        // 最后一次读数才是结论：等待期间用户可能刚好在超时那一刻松开
+        return !IsAnyModifierHeld();
+    }
+
+    /// <summary>
+    /// 物理上是否按着任一修饰键。走 <c>GetAsyncKeyState</c>，只认**高位**（= 此刻正按下）；
+    /// 低位那半（「上次调用之后按过没有」）不看 —— 它是跨进程共享的，
+    /// 会被别的程序读走，拿它判"按着"必然误判。
+    /// </summary>
+    private static bool IsAnyModifierHeld()
+        => IsKeyHeld(VIRTUAL_KEY.VK_SHIFT)
+           || IsKeyHeld(VIRTUAL_KEY.VK_CONTROL)
+           || IsKeyHeld(VIRTUAL_KEY.VK_MENU)
+           || IsKeyHeld(VIRTUAL_KEY.VK_LWIN)
+           || IsKeyHeld(VIRTUAL_KEY.VK_RWIN);
+
+    private static bool IsKeyHeld(VIRTUAL_KEY key) => (PInvoke.GetAsyncKeyState((int)key) & 0x8000) != 0;
 
     // ── 目标定位 ────────────────────────────────────────────────
 
