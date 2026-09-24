@@ -51,9 +51,17 @@ internal static unsafe class OverlayStackProbe
     }
 
     /// <summary>
-    /// 数出「排在浮窗前面」的顶层窗口，并把最前几个的名字记下来。
-    /// <c>EnumWindows</c> 是按 Z 序从最前到最后枚举的，所以碰到浮窗的位置就是它的层级：
-    /// 在它之前枚举到的全是压着它的窗口。前几个就够定位 —— 真凶必然在最前面那几个里。
+    /// 数出「真正排在浮窗前面」的顶层窗口，并把最前几个的名字记下来。
+    ///
+    /// 走的是**真正的 Z 序链**：<c>GetTopWindow</c> 取 Z 序最前的那个，再一路
+    /// <c>GetWindow(GW_HWNDNEXT)</c> 往下走到浮窗。**不能拿 <c>EnumWindows</c> 的枚举位置当 Z 序**：
+    /// 2026-09-24 实测，同一时刻枚举数出来"我上面 5 个"，真链上是 11 个 ——
+    /// IME（<c>MSCTFIME UI</c> / <c>IME</c>）那类窗口不在枚举里，而它们恰恰就在最前面那一块。
+    ///
+    /// 那一块本来就该在最前面，而且**抢不走**：实测 <c>HWND_TOPMOST</c>、<c>HWND_TOP</c>、
+    /// 先撤置顶再置顶三种写法都返回成功、位置一动不动。所以这里要看的不是"上面有几个"，
+    /// 而是**游戏窗口在不在这一块里**：在（且带置顶位）→ 置顶带里被游戏压住；
+    /// 不在 → 层级上根本没输，盖住画面的只能是合成器。
     /// </summary>
     private static void AppendWindowsAbove(StringBuilder description, HWND overlay)
     {
@@ -61,24 +69,20 @@ internal static unsafe class OverlayStackProbe
         var aboveCount = 0;
         var foundSelf = false;
 
-        PInvoke.EnumWindows((window, _) =>
+        for (var window = PInvoke.GetTopWindow(HWND.Null);
+             !window.IsNull;
+             window = PInvoke.GetWindow(window, GET_WINDOW_CMD.GW_HWNDNEXT))
         {
-            // 已经过了浮窗：再往下的都是"在它后面"的窗口，不用数了
-            if (foundSelf)
-                return new BOOL(1);
-
             if (window.Value == overlay.Value)
             {
                 foundSelf = true;
-                return new BOOL(1);
+                break;
             }
 
             aboveCount++;
             if (above.Count < MaxWindowsAbove)
                 above.Add(window);
-
-            return new BOOL(1);
-        }, default);
+        }
 
         description.Append(" 我上面=").Append(aboveCount).Append(" 个顶层窗口");
 
