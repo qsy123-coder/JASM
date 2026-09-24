@@ -170,9 +170,13 @@ public sealed partial class OverlayWindow : WindowEx
                 AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
         }
 
-        // 唤出这一刻的现场：可见性、最小化、置顶位（回读）、压在浮窗上面的是谁。
-        // 顺带复查"这一次唤出有没有把游戏的前台抢走" —— 现场里的「前台=我」就是抢了，正常应恒为「别人」
-        // （NOACTIVATE 的意义所在）。这也是实机验收"点了浮窗游戏没掉全屏"的证据。
+        // 唤出这一刻的现场：可见性、最小化、置顶位（回读）、压在浮窗上面的是谁，
+        // 以及这一下点击会不会落到我们身上（光标下 / 谁抓着鼠标 / 光标被裁在哪）。
+        //
+        // 「前台=我」= 浮窗此刻真的占着前台。**它不必然是"点击把游戏的前台抢走了"**：
+        // NOACTIVATE 挡的是点击引起的前台转移，挡不住系统在别的前台窗口消失时按 Z 序
+        // 把前台交给最上面的窗口 —— 本机冒烟里它就自己出现过（两条连续日志都是「前台=我」）。
+        // 游戏在跑时读到它才当作异常（独占全屏下丢了前台可能直接掉出全屏），别见到就归罪于点击。
         _logger.Information("{Probe}", OverlayStackProbe.Describe(_hwnd));
     }
 
