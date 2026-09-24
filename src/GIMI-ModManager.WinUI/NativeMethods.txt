@@ -24,3 +24,6 @@ SetWindowLongW
 GetCursorPos
 GetWindowRect
 GetClassName
+GetTopWindow
+GetWindow
+GET_WINDOW_CMD
