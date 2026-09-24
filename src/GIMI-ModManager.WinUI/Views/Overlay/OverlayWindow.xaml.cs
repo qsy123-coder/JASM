@@ -127,6 +127,11 @@ public sealed partial class OverlayWindow : WindowEx
         _styles = new OverlayWindowStyles(_logger);
         _hwnd = (HWND)WinRT.Interop.WindowNative.GetWindowHandle(this);
 
+        // 勾选触发的刷新（F10）送完键后要把前台交还给我们，协调器得知道交还给哪个窗口
+        // （我们自己拿不回来：那一刻的输入所有者是刚注入按键的提权助手）。只有窗口知道自己的 hwnd，
+        // 所以在拿到它的这里写一次。
+        ViewModel.RefreshCoordinator.OverlayWindowHandle = (nint)_hwnd;
+
         ConfigureOverlayWindow();
 
         _topMostTimer = new DispatcherTimer { Interval = TopMostCheckInterval };
