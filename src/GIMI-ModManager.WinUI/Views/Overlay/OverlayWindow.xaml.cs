@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -79,6 +80,12 @@ public sealed partial class OverlayWindow : WindowEx
 
         InitializePageBindings();
 
+        // 键盘选中换行时把那一行滚进视野：浮窗只有 440 DIP 高，列表比它长，而游戏里用户看不到鼠标，
+        // 「选中的那行在不在屏幕里」只能靠这一下滚动告诉他。
+        // 挂在 ViewModel 的属性变更上而不是逐个赋值点去调：改选中的入口不止一个
+        // （导航热键、过滤之后的重定位），挂在这里它们都自动得到同一件事。
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+
         _styles = new OverlayWindowStyles(_logger);
         _hwnd = (HWND)WinRT.Interop.WindowNative.GetWindowHandle(this);
 
@@ -142,6 +149,22 @@ public sealed partial class OverlayWindow : WindowEx
 
     /// <summary>把热键名填进标题栏右侧。由 <c>OverlayWindowService</c> 在注册完热键后调用。</summary>
     public void SetHotkeyHint(string text) => HotkeyHintText.Text = text;
+
+    /// <summary>
+    /// 键盘把选中行挪走时，把新选中的那一行滚进视野。
+    ///
+    /// 只认 <see cref="OverlayViewModel.SelectedMod"/> 这一个属性名，别的一律早返回 ——
+    /// 这个 ViewModel 上属性变更很频繁（刷新状态、搜索结果、待刷新提示），
+    /// 每条都去碰一次 ListView 属于白花钱。
+    /// </summary>
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(OverlayViewModel.SelectedMod))
+            return;
+
+        if (ViewModel.SelectedMod is { } item)
+            ModList.ScrollIntoView(item);
+    }
 
     /// <summary>
     /// 显示浮窗，**不激活**。隐藏状态下热键照样有效（<c>WM_HOTKEY</c> 仍会派发到隐藏窗口的消息队列），
@@ -357,6 +380,10 @@ public sealed partial class OverlayWindow : WindowEx
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _topMostTimer.Stop();
+
+        // 摘掉订阅：ViewModel 由 Host 持有、比这扇窗活得久，留着订阅等于让窗口被它拖住不放
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+
         RememberPosition();
         _logger.Debug("浮窗已关闭");
     }
