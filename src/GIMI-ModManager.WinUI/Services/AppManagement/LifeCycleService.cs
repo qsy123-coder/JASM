@@ -7,6 +7,7 @@ using GIMI_ModManager.Core.Services.CommandService;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
+using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using Microsoft.UI.Dispatching;
@@ -123,13 +124,46 @@ public class LifeCycleService(
         await StartShutdownAsync().ConfigureAwait(false);
     }
 
-    public Task<nint?> CheckIfAlreadyRunningAsync()
+    /// <summary>
+    /// 另一个「同名进程」以及它的身份 —— 启动时的单实例检查据此决定把谁拉到前台、要不要拦住。
+    /// </summary>
+    /// <param name="IsSameApp">是不是本程序自己的另一个实例（<c>false</c> = 另一个安装的 JASM 也在跑）。</param>
+    /// <param name="WindowHandle">对方的主窗口句柄（拿不到为 0）。</param>
+    /// <param name="ImagePath">对方的映像全路径（读不到为 <c>null</c>）。</param>
+    public readonly record struct OtherInstanceInfo(bool IsSameApp, nint WindowHandle, string? ImagePath);
+
+    /// <summary>
+    /// 找另一个同名进程，并判断它是不是**本程序自己的**另一个实例（判据见 <see cref="InstanceIdentity"/>）。
+    /// 没有别的实例返回 <c>null</c>。
+    ///
+    /// 与 <see cref="GetOtherInstanceProcess"/> 的区别：那个只认进程名 —— <c>--switch</c> 那条路够用
+    /// （要关掉的就是别处那个 JASM），但启动检查不够：别的安装的 JASM 也同名，只看名字会把**对方的**
+    /// 窗口当成自己的拉到前台，用户以为启动成功了、看到的却是另一个安装的界面（2026-09-24 实测到的串台）。
+    /// </summary>
+    public OtherInstanceInfo? FindOtherInstance()
     {
         var otherProcess = GetOtherInstanceProcess();
+        if (otherProcess is null) return null;
 
-        return otherProcess == null
-            ? Task.FromResult<IntPtr?>(null)
-            : Task.FromResult<IntPtr?>(otherProcess.MainWindowHandle);
+        try
+        {
+            // 读不到对方路径（进程刚退出 / 权限不足）时这里给 null，InstanceIdentity 会保守判成「自己」：
+            // 退回改动前的行为（拉前台 + 退出），而不是凭一次读失败给用户弹一个他看不懂的窗口
+            var otherImagePath = WindowProcessQuery.TryGetProcessImagePath((uint)otherProcess.Id);
+
+            return new OtherInstanceInfo(InstanceIdentity.IsSameApp(Environment.ProcessPath, otherImagePath),
+                otherProcess.MainWindowHandle, otherImagePath);
+        }
+        catch (Exception e)
+        {
+            // MainWindowHandle 在对方已退出的竞态下会抛。这里是启动路径，绝不能因此起不来
+            _logger.Error(e, "Error identifying the other JASM instance");
+            return new OtherInstanceInfo(true, 0, null);
+        }
+        finally
+        {
+            otherProcess.Dispose();
+        }
     }
 
     public Process? GetOtherInstanceProcess()
