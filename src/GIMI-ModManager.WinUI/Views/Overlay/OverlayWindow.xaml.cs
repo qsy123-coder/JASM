@@ -20,10 +20,15 @@ namespace GIMI_ModManager.WinUI.Views.Overlay;
 ///
 ///   1. **置顶只认扩展样式**：<c>OverlappedPresenter.IsAlwaysOnTop</c> 与 WinUIEx 的
 ///      <c>WindowEx.IsAlwaysOnTop</c> 都不写 <c>WS_EX_TOPMOST</c>，而两者都读回 true。
-///   2. **置顶位要定期自愈**：实测它在窗口显示之后会被抹掉，抹掉的表现就是"浮窗被别的窗口盖住／看起来消失了"，
-///      而热键只切显隐、修不了样式，唤出也白搭。
+///   2. **置顶位要定期自愈，而且每次都得真的重申**：实测它在窗口显示之后会被抹掉，抹掉的表现就是
+///      "浮窗被别的窗口盖住／看起来消失了"，而热键只切显隐、修不了样式，唤出也白搭。
+///      重申不能省成"样式位还在就什么都不做"：置顶位只说明"我在置顶带里"，不说明"我在置顶带的最前面" ——
+///      游戏窗口自己也带置顶位、还排在前面时（进游戏之后就是这个形态），只看样式位的自愈毫无反应。
 ///   3. **显隐走 <c>ShowWindow(SW_*)</c>**，不走 <c>AppWindow.Show()</c>／<c>Window.Activate()</c> 那一套 ——
 ///      后者可能顺带激活窗口，一唤出就把游戏的前台挤掉。
+///   4. **层级现场定期记进日志**（<see cref="OverlayStackProbe"/>，可见时约 5 秒一次）：浮窗被盖住时用户
+///      已经在游戏里，屏幕上的现场没人看得到，只能靠窗口层级关系事后反推 ——
+///      而"被游戏压住"与"被合成器绕开"的修法完全不同，日志必须能把两者分开。
 /// </summary>
 public sealed partial class OverlayWindow : WindowEx
 {
@@ -34,6 +39,12 @@ public sealed partial class OverlayWindow : WindowEx
 
     /// <summary>置顶自愈的间隔。1 秒是原型的取值：既够快（用户几乎来不及看到它被盖住），也不至于每秒都去动窗口。</summary>
     private static readonly TimeSpan TopMostCheckInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// 层级现场日志的降频基数：自愈 1 秒一次，现场日志每 <c>StackProbeTickInterval</c> 次自愈记一条（即 5 秒）。
+    /// 降频是为了让一场几十分钟的游戏只留下几百行日志，而不是几万行。
+    /// </summary>
+    private const int StackProbeTickInterval = 5;
 
     private readonly OverlayWindowStyles _styles;
     private readonly ILogger _logger;
@@ -51,6 +62,9 @@ public sealed partial class OverlayWindow : WindowEx
 
     /// <summary>是否已经做过"首次显示"的那套收尾（摆位置 + 确认置顶）。见 <see cref="ShowOverlay"/>。</summary>
     private bool _hasShownOnce;
+
+    /// <summary>自愈计时器已经跑过的次数，只用来给层级现场日志降频（见 <see cref="StackProbeTickInterval"/>）。</summary>
+    private int _topMostTick;
 
     /// <summary>浮窗的 ViewModel（internal：它和它手上的协调器都只在本程序集里用）。</summary>
     internal OverlayViewModel ViewModel { get; }
@@ -70,7 +84,11 @@ public sealed partial class OverlayWindow : WindowEx
         ConfigureOverlayWindow();
 
         _topMostTimer = new DispatcherTimer { Interval = TopMostCheckInterval };
-        _topMostTimer.Tick += (_, _) => EnsureTopMost("定期自愈");
+        _topMostTimer.Tick += (_, _) =>
+        {
+            EnsureTopMost("定期自愈");
+            ProbeStackIfDue();
+        };
         _topMostTimer.Start();
 
         Closed += OnClosed;
@@ -151,10 +169,10 @@ public sealed partial class OverlayWindow : WindowEx
                 AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
         }
 
-        // 记下"系统实际的"可见性与前台归属：ShowWindow 不返回成功与否，而"前台有没有被我们抢走"
-        // 只有回读才算数 —— 这条日志也是实机验收"点了浮窗游戏没掉全屏"的证据。
-        _logger.Debug("浮窗显示：IsWindowVisible={IsVisible} 前台是否本窗口={IsForeground}",
-            PInvoke.IsWindowVisible(_hwnd), OverlayWindowStyles.IsOwnWindowForeground(_hwnd));
+        // 唤出这一刻的现场：可见性、最小化、置顶位（回读）、压在浮窗上面的是谁。
+        // 顺带复查"这一次唤出有没有把游戏的前台抢走" —— 现场里的「前台=我」就是抢了，正常应恒为「别人」
+        // （NOACTIVATE 的意义所在）。这也是实机验收"点了浮窗游戏没掉全屏"的证据。
+        _logger.Information("{Probe}", OverlayStackProbe.Describe(_hwnd));
     }
 
     public void HideOverlay()
@@ -167,20 +185,47 @@ public sealed partial class OverlayWindow : WindowEx
     public bool IsOverlayVisible => PInvoke.IsWindowVisible(_hwnd);
 
     /// <summary>
-    /// 确认窗口**真的**置顶了，没有就用 <c>SetWindowPos</c> 补上。
+    /// 确认窗口**真的**排在置顶带的最前面，不够就重申一次置顶。
     /// 详见类注释第 1、2 条 —— 这里一律以扩展样式为准做证伪。
+    ///
+    /// **每次调用都真的重申**（<c>SetWindowPos(HWND_TOPMOST)</c>），不做"样式位还在就不动"的短路：
+    /// 短路只防得住"置顶位被抹掉"，防不住"位还在、却排在另一个置顶窗口后面" —— 后者才是进游戏之后的形态
+    /// （游戏窗口自己也带置顶位，进世界那一刻把自己摆到了我们前面）。重申会把浮窗提到置顶带的最前面，
+    /// 正好治这一种；被抹掉的那种也顺带补回来。代价是每秒一次 <c>SetWindowPos</c>：
+    /// 只动 Z 序、不改几何、不激活窗口，实测没有可见副作用。
     /// </summary>
     private void EnsureTopMost(string stage)
     {
         var current = OverlayWindowStyles.ReadExStyle(_hwnd);
-
-        if (OverlayWindowStyles.HasTopMost(current))
-            return;
+        var hadTopMost = OverlayWindowStyles.HasTopMost(current);
 
         var after = _styles.SetTopMost(_hwnd, onTop: true);
 
-        _logger.Debug("浮窗置顶位在「{Stage}」时缺失，已补回：0x{Before:X16} -> 0x{After:X16}，TOPMOST={HasTopMost}",
+        if (hadTopMost)
+            return;
+
+        // 置顶位被抹掉是异常，而且它是"浮窗看起来消失了"的直接原因 —— 记 Warning 级：
+        // Debug 级不进日志文件（文件 sink 的门槛是 Information），真出事时反而看不到。
+        _logger.Warning("浮窗置顶位在「{Stage}」时缺失，已补回：0x{Before:X16} -> 0x{After:X16}，TOPMOST={HasTopMost}",
             stage, (long)current, (long)after, OverlayWindowStyles.HasTopMost(after));
+    }
+
+    /// <summary>
+    /// 定期把浮窗此刻的层级现场记进日志（仅可见时，见类注释第 4 条）。
+    ///
+    /// 「进游戏之后浮窗就没影了」这种事后没法复现的问题，只有这条日志能留下证据。
+    /// 读法：游戏窗口**带着置顶位**且排在浮窗前面 → 置顶带里被压（重申置顶就能治，下一拍自愈就会干掉它）；
+    /// 浮窗排在游戏前面（或游戏压根没有置顶位）却还是看不见 → 被合成器绕开了（进程内怎么改都没用）。
+    /// </summary>
+    private void ProbeStackIfDue()
+    {
+        if (!IsOverlayVisible)
+            return;
+
+        if (++_topMostTick % StackProbeTickInterval != 0)
+            return;
+
+        _logger.Information("{Probe}", OverlayStackProbe.Describe(_hwnd));
     }
 
     /// <summary>
