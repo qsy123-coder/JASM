@@ -144,6 +144,10 @@ public sealed class GameKeySender : IGameKeySender
                     processName, targetIntegrity, ownIntegrity);
             }
 
+            // 送键前把光标位置记下来（浮窗那条路才需要）：切游戏前台那一下，常会把光标撂到游戏窗口
+            // 的中心去，送完之后据此放回原处 —— 见 RestoreCursorIfGameRecentered。
+            var cursorBeforeSend = foregroundToHandBack != 0 ? ReadCursorPosition() : null;
+
             // **两条路都在这里切前台**，而且必须在同步段里（见类注释约束 1）。
             // 提权那一支不能指望助手自己去抢，理由与现场签名见 ForegroundWindowActivator；
             // 它额外要把这次切前台的权利让出去，让助手有一手可补。
@@ -154,7 +158,7 @@ public sealed class GameKeySender : IGameKeySender
             if (needsElevation)
             {
                 return await SendViaElevatedHelperAsync(virtualKey, modifierKeyCodes, gameWindow,
-                    foregroundToHandBack, ct).ConfigureAwait(false);
+                    foregroundToHandBack, cursorBeforeSend, ct).ConfigureAwait(false);
             }
 
             await Task.Delay(ForegroundSettleMilliseconds, ct).ConfigureAwait(false);
@@ -184,6 +188,8 @@ public sealed class GameKeySender : IGameKeySender
             {
                 ForegroundWindowActivator.Activate((HWND)foregroundToHandBack,
                     handOverRightToSetForeground: false, _logger, nudgeInputForForegroundLock: true);
+
+                RestoreCursorIfGameRecentered(cursorBeforeSend, gameWindow, foregroundToHandBack);
             }
 
             _logger.Information(
@@ -226,7 +232,7 @@ public sealed class GameKeySender : IGameKeySender
     /// </summary>
     private async Task<GameKeySendResult> SendViaElevatedHelperAsync(ushort virtualKey,
         IReadOnlyList<ushort> modifierKeyCodes, HWND gameWindow, nint foregroundToHandBack,
-        CancellationToken ct)
+        CursorSnapshot? cursorBeforeSend, CancellationToken ct)
     {
         // 助手是另一个进程：它抢前台 / 送键的中间状态 JASM 看不到，所以把「交办前」和
         // 「助手送完时」两个前台窗口都记下来 —— 目标是 A、助手说发了、前台却是同进程的
@@ -247,6 +253,8 @@ public sealed class GameKeySender : IGameKeySender
         {
             handedBack = await _elevatorService
                 .TryHandbackForegroundAsync((HWND)foregroundToHandBack, ct).ConfigureAwait(false);
+
+            RestoreCursorIfGameRecentered(cursorBeforeSend, gameWindow, foregroundToHandBack);
         }
 
         _logger.Information(
@@ -269,6 +277,81 @@ public sealed class GameKeySender : IGameKeySender
                 GameKeySendResult.WithDetail(GameKeySendStatus.NeedsElevation, outcome.Message),
             _ => GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed, outcome.Message)
         };
+    }
+
+    // ── 光标还原 ────────────────────────────────────────────────
+
+    /// <summary>
+    /// 送键前后要对比的光标位置（物理像素）。没有直接用 win32 那个坐标类型：<c>PInvoke.GetCursorPos</c>
+    /// 交给我们的是份只有 X/Y 两格的友好类型，而这里要的是「可空、能跨方法传」的取值，
+    /// 自己写两格更省事（读出来那句照旧用 <c>var</c> 接，类型名一次都不写）。
+    /// </summary>
+    private readonly record struct CursorSnapshot(int X, int Y);
+
+    /// <summary>读当前光标位置（物理像素）。读不到返回 <c>null</c>。</summary>
+    private static CursorSnapshot? ReadCursorPosition()
+        => PInvoke.GetCursorPos(out var cursor) ? new CursorSnapshot(cursor.X, cursor.Y) : null;
+
+    /// <summary>
+    /// 送完键、前台也交还成之后：**光标如果被游戏挪到了它自己窗口的中心，就放回原处**
+    /// （判据与理由见 <see cref="CursorRecenterGuard"/>；只有浮窗那条路会记 <paramref name="cursorBeforeSend"/>）。
+    ///
+    /// 为什么只在浮窗那条路做：交还前台之后前台在**我们**手上，游戏不再重新居中，放回去就留得住；
+    /// 徽章那条路刻意把焦点留在游戏上，这时把光标放回去只会跟游戏下一帧的重新居中互相打架。
+    ///
+    /// 三个前置条件缺一不可：① 送键前记过位置；② 前台确实落在请求交还的那个窗口上（交还没成 /
+    /// 浮窗已被热键收起来 → 游戏还在前台 → 不碰光标）；③ 光标的位置变了，且新位置贴着游戏窗口中心。
+    ///
+    /// 每一次"光标移动了"都记一行（含前后坐标与游戏窗口中心），容差要不要调有数可依 ——
+    /// 这条判据宁可漏判（毛病照旧）也不误判（把用户正在移动的光标拽回去）。
+    /// </summary>
+    /// <remarks>标 <c>unsafe</c> 只因为要比对句柄（<c>HWND.Value</c> 是裸指针），与本方法要做的事无关。</remarks>
+    private unsafe void RestoreCursorIfGameRecentered(CursorSnapshot? cursorBeforeSend, HWND gameWindow,
+        nint foregroundToHandBack)
+    {
+        if (cursorBeforeSend is not { } before || !PInvoke.GetCursorPos(out var now))
+            return;
+
+        if ((nint)PInvoke.GetForegroundWindow().Value != foregroundToHandBack)
+        {
+            _logger.Debug("[GameKeySender] 前台没交还到请求的窗口上，跳过光标还原");
+            return;
+        }
+
+        // 外框中心：全屏时它就是屏幕中心（实测那台是 2560x1600），窗口模式下游戏自己居中也是按这块算的
+        if (!PInvoke.GetWindowRect(gameWindow, out var rect))
+        {
+            _logger.Warning("[GameKeySender] 读游戏窗口位置失败，跳过光标还原");
+            return;
+        }
+
+        var centerX = (rect.left + rect.right) / 2;
+        var centerY = (rect.top + rect.bottom) / 2;
+
+        if (!CursorRecenterGuard.IsRecenteredToGameCenter(before.X, before.Y, now.X, now.Y, centerX, centerY))
+        {
+            // 没动过是绝大多数情形（不记，免得刷日志）；动了但不在中心 = 用户自己挪的，留一行备查
+            if (before.X != now.X || before.Y != now.Y)
+            {
+                _logger.Information(
+                    "[GameKeySender] 送键期间光标从 ({BeforeX},{BeforeY}) 移到 ({NowX},{NowY})，"
+                    + "不在游戏窗口中心 ({CenterX},{CenterY}) 附近，按用户自己挪动处理，不还原",
+                    before.X, before.Y, now.X, now.Y, centerX, centerY);
+            }
+
+            return;
+        }
+
+        if (!PInvoke.SetCursorPos(before.X, before.Y))
+        {
+            _logger.Warning("[GameKeySender] 光标被挪到了游戏窗口中心 ({NowX},{NowY})，但放回原位失败",
+                now.X, now.Y);
+            return;
+        }
+
+        _logger.Information(
+            "[GameKeySender] 光标在送键时被挪到了游戏窗口中心 ({NowX},{NowY})，已放回原位 ({BeforeX},{BeforeY})",
+            now.X, now.Y, before.X, before.Y);
     }
 
     // ── 修饰键防线 ──────────────────────────────────────────────
