@@ -190,6 +190,11 @@ publish/
 # Note: Comment the next line if you want to checkin your web deploy settings,
 # but database connection strings (with potential passwords) will be unencrypted
 *.pubxml
+# 例外：桌面发布配置必须进版本库。上面那条来自 Web 部署模板（防的是带连接串的发布设置），
+# 但对本仓库来说 Properties/PublishProfiles/*.pubxml 是「打包成什么形态」的唯一来源 ——
+# 单文件包（SelfContained + PublishSingleFile + 自解压）全靠它，CI 检出不到就只能产出
+# 几十 KB 的空壳 exe（见 CLAUDE.md 的单文件那条）。
+!src/**/Properties/PublishProfiles/*.pubxml
 *.publishproj
 
 # Microsoft Azure Web App publish settings. Comment the next line if you want to
