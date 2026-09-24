@@ -46,18 +46,26 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     private const int NavigationHotkeyIdBase = HotkeyId + 1;
 
     /// <summary>
-    /// 浮窗显示期间的导航键。**没有候选回退** —— 与唤出键不同，这几个键的语义是固定的
-    /// （上下移动、回车切换、R 刷新），换一个键用户就猜不到了；注册不上就少一个键，其余照常可用。
+    /// 浮窗显示期间的导航键。每个动作一串候选，按顺序试、**每个动作只占一个键**。
     ///
-    /// 主键码在这里按需声明：CsWin32 不生成完备的虚拟键枚举，而 Core 那边也用不到这几个码。
+    /// 上下 / 回车只有一个候选：语义固定（上下移动、回车切换），换一个键用户就猜不到了，
+    /// 注册不上就少一个键、其余照常可用。
+    ///
+    /// **刷新键给了一串候选**：2026-09-24 在本机实测 <c>Ctrl+Alt+R</c> / <c>+A</c> / <c>+F</c> / <c>+Y</c>
+    /// 都被别的程序占着（<c>Ctrl+Alt+R</c> 报的是「热键已注册。」），而多选模式下没有键盘的刷新入口，
+    /// 用户就只能去点那个刷新按钮 —— 那正是游戏里点不到的东西。提示行永远只列**真注册上**的那一个，
+    /// 所以退到备选也不会骗人。
+    ///
+    /// 主键码在这里按需声明：CsWin32 不生成完备的虚拟键枚举，Core 那边也用不到这几个码。
     /// </summary>
-    private static readonly (OverlayHotkeyAction Action, ushort VirtualKey, string KeyDisplayName)[] NavigationKeys =
-    [
-        (OverlayHotkeyAction.SelectPrevious, 0x26, "↑"),     // VK_UP
-        (OverlayHotkeyAction.SelectNext, 0x28, "↓"),         // VK_DOWN
-        (OverlayHotkeyAction.ToggleSelected, 0x0D, "Enter"), // VK_RETURN
-        (OverlayHotkeyAction.Refresh, 0x52, "R")             // VK_R
-    ];
+    private static readonly (OverlayHotkeyAction Action, (ushort VirtualKey, string DisplayName)[] Candidates)[]
+        NavigationKeys =
+        [
+            (OverlayHotkeyAction.SelectPrevious, [(0x26, "↑")]),          // VK_UP
+            (OverlayHotkeyAction.SelectNext, [(0x28, "↓")]),              // VK_DOWN
+            (OverlayHotkeyAction.ToggleSelected, [(0x0D, "Enter")]),      // VK_RETURN
+            (OverlayHotkeyAction.Refresh, [(0x52, "R"), (0x20, "Space")]) // VK_R / VK_SPACE
+        ];
 
     /// <summary><c>WM_HOTKEY</c> 是 <c>#define</c> 而非 API，CsWin32 不生成它，自己收一个。</summary>
     private const int WmHotkey = 0x0312;
@@ -221,24 +229,37 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
 
         for (var index = 0; index < NavigationKeys.Length; index++)
         {
-            var (action, virtualKey, displayName) = NavigationKeys[index];
+            var (action, candidates) = NavigationKeys[index];
             var id = NavigationHotkeyIdBase + index;
+            var registered = false;
+            string? lastReason = null;
 
-            if (PInvoke.RegisterHotKey(_hwnd, id, flags, virtualKey))
+            foreach (var (virtualKey, displayName) in candidates)
             {
-                _navigation.Add((id, action, displayName));
-                continue;
+                if (PInvoke.RegisterHotKey(_hwnd, id, flags, virtualKey))
+                {
+                    _navigation.Add((id, action, displayName));
+                    registered = true;
+                    break; // 一个动作只占一个键：注册上就收工，别把备选也一起占了
+                }
+
+                // 单个候选不可用只是 Debug：还有下一个在排队，用户未必真受影响
+                lastReason = new Win32Exception(Marshal.GetLastWin32Error()).Message;
+                _logger.Debug("[浮窗] 导航热键候选 {Hotkey} 不可用（{Reason}），试下一个",
+                    OverlayHotkeyCandidates.Describe(modifiers, displayName), lastReason);
             }
 
-            // 少一个键不致命（其余照常可用），但要让用户查得出来 —— 提示行只列注册上的那些
-            var reason = new Win32Exception(Marshal.GetLastWin32Error()).Message;
-            var hotkey = OverlayHotkeyCandidates.Describe(modifiers, displayName);
+            if (registered)
+                continue;
 
+            // 整个动作一个键都没落下：这个动作在浮窗显示时就没有键盘入口了，
+            // 必须让它可见（提示行只会少列一个键，不会说明原因）。同一个动作只报一次 ——
+            // 注册随每次显示重来，不记账会每次显示都刷一行。
             if (_navigationFailures.Add(action))
-                _logger.Warning("[浮窗] 导航热键 {Hotkey} 注册不上（{Reason}），这个键在浮窗显示时不可用",
-                    hotkey, reason);
+                _logger.Warning("[浮窗] 导航键 {Action} 一个候选都没注册上（{Reason}），这个动作在浮窗显示时没有键盘入口",
+                    action, lastReason ?? "系统没有给出原因");
             else
-                _logger.Debug("[浮窗] 导航热键 {Hotkey} 仍然注册不上（{Reason}）", hotkey, reason);
+                _logger.Debug("[浮窗] 导航键 {Action} 仍然注册不上（{Reason}）", action, lastReason);
         }
 
         _logger.Information("[浮窗] 导航热键就绪（仅浮窗显示期间生效）: {Hint}", Hint);
