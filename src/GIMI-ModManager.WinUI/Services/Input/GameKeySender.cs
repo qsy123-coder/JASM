@@ -43,6 +43,12 @@ public sealed class GameKeySender : IGameKeySender
     /// <summary>切完前台后等焦点稳定，再发按键。</summary>
     private const int ForegroundSettleMilliseconds = 300;
 
+    /// <summary>送键前等用户松开修饰键的上限（见 <see cref="WaitForModifierReleaseAsync"/>）。</summary>
+    private const int ModifierReleaseTimeoutMilliseconds = 1500;
+
+    /// <summary>等待期间轮询修饰键状态的间隔。</summary>
+    private const int ModifierReleasePollMilliseconds = 30;
+
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
 
@@ -77,6 +83,18 @@ public sealed class GameKeySender : IGameKeySender
 
         try
         {
+            // 修饰键防线必须在**读设置/进同步段之前**：往后挪会让"等用户松手"横在
+            // 切前台与真正送键之间，前台身份就在这段等待里没了（见类注释约束 1）。
+            if (!await WaitForModifierReleaseAsync(ct).ConfigureAwait(false))
+            {
+                _logger.Warning(
+                    "[GameKeySender] 用户仍按着修饰键（Alt/Ctrl/Shift/Win），"
+                    + "此时发 vk=0x{VirtualKey:X2} 会变成组合键（Alt+F10 那类会触发系统 / 第三方热键），所以没有发送",
+                    virtualKey);
+                return GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed,
+                    "你正按着 Alt / Ctrl / Shift / Win，发出去会变成组合键，先松开再试");
+            }
+
             var options = await _localSettingsService
                 .ReadOrCreateSettingAsync<ModManagerOptions>(ModManagerOptions.Section).ConfigureAwait(false);
 
@@ -221,6 +239,56 @@ public sealed class GameKeySender : IGameKeySender
             _ => GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed, outcome.Message)
         };
     }
+
+    // ── 修饰键防线 ──────────────────────────────────────────────
+
+    /// <summary>
+    /// 送键前等用户把物理上按着的修饰键松开，返回是否已经松开（超时仍按着 = false）。
+    ///
+    /// **为什么必须等**：我们发的是一个「裸」和弦 —— d3dx 里那句刷新就是
+    /// <c>no_modifiers VK_F10</c>，要的正是没有修饰键的 F10。用户此刻按着 Alt / Ctrl / Shift 时，
+    /// 送出去的会变成 Alt+F10 / Ctrl+F10，两个后果都不轻：
+    /// <list type="bullet">
+    /// <item>轻则 d3dx 那句 <c>no_modifiers</c> 不匹配 —— 刷新**静默失效**，界面却报「已发送」；</item>
+    /// <item>重则撞上系统 / 第三方热键 —— 实测场景：按住 Alt 点浮窗里的勾选，浮窗自动发出的
+    /// F10 变成 Alt+F10，直接触发英伟达 App 的录屏。</item>
+    /// </list>
+    ///
+    /// 「等一小会儿」能同时解决这两件事：用户按完热键自然会松手，松手那一刻发出去的就是干净的 F10。
+    /// 等不到（一直按着）就**不发** —— 不发比发错键安全得多，调用方把原因带回界面。
+    ///
+    /// 注意这里等的是**用户的手**，不是我们自己的按键：<see cref="SendChord"/> 的按下与抬起
+    /// 都在 <see cref="HoldMilliseconds"/> 内成对完成，不会把自己按住的修饰键留到下一次调用。
+    /// </summary>
+    private async Task<bool> WaitForModifierReleaseAsync(CancellationToken ct)
+    {
+        var waited = 0;
+        while (waited < ModifierReleaseTimeoutMilliseconds)
+        {
+            if (!IsAnyModifierHeld())
+                return true;
+
+            await Task.Delay(ModifierReleasePollMilliseconds, ct).ConfigureAwait(false);
+            waited += ModifierReleasePollMilliseconds;
+        }
+
+        // 最后一次读数才是结论：等待期间用户可能刚好在超时那一刻松开
+        return !IsAnyModifierHeld();
+    }
+
+    /// <summary>
+    /// 物理上是否按着任一修饰键。走 <c>GetAsyncKeyState</c>，只认**高位**（= 此刻正按下）；
+    /// 低位那半（「上次调用之后按过没有」）不看 —— 它是跨进程共享的，
+    /// 会被别的程序读走，拿它判"按着"必然误判。
+    /// </summary>
+    private static bool IsAnyModifierHeld()
+        => IsKeyHeld(VIRTUAL_KEY.VK_SHIFT)
+           || IsKeyHeld(VIRTUAL_KEY.VK_CONTROL)
+           || IsKeyHeld(VIRTUAL_KEY.VK_MENU)
+           || IsKeyHeld(VIRTUAL_KEY.VK_LWIN)
+           || IsKeyHeld(VIRTUAL_KEY.VK_RWIN);
+
+    private static bool IsKeyHeld(VIRTUAL_KEY key) => (PInvoke.GetAsyncKeyState((int)key) & 0x8000) != 0;
 
     // ── 目标定位 ────────────────────────────────────────────────
 
