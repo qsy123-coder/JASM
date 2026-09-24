@@ -52,6 +52,12 @@ public partial class ElevatorService : ObservableRecipient
     /// <summary>助手认不认送键命令 <c>"3"</c>；不认识就只能退回「请用户自己以管理员身份运行 JASM」。</summary>
     private bool _supportsKeySend;
 
+    /// <summary>
+    /// 助手认不认归还前台命令 <c>"4"</c>；不认识就退回既有行为：送完键前台留在游戏上
+    /// （用户下次要用浮窗得重新唤出，不影响按键本身）。
+    /// </summary>
+    private bool _supportsForegroundHandback;
+
     public string? ErrorMessage { get; private set; }
 
     private bool _exitHandlerRegistered;
@@ -95,11 +101,13 @@ public partial class ElevatorService : ObservableRecipient
             _logger.Debug(ElevatorProcessName + " found at: " + _elevatorPath);
             _supportsTargetedRefresh = ElevatorRefreshProtocol.SupportsTargetedRefresh(_elevatorFileVersion);
             _supportsKeySend = ElevatorKeySendProtocol.SupportsKeySend(_elevatorFileVersion);
+            _supportsForegroundHandback =
+                ElevatorForegroundHandbackProtocol.SupportsForegroundHandback(_elevatorFileVersion);
             _logger.Information(
                 "[ElevatorService] {ProcessName} FileVersion={FileVersion}（路径 {Path}），支持带目标窗口的刷新={SupportsTargetedRefresh}，"
-                + "支持代发按键={SupportsKeySend}",
+                + "支持代发按键={SupportsKeySend}，支持归还前台={SupportsForegroundHandback}",
                 ElevatorProcessName, _elevatorFileVersion ?? "(读不到)", _elevatorPath, _supportsTargetedRefresh,
-                _supportsKeySend);
+                _supportsKeySend, _supportsForegroundHandback);
             App.MainWindow.DispatcherQueue.TryEnqueue(() => CanStartElevator = true);
             _IsInitialized = true;
             return;
@@ -666,6 +674,83 @@ public partial class ElevatorService : ObservableRecipient
         {
             _logger.Warning(ex, "[ElevatorService] 请提权助手代发按键失败");
             return ElevatedKeySendOutcome.Unavailable("连不上提权助手，按键没有发送。");
+        }
+    }
+
+    /// <summary>
+    /// 请提权助手把前台交还给 <paramref name="window"/>（见 <see cref="ElevatorForegroundHandbackProtocol"/>）。
+    ///
+    /// 为什么必须由助手做：送完键那一刻的**输入所有者是刚注入按键的助手**（前台锁只认「最近收到输入的那个
+    /// 进程」，而注入的输入算在注入者头上）。本进程两个条件都不满足 —— 直接 <c>SetForegroundWindow</c>
+    /// 会被前台锁拒，「先注入一次输入把身份拿回来」那一招又会被 UIPI 静默丢掉（前台是提权游戏时）。
+    /// 于是不交还的话，用户每勾选一次浮窗里的 Mod，都得重新唤出浮窗。
+    ///
+    /// **尽力而为**：交还没成不影响已经送出去的按键，所以这里没有给用户看的文案（用户看到的「刷新成功 /
+    /// 失败」由送键那边定），只记日志并返回是否交还成功。助手版本低于 <c>4.0.0.0</c> 时直接返回 false：
+    /// 旧助手不认识 <c>4</c>，发过去只会白等一次超时（它静默忽略，不回执）。
+    ///
+    /// 参数是 CsWin32 的 <c>HWND</c> 而不是 <c>nint</c>：本方法 <c>internal</c>，调用方
+    /// <c>GameKeySender</c> 在同一程序集里（放进 public 签名会 CS0051，理由同
+    /// <see cref="TrySendKeyChordAsync"/>）。
+    /// </summary>
+    internal async Task<bool> TryHandbackForegroundAsync(HWND window, CancellationToken ct = default)
+    {
+        if (window.IsNull)
+            return false;
+
+        if (!_supportsForegroundHandback)
+        {
+            _logger.Warning(
+                "[ElevatorService] 助手（FileVersion={Version}）不认识归还前台命令 {Command}，"
+                + "前台留在游戏上：这次刷新后要再动浮窗得重新唤出它",
+                _elevatorFileVersion ?? "(没有可用助手)", ElevatorForegroundHandbackProtocol.HandbackCommand);
+            return false;
+        }
+
+        try
+        {
+            await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
+
+            // 比送键的 15s 短：这条路上助手只做「切前台 + 最多 500ms 回读」，没有稳定等待、也不发键
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            await pipeClient.ConnectAsync(linkedCts.Token).ConfigureAwait(false);
+
+            using var reader = new StreamReader(pipeClient);
+            await using var writer = new StreamWriter(pipeClient) { AutoFlush = true };
+
+            foreach (var line in ElevatorForegroundHandbackProtocol.BuildPayload(window))
+            {
+                await writer.WriteLineAsync(line.AsMemory(), linkedCts.Token).ConfigureAwait(false);
+            }
+
+            var reply = await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+
+            switch (ElevatorForegroundHandbackProtocol.ParseReply(reply, out var failureReason))
+            {
+                case ElevatorForegroundHandbackReply.Ok:
+                    _logger.Information("[ElevatorService] 提权助手已把前台交还给 {Window}",
+                        WindowProcessQuery.FormatWindow(window));
+                    return true;
+
+                case ElevatorForegroundHandbackReply.Failure:
+                    // token 原样记日志（将来助手加了原因，这里不用改）
+                    _logger.Warning("[ElevatorService] 提权助手没能交还前台（{Reason}），前台留在游戏上",
+                        failureReason);
+                    return false;
+
+                default:
+                    _logger.Warning(
+                        "[ElevatorService] 提权助手没有回执归还前台命令 {Command}（可能版本过旧或已退出）",
+                        ElevatorForegroundHandbackProtocol.HandbackCommand);
+                    return false;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or OperationCanceledException)
+        {
+            // ct 被取消也走这里：交还失败不影响已经送出去的按键，不必往上抛
+            _logger.Warning(ex, "[ElevatorService] 请提权助手交还前台失败");
+            return false;
         }
     }
 
