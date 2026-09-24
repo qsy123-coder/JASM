@@ -21,6 +21,9 @@ namespace GIMI_ModManager.WinUI.Services.Overlay;
 /// 盖住画面的是合成器而不是窗口，进程内任何 Z 序操作都改不了，只能从显示模式 / 兼容性设置下手。</item>
 /// <item><b>浮窗被最小化 / 藏起来了</b>：可见位与置顶位都正常，但它其实已经最小化 ——
 /// 最小化的窗口 <c>IsWindowVisible</c> 照样答"可见"，不单独看这一位就会把它当成"被盖住"。</item>
+/// <item><b>看得见、点不到</b>：进游戏后要按住 Alt 再左键才点得动浮窗 —— 浮窗画得好好的，
+/// 只是这一下点击没轮到它。那是**输入归属**问题（谁抓着鼠标 / 光标被裁在哪 / 点击先给谁），
+/// 与 Z 序毫无关系，见 <see cref="AppendClickGate"/> 记的那三个开关。</item>
 /// </list>
 ///
 /// 本类**只读**：不设样式、不动 Z 序、不抢前台；读不到的一律照实记「?」，不抛异常。
@@ -47,7 +50,64 @@ internal static unsafe class OverlayStackProbe
 
         AppendWindowsAbove(description, overlay);
 
+        AppendClickGate(description, overlay);
+
         return description.ToString();
+    }
+
+    /// <summary>
+    /// 记下「这一下点击能不能落到浮窗上」的三个开关。
+    ///
+    /// 用户报的形态是**看得见、点不到**：进游戏之后要按住 Alt 再左键才点得动浮窗上的 Mod
+    /// （加载界面正常）。那不是 Z 序问题 —— 浮窗就在最前面、也画得出来 —— 而是**输入归属**问题：
+    /// 点击先给谁、谁抓着鼠标、光标能不能移过来，三者任一变了，浮窗就点不动。
+    ///
+    /// 只记事实、不下结论。真正的用法是**同一场景测两次**（不按 Alt 待十几秒、再按住 Alt 待十几秒），
+    /// 两条日志一对比，Alt 到底放开了哪个开关就一目了然。
+    /// </summary>
+    private static void AppendClickGate(StringBuilder description, HWND overlay)
+    {
+        description.Append(" 点击门槛=");
+
+        // ① 光标现在压在谁身上：不是我们自己进程的窗口，就说明这一下根本不轮到我们。
+        if (PInvoke.GetCursorPos(out var cursor))
+        {
+            var underCursor = PInvoke.WindowFromPoint(cursor);
+            description.Append("光标下=")
+                .Append(underCursor.IsNull ? "无" : WindowProcessQuery.DescribeWindow(underCursor))
+                .Append(SameProcessMark(underCursor, overlay));
+        }
+        else
+        {
+            description.Append("光标下=?（读光标位置失败）");
+        }
+
+        // ② 谁抓着鼠标：抓鼠标的窗口会把**全部**鼠标消息拿走，与光标位置无关 ——
+        //    这是「按住 Alt 才点得到」最可能的出处（游戏在游戏里锁鼠标，Alt 放开了它）。
+        //    GetCapture 只答本线程，跨进程要看前台线程的信息，因此用 GetGUIThreadInfo(0, …)
+        //    （idThread=0 = 前台窗口所在线程）。cbSize 必须先填，否则调用会失败。
+        var threadInfo = new GUITHREADINFO { cbSize = (uint)sizeof(GUITHREADINFO) };
+        if (PInvoke.GetGUIThreadInfo(0, &threadInfo))
+        {
+            description.Append("；鼠标被=")
+                .Append(threadInfo.hwndCapture.IsNull
+                    ? "无"
+                    : WindowProcessQuery.DescribeWindow(threadInfo.hwndCapture));
+        }
+        else
+        {
+            description.Append("；鼠标被=?（读前台线程信息失败，多半是完整性级别挡的）");
+        }
+
+        // ③ 光标被裁在哪块区域：游戏把光标锁死在自己窗口里时，物理上就移不到浮窗上 ——
+        //    那种情况连「点上去」这个动作都做不出来，与谁抓着鼠标无关。
+        //    没裁剪时回读到的是整屏，所以读法是「这块区域比屏幕小」才叫被裁。
+        if (PInvoke.GetClipCursor(out var clip))
+        {
+            description.Append("；光标活动区=(")
+                .Append(clip.left).Append(',').Append(clip.top).Append(")-(")
+                .Append(clip.right).Append(',').Append(clip.bottom).Append(')');
+        }
     }
 
     /// <summary>
@@ -63,6 +123,25 @@ internal static unsafe class OverlayStackProbe
     /// 而是**游戏窗口在不在这一块里**：在（且带置顶位）→ 置顶带里被游戏压住；
     /// 不在 → 层级上根本没输，盖住画面的只能是合成器。
     /// </summary>
+    /// <summary>
+    /// 这个窗口是不是我们自己进程的（浮窗所在进程），供「点击落没落到浮窗上」按进程判。
+    ///
+    /// **为什么不能按句柄或类名判**：实测光标压在浮窗上时，<c>WindowFromPoint</c> 回的并不是那个
+    /// 顶层窗口（<c>WinUIDesktopWin32WindowClass</c>），而是 WinUI 挂在它下面的子窗口
+    /// （<c>Microsoft.UI.Content.DesktopChildSiteBridge</c> / <c>PopupWindowSiteBridge</c>）。
+    /// 按句柄判会得出「点击没落在浮窗上」的相反结论 —— 这条线索正好会被读反。
+    /// </summary>
+    private static string SameProcessMark(HWND candidate, HWND overlay)
+    {
+        var candidatePid = WindowProcessQuery.GetWindowProcessId(candidate);
+        if (candidatePid == 0)
+            return string.Empty;
+
+        return candidatePid == WindowProcessQuery.GetWindowProcessId(overlay)
+            ? "（本进程=是）"
+            : "（本进程=否）";
+    }
+
     private static void AppendWindowsAbove(StringBuilder description, HWND overlay)
     {
         var above = new List<HWND>();
