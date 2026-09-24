@@ -4,6 +4,7 @@ using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
 using GIMI_ModManager.Core.Helpers;
+using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.ViewModels.Overlay;
 using Microsoft.UI.Windowing;
@@ -15,9 +16,9 @@ using WinUIEx;
 namespace GIMI_ModManager.WinUI.Views.Overlay;
 
 /// <summary>
-/// 游戏内的浮窗：无边框 + 置顶 + **不夺前台焦点**。
+/// 游戏内的浮窗：无边框 + 置顶 + **点击不夺前台 + 唤出时主动抢前台**。
 ///
-/// 窗口形态与自愈逻辑来自 Phase 0 原型（<c>src/OverlaySpike</c>），三件事必须照搬，别"优化"掉：
+/// 窗口形态与自愈逻辑来自 Phase 0 原型（<c>src/OverlaySpike</c>），四件事必须照搬，别"优化"掉：
 ///
 ///   1. **置顶只认扩展样式**：<c>OverlappedPresenter.IsAlwaysOnTop</c> 与 WinUIEx 的
 ///      <c>WindowEx.IsAlwaysOnTop</c> 都不写 <c>WS_EX_TOPMOST</c>，而两者都读回 true。
@@ -26,11 +27,22 @@ namespace GIMI_ModManager.WinUI.Views.Overlay;
 ///      自愈能做的只有"把置顶位补回来"：想用 <c>SetWindowPos</c> 把自己在置顶带里重新排到最前
 ///      是**做不到的**（实测三种写法都返回成功、位置一动不动，见 <see cref="EnsureTopMost"/> 的说明），
 ///      所以"到底有没有被压住"只能靠现场日志（<see cref="OverlayStackProbe"/>）判断，不能靠猜。
-///   3. **显隐走 <c>ShowWindow(SW_*)</c>**，不走 <c>AppWindow.Show()</c>／<c>Window.Activate()</c> 那一套 ——
-///      后者可能顺带激活窗口，一唤出就把游戏的前台挤掉。
+///   3. **显隐走 <c>ShowWindow(SW_*)</c>**，不走 <c>AppWindow.Show()</c>／<c>Window.Activate()</c> 那一套：
+///      前台归属是浮窗最敏感的一件事，"什么时候抢、什么时候还"必须由本类自己说了算（见第 5 条），
+///      不能让框架在显隐的顺手动作里替我们决定。
 ///   4. **层级现场定期记进日志**（<see cref="OverlayStackProbe"/>，可见时约 5 秒一次）：浮窗被盖住时用户
 ///      已经在游戏里，屏幕上的现场没人看得到，只能靠窗口层级关系事后反推 ——
 ///      而"被游戏压住"与"被合成器绕开"的修法完全不同，日志必须能把两者分开。
+///   5. **唤出时主动抢前台、隐藏时还回去**（<see cref="TakeForeground"/> / <see cref="HandForegroundBack"/>）：
+///      "看得见点不到"的正面修法。前台一直在游戏手里时，游戏也持着鼠标捕获
+///      （实测 <c>鼠标被=UnrealWindow</c>）—— 鼠标消息先给抓捕获的那个窗口，点浮窗这一下根本轮不到我们，
+///      用户得先按住 Alt 逼游戏松开捕获（这就是"Alt + 左键才点得到"的来历）。
+///      把前台从游戏手里拿过来，游戏失去激活、自己松开捕获，这一步就省掉了。
+///
+///      抢前台与 <c>WS_EX_NOACTIVATE</c> **不矛盾**：那一位挡的是"用户点击引起的前台转移"
+///      （防独占全屏下点一下浮窗就把游戏踢出全屏），而这里是显式的、成对的一抢一还。
+///      抢发生在两处：唤出那一拍（<see cref="TakeForeground"/>），以及可见期间前台被游戏抢回去之后
+///      光标正落在浮窗上的那些拍（<see cref="EnsureForeground"/>）—— 后者的做法与取舍写在那一处。
 /// </summary>
 public sealed partial class OverlayWindow : WindowEx
 {
@@ -41,6 +53,15 @@ public sealed partial class OverlayWindow : WindowEx
 
     /// <summary>置顶自愈的间隔。1 秒是原型的取值：既够快（用户几乎来不及看到它被盖住），也不至于每秒都去动窗口。</summary>
     private static readonly TimeSpan TopMostCheckInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// 回读前台归属前的等待上限（见 <see cref="WaitForForeground"/>）。
+    /// 只为了让日志说真话，窗口自己不等这个：前台切换成功后通常一两拍就回读到。
+    /// </summary>
+    private const int ForegroundSettleTimeoutMilliseconds = 300;
+
+    /// <summary>等待前台归属稳定下来时的轮询间隔。</summary>
+    private const int ForegroundSettlePollMilliseconds = 20;
 
     /// <summary>
     /// 层级现场日志的降频基数：自愈 1 秒一次，现场日志每 <c>StackProbeTickInterval</c> 次自愈记一条（即 5 秒）。
@@ -65,8 +86,25 @@ public sealed partial class OverlayWindow : WindowEx
     /// <summary>是否已经做过"首次显示"的那套收尾（摆位置 + 确认置顶）。见 <see cref="ShowOverlay"/>。</summary>
     private bool _hasShownOnce;
 
+    /// <summary>
+    /// 唤出那一刻的前台窗口（游戏在跑时就是游戏），隐藏时按原样还回去。
+    ///
+    /// **记的是"谁"而不是"游戏那个进程"**：浮窗这一层对具体游戏没有任何硬编码，
+    /// 谁是前台就还给谁，换游戏、在桌面上唤出都自动成立。
+    /// </summary>
+    private HWND _foregroundBeforeShow = HWND.Null;
+
     /// <summary>自愈计时器已经跑过的次数，只用来给层级现场日志降频（见 <see cref="StackProbeTickInterval"/>）。</summary>
     private int _topMostTick;
+
+    /// <summary>前台被抢走这件事是否已经记过日志（见 <see cref="EnsureForeground"/>）。</summary>
+    private bool _foregroundLossLogged;
+
+    /// <summary>本次"前台被抢走"期间重申了几次，收回后一起记进日志。</summary>
+    private int _foregroundRetakeCount;
+
+    /// <summary>本次"前台被抢走"期间是否已经记过"改走注入空输入那条路"（见 <see cref="EnsureForeground"/>）。</summary>
+    private bool _foregroundNudged;
 
     /// <summary>浮窗的 ViewModel（internal：它和它手上的协调器都只在本程序集里用）。</summary>
     internal OverlayViewModel ViewModel { get; }
@@ -95,6 +133,10 @@ public sealed partial class OverlayWindow : WindowEx
         _topMostTimer.Tick += (_, _) =>
         {
             EnsureTopMost("定期自愈");
+
+            // 守着前台，理由见 EnsureForeground：游戏会在浮窗显示期间自己把前台和鼠标捕获抢回去。
+            EnsureForeground();
+
             ProbeStackIfDue();
         };
         _topMostTimer.Start();
@@ -193,20 +235,180 @@ public sealed partial class OverlayWindow : WindowEx
                 AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
         }
 
+        // 抢前台放在探针**之前**：探针那行里的「前台=我 / 别人」正好就是这次抢没抢到的直接读数。
+        TakeForeground();
+
         // 唤出这一刻的现场：可见性、最小化、置顶位（回读）、压在浮窗上面的是谁，
         // 以及这一下点击会不会落到我们身上（光标下 / 谁抓着鼠标 / 光标被裁在哪）。
         //
-        // 「前台=我」= 浮窗此刻真的占着前台。**它不必然是"点击把游戏的前台抢走了"**：
-        // NOACTIVATE 挡的是点击引起的前台转移，挡不住系统在别的前台窗口消失时按 Z 序
-        // 把前台交给最上面的窗口 —— 本机冒烟里它就自己出现过（两条连续日志都是「前台=我」）。
-        // 游戏在跑时读到它才当作异常（独占全屏下丢了前台可能直接掉出全屏），别见到就归罪于点击。
+        // 读法：**「前台=我」是这次唤出的预期结果**（见 TakeForeground）——读到「别人」就说明前台锁
+        // 没放行（热键那一下没被系统当成"JASM 收到的输入"），这一轮用户仍然只能 Alt + 左键。
+        // 抢到了却还是点不动，才轮到后面几项：谁抓着鼠标、光标被裁在哪、压在上面的是谁。
         _logger.Information("{Probe}", OverlayStackProbe.Describe(_hwnd));
     }
 
+    /// <summary>
+    /// 藏起浮窗，并把前台还给唤出的那一刻（见 <see cref="HandForegroundBack"/>）。
+    /// </summary>
     public void HideOverlay()
     {
+        // "该不该还前台"必须在 SW_HIDE **之前**判定：一藏起来系统立刻就把前台分配给别的窗口，
+        // 之后再读"前台是不是我"永远是假 —— 这段还前台的逻辑会整个静默失效。
+        var foregroundWasOurs = !_foregroundBeforeShow.IsNull && OverlayWindowStyles.IsOwnWindowForeground(_hwnd);
+        var previous = _foregroundBeforeShow;
+        _foregroundBeforeShow = HWND.Null;
+
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_HIDE);
+
+        if (foregroundWasOurs)
+            HandForegroundBack(previous);
+
         _logger.Debug("浮窗隐藏：IsWindowVisible={IsVisible}", PInvoke.IsWindowVisible(_hwnd));
+    }
+
+    // ── 前台归属（唤出抢 / 隐藏还）────────────────────────────
+
+    /// <summary>
+    /// 把前台从游戏手里拿过来（唤出时）。**这是浮窗唯一一处主动改变前台归属的地方。**
+    ///
+    /// 为什么必须抢：前台是游戏的时候，鼠标捕获也在游戏手里（实测 <c>鼠标被=UnrealWindow</c>），
+    /// 而鼠标消息先给抓着捕获的那个窗口 —— 点浮窗这一下根本轮不到我们。用户得先按住 Alt，
+    /// 让系统给游戏发 WM_CANCELMODE、逼它松开捕获，才点得动浮窗上的 Mod
+    /// （用户报的"得用 Alt + 左键"就是这么来的）。把前台拿过来之后游戏失去激活，
+    /// 绝大多数游戏会自己松开捕获，这一步就省掉了。
+    ///
+    /// **抢不抢得到由系统说了算**（前台锁只认"谁最近收到过输入"），判据也不是
+    /// <c>SetForegroundWindow</c> 的返回值 —— 它被前台锁挡下时返回 0、而窗口其实已经切过去的情况存在
+    /// （见 <c>ForegroundWindowActivator</c> 的说明）。所以这里一律回读 <c>GetForegroundWindow</c>
+    /// 并把结果写进日志：抢没抢到，日志里说真话，不靠猜。
+    /// </summary>
+    private void TakeForeground()
+    {
+        var previous = PInvoke.GetForegroundWindow();
+
+        // 前台本来就是我们（比如加载界面那会儿系统按 Z 序把它交给了浮窗）时不覆盖：
+        // 那时"唤出前的前台"已经没有意义了，留着更早记下的那个（游戏），隐藏时才还得到正确的地方。
+        if (previous != _hwnd)
+            _foregroundBeforeShow = previous;
+
+        ForegroundWindowActivator.Activate(_hwnd, handOverRightToSetForeground: false, _logger);
+
+        _logger.Information("浮窗唤出：夺取前台={Result}；唤出前的前台={Previous}",
+            WaitForForeground(_hwnd)
+                ? "成功"
+                : "失败（前台仍在别人手里，这一轮还得 Alt + 左键）",
+            WindowProcessQuery.DescribeWindow(previous));
+    }
+
+    /// <summary>
+    /// 守着前台：可见期间每一拍自愈都确认前台还在不在自己手里，不在就重申一次。
+    ///
+    /// **为什么抢一次不够**：2026-09-24 实机（游戏 pid 29804 正在跑）读到这样一串现场 ——
+    /// <c>18:19:42 前台=我 鼠标被=无</c> → <c>18:19:48 前台=别人 鼠标被=0x6805E8 UnrealWindow[前台]</c>，
+    /// 而**光标全程都停在浮窗上**：没有人点游戏，是游戏自己把前台连同鼠标捕获抢回去的
+    /// （这类游戏会注册后台 raw input 或按帧重申锁）。前台一丢，鼠标消息就全归游戏，
+    /// 光标被它按帧拽回原位 —— 用户的原话是「鼠标老是被拉扯到浮窗的同一个位置」。
+    /// 所以浮窗只要还看得见就由它持前台，藏起来时才还（见 <see cref="HandForegroundBack"/>）。
+    ///
+    /// **为什么"重申"要分两种做法**：前台是被游戏抢走的时候，本进程的输入身份已经过期，
+    /// 一句 <c>SetForegroundWindow</c> 会被前台锁拒掉、而且再调多少次都拒（本机实测连撞 16 拍）。
+    /// 要拿回来必须先**自己注入一次输入**把身份要回来 —— 这一步在
+    /// <see cref="ForegroundWindowActivator.Activate"/> 的 <c>nudgeInputForForegroundLock</c> 上，
+    /// 那里记了完整的实测过程。
+    ///
+    /// **什么时候才做那一步**：只在**光标正压在浮窗上**时。那一刻用户的意图没有歧义（他正在点浮窗），
+    /// 而其余时间（光标在游戏里 = 他在玩）不能去抢 —— 抢一次就是让游戏丢一次激活，
+    /// 抢来抢去会变成卡顿和闪屏，那不是用户要的。
+    ///
+    /// **代价是有意接受的**：光标落在浮窗上期间等于"输入归浮窗"（Steam 浮层就是这个契约）。
+    /// 副作用是游戏会反复丢掉 / 拿回前台，可能伴随卡顿或画面闪一下 —— 若实机测下来比"抢不到"还难受，
+    /// 该退的是这条重申策略：把计时器里对 <see cref="EnsureForeground"/> 的调用去掉，
+    /// 就回到"只在唤出那一拍抢一次"。
+    ///
+    /// 日志按**状态变化**记、不按拍数记：游戏若每秒抢一次，按拍记就是一秒一行的日志洪水。
+    /// </summary>
+    private void EnsureForeground()
+    {
+        if (!IsOverlayVisible)
+            return;
+
+        if (OverlayWindowStyles.IsOwnWindowForeground(_hwnd))
+        {
+            if (_foregroundLossLogged)
+            {
+                _logger.Information("浮窗前台已收回（共重申 {Count} 次）", _foregroundRetakeCount);
+                _foregroundLossLogged = false;
+                _foregroundRetakeCount = 0;
+                _foregroundNudged = false;
+            }
+
+            return;
+        }
+
+        var cursorOnOverlay = OverlayStackProbe.IsCursorOverOwnProcessWindow(_hwnd);
+
+        if (!_foregroundLossLogged)
+        {
+            _logger.Warning("浮窗可见但前台被抢走了（当前前台={Foreground}，光标在浮窗上={OnOverlay}），此后每拍重申一次",
+                WindowProcessQuery.DescribeWindow(PInvoke.GetForegroundWindow()), cursorOnOverlay);
+            _foregroundLossLogged = true;
+        }
+
+        _foregroundRetakeCount++;
+
+        // 光标在浮窗上这一次记一条（按状态变化记，不按拍数记）：它同时是"用户正伸手点浮窗"的凭据，
+        // 也是"为什么这次能抢回来"的答案 —— 没这一行的话，日志里两种重申看起来一模一样。
+        if (cursorOnOverlay && !_foregroundNudged)
+        {
+            _logger.Information("光标在浮窗上，改走「注入空鼠标事件解锁前台锁」那条路重申前台");
+            _foregroundNudged = true;
+        }
+
+        // 这里**不等**回读：每秒都在跑的路径上阻塞 UI 线程 300ms 不可接受，
+        // 而这次重申成没成下一拍就知道（前台是我们的就记"已收回"）。
+        ForegroundWindowActivator.Activate(_hwnd, handOverRightToSetForeground: false, _logger,
+            nudgeInputForForegroundLock: cursorOnOverlay);
+    }
+
+    /// <summary>
+    /// 把前台还给唤出那一刻的前台窗口（通常是游戏）。
+    ///
+    /// 只在**隐藏前一刻前台还是浮窗**时才还：浮窗显示期间用户可能已经点过别的窗口、前台早就易主了，
+    /// 那时候去 <c>SetForegroundWindow</c> 等于从别人手里硬抢，不是浮窗该做的事。
+    ///
+    /// 还失败也不影响显隐本身（顶多是用户得自己点一下游戏才回得去），所以只记结果、不重试、不报错。
+    /// </summary>
+    private void HandForegroundBack(HWND previous)
+    {
+        ForegroundWindowActivator.Activate(previous, handOverRightToSetForeground: false, _logger);
+
+        // 必须等回读，不能调完立刻读：前台切换是**异步**的（SetForegroundWindow 只是把请求交给目标线程）。
+        // 2026-09-24 本机实测踩到过：立刻回读读到的是还没切走的浮窗，把已经成功的还原记成了「没还成」，
+        // 而同一拍用外部脚本读到的前台**已经是游戏**了 —— 日志自己在骗人。
+        _logger.Information("浮窗隐藏：前台还给 {Previous}，结果={Result}",
+            WindowProcessQuery.DescribeWindow(previous),
+            WaitForForeground(previous)
+                ? "成功"
+                : "没还成（前台落在别的窗口上，用户可能需要点一下游戏）");
+    }
+
+    /// <summary>
+    /// 短等前台窗口变成 <paramref name="expected"/>，等到返回 <c>true</c>。
+    ///
+    /// 存在的理由只有一个：**让日志说真话**。抢 / 还前台都是异步生效的，马上回读会把成功记成失败
+    /// （本机实测过，见 <see cref="HandForegroundBack"/>）。等不到也不改变行为 —— 调用方只拿它写日志。
+    ///
+    /// 会阻塞 UI 线程最多 <see cref="ForegroundSettleTimeoutMilliseconds"/> 毫秒，但只在"没等到"时才会走满，
+    /// 而这两个调用点都在显隐的那一拍（窗口此刻是刚显示 / 刚隐藏），这一小段等待不落在任何交互上。
+    /// </summary>
+    private static bool WaitForForeground(HWND expected)
+    {
+        var deadline = Environment.TickCount64 + ForegroundSettleTimeoutMilliseconds;
+
+        while (PInvoke.GetForegroundWindow() != expected && Environment.TickCount64 < deadline)
+            Thread.Sleep(ForegroundSettlePollMilliseconds);
+
+        return PInvoke.GetForegroundWindow() == expected;
     }
 
     /// <summary>窗口此刻是否可见。取系统实际值，不是本类的意图值。</summary>
@@ -301,7 +503,20 @@ public sealed partial class OverlayWindow : WindowEx
 
     private void OnDragStripPointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (!_isDragging || !PInvoke.GetCursorPos(out var cursor))
+        if (!_isDragging)
+            return;
+
+        // 左键已经松开却还挂着 _isDragging：说明 PointerReleased / PointerCaptureLost 有一个没送到
+        //（注入的点击，或拖动途中窗口被抢走捕获，都可能造成）。这时再拖下去窗口会"焊"在光标上 ——
+        // 窗口追着光标跑，光标就永远停在窗口里的同一处，表现正是"鼠标动不了、老被拉扯"。
+        // 所以收尾一律以**按键状态**为准，不假设那两个事件一定会来。
+        if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed)
+        {
+            OnDragStripPointerReleased(sender, e);
+            return;
+        }
+
+        if (!PInvoke.GetCursorPos(out var cursor))
             return;
 
         // 目标位置一律用「按下时的窗口位置 + 光标从按下到现在的位移」算，**不用**指针在窗口内的坐标累积增量：
