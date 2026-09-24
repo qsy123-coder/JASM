@@ -13,13 +13,14 @@
 		<!-- 链接进来的 Core 源文件（见下面 ItemGroup）用了集合表达式，那是 C# 12 语法；
 		     net7.0 的默认 LangVersion 是 11，不抬会编译不过。 -->
 		<LangVersion>12</LangVersion>
-		<!-- 能力标记，必须与 Core/Helpers 下的两个协议类对齐（每个能力各占一个版本号，只增不改）：
-		     · ElevatorRefreshProtocol.MinimumFileVersionForTargetedRefresh = 2.0.0.0（带目标窗口的刷新 "2"）
-		     · ElevatorKeySendProtocol.MinimumFileVersionForKeySend        = 3.0.0.0（送键 "3"）
+		<!-- 能力标记，必须与 Core/Helpers 下的协议类对齐（每个能力各占一个版本号，只增不改）：
+		     · ElevatorRefreshProtocol.MinimumFileVersionForTargetedRefresh     = 2.0.0.0（带目标窗口的刷新 "2"）
+		     · ElevatorKeySendProtocol.MinimumFileVersionForKeySend             = 3.0.0.0（送键 "3"）
+		     · ElevatorForegroundHandbackProtocol.MinimumFileVersionForForegroundHandback = 4.0.0.0（归还前台 "4"）
 		     主程序靠版本号判断助手认不认这些命令。旧版 Elevator.exe 没有版本信息，读出来天然是 1.0.0.0，
 		     于是「低于某能力的最低版本」==「不认识那条命令」。
 		     注意正在运行的 exe 无法被覆盖（文件被锁），所以磁盘上的版本 == 正在跑的那个进程的版本。 -->
-		<FileVersion>3.0.0.0</FileVersion>
+		<FileVersion>4.0.0.0</FileVersion>
 	</PropertyGroup>
 
 	<!-- 按键协议与危险组合键护栏从 Core 链接进来，而不是 ProjectReference：
