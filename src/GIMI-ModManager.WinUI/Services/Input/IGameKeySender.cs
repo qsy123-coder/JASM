@@ -59,15 +59,27 @@ public interface IGameKeySender
     /// 把 <paramref name="virtualKey"/>（按 <paramref name="modifierKeyCodes"/> 顺序按住修饰键）合成发送给游戏。
     ///
     /// 行为：先把游戏窗口切到前台 → 等焦点稳定 → 按下 → 保持约 80ms → 抬起。
-    /// 焦点**留在游戏上**，不会把 JASM 抢回前台。
+    /// 焦点**留在游戏上**（除非传了 <paramref name="foregroundToHandBack"/>），不会把 JASM 抢回前台。
     ///
     /// 游戏以管理员身份运行时，本进程的 <c>SendInput</c> 会被 UIPI 静默丢弃，
     /// 这时改由提权助手代发（见 <c>ElevatorService.TrySendKeyChordAsync</c>）——
     /// 首次会弹一次 UAC，之后整个会话复用同一个提权进程。
     ///
+    /// <paramref name="foregroundToHandBack"/>：送完键把前台交给这个窗口（<c>0</c> = 不交还，焦点留在游戏上）。
+    /// <list type="bullet">
+    /// <item><b>按键徽章那条路传 <c>0</c></b>：用户是在 JASM 主窗口里点的徽章，接着还要玩游戏，
+    /// 焦点就该留在游戏上 —— 这是本接口一直以来的行为。</item>
+    /// <item><b>浮窗那条路必须传</b>（见 <c>OverlayRefreshCoordinator</c>）：送键前的同步段已经把游戏切到前台，
+    /// 而**送完之后浮窗再也拿不回前台** —— 提权游戏是那一刻的输入所有者，本进程的 <c>SetForegroundWindow</c>
+    /// 会被前台锁拒，而「先注入一次输入把身份拿回来」那一招又会被 UIPI 静默丢掉（实测）。
+    /// 唯一能交还的是刚注入过按键的**提权助手**（见 <c>ElevatorForegroundHandbackProtocol</c>）——
+    /// 不交还的话，用户每勾选一次都得重新唤出浮窗。</item>
+    /// </list>
+    ///
     /// 只有 <paramref name="ct"/> 被取消会抛 <see cref="OperationCanceledException"/>，
-    /// 其余失败一律返回结果（不抛异常）。
+    /// 其余失败一律返回结果（不抛异常）。**交还没成不算失败**：已经送出去的按键不该被它影响，
+    /// 调用方从结果里看不出区别（连失败原因都只记日志）。
     /// </summary>
     Task<GameKeySendResult> SendKeyAsync(ushort virtualKey, IReadOnlyList<ushort> modifierKeyCodes,
-        CancellationToken ct = default);
+        nint foregroundToHandBack = 0, CancellationToken ct = default);
 }
