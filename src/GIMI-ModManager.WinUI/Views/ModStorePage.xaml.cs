@@ -24,6 +24,27 @@ public sealed partial class ModStorePage : Page
         ViewModel = App.GetService<ModStoreViewModel>();
         InitializeComponent();
         ViewModel.Mods.CollectionChanged += OnModsCollectionChanged;
+
+        // 抽屉的开合由 DetailItem 这一条属性驱动(非 null = 打开),与市场侧的 SelectedMod 同一套。
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ModStoreViewModel.DetailItem))
+                OnDetailItemChanged();
+        };
+
+        // 关抽屉走 ViewModel:置回 null 才会再触发一次 PropertyChanged,否则同一 mod 再点一次不弹。
+        DetailPanel.Closed += (_, _) => ViewModel.CloseDetailPanelCommand.Execute(null);
+
+        // 重试也走 ViewModel —— 面板没有服务,重新取数要靠它。
+        DetailPanel.RetryRequested += (_, _) => ViewModel.RetryModDetailCommand.Execute(null);
+    }
+
+    private void OnDetailItemChanged()
+    {
+        if (ViewModel.DetailItem is { } item)
+            DetailPanel.Show(item);
+        else
+            DetailPanel.Hide();
     }
 
     private void OnModsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -69,6 +90,11 @@ public sealed partial class ModStorePage : Page
         var card = tpl.LoadContent() as FrameworkElement;
         if (card is null) return;
         card.DataContext = mod;
+
+        // 点卡片开详情抽屉。整张卡都能点(图片和叠在上面的文字都算)——
+        // 卡片里没有任何可交互控件,所以不需要再判「点到的是不是按钮」。
+        card.IsTapEnabled = true;
+        card.Tapped += (_, _) => ViewModel.OpenModDetailCommand.Execute(mod);
 
         // 懒加载:无预览图直接收起加载圈;有图的入队,滚到视口才设 Source
         var thumb = FindThumbImage(card);
