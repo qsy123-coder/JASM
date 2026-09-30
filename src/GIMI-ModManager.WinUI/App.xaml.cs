@@ -18,6 +18,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.ModExport;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.ModMarket;
+using GIMI_ModManager.WinUI.Services.ModStore;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModEnv;
@@ -364,6 +365,11 @@ public partial class App : Application
                 services.AddTransient<ModMarketViewModel>();
                 services.AddTransient<ModMarketPage>();
                 services.AddSingleton<ModMarketService>();
+
+                // Mod Store（GameBanana 直连，与上面的市场数据完全独立）
+                services.AddTransient<ModStoreViewModel>();
+                services.AddTransient<ModStorePage>();
+                services.AddSingleton<ModStoreService>();
 
                 // Configuration
                 services.Configure<ModMarketOptions>(
