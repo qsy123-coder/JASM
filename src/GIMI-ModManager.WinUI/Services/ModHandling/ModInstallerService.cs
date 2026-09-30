@@ -81,6 +81,20 @@ public class InstallOptions
 {
     public Uri? ModUrl { get; set; }
     public Guid? ExistingModIdToUpdate { get; set; }
+
+    /// <summary>
+    /// 由调用方钦定的 mod 根。
+    ///
+    /// <para>
+    /// <b>为什么需要</b>：多合一包（根目录自己带 ini，子目录是它的变体/资源）必须<b>整体</b>当一个 Mod 装。
+    /// 交给 <see cref="ModInstallation.AutoSetModRootFolder"/> 去猜的话，它会取「整棵树里第一个
+    /// <c>mod.ini</c>」—— 对这类包就是某个子目录，用户只装到包的一个碎片，而按键切换之类的逻辑
+    /// 还留在没被装进去的根 ini 里。
+    /// </para>
+    ///
+    /// <para>置空（或目录不存在）时走原有的启发式，单 Mod 包那条路一点没变。</para>
+    /// </summary>
+    public DirectoryInfo? ModRootFolder { get; set; }
 }
 
 public sealed class InstallMonitor : IDisposable
