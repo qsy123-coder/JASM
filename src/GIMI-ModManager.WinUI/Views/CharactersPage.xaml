@@ -346,6 +346,65 @@
                     </GridView>
                 </ScrollViewer>
             </StackPanel>
+
+            <!--
+                「有新版本」入口，摆在元素图标那排的右边（列 1 是原先空着的 Auto 列）。
+                没新版本时整块不出现 → 常态下不占宽度；点按钮弹确认，确认后**就地**开始更新并显示进度，
+                不跳设置页。状态与动作都来自单例 AppUpdateViewModel（与设置页同一个）。
+            -->
+            <StackPanel
+                Grid.Column="1"
+                Margin="12,0,0,0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="12">
+
+                <Button
+                    MinWidth="0"
+                    MinHeight="0"
+                    Padding="8,4"
+                    VerticalAlignment="Center"
+                    CornerRadius="4"
+                    Visibility="{x:Bind ViewModel.AppUpdate.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
+                    <Button.Flyout>
+                        <Flyout ShouldConstrainToRootBounds="False">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    TextWrapping="WrapWholeWords"
+                                    Text="JASM will exit and the update will start. Do you want to continue?"
+                                    l:Uids.Uid="AppUpdate_ConfirmText" />
+                                <Button
+                                    Command="{x:Bind ViewModel.AppUpdate.UpdateJasmCommand}"
+                                    Content="Update JASM"
+                                    l:Uids.Uid="AppUpdate_ConfirmButton" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE896;" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.AppUpdate.LatestVersion, Mode=OneWay}" />
+                    </StackPanel>
+                </Button>
+
+                <!-- 单文件版进程内自更新：下载期间在按钮位置就地显示进度（folder 版走外部更新器，不出现） -->
+                <StackPanel
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Visibility="{x:Bind ViewModel.AppUpdate.IsUpdatingJasm, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
+                    <ProgressBar
+                        Width="160"
+                        Maximum="100"
+                        Value="{x:Bind ViewModel.AppUpdate.UpdateProgressPercent, Mode=OneWay}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.AppUpdate.UpdateProgressText, Mode=OneWay}" />
+                </StackPanel>
+            </StackPanel>
+
             <Grid
                 x:Name="DragAndDropArea"
                 Grid.Column="2"
