@@ -173,7 +173,7 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                 ? _skinManagerService.GetModById(_installOptions.ExistingModIdToUpdate.Value)
                 : null;
 
-            var modDir = _modInstallation.AutoSetModRootFolder();
+            var modDir = ResolveModRootFolder();
             if (modDir is not null)
             {
                 var fileSystemItem = RootFolder.First().GetByPath(modDir.FullName);
@@ -251,6 +251,24 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
             if (options?.ModUrl is not null)
                 dispatcherQueue.TryEnqueue(() => { ModUrl = options.ModUrl.ToString(); });
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 定下这个安装窗的 mod 根。
+    ///
+    /// <para>
+    /// 调用方钦定的优先（<see cref="InstallOptions.ModRootFolder"/>，多合一包必须整体当一个 Mod 装，
+    /// 见 <c>ModPackageRootResolver</c>）；没钦定就还是原来那套「在整棵树里递归找第一个 ini」的启发式。
+    /// </para>
+    /// </summary>
+    private DirectoryInfo? ResolveModRootFolder()
+    {
+        if (_installOptions?.ModRootFolder is not { } forcedRoot || !forcedRoot.Exists)
+            return _modInstallation!.AutoSetModRootFolder();
+
+        _logger.Information("Using the mod root the caller pinned down: {ModRootFolder}", forcedRoot.FullName);
+        _modInstallation!.SetRootModFolder(forcedRoot);
+        return forcedRoot;
     }
 
     private async void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
