@@ -45,6 +45,9 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     private readonly IGameService _gameService;
     private readonly NotificationManager _notificationManager;
 
+    /// <summary>下载面板（单例）。页面只负责开合它，队列与行都在它那边。</summary>
+    private readonly ModDownloadManagerViewModel _downloadManager;
+
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _sidebarCts;
     private CancellationTokenSource? _detailCts;
@@ -56,12 +59,13 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     private bool _rebuildingSidebar;
 
     public ModStoreViewModel(ILogger logger, ModStoreService storeService, IGameService gameService,
-        NotificationManager notificationManager)
+        NotificationManager notificationManager, ModDownloadManagerViewModel downloadManager)
     {
         _logger = logger.ForContext<ModStoreViewModel>();
         _storeService = storeService;
         _gameService = gameService;
         _notificationManager = notificationManager;
+        _downloadManager = downloadManager;
     }
 
     // ─── 左侧栏 ────────────────────────────────────────────────
@@ -286,15 +290,23 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     private void CloseDetailPanel() => DetailItem = null;
 
     /// <summary>
-    /// 工具栏那个下载按钮。下载管理队列是 PRD Phase 1 第 6 项，还没做 ——
-    /// 先跟市场页一样给一条占位提示，别让按钮点了没反应。
+    /// 工具栏那个「下载管理」按钮：开合下载面板（再点一次收起来）。
+    /// 队列与面板都在单例的 <see cref="ModDownloadManagerViewModel"/> 那边，这里只负责开合。
     /// </summary>
     [RelayCommand]
-    private void OpenDownloadManager()
+    private void OpenDownloadManager() => _downloadManager.TogglePanelCommand.Execute(null);
+
+    /// <summary>
+    /// 详情抽屉里点了「下载选中文件」。入队后由下载面板接管（它会自动弹出来显示进度）。
+    /// </summary>
+    [RelayCommand]
+    private void DownloadSelectedFile(ModStoreFileItem? file)
     {
-        _notificationManager.ShowNotification("下载管理",
-            "下载管理功能即将推出，敬请期待。",
-            TimeSpan.FromSeconds(4));
+        // 抽屉已经关了 / 换了 mod 时不留残余动作。
+        if (file is null || DetailItem is not { } detail)
+            return;
+
+        _downloadManager.EnqueueFromDetail(detail.GbModId, file.Source, detail.Title);
     }
 
     // ─── 侧栏 ──────────────────────────────────────────────────
