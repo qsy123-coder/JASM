@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using GIMI_ModManager.Core.Services.Downloading;
+using Serilog;
 
 namespace JASM.Tests;
 
@@ -382,13 +383,22 @@ public class ResumableDownloaderTests : IDisposable
     private static HttpClient NewClient(HttpMessageHandler handler) => new(handler);
 
     private static ResumableDownloader NewDownloader(int maxAttempts = 1, int stallMs = 5000) =>
-        new(options: new ResumableDownloaderOptions
+        new(SilentLogger, new ResumableDownloaderOptions
         {
             MaxAttempts = maxAttempts,
             StallTimeout = TimeSpan.FromMilliseconds(stallMs),
             ProgressReportInterval = TimeSpan.Zero, // 每次读都报，断言才有确定的输入
             RetryBackoffBase = TimeSpan.FromMilliseconds(1),
         });
+
+    /// <summary>
+    /// 不传 logger 时会退回**全局**的 <c>Log.Logger</c>，而 <see cref="GameServiceInitializationTests"/>
+    /// 会把全局 logger 换成它自己的 MockLogger，再断言「里面没有 Warning / Error」。
+    /// 这里的失败用例（206 起点不对、重试、哈希不符……）是**故意**要写 Warning / Error 的，
+    /// 一落进那个共享列表就会让那边的断言翻车（并发写还会撞坏它的 List）。
+    /// 所以显式给一个什么都不写的 logger，把两边彻底隔开。
+    /// </summary>
+    private static readonly ILogger SilentLogger = new LoggerConfiguration().CreateLogger();
 
     private string Destination(string name = DefaultName) => Path.Combine(_directory, name);
 
