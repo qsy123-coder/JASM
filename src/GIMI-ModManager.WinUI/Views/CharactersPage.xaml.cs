@@ -129,44 +129,38 @@ public sealed partial class CharactersPage : Page
     }
 
     /// <summary>
-    /// 「拖到这儿自动识别」那块平时是收起的：Collapsed 的元素收不到拖拽事件，所以显形只能由页面根 Grid 点。
+    /// 毛玻璃提示层平时是收起的：Collapsed 的元素收不到拖拽事件，所以显形只能由页面根 Grid 点。
     /// </summary>
     private void PageRoot_OnDragEnter(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
-        DragAndDropArea.Visibility = Visibility.Visible;
+        ShowAutoDetectArea();
     }
 
     /// <summary>
     /// DragOver 每次指针移动都会来一发。留着它是为了兜住这种情况：指针挪到角色卡片上方时，
-    /// 根 Grid 可能先收到一次 DragLeave（拖拽事件会在子元素之间来回冒），检测区就灭了 ——
+    /// 根 Grid 可能先收到一次 DragLeave（拖拽事件会在子元素之间来回冒），提示层就灭了 ——
     /// 靠这一手补回来。显示是幂等的，多来几次没有代价。
     /// </summary>
     private void PageRoot_OnDragOver(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
-        DragAndDropArea.Visibility = Visibility.Visible;
+        ShowAutoDetectArea();
     }
 
     private void PageRoot_OnDragLeave(object sender, DragEventArgs e) => HideAutoDetectArea();
 
     /// <summary>
-    /// 落在页面空白处（既不是卡片也不是检测区）的拖放：只把检测区收起来。
-    /// 真正安装的是 <see cref="DragAndDropArea_OnDrop"/> —— 检测区是有边框、写了字的明确落点。
+    /// 落在角色列表上的拖放（不是某张卡片）：走「自动识别」—— 解压、认出属于哪个角色、交给安装向导。
+    ///
+    /// <para>
+    /// 提示层是 <c>IsHitTestVisible="False"</c> 的，接不到事件，所以真正的落点是
+    /// 「列表空白处 → 冒泡到页面根 Grid」。卡片那条路会在自己的 Drop 里把事件标成已处理
+    /// （按落点那张卡片的角色装），到不了这里。
+    /// </para>
     /// </summary>
-    private void PageRoot_OnDrop(object sender, DragEventArgs e) => HideAutoDetectArea();
-
-    private void HideAutoDetectArea() => DragAndDropArea.Visibility = Visibility.Collapsed;
-
-    private void DragAndDropArea_OnDragEnter(object sender, DragEventArgs e)
+    private async void PageRoot_OnDrop(object sender, DragEventArgs e)
     {
-        e.AcceptedOperation = DataPackageOperation.Copy;
-        DragAndDropArea.Visibility = Visibility.Visible;
-    }
-
-    private async void DragAndDropArea_OnDrop(object sender, DragEventArgs e)
-    {
-        // 认领这一下：别再冒泡到页面根 Grid
         e.Handled = true;
         HideAutoDetectArea();
 
@@ -175,6 +169,10 @@ public sealed partial class CharactersPage : Page
 
         await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
     }
+
+    private void ShowAutoDetectArea() => AutoDetectOverlay.Visibility = Visibility.Visible;
+
+    private void HideAutoDetectArea() => AutoDetectOverlay.Visibility = Visibility.Collapsed;
 
     private void BitmapImage_OnImageFailed(object sender, ExceptionRoutedEventArgs e)
     {
