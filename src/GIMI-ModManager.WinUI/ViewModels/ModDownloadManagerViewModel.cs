@@ -5,6 +5,7 @@ using GIMI_ModManager.Core.ModStore;
 using GIMI_ModManager.Core.Services.Downloading;
 using GIMI_ModManager.Core.Services.GameBanana.Models;
 using GIMI_ModManager.WinUI.Models;
+using GIMI_ModManager.WinUI.Services.ModStore;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using Serilog;
 
@@ -16,21 +17,23 @@ namespace GIMI_ModManager.WinUI.ViewModels;
 ///
 /// 它只做两件事：把队列的快照同步成一列 <see cref="ModDownloadItemViewModel"/>，
 /// 以及把「用户点了什么」翻译成队列调用。**自己不发请求、不碰文件、不管入库** ——
-/// 那些是 <see cref="ModDownloadQueue"/> 与它下游（第 7 项的入库）的事。
+/// 那些是 <see cref="ModDownloadQueue"/> 与它下游（第 7 项的入库 / 安装向导）的事。
 /// </summary>
 public partial class ModDownloadManagerViewModel : ObservableObject
 {
     private readonly ModDownloadQueue _queue;
+    private readonly ModStoreDeploymentService _deploymentService;
     private readonly NotificationManager _notificationManager;
     private readonly ILogger _logger;
 
     /// <summary>Key → 行。刷新时复用已有行：重建会让 ListView 闪，也会丢掉滚动位置。</summary>
     private readonly Dictionary<ModDownloadKey, ModDownloadItemViewModel> _rows = [];
 
-    public ModDownloadManagerViewModel(ModDownloadQueue queue, NotificationManager notificationManager,
-        ILogger logger)
+    public ModDownloadManagerViewModel(ModDownloadQueue queue, ModStoreDeploymentService deploymentService,
+        NotificationManager notificationManager, ILogger logger)
     {
         _queue = queue;
+        _deploymentService = deploymentService;
         _notificationManager = notificationManager;
         _logger = logger.ForContext<ModDownloadManagerViewModel>();
 
@@ -110,8 +113,10 @@ public partial class ModDownloadManagerViewModel : ObservableObject
     ///
     /// 入队后**顺手把面板打开**：用户按了「下载」总得看见它去了哪。
     /// 同一个文件已经在队里时队列不会重复排（连点两下不会下两份）。
+    ///
+    /// **会先翻一遍本地归档**（见 <see cref="TryDeployFromCacheAsync"/>）：下过的东西不入队。
     /// </summary>
-    public ModDownloadItem? EnqueueFromDetail(ModStoreDetailItem detail, ModStoreFile file)
+    public async Task EnqueueFromDetailAsync(ModStoreDetailItem detail, ModStoreFile file)
     {
         ArgumentNullException.ThrowIfNull(detail);
         ArgumentNullException.ThrowIfNull(file);
@@ -125,12 +130,47 @@ public partial class ModDownloadManagerViewModel : ObservableObject
                 detail.GbModId, file.FileId);
             _notificationManager.ShowNotification("下载", "这个文件没有可用的下载地址，无法下载。",
                 TimeSpan.FromSeconds(5));
-            return null;
+            return;
         }
 
-        var item = _queue.Enqueue(request);
+        if (await TryDeployFromCacheAsync(request))
+            return;
+
+        _queue.Enqueue(request);
         IsOpen = true;
-        return item;
+    }
+
+    /// <summary>
+    /// 归档里已经有这份文件（md5 相同）就直接拉安装向导，返回 <c>true</c> = 这次由缓存接管，
+    /// 调用方**不要**再入队。
+    ///
+    /// 这条路不经过队列，所以下载面板不会亮 —— 用户看到的是向导自己弹出来，
+    /// 这也正是「一键部署」该有的样子（PRD 里零中间确认）。
+    ///
+    /// 缓存命中但向导没能开起来（该角色已有一个安装在进行、或归档解不开）时**也返回 true**：
+    /// 那种情况下去下一个一模一样的文件没有意义 —— 命中意味着字节完全相同，
+    /// 再下一遍只会得到同一个坏归档。所以这里只提示，不回落到下载。
+    /// </summary>
+    private async Task<bool> TryDeployFromCacheAsync(ModDownloadRequest request)
+    {
+        var cached = await _deploymentService.TryGetCachedArchiveAsync(request);
+        if (cached is null)
+            return false;
+
+        try
+        {
+            // false = 这个角色已经有一个安装向导开着（部署服务已经提示过了），不是错误。
+            await _deploymentService.DeployCachedAsync(request, cached);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Deploying the cached archive failed for {Key}", request.Key);
+            _notificationManager.ShowNotification("Mod 商店",
+                $"本地已经下过『{request.ModName ?? request.FileName}』，但用它安装时出错，详情见日志。",
+                TimeSpan.FromSeconds(8));
+        }
+
+        return true;
     }
 
     // ─── 队列 → 界面 ───────────────────────────────────────────
