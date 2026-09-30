@@ -25,6 +25,7 @@ public sealed class ModStoreMod
         Id = new GbModId(record.ModId);
         Name = record.Name?.Trim() ?? string.Empty;
         AuthorName = NullIfBlank(record.Author?.AuthorName);
+        AuthorAvatarUrl = GameBananaMediaUrls.TryCreateImageUrl(record.Author?.AvatarImageUrl);
         ModPageUrl = TryCreateModPageUrl(record.ProfileUrl);
         PreviewImages = GameBananaMediaUrls.GetPreviewImages(record.PreviewMedia);
         Category = ModStoreCategory.FromApi(record.RootCategory);
@@ -70,6 +71,15 @@ public sealed class ModStoreMod
     public string Name { get; }
 
     public string? AuthorName { get; }
+
+    /// <summary>
+    /// 作者头像（<c>_aSubmitter._sAvatarUrl</c>）。列表接口就给，卡片上直接显示。
+    ///
+    /// 没有头像的作者，GameBanana 给的是**默认头像**（<c>…/static/img/defaults/avatar.gif</c>）
+    /// 而不是空值 —— 所以「有 URL」不等于「作者设过头像」，别拿它去判「有没有头像」。
+    /// 空值 / 非本图床一律映射成 null，界面退回底色圆。
+    /// </summary>
+    public Uri? AuthorAvatarUrl { get; }
 
     /// <summary>
     /// 角色名，来自 <c>_aSubCategory</c>（鸣潮板块的子分类就是角色：<c>Jinhsi</c> / <c>Qingxiao</c> …）。
