@@ -32,6 +32,15 @@ public sealed class ApiGameBananaClient(
     /// <summary>站内搜索：<c>apiv11/Util/Search/Results</c>（跨类型，返回混合提交）。</summary>
     private const string SearchApiUrl = "https://gamebanana.com/apiv11/Util/Search/Results";
 
+    /// <summary>列表索引端点：<c>apiv11/Mod/Index</c>（唯一支持服务端分类筛选的列表端点）。</summary>
+    private const string ModIndexApiUrl = "https://gamebanana.com/apiv11/Mod/Index";
+
+    /// <summary><c>Mod/Index</c> 的 <c>_nPerpage</c> 上限（实测 50 可用，100 报 400）。</summary>
+    private const int ModIndexMaxPerPage = 50;
+
+    /// <summary>板块主页：<c>apiv11/Game/{gameId}/ProfilePage</c>（根分类清单在这里）。</summary>
+    private const string GameProfilePageApiUrl = "https://gamebanana.com/apiv11/Game/";
+
     public async Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default)
     {
         using var response = await _httpClient.GetAsync(HealthCheckUrl, cancellationToken).ConfigureAwait(false);
@@ -167,8 +176,140 @@ public sealed class ApiGameBananaClient(
         return GetModStorePageAsync(requestUrl, cancellationToken);
     }
 
+    public Task<ModStorePage?> GetGameModsByCategoryAsync(GbGameId gameId, int categoryId, int page,
+        int? perPage = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(gameId);
+        ArgumentOutOfRangeException.ThrowIfLessThan(categoryId, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+
+        if (perPage is { } size && (size < 1 || size > ModIndexMaxPerPage))
+            throw new ArgumentOutOfRangeException(nameof(perPage), size,
+                $"Mod/Index 的 _nPerpage 只接受 1..{ModIndexMaxPerPage}（实测 100 报 400）。");
+
+        // 过滤器参数名带方括号（_aFilters[Generic_Game]），.NET 的 Uri 能原样带上，不需要转义。
+        // 这两个 filter 是**服务端**生效的（实测：根分类 29524 → 2817 条、子分类 46598 → 2 条），
+        // 所以分类视图不用再靠客户端过滤翻页找内容。
+        var requestUrl = new Uri(ModIndexApiUrl +
+                                $"?_nPage={page}" +
+                                (perPage is { } p ? $"&_nPerpage={p}" : string.Empty) +
+                                $"&_aFilters[Generic_Game]={gameId}" +
+                                $"&_aFilters[Generic_Category]={categoryId}");
+
+        return GetModStorePageAsync(requestUrl, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ModStoreRootCategory>?> GetGameRootCategoriesAsync(GbGameId gameId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(gameId);
+
+        var requestUrl = new Uri(GameProfilePageApiUrl + gameId + "/ProfilePage");
+
+        try
+        {
+            using var response = await SendRequest(requestUrl, cancellationToken).ConfigureAwait(false);
+
+            await using var contentStream =
+                await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            var apiResponse = await JsonSerializer
+                .DeserializeAsync<ApiGameProfilePageResponse>(contentStream, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (apiResponse?.ModRootCategories is null)
+                return [];
+
+            return apiResponse.ModRootCategories
+                .Select(ModStoreRootCategory.FromApi)
+                .Where(category => category is not null)
+                .Select(category => category!)
+                .ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "获取 GameBanana 板块根分类失败，商店侧栏将只显示「全部」 | Url: {Url}", requestUrl);
+            return null;
+        }
+    }
+
+    public Task<int?> GetGameModCountAsync(GbGameId gameId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(gameId);
+
+        // _nPerpage=1：只为了拿 metadata 里的总数，别把一整页 15 条记录也拖回来。
+        var requestUrl = new Uri(ModIndexApiUrl +
+                                 $"?_nPage=1&_nPerpage=1&_aFilters[Generic_Game]={gameId}");
+
+        return GetCountAsync(requestUrl, sectionModelName: null, cancellationToken);
+    }
+
+    public Task<int?> GetSearchModCountAsync(GbGameId gameId, string searchQuery,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(gameId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(searchQuery);
+
+        var requestUrl = new Uri(SearchApiUrl +
+                                 $"?_sSearchString={Uri.EscapeDataString(searchQuery)}" +
+                                 $"&_idGameRow={gameId}&_nPage=1");
+
+        return GetCountAsync(requestUrl, ApiSubfeedRecord.ModModelName, cancellationToken);
+    }
+
     /// <summary>
-    /// 商店列表的统一取数路径。
+    /// 只读一个数字的取数路径（总数 / 分类型命中数），不解析记录体。
+    ///
+    /// <paramref name="sectionModelName"/> 为 null = 取 <c>_nRecordCount</c>（列表端点：这是**筛完的总数**）；
+    /// 非 null = 取 <c>_aSectionMatchCounts</c> 里该模型的命中数（搜索端点：<c>_nRecordCount</c> 是
+    /// **所有类型**的总数，拿它当 mod 数会虚高，实测搜 Jinhsi 是 203 vs Mod 130）。
+    ///
+    /// 失败一律返回 null（「不知道」）而不是 0 —— 侧栏里 0 和「没取到」显示得不一样。
+    /// </summary>
+    private async Task<int?> GetCountAsync(Uri requestUrl, string? sectionModelName,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await SendRequest(requestUrl, cancellationToken).ConfigureAwait(false);
+
+            await using var contentStream =
+                await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            var apiResponse = await JsonSerializer
+                .DeserializeAsync<ApiSubfeedResponse>(contentStream, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (apiResponse?.Metadata is not { } metadata)
+                return null;
+
+            if (sectionModelName is null)
+                return metadata.RecordCount >= 0 ? metadata.RecordCount : null;
+
+            if (metadata.SectionMatchCounts is null)
+                return null;
+
+            // 命中数为 0 时服务端不会给这一项，所以「有清单但没有 Mod 项」= 0 条，不是未知。
+            var section = metadata.SectionMatchCounts
+                .FirstOrDefault(s => string.Equals(s.ModelName, sectionModelName, StringComparison.OrdinalIgnoreCase));
+
+            return section is { MatchCount: >= 0 } ? section.MatchCount : 0;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "获取 GameBanana 计数失败 | Url: {Url}", requestUrl);
+            return null;
+        }
+    }
+
     ///
     /// 与 <see cref="GetModProfileAsync"/> 那族**刻意不同**：那些方法失败就抛（调用方是后台服务，
     /// 需要知道失败了），而商店是个用户正在看的页面 —— 一次翻页失败应该显示空态/重试，
