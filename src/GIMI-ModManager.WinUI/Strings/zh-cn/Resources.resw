@@ -2191,6 +2191,36 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModStore_DownloadManager.ToolTipService.ToolTip" xml:space="preserve">
     <value>下载管理</value>
   </data>
+  <data name="ModStore_Detail_FileArchived.Text" xml:space="preserve">
+    <value>已归档</value>
+  </data>
+  <data name="ModStore_Detail_Obsolete.Text" xml:space="preserve">
+    <value>已过时</value>
+  </data>
+  <data name="ModStore_Detail_OverviewTab.Content" xml:space="preserve">
+    <value>总览与文件</value>
+  </data>
+  <data name="ModStore_Detail_DescriptionTab.Content" xml:space="preserve">
+    <value>图文描述</value>
+  </data>
+  <data name="ModStore_Detail_Loading.Text" xml:space="preserve">
+    <value>正在加载详情…</value>
+  </data>
+  <data name="ModStore_Detail_Retry.Content" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="ModStore_Detail_FilesTitle.Text" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="ModStore_Detail_NoFiles.Text" xml:space="preserve">
+    <value>这个 mod 没有可下载的文件（作者可能已经撤下）。</value>
+  </data>
+  <data name="ModStore_Detail_NoBody.Text" xml:space="preserve">
+    <value>作者没有提供文字描述。</value>
+  </data>
+  <data name="ModStore_Detail_OpenInBrowser.Text" xml:space="preserve">
+    <value>查看 GameBanana 页面</value>
+  </data>
   <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
     <value>分类</value>
   </data>
