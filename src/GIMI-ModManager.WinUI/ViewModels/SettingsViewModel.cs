@@ -106,9 +106,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty] private bool _persistWindowPosition = false;
 
     // Game data sync
-    [ObservableProperty] private string _gameDataLastSyncTime = "Never";
-    [ObservableProperty] private string _gameDataCurrentVersion = "None";
-    [ObservableProperty] private string _gameDataSyncStatus = "Idle";
+    // 三个文本初值在构造函数里用 localizer 赋（字段初始化器执行时 _localizer 还没赋值），见 ctor
+    [ObservableProperty] private string _gameDataLastSyncTime = string.Empty;
+    [ObservableProperty] private string _gameDataCurrentVersion = string.Empty;
+    [ObservableProperty] private string _gameDataSyncStatus = string.Empty;
     [ObservableProperty] private bool _isGameDataSyncEnabled = true;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGameDataSyncNotRunning))]
@@ -154,6 +155,12 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         AppUpdate = appUpdateViewModel;
         _gameService = gameService;
         _localizer = localizer;
+
+        // 游戏数据同步的三个显示文本初值。前两个会被 OnNavigatedTo → RefreshSyncDisplay 覆写，
+        // 「状态」的初值则是稳态显示值（只有点同步才会变），所以不能留在字段初始化器里写死英文
+        GameDataSyncStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncIdle", defaultValue: "Idle");
+        GameDataCurrentVersion = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNone", defaultValue: "None");
+        GameDataLastSyncTime = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNever", defaultValue: "Never");
         _selectedGameService = selectedGameService;
         _modUpdateAvailableChecker = modUpdateAvailableChecker;
         _lifeCycleService = lifeCycleService;
@@ -384,7 +391,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         if (dialog.MiFolder is null || dialog.ModsFolder is null)
         {
             if (dialog.Result is { Success: false } && dialog.Result is { Cancelled: false })
-                _notificationManager.ShowNotification("Mod 环境配置失败", string.Join("；", dialog.Result.Issues),
+                _notificationManager.ShowNotification(
+                    _localizer.GetLocalizedStringOrDefault("SettingsVM_ModEnvSetupFailedTitle", defaultValue: "Mod environment setup failed"),
+                    string.Join("；", dialog.Result.Issues),
                     TimeSpan.FromSeconds(5));
             return;
         }
@@ -400,7 +409,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         }
         else
         {
-            _notificationManager.ShowNotification("Mod 环境配置完成", "路径已填入，路径设置未变化。",
+            _notificationManager.ShowNotification(
+                _localizer.GetLocalizedStringOrDefault("SettingsVM_ModEnvSetupDoneTitle", defaultValue: "Mod environment setup finished"),
+                _localizer.GetLocalizedStringOrDefault("SettingsVM_ModEnvSetupDoneText", defaultValue: "Paths were filled in, path settings were unchanged."),
                 TimeSpan.FromSeconds(3));
         }
     }
@@ -787,7 +798,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         if (IsGameDataSyncRunning) return;
         IsGameDataSyncRunning = true;
-        GameDataSyncStatus = "Checking...";
+        GameDataSyncStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncChecking", defaultValue: "Checking...");
 
         try
         {
@@ -796,10 +807,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
             GameDataSyncStatus = result switch
             {
-                SyncResult.Success => "Sync successful",
-                SyncResult.AlreadyUpToDate => "Already up to date",
-                SyncResult.Failed => "Sync failed",
-                SyncResult.NoReleaseFound => "No data release found",
+                SyncResult.Success => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncOK", defaultValue: "Sync successful"),
+                SyncResult.AlreadyUpToDate => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncUpToDate", defaultValue: "Already up to date"),
+                SyncResult.Failed => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncFailed", defaultValue: "Sync failed"),
+                SyncResult.NoReleaseFound => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNoRelease", defaultValue: "No data release found"),
                 _ => ""
             };
         }
@@ -822,9 +833,11 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private void RefreshSyncDisplay()
     {
         var game = Enum.Parse<SupportedGames>(SelectedGame);
-        GameDataCurrentVersion = _gameDataSyncService.GetCurrentDataVersion(game) ?? "None";
+        GameDataCurrentVersion = _gameDataSyncService.GetCurrentDataVersion(game) ??
+                                 _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNone", defaultValue: "None");
         var lastSync = _gameDataSyncService.GetLastSyncTime(game);
-        GameDataLastSyncTime = lastSync?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "Never";
+        GameDataLastSyncTime = lastSync?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ??
+                               _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNever", defaultValue: "Never");
     }
 
     public async void OnNavigatedTo(object parameter)
