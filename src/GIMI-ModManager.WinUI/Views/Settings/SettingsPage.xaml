@@ -15,6 +15,8 @@
     <Page.Resources>
         <xaml1:EnumToBooleanConverter x:Key="EnumToBooleanConverter" />
         <xaml1:BoolToVisibleConverter x:Key="BoolToVisibleConverter" />
+        <!-- 枚举 → 本地化文案（导出对话框的状态下拉、「同步进程」状态徽章） -->
+        <xaml1:LocalizedEnumNameConverter x:Key="LocalizedEnumNameConverter" />
     </Page.Resources>
     <Grid>
 
@@ -46,7 +48,8 @@
                         <StackPanel
                             Grid.Row="1"
                             Orientation="Horizontal"
-                            ToolTipService.ToolTip="Keeps the jasm mod folder structure. I.e. Characters/Diluc/SomeDilucSkinMod">
+                            ToolTipService.ToolTip="Keeps the jasm mod folder structure. I.e. Characters/Diluc/SomeDilucSkinMod"
+                            l:Uids.Uid="Settings_ExportDialog_KeepStructureTip">
                             <CheckBox IsChecked="{x:Bind KeepFolderStructure, Mode=TwoWay}" />
                             <TextBlock
                                 IsTextSelectionEnabled="True"
@@ -57,7 +60,8 @@
                         <StackPanel
                             Grid.Row="2"
                             Orientation="Horizontal"
-                            ToolTipService.ToolTip="This is recursive and removes all files AND folders starting with .JASM_">
+                            ToolTipService.ToolTip="This is recursive and removes all files AND folders starting with .JASM_"
+                            l:Uids.Uid="Settings_ExportDialog_RemoveJasmTip">
                             <CheckBox IsChecked="{x:Bind RemoveJasmSettings, Mode=TwoWay}" />
                             <TextBlock
                                 IsTextSelectionEnabled="True"
@@ -68,8 +72,17 @@
                         <StackPanel
                             Grid.Row="3"
                             Orientation="Horizontal"
-                            ToolTipService.ToolTip="Whether to prepend or remove the 'DISABLED_' prefix from the exported mods">
-                            <ComboBox ItemsSource="{x:Bind SetModStatuses, Mode=TwoWay}" SelectedItem="{x:Bind SetModStatus, Mode=TwoWay}" />
+                            ToolTipService.ToolTip="Whether to prepend or remove the 'DISABLED_' prefix from the exported mods"
+                            l:Uids.Uid="Settings_ExportDialog_ChangeStatusTip">
+                            <!--  ItemsSource/SelectedItem 仍绑 SetModStatus 枚举，只把「怎么显示」换成词条，
+                                  所以导出逻辑一行都不用改  -->
+                            <ComboBox ItemsSource="{x:Bind SetModStatuses, Mode=TwoWay}" SelectedItem="{x:Bind SetModStatus, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource LocalizedEnumNameConverter}, ConverterParameter=SetModStatus}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                             <TextBlock
                                 VerticalAlignment="Center"
                                 IsTextSelectionEnabled="True"
@@ -133,19 +146,21 @@
                     </StackPanel>
 
                     <StackPanel Margin="0,8,0,0">
-                        <TextBlock Text="Window" />
+                        <TextBlock Text="Window" l:Uids.Uid="Settings_Window" />
                         <CheckBox
                             Command="{x:Bind ViewModel.WindowSizePositionToggleCommand}"
                             CommandParameter="size"
                             Content="Remember window size"
                             IsChecked="{x:Bind ViewModel.PersistWindowSize, Mode=OneWay}"
-                            ToolTipService.ToolTip="If checked then the main window size is saved when JASM exits" />
+                            ToolTipService.ToolTip="If checked then the main window size is saved when JASM exits"
+                            l:Uids.Uid="Settings_Window_RememberSize" />
                         <CheckBox
                             Command="{x:Bind ViewModel.WindowSizePositionToggleCommand}"
                             CommandParameter="position"
                             Content="Remember window position"
                             IsChecked="{x:Bind ViewModel.PersistWindowPosition, Mode=OneWay}"
-                            ToolTipService.ToolTip="If checked then the main window position is saved when JASM exits" />
+                            ToolTipService.ToolTip="If checked then the main window position is saved when JASM exits"
+                            l:Uids.Uid="Settings_Window_RememberPosition" />
                     </StackPanel>
 
 
@@ -186,7 +201,8 @@
                     <TextBlock
                         Margin="0,0,0,8"
                         IsTextSelectionEnabled="True"
-                        Text="Settings are saved independently for each selected game." />
+                        Text="Settings are saved independently for each selected game."
+                        l:Uids.Uid="Settings_GameSettingsNote" />
 
                     <ComboBox
                         x:Name="GameSelectorComboBox"
@@ -200,13 +216,14 @@
                 <TextBlock
                     Style="{ThemeResource SubtitleTextBlockStyle}"
                     Text="游戏数据同步"
-                    l:Uids.Uid="/Settings/GameDataSyncSectionHeader" />
+                    l:Uids.Uid="Settings_GameDataSyncSectionHeader" />
                 <StackPanel Margin="{StaticResource SmallTopBottomMargin}">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <TextBlock
                             VerticalAlignment="Center"
                             Style="{ThemeResource BodyTextBlockStyle}"
-                            Text="上次同步: " />
+                            Text="上次同步: "
+                            l:Uids.Uid="Settings_GameDataSync_LastSync" />
                         <TextBlock
                             Margin="8,0,0,0"
                             VerticalAlignment="Center"
@@ -217,7 +234,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             Style="{ThemeResource BodyTextBlockStyle}"
-                            Text="数据版本: " />
+                            Text="数据版本: "
+                            l:Uids.Uid="Settings_GameDataSync_DataVersion" />
                         <TextBlock
                             Margin="8,0,0,0"
                             VerticalAlignment="Center"
@@ -228,7 +246,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             Style="{ThemeResource BodyTextBlockStyle}"
-                            Text="状态: " />
+                            Text="状态: "
+                            l:Uids.Uid="Settings_GameDataSync_Status" />
                         <TextBlock
                             Margin="8,0,0,0"
                             VerticalAlignment="Center"
@@ -241,19 +260,21 @@
                         IsEnabled="{x:Bind ViewModel.IsGameDataSyncNotRunning, Mode=OneWay}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <FontIcon Glyph="&#xE895;" />
-                            <TextBlock Text="检查并同步游戏数据" />
+                            <TextBlock Text="检查并同步游戏数据" l:Uids.Uid="Settings_GameDataSync_CheckButton" />
                         </StackPanel>
                     </Button>
                     <CheckBox
                         Command="{x:Bind ViewModel.ToggleGameDataAutoSyncCommand}"
                         Content="JASM 启动时自动检查更新"
-                        IsChecked="{x:Bind ViewModel.IsGameDataSyncEnabled, Mode=OneWay}" />
+                        IsChecked="{x:Bind ViewModel.IsGameDataSyncEnabled, Mode=OneWay}"
+                        l:Uids.Uid="Settings_GameDataSync_AutoSync" />
                     <TextBlock
                         Margin="0,4,0,0"
                         IsTextSelectionEnabled="True"
                         TextWrapping="WrapWholeWords"
                         Style="{ThemeResource CaptionTextBlockStyle}"
-                        Text="从 GitHub 下载最新的游戏角色数据，包括新角色、NPC 和图片资源。自定义角色和 Mod 将被保留。" />
+                        Text="从 GitHub 下载最新的游戏角色数据，包括新角色、NPC 和图片资源。自定义角色和 Mod 将被保留。"
+                        l:Uids.Uid="Settings_GameDataSync_Description" />
                 </StackPanel>
 
                 <TextBlock
@@ -277,7 +298,7 @@
                             <TextBlock
                                 VerticalAlignment="Center"
                                 Style="{ThemeResource BodyTextBlockStyle}"
-                                Text="{x:Bind ViewModel.ElevatorService.ElevatorStatus, Mode=OneWay}" />
+                                Text="{x:Bind ViewModel.ElevatorService.ElevatorStatus, Mode=OneWay, Converter={StaticResource LocalizedEnumNameConverter}, ConverterParameter=ElevatorStatus}" />
                         </Border>
                     </StackPanel>
 
@@ -326,13 +347,16 @@
 
                 </StackPanel>
 
-                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Commands" />
+                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Commands" l:Uids.Uid="Settings_Commands" />
+                <!--  不复用 CommandsSettingsPage 的 CmdSettings_CreateCard：那张卡片的原文是「Create new command」，
+                      与这里「Create Custom Commands」不同，复用会连英文文案一起改掉  -->
                 <controls1:SettingsCard
                     Command="{x:Bind ViewModel.NavigateToCommandsSettingsCommand}"
                     Description="Commands (scripts) can be defined and then be run on specified mods"
                     Header="Create Custom Commands"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE716;}"
-                    IsClickEnabled="True" />
+                    IsClickEnabled="True"
+                    l:Uids.Uid="Settings_Commands_CreateCard" />
 
 
                 <TextBlock
@@ -360,39 +384,51 @@
                         l:Uids.Uid="/Settings/ModsFolderSelector" />
 
                     <StackPanel Orientation="Horizontal">
-                        <Button Command="{x:Bind ViewModel.SaveSettingsCommand}" ToolTipService.ToolTip="Update folder path(s)?">Update</Button>
+                        <Button
+                            Command="{x:Bind ViewModel.SaveSettingsCommand}"
+                            Content="Update"
+                            ToolTipService.ToolTip="Update folder path(s)?"
+                            l:Uids.Uid="Settings_Folders_Update" />
                         <Button
                             Margin="40,0,0,0"
                             Command="{x:Bind ViewModel.ReorganizeModsCommand}"
-                            Content="Reorganize Mods" />
+                            Content="Reorganize Mods"
+                            l:Uids.Uid="Settings_Folders_ReorganizeMods" />
                         <Button
                             Margin="40,0,0,0"
                             Command="{x:Bind ViewModel.ShowCleanModsFolderDialogCommand}"
-                            Content="Clean Mods folder" />
+                            Content="Clean Mods folder"
+                            l:Uids.Uid="Settings_Folders_CleanModsFolder" />
 
                         <Button
                             Margin="40,0,0,0"
                             Command="{x:Bind ViewModel.ShowDisableAllModsDialogCommand}"
-                            Content="Disable All Mods" />
+                            Content="Disable All Mods"
+                            l:Uids.Uid="Settings_Folders_DisableAllMods" />
                         <Button
                             Margin="40,0,0,0"
                             Command="{x:Bind ViewModel.OneClickSetupCommand}"
                             Content="一键配置 Mod 环境"
-                            Visibility="{x:Bind ViewModel.ShowModEnvSetupButton, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            Visibility="{x:Bind ViewModel.ShowModEnvSetupButton, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            l:Uids.Uid="Settings_Folders_OneClickSetup" />
                     </StackPanel>
 
                     <StackPanel Margin="0,16,0,0" Orientation="Horizontal">
                         <Button
                             Margin="0,0,8,0"
                             Command="{x:Bind ViewModel.Reset3DmigotoPathCommand}"
-                            Content="Reset 3Dmigoto Exe Path">
+                            Content="Reset 3Dmigoto Exe Path"
+                            l:Uids.Uid="Settings_Folders_Reset3DmigotoPath">
                             <ToolTipService.ToolTip>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock TextWrapping="WrapWholeWords" Text="{x:Bind ViewModel.ThreeDMigtoProcessManager.ProcessPath, Mode=OneWay}" />
                                 </StackPanel>
                             </ToolTipService.ToolTip>
                         </Button>
-                        <Button Command="{x:Bind ViewModel.ResetGenshinExePathCommand}" Content="Reset Genshin Exe Path">
+                        <Button
+                            Command="{x:Bind ViewModel.ResetGenshinExePathCommand}"
+                            Content="Reset Genshin Exe Path"
+                            l:Uids.Uid="Settings_Folders_ResetGenshinPath">
                             <ToolTipService.ToolTip>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock TextWrapping="WrapWholeWords" Text="{x:Bind ViewModel.GenshinProcessManager.ProcessPath, Mode=OneWay}" />
@@ -406,7 +442,8 @@
                         <CheckBox
                             Command="{x:Bind ViewModel.ToggleCharacterSkinsAsCharactersCommand}"
                             Content="Treat Character Skins as separate characters"
-                            IsChecked="{x:Bind ViewModel.CharacterAsSkinsCheckbox, Mode=TwoWay}" />
+                            IsChecked="{x:Bind ViewModel.CharacterAsSkinsCheckbox, Mode=TwoWay}"
+                            l:Uids.Uid="Settings_Folders_CharacterAsSeparate" />
                     </StackPanel>
 
                     <StackPanel Margin="0,16,0,0" Spacing="8">
@@ -415,7 +452,8 @@
                             HorizontalAlignment="Left"
                             IsTextSelectionEnabled="True"
                             TextWrapping="WrapWholeWords"
-                            Text="When using JASM to download mods, it automatically caches the archives or zip files. You can specify a maximum limit in gigabytes for the cache directory, and JASM will keep the cache size under the limit when starting up." />
+                            Text="When using JASM to download mods, it automatically caches the archives or zip files. You can specify a maximum limit in gigabytes for the cache directory, and JASM will keep the cache size under the limit when starting up."
+                            l:Uids.Uid="Settings_Folders_CacheDescription" />
 
                         <StackPanel Orientation="Horizontal" Spacing="16">
 
@@ -425,17 +463,22 @@
                                 ValueChanged="LocalCacheSlider_OnValueChanged"
                                 Value="{x:Bind ViewModel.MaxCacheLimit, Mode=OneWay}" />
                             <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.MaxCacheSizeString, Mode=OneWay}" />
-                            <controls:LinkButton Link="{x:Bind ViewModel.ArchiveCacheFolderPath}" Text="Open cache folder..." />
+                            <controls:LinkButton
+                                Link="{x:Bind ViewModel.ArchiveCacheFolderPath}"
+                                Text="Open cache folder..."
+                                l:Uids.Uid="Settings_Folders_OpenCacheFolder" />
 
                         </StackPanel>
 
                     </StackPanel>
 
 
+                    <!--  「当前 Mod 缓存大小（鸣潮）：12.3 GB」：中文靠标签的「（」与冒号词条的「）：」把游戏名括起来；
+                          英文两条词条与改造前逐字一致（GB 中英同形，保持字面量）  -->
                     <TextBlock IsTextSelectionEnabled="True">
-                        <Run Text="Current Size of Mod Cache for" />
+                        <Run Text="Current Size of Mod Cache for" l:Uids.Uid="Settings_Folders_CacheSizeLabel" />
                         <Run Text="{x:Bind ViewModel.SelectedGame, Mode=OneWay}" />
-                        <Run Text=":" />
+                        <Run Text=":" l:Uids.Uid="Settings_Folders_CacheSizeSeparator" />
                         <Run Text="{x:Bind ViewModel.ModCacheSizeGB, Mode=OneWay}" />
                         <Run Text="GB" />
 
@@ -492,55 +535,86 @@
                     <HyperlinkButton
                         Margin="{StaticResource SettingsPageHyperlinkButtonMargin}"
                         Content="Just Another Skin Manager Github"
-                        NavigateUri="https://github.com/Jorixon/JASM" />
+                        NavigateUri="https://github.com/Jorixon/JASM"
+                        l:Uids.Uid="Settings_About_Github" />
                     <HyperlinkButton
                         Margin="{StaticResource SettingsPageHyperlinkButtonMargin}"
                         Content="Just Another Skin Manager GameBanana"
-                        NavigateUri="https://gamebanana.com/tools/14574" />
+                        NavigateUri="https://gamebanana.com/tools/14574"
+                        l:Uids.Uid="Settings_About_GameBanana" />
 
-                    <StackPanel Orientation="Horizontal" Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
-                        <TextBlock VerticalAlignment="Center" Text="New Update Available on GitHub:" />
-                        <TextBlock
-                            Margin="8,0"
-                            VerticalAlignment="Center"
-                            Text="{x:Bind ViewModel.LatestVersion, Mode=OneWay}" />
+                    <!--
+                        有新版时的提示块：拆成两行，别把「文案 + 版本号 + 说明链接 + 两个按钮」全塞进一行横排
+                        （窄窗下会互相压成一团）。整块只在有新版本时出现。
+                    -->
+                    <StackPanel
+                        Margin="0,12,0,0"
+                        Spacing="12"
+                        Visibility="{x:Bind ViewModel.AppUpdate.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
 
-                        <controls:LinkButton Link="https://github.com/Jorixon/JASM/releases/latest" Text="See what's new in the latest release" />
+                        <!-- 第 1 行：文案 + 版本号 + 「查看更新内容」 -->
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Text="New version available"
+                                l:Uids.Uid="AppUpdate_NewVersionLabel" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.AppUpdate.LatestVersion, Mode=OneWay}" />
+                            <controls:LinkButton
+                                VerticalAlignment="Center"
+                                Link="{x:Bind ViewModel.AppUpdate.LatestVersionNotesUrl, Mode=OneWay}"
+                                Text="See what's new in the latest release"
+                                l:Uids.Uid="AppUpdate_SeeWhatsNew" />
+                        </StackPanel>
 
+                        <!-- 第 2 行：两个操作按钮独立一行 -->
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource AccentFillColorSelectedTextBackgroundBrush}">
+                                <Button.Flyout>
+                                    <Flyout ShouldConstrainToRootBounds="False">
+                                        <StackPanel Spacing="8">
+                                            <TextBlock
+                                                TextWrapping="WrapWholeWords"
+                                                Text="JASM will exit and the update will start. Do you want to continue?"
+                                                l:Uids.Uid="AppUpdate_ConfirmText" />
+                                            <Button
+                                                Command="{x:Bind ViewModel.AppUpdate.UpdateJasmCommand}"
+                                                Content="Update JASM"
+                                                l:Uids.Uid="AppUpdate_ConfirmButton" />
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                                <Button.Content>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <!--  飞窗里那个确认按钮用的是 AppUpdate_ConfirmButton.Content，
+                                              这里必须另起一个 uid（复用会去查 .Text，查不到就静默不生效）  -->
+                                        <TextBlock VerticalAlignment="Center" Text="Update JASM" l:Uids.Uid="AppUpdate_UpdateButtonLabel" />
+                                        <FontIcon Glyph="&#xE896;" />
+                                    </StackPanel>
+                                </Button.Content>
+                            </Button>
+
+                            <Button
+                                VerticalAlignment="Center"
+                                Command="{x:Bind ViewModel.AppUpdate.IgnoreNewVersionCommand}"
+                                Content="Ignore this version"
+                                l:Uids.Uid="AppUpdate_IgnoreButton" />
+                        </StackPanel>
                     </StackPanel>
 
-
-                    <StackPanel Margin="0,16,0,16" Orientation="Horizontal">
-                        <Button
-                            Margin="0,0,20,0"
-                            VerticalAlignment="Center"
-                            Background="{ThemeResource AccentFillColorSelectedTextBackgroundBrush}"
-                            Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
-                            <Button.Flyout>
-                                <Flyout ShouldConstrainToRootBounds="False">
-                                    <StackPanel>
-                                        <TextBlock TextWrapping="WrapWholeWords" Text="JASM will exit and the update will start. Do you want to continue?" />
-                                        <Button Command="{x:Bind ViewModel.UpdateJasmCommand}" Content="Yes, Update JASM 😎" />
-                                    </StackPanel>
-                                </Flyout>
-                            </Button.Flyout>
-                            <Button.Content>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock VerticalAlignment="Center" Text="Update JASM to " />
-                                    <TextBlock
-                                        Margin="4,0"
-                                        VerticalAlignment="Center"
-                                        Text="{x:Bind ViewModel.LatestVersion, Mode=OneWay}" />
-                                    <FontIcon Glyph="&#xE896;" />
-                                </StackPanel>
-                            </Button.Content>
-                        </Button>
-
-                        <Button
-                            VerticalAlignment="Center"
-                            Command="{x:Bind ViewModel.IgnoreNewVersionCommand}"
-                            Content="Ignore Current Update?"
-                            Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}" />
+                    <!-- 单文件版进程内自更新的下载进度（folder 版走外部更新器，整块不出现） -->
+                    <StackPanel
+                        Margin="0,16,0,16"
+                        Spacing="4"
+                        Visibility="{x:Bind ViewModel.AppUpdate.IsUpdatingJasm, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
+                        <ProgressBar Maximum="100" Value="{x:Bind ViewModel.AppUpdate.UpdateProgressPercent, Mode=OneWay}" />
+                        <TextBlock
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.AppUpdate.UpdateProgressText, Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
             </StackPanel>

@@ -7,13 +7,13 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using GIMI_ModManager.Core.Helpers;
 using Windows.Storage;
 using Windows.System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Newtonsoft.Json;
 
 namespace JASM.AutoUpdater;
 
@@ -31,7 +31,11 @@ public partial class MainPageVM : ObservableRecipient
 
     [ObservableProperty] private bool _updateProcessStarted = false;
     [ObservableProperty] private string _latestVersion = "-----";
-    [ObservableProperty] private Uri _defaultBrowserUri = new("https://github.com/qsy123-coder/JASM/releases");
+
+    /// <summary>仓库的 releases 页，作为清单没给 notesUrl 时的兜底"看看更新了什么"地址。</summary>
+    private const string DefaultReleasesPageUrl = "https://github.com/qsy123-coder/JASM/releases";
+
+    [ObservableProperty] private Uri _defaultBrowserUri = new(DefaultReleasesPageUrl);
 
     public ObservableCollection<LogEntry> ProgressLog { get; } = new();
 
@@ -138,38 +142,54 @@ public partial class MainPageVM : ObservableRecipient
         FinishedSuccessfully = true;
     }
 
-    private async Task<GitHubRelease?> IsNewerVersionAvailable(CancellationToken cancellationToken)
+    private async Task<UpdatePackage?> IsNewerVersionAvailable(CancellationToken cancellationToken)
     {
-        var newestVersionFound = await GetLatestVersionAsync(cancellationToken);
+        var resolved = await ResolveLatestReleaseAsync(cancellationToken);
+        var newestRelease = resolved.Release;
 
-        Log($"Newest version found: {newestVersionFound?.tag_name}");
+        Log($"Newest version found: {newestRelease?.Version ?? "none"}");
 
-        var release = new GitHubRelease()
+        if (newestRelease is null)
         {
-            Version = new Version(newestVersionFound?.tag_name?.Trim('v') ?? ""),
-            PreRelease = newestVersionFound?.prerelease ?? false,
-            PublishedAt = newestVersionFound?.published_at ?? DateTime.MinValue
-        };
-
-        if (release.Version <= InstalledVersion)
-        {
-            Stop("Installed version is newer than or equal to the newest version found on GitHub");
+            Stop($"Could not determine the newest JASM version. {resolved.Diagnostic}");
             return null;
         }
 
-        var getJasmAsset = newestVersionFound?.assets?.FirstOrDefault(a => a.name?.StartsWith("JASM_") ?? false);
+        // 宽松解析（旧代码这里是 new Version(tag)，脏 tag 会抛到 StartUpdateAsync 的 catch 里报错退出）。
+        if (!AppUpdateManifestParser.TryParseVersion(newestRelease.Version, out var newestVersion) ||
+            newestVersion is null)
+        {
+            Stop($"The newest published version \"{newestRelease.Version}\" could not be parsed");
+            return null;
+        }
 
-        if (getJasmAsset?.browser_download_url is null)
+        if (newestVersion <= InstalledVersion)
+        {
+            Stop("Installed version is newer than or equal to the newest published version");
+            return null;
+        }
+
+        // folder 包 = 清单里的 kind "folder"，缺省退回 JASM_ 前缀（维护者手写清单漏字段、或回退到
+        // GitHub 通道时，asset 的 kind 就是按这个名字前缀反推出来的）。
+        var jasmAsset = AppUpdateManifestParser.FindAsset(newestRelease, AppUpdateAsset.KindFolder, "JASM_");
+
+        if (jasmAsset?.Url is null)
         {
             Stop(
-                "Could not find JASM archive in the newest release on GitHub. This may be due to the developer having to manually upload the zip which can take a few minutes. " +
+                "Could not find the JASM archive in the newest release. This may be due to the developer having to manually upload it which can take a few minutes. " +
                 "If the problem persists, then you may have to update JASM manually");
             return null;
         }
 
-        release.DownloadUrl = new Uri(getJasmAsset.browser_download_url);
-        release.BrowserUrl = new Uri(newestVersionFound?.html_url ?? "https://github.com/qsy123-coder/JASM/releases");
-        release.FileName = getJasmAsset.name ?? "JASM.zip";
+        var release = new UpdatePackage
+        {
+            Version = newestVersion,
+            PreRelease = newestRelease.Prerelease,
+            PublishedAt = newestRelease.PublishedAt,
+            DownloadUrl = new Uri(jasmAsset.Url),
+            BrowserUrl = ResolveBrowserUri(newestRelease.NotesUrl),
+            FileName = string.IsNullOrWhiteSpace(jasmAsset.Name) ? "JASM.zip" : jasmAsset.Name
+        };
 
         LatestVersion = release.Version.ToString();
 
@@ -178,13 +198,20 @@ public partial class MainPageVM : ObservableRecipient
         return release;
     }
 
+    /// <summary>清单里的 notesUrl 是远端字符串，得自己验一遍；给不出合法 http(s) 地址就退回仓库 releases 页。</summary>
+    private static Uri ResolveBrowserUri(string? notesUrl) =>
+        Uri.TryCreate(notesUrl, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? uri
+            : new Uri(DefaultReleasesPageUrl);
+
     public void Stop(string stopReason)
     {
         Stopped = true;
         StopReason = stopReason;
     }
 
-    private async Task DownloadLatestVersion(GitHubRelease gitHubRelease, CancellationToken cancellationToken)
+    private async Task DownloadLatestVersion(UpdatePackage updatePackage, CancellationToken cancellationToken)
     {
         if (Directory.Exists(WorkDir))
         {
@@ -194,7 +221,7 @@ public partial class MainPageVM : ObservableRecipient
         Directory.CreateDirectory(WorkDir);
 
 
-        _zipPath = Path.Combine(WorkDir, gitHubRelease.FileName);
+        _zipPath = Path.Combine(WorkDir, updatePackage.FileName);
         if (File.Exists(_zipPath))
         {
             File.Delete(_zipPath);
@@ -204,7 +231,7 @@ public partial class MainPageVM : ObservableRecipient
         httpClient.DefaultRequestHeaders.Add("Accept", "application/octet-stream");
 
         Log("Downloading latest version...");
-        var result = await httpClient.GetAsync(gitHubRelease.DownloadUrl, HttpCompletionOption.ResponseHeadersRead,
+        var result = await httpClient.GetAsync(updatePackage.DownloadUrl, HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
 
         if (!result.IsSuccessStatusCode)
@@ -217,7 +244,7 @@ public partial class MainPageVM : ObservableRecipient
 
         await using var fileStream = File.Create(_zipPath);
         await stream.CopyToAsync(fileStream, cancellationToken);
-        Log($"Latest version downloaded from {gitHubRelease.DownloadUrl}");
+        Log($"Latest version downloaded from {updatePackage.DownloadUrl}");
     }
 
     private async Task UnzipLatestVersion(CancellationToken cancellationToken)
@@ -383,30 +410,29 @@ public partial class MainPageVM : ObservableRecipient
         Log("Clean up finished");
     }
 
-    // Copied from GIMI-ModManager.WinUI/Services/UpdateChecker.cs
+    /// <summary>
+    /// COS 上的更新清单（首选通道）。与主程序 <c>appsettings.json</c> 的 <c>AppUpdate:ManifestUrl</c>
+    /// 指向同一个对象 —— 本 exe 是随包分发的独立进程，拿不到主程序的配置，只能写死。
+    /// </summary>
+    private const string ManifestUrl =
+        "https://jasm-modenv-1327973389.cos.ap-guangzhou.myqcloud.com/app/update.json";
+
+    /// <summary>GitHub 回退通道。清单拉不到时用它 —— 这也是 COS 出事时把资产重新挂回 release 就能救回来的那条路。</summary>
     private const string ReleasesApiUrl = "https://api.github.com/repos/qsy123-coder/JASM/releases?per_page=2";
 
-    private async Task<ApiGitHubRelease?> GetLatestVersionAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// 「当前该更新到哪个版本、包在哪」—— 与主程序共用 Core 里的同一份解析器（COS 清单优先，GitHub 回退），
+    /// 由 csproj 源链接编译进来。共用是硬要求：主程序负责亮徽标、本进程负责实际下载，两边各自判断"最新版
+    /// 是哪个"就会出现"徽标说 2.31.0、这里却下 2.30.0"这种不报错的偏差。
+    /// </summary>
+    private async Task<AppUpdateReleaseResolver.Result> ResolveLatestReleaseAsync(CancellationToken cancellationToken)
     {
         Serilog.Log.Information("Checking for latest version...");
 
         using var httpClient = CreateHttpClient();
 
-        var result = await httpClient.GetAsync(ReleasesApiUrl, cancellationToken);
-        if (!result.IsSuccessStatusCode)
-        {
-            return null;
-        }
-
-        var text = await result.Content.ReadAsStringAsync(cancellationToken);
-
-        var gitHubReleases =
-            (JsonConvert.DeserializeObject<ApiGitHubRelease[]>(text)) ?? Array.Empty<ApiGitHubRelease>();
-
-        var latestReleases = gitHubReleases.Where(r => !r.prerelease);
-        var latestVersion = latestReleases.OrderByDescending(r => new Version(r.tag_name?.Trim('v') ?? ""));
-
-        return latestVersion.FirstOrDefault();
+        return await AppUpdateReleaseResolver.ResolveAsync(httpClient, ManifestUrl, ReleasesApiUrl,
+            cancellationToken);
     }
 
     private HttpClient CreateHttpClient()
@@ -421,19 +447,8 @@ public partial class MainPageVM : ObservableRecipient
         return httpClient;
     }
 
-    private class ApiGitHubRelease
-    {
-        public string? html_url;
-        public string? target_commitish;
-        public string? browser_download_url;
-        public string? tag_name;
-        public bool prerelease;
-        public DateTime published_at = DateTime.MinValue;
-
-        public ApiAssets[]? assets;
-    }
-
-    private class GitHubRelease
+    /// <summary>待安装的更新包（版本 / 下载地址 / 说明页）。来源可能是 COS 清单，也可能是 GitHub 回退。</summary>
+    private class UpdatePackage
     {
         public Version Version;
         public bool PreRelease;

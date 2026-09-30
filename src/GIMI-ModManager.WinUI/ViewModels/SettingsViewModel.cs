@@ -5,7 +5,6 @@ using System.Reflection;
 using Windows.Storage.Pickers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ErrorOr;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.GamesService;
@@ -20,7 +19,6 @@ using GIMI_ModManager.WinUI.Models.Options;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
-using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.ModHandling;
@@ -46,8 +44,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private readonly ISkinManagerService _skinManagerService;
     private readonly IGameService _gameService;
     private readonly ILanguageLocalizer _localizer;
-    private readonly AutoUpdaterService _autoUpdaterService;
-    private readonly SingleFileSelfUpdater _singleFileSelfUpdater;
     private readonly SelectedGameService _selectedGameService;
     private readonly ModUpdateAvailableChecker _modUpdateAvailableChecker;
     private readonly LifeCycleService _lifeCycleService;
@@ -57,7 +53,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
 
     private readonly NotificationManager _notificationManager;
-    private readonly UpdateChecker _updateChecker;
     private readonly GameDataSyncService _gameDataSyncService;
     public ElevatorService ElevatorService;
 
@@ -74,12 +69,11 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
     [ObservableProperty] private string _versionDescription;
 
-    [ObservableProperty] private string _latestVersion = string.Empty;
-    [ObservableProperty] private bool _showNewVersionAvailable = false;
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(IgnoreNewVersionCommand))]
-    private bool _CanIgnoreUpdate = false;
+    /// <summary>
+    /// 「有新版本 / 开始更新」的状态与动作全在这里（<see cref="AppUpdateViewModel"/>，单例）——
+    /// 设置页与角色概览页共用同一份，两个入口的下载进度也就是同一个。
+    /// </summary>
+    public AppUpdateViewModel AppUpdate { get; }
 
     [ObservableProperty] private ObservableCollection<string> _languages = new();
     [ObservableProperty] private string _selectedLanguage = string.Empty;
@@ -112,9 +106,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty] private bool _persistWindowPosition = false;
 
     // Game data sync
-    [ObservableProperty] private string _gameDataLastSyncTime = "Never";
-    [ObservableProperty] private string _gameDataCurrentVersion = "None";
-    [ObservableProperty] private string _gameDataSyncStatus = "Idle";
+    // 三个文本初值在构造函数里用 localizer 赋（字段初始化器执行时 _localizer 还没赋值），见 ctor
+    [ObservableProperty] private string _gameDataLastSyncTime = string.Empty;
+    [ObservableProperty] private string _gameDataCurrentVersion = string.Empty;
+    [ObservableProperty] private string _gameDataSyncStatus = string.Empty;
     [ObservableProperty] private bool _isGameDataSyncEnabled = true;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGameDataSyncNotRunning))]
@@ -142,10 +137,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         IThemeSelectorService themeSelectorService, ILocalSettingsService localSettingsService,
         ElevatorService elevatorService, ILogger logger, NotificationManager notificationManager,
         INavigationViewService navigationViewService, IWindowManagerService windowManagerService,
-        ISkinManagerService skinManagerService, UpdateChecker updateChecker,
+        ISkinManagerService skinManagerService, AppUpdateViewModel appUpdateViewModel,
         GenshinProcessManager genshinProcessManager, ThreeDMigtoProcessManager threeDMigtoProcessManager,
-        IGameService gameService, AutoUpdaterService autoUpdaterService, SingleFileSelfUpdater singleFileSelfUpdater,
-        ILanguageLocalizer localizer,
+        IGameService gameService, ILanguageLocalizer localizer,
         SelectedGameService selectedGameService, ModUpdateAvailableChecker modUpdateAvailableChecker,
         LifeCycleService lifeCycleService, INavigationService navigationService,
         ModArchiveRepository modArchiveRepository,
@@ -158,11 +152,15 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         _navigationViewService = navigationViewService;
         _windowManagerService = windowManagerService;
         _skinManagerService = skinManagerService;
-        _updateChecker = updateChecker;
+        AppUpdate = appUpdateViewModel;
         _gameService = gameService;
-        _autoUpdaterService = autoUpdaterService;
-        _singleFileSelfUpdater = singleFileSelfUpdater;
         _localizer = localizer;
+
+        // 游戏数据同步的三个显示文本初值。前两个会被 OnNavigatedTo → RefreshSyncDisplay 覆写，
+        // 「状态」的初值则是稳态显示值（只有点同步才会变），所以不能留在字段初始化器里写死英文
+        GameDataSyncStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncIdle", defaultValue: "Idle");
+        GameDataCurrentVersion = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNone", defaultValue: "None");
+        GameDataLastSyncTime = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNever", defaultValue: "Never");
         _selectedGameService = selectedGameService;
         _modUpdateAvailableChecker = modUpdateAvailableChecker;
         _lifeCycleService = lifeCycleService;
@@ -175,17 +173,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         _logger = logger.ForContext<SettingsViewModel>();
         _elementTheme = _themeSelectorService.Theme;
         _versionDescription = GetVersionDescription();
-
-        _updateChecker.NewVersionAvailable += UpdateCheckerOnNewVersionAvailable;
-
-        if (_updateChecker.LatestRetrievedVersion is not null &&
-            _updateChecker.LatestRetrievedVersion != _updateChecker.CurrentVersion)
-        {
-            LatestVersion = VersionFormatter(_updateChecker.LatestRetrievedVersion);
-            ShowNewVersionAvailable = true;
-            if (_updateChecker.LatestRetrievedVersion != _updateChecker.IgnoredVersion)
-                CanIgnoreUpdate = true;
-        }
 
         ArchiveCacheFolderPath = _modArchiveRepository.ArchiveDirectory;
 
@@ -310,8 +297,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         var version = Assembly.GetExecutingAssembly().GetName().Version!;
 
+        // 组装版本号有第四段（Revision），这里只显示 主.次.修订 三段。
         return
-            $"{"AppDisplayName".GetLocalized()} - {VersionFormatter(version)}";
+            $"{"AppDisplayName".GetLocalized()} - v{version.Major}.{version.Minor}.{version.Build}";
     }
 
 
@@ -403,7 +391,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         if (dialog.MiFolder is null || dialog.ModsFolder is null)
         {
             if (dialog.Result is { Success: false } && dialog.Result is { Cancelled: false })
-                _notificationManager.ShowNotification("Mod 环境配置失败", string.Join("；", dialog.Result.Issues),
+                _notificationManager.ShowNotification(
+                    _localizer.GetLocalizedStringOrDefault("SettingsVM_ModEnvSetupFailedTitle", defaultValue: "Mod environment setup failed"),
+                    string.Join("；", dialog.Result.Issues),
                     TimeSpan.FromSeconds(5));
             return;
         }
@@ -419,7 +409,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         }
         else
         {
-            _notificationManager.ShowNotification("Mod 环境配置完成", "路径已填入，路径设置未变化。",
+            _notificationManager.ShowNotification(
+                _localizer.GetLocalizedStringOrDefault("SettingsVM_ModEnvSetupDoneTitle", defaultValue: "Mod environment setup finished"),
+                _localizer.GetLocalizedStringOrDefault("SettingsVM_ModEnvSetupDoneText", defaultValue: "Paths were filled in, path settings were unchanged."),
                 TimeSpan.FromSeconds(3));
         }
     }
@@ -582,31 +574,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         await ThreeDMigtoProcessManager.ResetProcessOptions();
     }
 
-    private void UpdateCheckerOnNewVersionAvailable(object? sender, UpdateChecker.NewVersionEventArgs e)
-    {
-        App.MainWindow.DispatcherQueue.TryEnqueue(() =>
-        {
-            if (e.Version == new Version())
-            {
-                CanIgnoreUpdate = _updateChecker.LatestRetrievedVersion != _updateChecker.IgnoredVersion;
-                return;
-            }
-
-            LatestVersion = VersionFormatter(e.Version);
-        });
-    }
-
-    private static string VersionFormatter(Version version)
-    {
-        return $"v{version.Major}.{version.Minor}.{version.Build}";
-    }
-
-    [RelayCommand(CanExecute = nameof(CanIgnoreUpdate))]
-    private async Task IgnoreNewVersion()
-    {
-        await _updateChecker.IgnoreCurrentVersionAsync();
-    }
-
     [ObservableProperty] private bool _exportingMods = false;
     [ObservableProperty] private int _exportProgress = 0;
     [ObservableProperty] private string _exportProgressText = string.Empty;
@@ -735,61 +702,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     }
 
     [RelayCommand]
-    private async Task UpdateJasm()
-    {
-        // folder 版：走外部更新器（存在 JASM - Auto Updater.exe）
-        if (_autoUpdaterService.AutoUpdaterExists)
-        {
-            var errors = Array.Empty<Error>();
-            try
-            {
-                errors = _autoUpdaterService.StartSelfUpdateProcess();
-            }
-            catch (Exception e)
-            {
-                _logger.Error(e, "Error starting update process");
-                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_ErrorStartingUpdateTitle", defaultValue: "Error starting update process"), e.Message, TimeSpan.FromSeconds(10));
-            }
-
-            if (errors is not null && errors.Any())
-            {
-                var errorMessages = errors.Select(e => e.Description).ToArray();
-                _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("SettingsVM_CouldNotStartUpdateTitle", defaultValue: "Could not start update process"), string.Join('\n', errorMessages),
-                    TimeSpan.FromSeconds(10));
-            }
-
-            return;
-        }
-
-        // 单文件版：进程内自更新（下载 → 解出单个 exe → 临时脚本替换并重启）
-        try
-        {
-            _logger.Information("Single-file build detected, using in-app self-update.");
-            _notificationManager.ShowNotification("更新", "正在下载更新包（约百 MB），完成后将自动替换并重启 JASM…",
-                TimeSpan.FromSeconds(10));
-
-            var result = await _singleFileSelfUpdater.TryUpdateAsync(_updateChecker.CurrentVersion);
-            if (result.Success)
-            {
-                _logger.Information("Single-file update handed off to replacement script. Exiting app.");
-                await Task.Delay(800); // 让提示先渲染一下,再交给脚本替换
-                Application.Current.Exit();
-            }
-            else
-            {
-                _logger.Warning("Single-file self update did not proceed: {Error}", result.Error);
-                _notificationManager.ShowNotification("更新失败", result.Error ?? "未知错误", TimeSpan.FromSeconds(10));
-            }
-        }
-        catch (Exception e)
-        {
-            _logger.Error(e, "Error starting single-file self update");
-            _notificationManager.ShowNotification("更新启动出错", e.Message, TimeSpan.FromSeconds(10));
-        }
-    }
-
-
-    [RelayCommand]
     private async Task SelectGameAsync(string? game)
     {
         var jasmSelectedGame = await _selectedGameService.GetSelectedGameAsync();
@@ -886,7 +798,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         if (IsGameDataSyncRunning) return;
         IsGameDataSyncRunning = true;
-        GameDataSyncStatus = "Checking...";
+        GameDataSyncStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncChecking", defaultValue: "Checking...");
 
         try
         {
@@ -895,10 +807,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
             GameDataSyncStatus = result switch
             {
-                SyncResult.Success => "Sync successful",
-                SyncResult.AlreadyUpToDate => "Already up to date",
-                SyncResult.Failed => "Sync failed",
-                SyncResult.NoReleaseFound => "No data release found",
+                SyncResult.Success => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncOK", defaultValue: "Sync successful"),
+                SyncResult.AlreadyUpToDate => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncUpToDate", defaultValue: "Already up to date"),
+                SyncResult.Failed => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncFailed", defaultValue: "Sync failed"),
+                SyncResult.NoReleaseFound => _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNoRelease", defaultValue: "No data release found"),
                 _ => ""
             };
         }
@@ -921,9 +833,11 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private void RefreshSyncDisplay()
     {
         var game = Enum.Parse<SupportedGames>(SelectedGame);
-        GameDataCurrentVersion = _gameDataSyncService.GetCurrentDataVersion(game) ?? "None";
+        GameDataCurrentVersion = _gameDataSyncService.GetCurrentDataVersion(game) ??
+                                 _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNone", defaultValue: "None");
         var lastSync = _gameDataSyncService.GetLastSyncTime(game);
-        GameDataLastSyncTime = lastSync?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "Never";
+        GameDataLastSyncTime = lastSync?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ??
+                               _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNever", defaultValue: "Never");
     }
 
     public async void OnNavigatedTo(object parameter)

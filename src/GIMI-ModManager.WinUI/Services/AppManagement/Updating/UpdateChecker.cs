@@ -1,7 +1,7 @@
 ﻿using System.Reflection;
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Options;
-using Newtonsoft.Json;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Services.AppManagement.Updating;
@@ -11,23 +11,31 @@ public sealed class UpdateChecker
     private readonly ILogger _logger;
     private readonly ILocalSettingsService _localSettingsService;
     private readonly Notifications.NotificationManager _notificationManager;
+    private readonly AppUpdateManifestService _appUpdateManifestService;
 
     public Version CurrentVersion { get; private set; }
     public Version? LatestRetrievedVersion { get; private set; }
+
+    /// <summary>
+    /// "What's new" page for <see cref="LatestRetrievedVersion"/>. Null until a new version is found, and
+    /// null afterwards too when neither the manifest nor the config offered a usable link.
+    /// </summary>
+    public string? LatestReleaseNotesUrl { get; private set; }
+
     public event EventHandler<NewVersionEventArgs>? NewVersionAvailable;
     private Version? _ignoredVersion;
     public Version? IgnoredVersion => _ignoredVersion;
     private bool DisableChecker;
     private CancellationTokenSource _cancellationTokenSource;
 
-    private const string ReleasesApiUrl = "https://api.github.com/repos/qsy123-coder/JASM/releases?per_page=2";
-
     public UpdateChecker(ILogger logger, ILocalSettingsService localSettingsService,
-        Notifications.NotificationManager notificationManager, CancellationToken cancellationToken = default)
+        Notifications.NotificationManager notificationManager, AppUpdateManifestService appUpdateManifestService,
+        CancellationToken cancellationToken = default)
     {
         _logger = logger.ForContext<UpdateChecker>();
         _localSettingsService = localSettingsService;
         _notificationManager = notificationManager;
+        _appUpdateManifestService = appUpdateManifestService;
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         var version = Assembly.GetExecutingAssembly().GetName().Version;
@@ -100,11 +108,21 @@ public sealed class UpdateChecker
         if (DisableChecker)
             return;
 
-        var latestVersion = await GetLatestVersionAsync(cancellationToken);
+        var release = await GetLatestReleaseAsync(cancellationToken);
 
-        if (latestVersion is null)
+        if (release is null)
         {
-            _logger.Warning("No versions found, latestVersion is null");
+            _logger.Warning("No published release found; skipping this update check");
+            return;
+        }
+
+        // Parsed leniently (unlike the old new Version(tag) this replaced): a dirty version string in the
+        // manifest or a stray GitHub tag must not throw out of the polling loop, which would stop update
+        // checks for the rest of the session with nothing visible in the UI.
+        if (!AppUpdateManifestParser.TryParseVersion(release.Version, out var latestVersion) ||
+            latestVersion is null)
+        {
+            _logger.Warning("Published version {Version} is not parseable; ignoring it", release.Version);
             return;
         }
 
@@ -120,37 +138,19 @@ public sealed class UpdateChecker
             if (_ignoredVersion is not null && _ignoredVersion >= latestVersion)
                 return;
             LatestRetrievedVersion = latestVersion;
+            LatestReleaseNotesUrl = _appUpdateManifestService.GetNotesUrl(release);
             OnNewVersionAvailable(latestVersion);
         }
     }
 
-    private async Task<Version?> GetLatestVersionAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Asks <see cref="AppUpdateManifestService"/> (COS manifest, GitHub fallback) for the current release.
+    /// Returns null when neither channel produced a usable one, which the caller treats as "no update".
+    /// </summary>
+    private async Task<AppUpdateRelease?> GetLatestReleaseAsync(CancellationToken cancellationToken)
     {
-        using var httpClient = CreateHttpClient();
-
-        var result = await httpClient.GetAsync(ReleasesApiUrl, cancellationToken);
-        if (!result.IsSuccessStatusCode)
-        {
-            _logger.Error("Failed to get latest version from GitHub. Status Code: {StatusCode}, Reason: {ReasonPhrase}",
-                result.StatusCode, result.ReasonPhrase);
-            return null;
-        }
-
-        var text = await result.Content.ReadAsStringAsync(cancellationToken);
-        var gitHubReleases =
-            JsonConvert.DeserializeObject<GitHubRelease[]>(text) ?? Array.Empty<GitHubRelease>();
-
-        var latestReleases = gitHubReleases.Where(r => !r.prerelease);
-        var latestVersion = latestReleases.Select(r => new Version(r.tag_name?.Trim('v') ?? "")).Max();
-        return latestVersion;
-    }
-
-    private HttpClient CreateHttpClient()
-    {
-        var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
-        httpClient.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager-Update-Checker");
-        return httpClient;
+        var result = await _appUpdateManifestService.ResolveLatestAsync(cancellationToken);
+        return result.Release;
     }
 
 
@@ -179,14 +179,5 @@ public sealed class UpdateChecker
         {
             Version = version;
         }
-    }
-
-
-    private class GitHubRelease
-    {
-        public string? target_commitish;
-        public string? tag_name;
-        public bool prerelease;
-        public DateTime published_at = DateTime.MinValue;
     }
 }

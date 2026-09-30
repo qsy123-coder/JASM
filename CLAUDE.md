@@ -8,7 +8,7 @@
 
 - **项目**：JASM - Just Another Skin Manager，一个 WinUI 3 桌面应用，用于管理游戏（原神等）的 Mod / 皮肤。
 - **fork 关系**：本仓库是 `Jorixon/JASM` 的 fork → `qsy123-coder/JASM`，默认分支为 `master`（不存在 `main` 分支）。
-- **自动更新**：检测 + 手动点更新，主 app 用 `UpdateChecker`，更新执行体是独立的 `JASM - Auto Updater.exe`。
+- **自动更新**：检测 + 手动点更新，主 app 用 `UpdateChecker`，更新执行体是独立的 `JASM - Auto Updater.exe`。版本清单与安装包托管在腾讯云 COS 的 `app/` 前缀（见「JASM 自动更新 / Release 发布链路」），GitHub Releases 是回退通道。
 
 ## 技术栈
 
@@ -18,7 +18,7 @@
 - **日志**：Serilog（File / EventLog / Debug sink）。
 - **数据**：Newtonsoft.Json、Supabase / PostgREST（Mod 市场后端）。
 - **其他**：FluentValidation、Polly（重试/限流）、OneOf、WindowsDisplayAPI。
-- **构建**：`Build/Release.py`（发布打包）、`Build/PackGameData.py`（游戏数据打包）。
+- **构建**：`Build/Release.py`（发布打包）、`Build/PackGameData.py`（游戏数据打包）、`Build/PackAppUpdate.py`（应用更新清单）。
 
 ## 目录结构
 
@@ -36,7 +36,8 @@ src/
 └── UpdateGenshinAssets/        # 资产生成更新
 Build/
 ├── Release.py                  # 发布打包 (无参 folder / SingleFile / SelfContained；ExcludeElevator 是逃生口)
-└── PackGameData.py             # 游戏数据打包
+├── PackGameData.py             # 游戏数据打包
+└── PackAppUpdate.py            # 应用更新清单 (app/update.json，上传 COS)
 .github/workflows/
 ├── dotnet-desktop.yml                # folder 版 (无参，含 Elevator 助手与 AutoUpdater) → artifact
 ├── dotnet-desktop-single-file.yml    # SingleFile → artifact（单 exe 包只能由 CI 产出，本机无 MSVC）
@@ -78,14 +79,43 @@ push 前必须验证完整 CI 链路 —— `dotnet build` 单跑不算完成：
 
 ## JASM 自动更新 / Release 发布链路
 
-> 记录自动更新 + 发布踩过的坑，涉及 `UpdateChecker`、`JASM.AutoUpdater`、`release-please.yml`、`dotnet-desktop*.yml`。
+> 记录自动更新 + 发布踩过的坑，涉及 `UpdateChecker`、`AppUpdateReleaseResolver`（COS 清单 + GitHub 回退的唯一决策点）、`JASM.AutoUpdater`、`PackAppUpdate.py`、`release-please.yml`、`dotnet-desktop*.yml`。
 
-### 1. 更新检测与下载源都写死 GitHub 仓库
+### 1. 更新源：COS 清单优先，GitHub 回退
 
-- 主 app：`src/GIMI-ModManager.WinUI/Services/AppManagement/Updating/UpdateChecker.cs:23` 的 `ReleasesApiUrl`
-- AutoUpdater：`src/JASM.AutoUpdater/MainPageVM.cs` 的 `:387`（下载 zip 的 API）、`:34` / `:171`（浏览器与回退链接）
+「最新版是哪个、包在哪」由腾讯云 COS 上的 `app/update.json` 说了算，GitHub Releases API 只在清单拉不到时兜底。三处落点（**改桶 / 改前缀时三处一起改**）：
 
-`qsy123-coder/JASM` 是 `Jorixon/JASM` 的 fork，**4 处都要改成自己的 fork repo**，否则用户端检测不到、更新器也下不了包。
+- 主 app：`src/GIMI-ModManager.WinUI/appsettings.json` 的 `AppUpdate:ManifestUrl` / `AppUpdate:ReleasesApiUrl`
+- AutoUpdater：`src/JASM.AutoUpdater/MainPageVM.cs` 的 `ManifestUrl` / `ReleasesApiUrl` 常量 —— 它是随包分发的独立进程，**拿不到主程序的 appsettings，只能写死**
+- 打包脚本：`Build/PackAppUpdate.py` 的 `DEFAULT_BASE_URL`
+
+**决策逻辑只有一份**：`src/GIMI-ModManager.Core/Helpers/AppUpdateReleaseResolver.cs`（COS 优先、GitHub 回退、失败原因合并进诊断串），主程序与 AutoUpdater 都走它 —— AutoUpdater 是把这三个 Core 文件**源链接**进自己的工程（`Elevator.csproj` 同款手法，见其 csproj 注释），不是加 ProjectReference（那会把 Supabase 等整条依赖链拖进这个独立 exe）。共用是硬要求：两边各自判断「最新版是哪个」就会出现「徽标说 2.31.0、更新器却下 2.30.0」这种不报错的偏差。
+
+`qsy123-coder/JASM` 是 `Jorixon/JASM` 的 fork，仓库标识写错则回退通道失效、且老客户端也收不到更新。
+
+#### 清单 schema（`app/update.json`）
+
+```json
+{
+  "schemaVersion": 1,
+  "releases": [
+    { "version": "2.31.0", "prerelease": false, "publishedAt": "…", "notesUrl": "…",
+      "assets": [
+        { "name": "JASM_v2.31.0.7z", "kind": "folder", "url": "https://…/app/JASM_v2.31.0.7z",
+          "sizeBytes": 148726913, "sha256": "…" },
+        { "name": "SingleFile_JASM_v2.31.0.zip", "kind": "singleFile", "url": "https://…",
+          "sizeBytes": 96384012, "sha256": "…" }
+      ] }
+  ]
+}
+```
+
+- `asset.kind` 是**显式**判别：`folder`（`.7z`，走外部更新器）/ `singleFile`（`.zip`，主程序进程内自更新）。缺字段时才退回按文件名前缀（`JASM_` / `SingleFile_JASM_`）匹配 —— 所以**文件名仍然承重**，GitHub 回退通道就是靠前缀反推 `kind` 的。
+- `sizeBytes` / `sha256` 给进度总量与完整性校验用，缺省则退回 `Content-Length` / 跳过校验（**缺字段绝不能让客户端崩**）。
+- `version` **必须是纯数字点分、不带 `v` 前缀**（客户端用 `Version.TryParse`）。写错只会被静默跳过，现象是「发了新版用户端不提示」—— `PackAppUpdate.py` 在生成时就拦这种写法。
+- 解析器**绝不抛异常**：畸形 JSON / 缺字段一律退化成 `null`，由调用方回退或报「找不到更新」。
+
+详细运维说明（发版四步、手测配方、大文件与费用）见 `docs/app-update-cos-setup.md`。
 
 ### 2. 版本号由 release-please 管理
 
@@ -97,21 +127,39 @@ Settings → Actions → General → Workflow permissions 下要**同时**勾「
 
 ### 4. 构建 workflow 只传 artifact，不挂 release
 
-`dotnet-desktop.yml` / `dotnet-desktop-single-file.yml` / `dotnet-desktop-self-contained.yml` 最后都是 `actions/upload-artifact`，**不会把 zip 挂到 GitHub release**。release 的 asset 要手动挂（或自己加 `gh release upload` 步骤）。
+`dotnet-desktop.yml` / `dotnet-desktop-single-file.yml` / `dotnet-desktop-self-contained.yml` 最后都是 `actions/upload-artifact`，**不会把 zip 挂到 GitHub release，也不会传到 COS**。两处都要手动：从 CI artifact 取包 → 上传 COS `app/` 前缀 → `gh release upload` 挂 GitHub（或自己给 workflow 加这两步）。
 
 ### 5. 两条更新通道：folder 版走外部更新器，单文件版走进程内自更新
 
 - `Release.py` 在 `SingleFile` / `SelfContained` 模式跳过构建 AutoUpdater，单文件模式也只复制单 exe。
 - 自动更新执行体是 `JASM - Auto Updater.exe`（独立更新器进程），**单文件安装里没有它** → `AutoUpdaterService.AutoUpdaterExists` 为 false，`SettingsViewModel.UpdateJasm` 转走 `SingleFileSelfUpdater`：下载 `SingleFile_JASM_*.zip` → 用 BCL 解出新的 exe → 临时 PowerShell 脚本等本进程退出后覆盖并重启。**单文件版因此也能自更新**，只是换了条通道（选用 .zip 而非 .7z 正是为了不依赖运行时 7z.exe）。
 - 两条通道的触发机制一致：「提示 + 手动点」，不是静默推。
+- **进度条只加在单文件版那条**（`SettingsViewModel` → `SingleFileSelfUpdater` → `AppUpdateDownloader`）：`IProgress<AppUpdateDownloadProgress>` 从下载器一路报到设置页的 `ProgressBar`。folder 版是另一个进程（`JASM - Auto Updater.exe` 自带的窗口），**UI 未改**，只是同样改读 COS 清单。
+- `AppUpdateDownloader` 与 `ModEnvInstallerService` 的下载逻辑是**刻意重复**的两份（断点续传 / 活动超时 / SHA256 那套形状照抄）：ModEnv 那条已经实机验证过，不为一个进度条去动它。日后出现第三处调用者时再抽公共件（类注释里写了这事）。
 
-### 6. AutoUpdater 只认 `JASM_` 开头的 asset
+### 6. 两条通道各取各的 asset（`kind` 优先，文件名前缀兜底）
 
-`MainPageVM.cs:160`：`.FirstOrDefault(a => a.name?.StartsWith("JASM_") ?? false)`。`SingleFile_JASM_*.zip` / `SelfContained_JASM_*.7z` 都**不匹配**，给自动更新用的 asset 必须是 `JASM_*` 命名。
+`AppUpdateManifestParser.FindAsset(release, kind, namePrefix)`：先按 `kind` 找，找不到再按文件名前缀找。
 
-### 7. 发布两步走 & 更新机制
+- 外部更新器取 `kind = folder` / 前缀 `JASM_` → 只有 `JASM_vX.Y.Z.7z` 命中。`SingleFile_JASM_*.zip` / `SelfContained_JASM_*.7z` 都**不匹配**（既不 `kind: folder`、也不以 `JASM_` 开头）。
+- 主程序取 `kind = singleFile` / 前缀 `SingleFile_JASM_` → 只有单文件包命中。
 
-release-please 建 release（tag `vX.Y.Z`）→ 手动挂 `JASM_vX.Y.Z.7z`（+ `SingleFile_JASM_vX.Y.Z.zip`，见第 9 节）上去 → 用户点更新，folder 版走 AutoUpdater、单文件版走进程内自更新（第 5 节）。机制是「提示 + 手动点」，不是静默推：UpdateChecker 每 2h 查 GitHub releases，比对 `tag_name`（去 `v`）与编译版本，只有 `CurrentVersion < latest` 才亮徽标；用户点更新才拉起更新动作。升级必须 bump `<VersionPrefix>` **且** release tag 用同一版本，否则 `==` 不触发。
+GitHub 回退通道上没有 `kind` 字段（API 只给文件名），由 `AppUpdateReleaseResolver.InferKindFromName` 按名字反推。所以**文件名仍然是承重的**，改名前先想清楚它同时是两条通道的判别依据。
+
+### 7. 发布三步走 & 更新机制
+
+1. `release-please` 建 release（tag `vX.Y.Z`）→
+2. `Release.py` 打出两个包（folder 本机可打；`SingleFile` 需 MSVC，只能由 CI 产出，见第 9 节）→
+3. `PackAppUpdate.py` 生成 / 增量更新 `app/update.json` → 连同两个包一起上传 COS 的 `app/` 前缀 →
+   **同时**在 GitHub release 上挂同版本的同名资产（第 9 节，回退通道 + 老客户端要它）。
+
+完整步骤与手测配方见 `docs/app-update-cos-setup.md`。
+
+机制是「提示 + 手动点」，不是静默推：UpdateChecker 每 2h 问一次「最新版是哪个」（COS 清单优先，拉不到回退 GitHub releases），只有 `CurrentVersion < latest` 才亮徽标；用户点更新才拉起更新动作，folder 版走 AutoUpdater、单文件版走进程内自更新（第 5 节）。
+
+⚠️ 升级必须 bump `<VersionPrefix>` **且**清单里的 `version` 用同一版本号：客户端比的是「编译版本 < 清单版本」，两边一致（例如清单写 2.31.0 而包编译的是 2.30.0）会变成「用户点更新 → 更新器发现装的和下的版本一样 → 直接退出」，看起来像点了没反应。
+
+⚠️ **`PackAppUpdate.py` 是增量合并的**：加新版本前先把线上那份 `update.json` 存成本地副本作为 `--manifest`，否则从零生成会丢掉更早的版本记录（客户端只看最新版，所以不会立刻出事，直到有人想回退旧版）。
 
 ### 8. 打包映射速查
 
@@ -127,17 +175,21 @@ release-please 建 release（tag `vX.Y.Z`）→ 手动挂 `JASM_vX.Y.Z.7z`（+ `
 
 ### 9. 发布时要挂载的多形态产物
 
-release 的 asset 不会自动挂（见第 4 节），**每次手动挂载，把面向不同用户的分发形态都传上去**：
+每次发布要把面向不同用户的分发形态都传上去 —— **同一批包要传两个地方**：
 
-| 产物 | 用途 | 是否必须 |
-|---|---|---|
-| `JASM_vX.Y.Z.7z` | folder 版，含 AutoUpdater，**外部更新器通道的唯一对象** | ✅ 必须 |
-| `SingleFile_JASM_vX.Y.Z.zip` | 单 exe 便携版（**大多数用户用的就是它**），走进程内自更新 | ✅ 必须 |
-| `SelfContained_JASM_v*.7z` | 自包含版 | 按需 |
+| 产物 | 用途 | 传 COS `app/` | 挂 GitHub release |
+|---|---|---|---|
+| `app/update.json` | 版本清单，**客户端现在只认它** | ✅ 必须 | ❌ |
+| `JASM_vX.Y.Z.7z` | folder 版，含 AutoUpdater，**外部更新器通道的唯一对象** | ✅ 必须 | ✅ 必须 |
+| `SingleFile_JASM_vX.Y.Z.zip` | 单 exe 便携版（**大多数用户用的就是它**），走进程内自更新 | ✅ 必须 | ✅ 必须 |
+| `SelfContained_JASM_v*.7z` | 自包含版 | 按需 | 按需 |
+
+**为什么 GitHub 也要挂**：release 的 asset 本来就不会自动挂（见第 4 节），而且现在还多了两个理由 —— ① ≤2.30.0 的老客户端与用户机上那份**旧的** `JASM - Auto Updater.exe` 只会读 GitHub API；② COS 出事（欠费 / 权限配错 / 被刷 / 传成坏 JSON）时，客户端会自动回退 GitHub，那是**不用发新版就能救回全部已发布客户端**的唯一手段。
 
 - **`SingleFile_*.zip` 只能由 CI 产出**：`dotnet-desktop-single-file.yml` 跑 `Release.py SingleFile`，那条路会先构建 AOT 助手（本机无 MSVC 编不出来）。本地要打单 exe 只能退化成 `python Build/Release.py SingleFile ExcludeElevator`（产物无助手）。
-- 单文件/自包含都不会被**外部**更新器匹配（第 6 节，它只认 `JASM_` 前缀）——单文件版靠的是另一条通道，不是「不参与自动更新」。
-- 挂载命令示例：`gh release upload vX.Y.Z SingleFile_JASM_vX.Y.Z.zip --repo qsy123-coder/JASM --clobber`。
+- 单文件/自包含都不会被**外部**更新器匹配（第 6 节）——单文件版靠的是另一条通道，不是「不参与自动更新」。
+- 挂载命令示例：`gh release upload vX.Y.Z JASM_vX.Y.Z.7z SingleFile_JASM_vX.Y.Z.zip --repo qsy123-coder/JASM --clobber`。
+- COS 上传用 [COSBrowser](https://cosbrowser.cloud.tencent.com) 拖拽或控制台（本机无 `coscli`）；传完**用浏览器打开 `…/app/update.json` 确认返回 JSON**，而不是被 COS 包了一层的 XML。
 
 ### 10. 提权助手 Elevator.exe 内嵌进主 exe
 
@@ -178,6 +230,10 @@ python Build/Release.py SingleFile                            # 单 exe 打包 (
 python Build/Release.py SelfContained                         # 自包含打包 (.7z, 含内嵌助手)
 # 本机逃生口（跳过 AOT 助手，产物送不了按键，只用于验证脚本其余部分）：
 python Build/Release.py SingleFile ExcludeElevator
+
+python Build/PackAppUpdate.py --version 2.31.0 \
+    --folder-package JASM_v2.31.0.7z --single-file-package SingleFile_JASM_v2.31.0.zip
+                                                              # 生成 app/update.json（上传 COS，见 docs/app-update-cos-setup.md）
 ```
 
 ## 提交前质量门禁
