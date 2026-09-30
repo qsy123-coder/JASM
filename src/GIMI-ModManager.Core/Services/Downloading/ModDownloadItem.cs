@@ -127,6 +127,7 @@ public sealed class ModDownloadItem
 {
     internal ModDownloadItem(ModDownloadRequest request, string destinationPath)
     {
+        Request = request;
         Key = request.Key;
         DownloadUrl = request.DownloadUrl;
         FileName = request.FileName;
@@ -141,6 +142,13 @@ public sealed class ModDownloadItem
         // 声明体积先垫上：这样进度条在第一份数据到达之前就有分母（否则会先显示一段「未知进度」）。
         TotalBytes = request.FileSizeBytes;
     }
+
+    /// <summary>
+    /// 当初那份请求。留着它而不是把字段一个个抄出来：部署阶段要的是**完整的一份**
+    /// （角色、mod 页面地址、mod 名……），而「归档缓存命中、根本不经过下载」那条路
+    /// 手里只有请求、没有任务项 —— 两条路能用同一种参数形态，靠的就是这个属性。
+    /// </summary>
+    public ModDownloadRequest Request { get; }
 
     public ModDownloadKey Key { get; }
 
