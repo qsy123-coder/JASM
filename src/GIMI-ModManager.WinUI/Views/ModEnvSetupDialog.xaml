@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     Title="一键配置 Mod 环境"
@@ -11,7 +12,8 @@
     Opened="Dialog_OnOpened"
     Closed="Dialog_OnClosed"
     Width="640"
-    MaxHeight="720">
+    MaxHeight="720"
+    l:Uids.Uid="ModEnv_Dialog">
 
     <!-- WinUI 默认 ContentDialogMaxWidth=548，会压掉 Width=640 导致右侧按钮被裁切，这里局部提高上限 -->
     <ContentDialog.Resources>
@@ -88,7 +90,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             Style="{ThemeResource BodyTextBlockStyle}"
-                            Text="XXMI 版本" />
+                            Text="XXMI 版本"
+                            l:Uids.Uid="ModEnv_XxmiVersion" />
                         <ComboBox
                             Grid.Column="1"
                             HorizontalAlignment="Stretch"
@@ -122,7 +125,8 @@
                     <TextBlock
                         Style="{ThemeResource BodyTextBlockStyle}"
                         TextWrapping="WrapWholeWords"
-                        Text="未自动检测到鸣潮安装位置，请手动选择游戏目录。" />
+                        Text="未自动检测到鸣潮安装位置，请手动选择游戏目录。"
+                        l:Uids.Uid="ModEnv_ManualGameDir" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -130,13 +134,20 @@
                         </Grid.ColumnDefinitions>
                         <TextBox
                             PlaceholderText="例如：D:\Wuthering Waves"
-                            Text="{x:Bind ViewModel.GameInstallDir, Mode=TwoWay}" />
+                            Text="{x:Bind ViewModel.GameInstallDir, Mode=TwoWay}"
+                            l:Uids.Uid="ModEnv_GameDirPlaceholder" />
                         <StackPanel
                             Grid.Column="1"
                             Orientation="Horizontal"
                             Spacing="8">
-                            <Button Click="BrowseGameDir_OnClick" Content="浏览..." />
-                            <Button Click="RedetectGame_OnClick" Content="重新检测" />
+                            <Button
+                                Click="BrowseGameDir_OnClick"
+                                Content="浏览..."
+                                l:Uids.Uid="ModEnv_Browse" />
+                            <Button
+                                Click="RedetectGame_OnClick"
+                                Content="重新检测"
+                                l:Uids.Uid="ModEnv_Redetect" />
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -146,7 +157,8 @@
                     <TextBlock
                         Style="{ThemeResource CaptionTextBlockStyle}"
                         Text="安装位置"
-                        Visibility="{x:Bind ViewModel.HasRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        Visibility="{x:Bind ViewModel.HasRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        l:Uids.Uid="ModEnv_InstallLocation" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -163,19 +175,24 @@
                         <Button
                             Grid.Column="1"
                             Click="BrowseXxmiRoot_OnClick"
-                            Content="更改…" />
+                            Content="更改…"
+                            l:Uids.Uid="ModEnv_ChangeRoot" />
                         <!--  Only meaningful once a custom folder is in play.  -->
                         <Button
                             Grid.Column="2"
                             Click="UseDefaultXxmiRoot_OnClick"
                             Content="用默认"
-                            Visibility="{x:Bind ViewModel.HasCustomRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            Visibility="{x:Bind ViewModel.HasCustomRootFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            l:Uids.Uid="ModEnv_UseDefaultRoot" />
                     </Grid>
                     <StackPanel
                         Orientation="Horizontal"
                         Spacing="2"
                         Visibility="{x:Bind ViewModel.HasGameVersion, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="检测到游戏版本：" />
+                        <TextBlock
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Text="检测到游戏版本："
+                            l:Uids.Uid="ModEnv_DetectedGameVersion" />
                         <TextBlock
                             IsTextSelectionEnabled="True"
                             Style="{ThemeResource CaptionTextBlockStyle}"
@@ -213,11 +230,15 @@
                 <StackPanel
                     Spacing="4"
                     Visibility="{x:Bind ViewModel.HasBackups, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Style="{ThemeResource BodyTextBlockStyle}" Text="版本备份" />
+                    <TextBlock
+                        Style="{ThemeResource BodyTextBlockStyle}"
+                        Text="版本备份"
+                        l:Uids.Uid="ModEnv_BackupsTitle" />
                     <TextBlock
                         Style="{ThemeResource CaptionTextBlockStyle}"
                         Text="每次切换 XXMI 版本前都会自动备份当时可用的版本，可从这里恢复。恢复前也会先备份当前版本。"
-                        TextWrapping="WrapWholeWords" />
+                        TextWrapping="WrapWholeWords"
+                        l:Uids.Uid="ModEnv_BackupsDescription" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -238,7 +259,8 @@
                             Grid.Column="1"
                             Click="RestoreBackup_OnClick"
                             Content="恢复此备份"
-                            IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}" />
+                            IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                            l:Uids.Uid="ModEnv_RestoreBackup" />
                     </Grid>
                 </StackPanel>
 
@@ -255,20 +277,23 @@
                 x:Name="CancelButton"
                 Click="Cancel_OnClick"
                 Content="取消"
-                Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                l:Uids.Uid="ModEnv_Cancel" />
             <Button
                 x:Name="StartButton"
                 Click="Start_OnClick"
                 Content="开始配置"
                 IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}"
-                Style="{StaticResource AccentButtonStyle}" />
+                Style="{StaticResource AccentButtonStyle}"
+                l:Uids.Uid="ModEnv_Start" />
             <Button
                 x:Name="TestLaunchButton"
                 Click="TestLaunch_OnClick"
                 Content="测试启动"
                 Visibility="{x:Bind ViewModel.ShowTestLaunch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 IsEnabled="{x:Bind ViewModel.CanTestLaunch, Mode=OneWay}"
-                Style="{StaticResource AccentButtonStyle}" />
+                Style="{StaticResource AccentButtonStyle}"
+                l:Uids.Uid="ModEnv_TestLaunch" />
         </StackPanel>
     </Grid>
 </ContentDialog>
