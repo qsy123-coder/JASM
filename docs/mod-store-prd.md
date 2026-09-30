@@ -179,7 +179,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 **Feature 2: 详情与文件选择**
 
-- **Description**: 详情走 `Mod/{id}/ProfilePage`，展示截图、作者、说明、分类、点赞/浏览/下载数、版本、更新时间；文件列表用于选择安装哪个文件。
+- **Description**: 详情走 `Mod/{id}/ProfilePage`，展示截图、作者、说明、分类、点赞/浏览/下载数、版本、更新时间；文件列表（**取自 `Mod/{id}/DownloadPage`**，`ProfilePage` 自带的那份只在它一条都给不出时兜底）用于选择安装哪个文件。
 - **User flow**: 点卡片 → 右侧抽屉展开 → 看图文说明 → 在文件列表点某个文件的「部署」。
 - **Edge cases**:
   - 一个 mod 多个 file（主文件/变体/不同角色版本）→ 由用户显式选择，**不**自动挑。
@@ -251,6 +251,19 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 | 评论数 | 三个列表端点的 `_nPostCount` | ✅ Subfeed / Search / Mod-Index **都给** —— 卡片上第三项统计（浏览 / 点赞 / 评论）可以稳定显示。⚠️ `_nDownloadCount` 仍然**只有详情页**有，卡片上不要放下载量 |
 | 角色字段的有无 | Subfeed vs Mod-Index 的 `_aSubCategory` | ⚠️ Subfeed 记录**经常整个没有这个键**（UI 类记录就是这样），而 Mod-Index 记录同时给 `_aSubCategory` 与 `_aGame`。角色字段必须可空，卡片上不占位 |
 
+**详情端点（ProfilePage / DownloadPage，同日第三轮实测）** —— 抽屉（Phase 1 第 4 项）落地时把这条链路逐个字段验了一遍，有四处**与直觉相反**，改代码前务必先看这张表：
+
+| 能力 | 端点 | 实测结论 |
+|---|---|---|
+| 详情页的文件 | `Mod/{id}/ProfilePage` | ⚠️ **它也给文件**（`_aFiles` / `_aArchivedFiles`），不是「只有 DownloadPage 给」。但**不能**拿它当依据 —— 文件清单以 `DownloadPage` 为准（下载走的也是那份，`GameBananaCoreService.DownloadModAsync` 查的就是 `_aFiles`），ProfilePage 那份只当兜底 |
+| 「隐藏 mod 才进归档字段」 | 同上 `_aArchivedFiles` | ❌ **假的**。普通 mod 也带归档文件（575376 / 537550 / 529580 各 1 条旧版本），而隐藏的 **709792** 是 `_aFiles` **整个键不存在**、文件全在 `_aArchivedFiles`。两个字段要**都读**、合并成一个清单（活跃在前、归档在后，各自保持接口给的顺序） |
+| `_aFiles` 会不会缺失 | 同上 | ⚠️ 会。DTO 上就算声明成非空集合，JSON 里**没有这个键**时反序列化结果就是 `null`（声明管不住运行时），遍历前必须判空 |
+| 详情页的 NSFW 信号 | 同上 | ⚠️ 列表侧那个 `_bHasContentRatings` 在这个端点**整个键都不存在**。判定改用 `_aContentRatings`：**对象**不是数组（`{"pn":"Partial Nudity"}`，键是缩写、值是给人看的标签），非空即成人内容 |
+| `_aCategory` 的层级 | 同上 | ⚠️ 它是最**具体**的那一级：Skins 下的 mod 给角色名（`Qingxiao`），本身就挂在根分类上的 mod（UI）给的就是根分类名。**判别依据是 `_aSuperCategory` 在不在**（`cat=Qingxiao/Jinhsi` 必带 `super=Skins`；`cat=UI` 时整个键不存在）。少了这一判，UI 类 mod 会被显示出一个假角色「UI」 |
+| 富文本字段 | 同上 | ⚠️ `_sDescription` / `_sText` / `_sLicense` 都是 **HTML**，直接丢进 `TextBlock` 会显示成源码；要用 `GameBananaHtml` 洗成纯文本 |
+| 统计数字的稳定性 | 列表 vs 详情 | ⚠️ **同一条 mod 的两处数字不一致**（709792：列表 593 赞 / 18427 浏览，详情 596 / 18929）。抽屉里显示的是详情那份，别拿列表的数去核对 |
+| 未消费的安全信号 | 同上 `_sAnalysisResult` / `_sAvResult` | ⏳ 详情端点带有这两个字段（上游的扫描结论），本期**没有**消费、也**没有**加进 DTO —— 不做无调用方的死字段。将来要做「安装前风险提示」时应先验它们的取值形态 |
+
 **侧栏「分类」的设计决定**（据上表）：
 
 - `全部` 用 `Mod/Index` 的 `_nRecordCount`（3056）；三个根分类的数字零成本（ProfilePage 一次给全）。
@@ -320,7 +333,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 1. 导航 + 商店页面骨架，布局复用 Mod 市场 — ✅ 已完成
 2. GameBanana 客户端扩展：列表（Subfeed）、搜索（Search/Results）、分类索引（Mod/Index）、根分类（ProfilePage）、列表记录模型 — ✅ 已完成
 3. 浏览能力：分页、搜索、排序（默认/最新/最近更新）、按根分类（服务端 `_aFilters[Generic_Category]`）与按角色（搜索端点）筛选、左侧栏分类与计数 — ✅ 已完成
-4. 详情抽屉：截图、作者、说明、统计、文件列表
+4. 详情抽屉：截图、作者、说明、统计、文件列表 — ✅ 已完成（`ModStoreDetailPanel` + `ModStoreDetail` 映射；文件清单以 `DownloadPage` 为准、`ProfilePage` 兜底；成人内容按 `_aContentRatings` 判定；**未含**下载按钮 —— 它要配套第 5 / 7 项）
 5. 公共下载件（进度 + 断点续传 + MD5 校验），**只给商店用**
 6. 下载管理器：串行队列 + 暂停/继续 + 取消 + 进度
 7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录
@@ -354,7 +367,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 |---|---|---|---|
 | **排序参数取值不全**：`_sSort` 的点赞/下载量排序未确认 | 中 | 中 | Phase 1 内枚举确认；退路是页内客户端排序（仅影响单页，需在 UI 上说明或改为「热门」语义） |
 | **GameBanana API 非官方契约**：上游已在讨论弃用，字段可能变 | 中 | 高 | 所有解析做防御式：缺字段退化为 null/空，绝不抛异常（沿用 `AppUpdateReleaseResolver` 的既有风格）；API 挂掉只影响商店页，不拖累 App |
-| **NSFW 只能客户端过滤**，且详情页没有干净的 NSFW 布尔字段 | 中 | 中 | 列表用 `_bHasContentRatings`；详情页另找可靠信号，找不到就在详情侧对成人内容做保守标注 |
+| **NSFW 只能客户端过滤** | 中 | 中 | 列表用 `_bHasContentRatings`；✅ 详情的信号已收口：详情端点**没有** `_bHasContentRatings`，改用 `_aContentRatings`（对象非空即成人内容，见第三轮实测表） |
 | **下载器抽取引入回归** | 低 | 高 | 本期公共件**只给商店用**，不动两条已实机验证的链路；公共件以 `ModEnvInstallerService` 的成熟形状为蓝本 |
 | **角色筛选靠「角色名当关键词搜」**，本地 `InternalName` 与 GameBanana 子分类名对不齐（如 `YangyangXuanling` vs `Yangyang: Xuanling`） | 中 | 中 | 分类（根分类）走服务端精确筛选不受影响；角色命中不齐时用户还能用搜索框自己搜 —— 文案上不承诺「角色全量可选」 |
 | **角色计数要一个角色一个请求**（约 35 KB / 个，五十多个角色） | 高 | 低 | 并发限 2 + 可取消 + 会话内缓存 + 拿不到就不显示数字；用户先看到内容，计数只是锦上添花 |
@@ -433,6 +446,20 @@ GET /apiv11/Game/20357/ProfilePage                                       → _aM
 GET /apiv11/Game/20357/Categories                                        → 404（没有「列出板块子分类」的端点）
 GET /apiv11/ModCategory/Index                                            → 忽略游戏过滤，全局分页每页 5 条
 GET /apiv11/Util/Search/Results?_sSearchString=<q>&_idGameRow=20357      → _aSectionMatchCounts 里 Mod 项 = 命中数；**命中 0 时这一项不存在**
+```
+
+第三轮（详情 / 文件清单，样本已归档进 `src/JASM.Tests/Fixtures/mod-store-*-{658343,709792}.sample.json`）：
+
+```
+GET /apiv11/Mod/658343/ProfilePage     → 200，_aFiles 4 条 + _aArchivedFiles 1 条（普通 mod，两个字段都有）
+GET /apiv11/Mod/709792/ProfilePage     → 200，_aFiles **键不存在**、_aArchivedFiles 2 条（_sInitialVisibility=hide）
+GET /apiv11/Mod/575376/ProfilePage     → 200，_aFiles 4 条 + _aArchivedFiles 1 条（归档字段不是隐藏 mod 专有）
+GET /apiv11/Mod/537550|529580/ProfilePage → 同上（各 1 条归档）
+GET /apiv11/Mod/709792/ProfilePage     → _aCategory=Qingxiao + _aSuperCategory=Skins（角色）
+GET /apiv11/Mod/575376/ProfilePage     → _aCategory=UI，**无 _aSuperCategory 键**（根分类，不是角色）
+GET /apiv11/Mod/709792/ProfilePage     → 无 _bHasContentRatings 键；成人内容看 _aContentRatings（对象，键为缩写）
+GET /apiv11/Mod/709792/ProfilePage     → 596 赞 / 18929 浏览；同 mod 在列表端点上是 593 / 18427（两处数字不一致）
+GET /apiv11/Mod/709792/DownloadPage    → 200，_aFiles 2 条（**同一 mod 的在售文件以这里为准**）
 ```
 
 ---
