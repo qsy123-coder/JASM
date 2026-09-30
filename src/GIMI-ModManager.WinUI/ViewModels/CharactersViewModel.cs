@@ -1010,6 +1010,12 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
             IsAddingMod = true;
             await _modDragAndDropService.AddStorageItemFoldersAsync(modList, storageItems);
         }
+        catch (ArchiveExtractionException e)
+        {
+            // 解压失败按原因给话：卡片路径与检测区路径看到的是同一套说法
+            _logger.Warning("Dropped file could not be extracted: {Reason}", e.Reason);
+            ShowExtractionFailureNotification(e.Reason);
+        }
         catch (Exception e)
         {
             _logger.Error(e, "Error adding mod");
