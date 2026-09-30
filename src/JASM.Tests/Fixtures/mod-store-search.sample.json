@@ -1,0 +1,458 @@
+{
+    "_aMetadata":  {
+                       "_nRecordCount":  705,
+                       "_nPerpage":  15,
+                       "_bIsComplete":  false,
+                       "_aSectionMatchCounts":  [
+                                                    {
+                                                        "_sModelName":  "Concept",
+                                                        "_sPluralTitle":  "Concepts",
+                                                        "_sDescription":  "Sketches \u0026 drawings",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Concept",
+                                                        "_nMatchCount":  2
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Mod",
+                                                        "_sPluralTitle":  "Mods",
+                                                        "_sDescription":  "Installable files that modify or extend play",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Mod",
+                                                        "_nMatchCount":  277
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Poll",
+                                                        "_sPluralTitle":  "Polls",
+                                                        "_sDescription":  "Questions to pose to the community",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Poll",
+                                                        "_nMatchCount":  1
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Question",
+                                                        "_sPluralTitle":  "Questions",
+                                                        "_sDescription":  "Help threads",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Question",
+                                                        "_nMatchCount":  266
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Request",
+                                                        "_sPluralTitle":  "Requests",
+                                                        "_sDescription":  "Appeals for things to be made",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Request",
+                                                        "_nMatchCount":  125
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Thread",
+                                                        "_sPluralTitle":  "Threads",
+                                                        "_sDescription":  "Forum discussions",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Thread",
+                                                        "_nMatchCount":  7
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Tool",
+                                                        "_sPluralTitle":  "Tools",
+                                                        "_sDescription":  "Modding \u0026 game-related applications",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Tool",
+                                                        "_nMatchCount":  4
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Tutorial",
+                                                        "_sPluralTitle":  "Tutorials",
+                                                        "_sDescription":  "Guides to modding \u0026 gaming",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Tutorial",
+                                                        "_nMatchCount":  4
+                                                    },
+                                                    {
+                                                        "_sModelName":  "Wip",
+                                                        "_sPluralTitle":  "WiPs",
+                                                        "_sDescription":  "Works in Progress",
+                                                        "_sIconClasses":  "SubmissionTypeSmall Wip",
+                                                        "_nMatchCount":  19
+                                                    }
+                                                ]
+                   },
+    "_aRecords":  [
+                      {
+                          "_idRow":  65064,
+                          "_sModelName":  "Request",
+                          "_sSingularTitle":  "Request",
+                          "_sIconClasses":  "SubmissionType Request",
+                          "_sName":  "Different female Rover Outfit",
+                          "_sProfileUrl":  "https://gamebanana.com/requests/65064",
+                          "_tsDateAdded":  1726414273,
+                          "_tsDateModified":  1726414600,
+                          "_bHasFiles":  false,
+                          "_aTags":  [
+                                         "Charakter: Rover",
+                                         "Mod: Skin Mod",
+                                         "Mod: Outfit"
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aMetadata":  {
+                                                                    "_nBounty":  1130,
+                                                                    "_sSnippet":  "I would so love a different Outfit for Rover. An Outfit, where she really has something \"on\" her. I ..."
+                                                                },
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/requests",
+                                                                      "_sCaption":  "Rover with Jacket",
+                                                                      "_sFile":  "66e6fe7698040.jpg",
+                                                                      "_sFile220":  "220-90_66e6fe7698040.jpg",
+                                                                      "_hFile220":  391,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "530-90_66e6fe7698040.jpg",
+                                                                      "_hFile530":  942,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_66e6fe7698040.jpg",
+                                                                      "_hFile100":  178,
+                                                                      "_wFile100":  100,
+                                                                      "_sFile800":  "66e6fe7698040.jpg",
+                                                                      "_hFile800":  1308,
+                                                                      "_wFile800":  800
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  1688034,
+                                              "_sName":  "Celiamaron",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/1688034",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/img/av/66e7000eeaf5c.png",
+                                              "_sHdAvatarUrl":  "https://images.gamebanana.com/img/av/66e70013f1be1.png"
+                                          },
+                          "_aGame":  {
+                                         "_idRow":  20357,
+                                         "_sName":  "Wuthering Waves",
+                                         "_sProfileUrl":  "https://gamebanana.com/games/20357",
+                                         "_sIconUrl":  "https://images.gamebanana.com/img/ico/games/686bf76048ba2.png"
+                                     },
+                          "_aRootCategory":  {
+                                                 "_sName":  "Skin-Mod",
+                                                 "_sProfileUrl":  "https://gamebanana.com/requests/cats/3137",
+                                                 "_sIconUrl":  ""
+                                             },
+                          "_sResolution":  "Delivered",
+                          "_akResolution":  "delivered",
+                          "_sResolutionMessage":  "",
+                          "_aAdditionalRewards":  null,
+                          "_nBounty":  1130,
+                          "_tsLastBoostDate":  1727289798,
+                          "_sInitialVisibility":  "show",
+                          "_bHasContentRatings":  false,
+                          "_nLikeCount":  60,
+                          "_nPostCount":  7,
+                          "_nViewCount":  23216,
+                          "_bIsOwnedByAccessor":  false
+                      },
+                      {
+                          "_idRow":  68729,
+                          "_sModelName":  "Question",
+                          "_sSingularTitle":  "Question",
+                          "_sIconClasses":  "SubmissionType Question",
+                          "_sName":  "wuwa skin didnt load correctly",
+                          "_sProfileUrl":  "https://gamebanana.com/questions/68729",
+                          "_tsDateAdded":  1723131283,
+                          "_tsDateModified":  1723131283,
+                          "_bHasFiles":  false,
+                          "_aTags":  [
+
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aMetadata":  {
+                                                                    "_sState":  "answered",
+                                                                    "_sSnippet":  "i have problem loading mods on wuwa, anyone have any idea?i already refresh, reload and repair game,...",
+                                                                    "_nPostCount":  2
+                                                                },
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/questions",
+                                                                      "_sFile":  "66b4e583bcd7b.jpg",
+                                                                      "_sFile220":  "220-90_66b4e583bcd7b.jpg",
+                                                                      "_hFile220":  524,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "66b4e583bcd7b.jpg",
+                                                                      "_hFile530":  758,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_66b4e583bcd7b.jpg",
+                                                                      "_hFile100":  238,
+                                                                      "_wFile100":  100
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  3673718,
+                                              "_sName":  "FxDevilZ",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/3673718",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/static/img/defaults/avatar.gif"
+                                          },
+                          "_aGame":  {
+                                         "_idRow":  20357,
+                                         "_sName":  "Wuthering Waves",
+                                         "_sProfileUrl":  "https://gamebanana.com/games/20357",
+                                         "_sIconUrl":  "https://images.gamebanana.com/img/ico/games/686bf76048ba2.png"
+                                     },
+                          "_aRootCategory":  {
+                                                 "_sName":  "Other/Misc",
+                                                 "_sProfileUrl":  "https://gamebanana.com/questions/cats/1944",
+                                                 "_sIconUrl":  ""
+                                             },
+                          "_bIsStuck":  false,
+                          "_akState":  "answered",
+                          "_sState":  "Answered",
+                          "_sInitialVisibility":  "show",
+                          "_bHasContentRatings":  false,
+                          "_nLikeCount":  1,
+                          "_nPostCount":  2,
+                          "_bWasFeatured":  false,
+                          "_nViewCount":  4138,
+                          "_bIsOwnedByAccessor":  false
+                      },
+                      {
+                          "_idRow":  93923,
+                          "_sModelName":  "Question",
+                          "_sSingularTitle":  "Question",
+                          "_sIconClasses":  "SubmissionType Question",
+                          "_sName":  "Galbrena ponytail",
+                          "_sProfileUrl":  "https://gamebanana.com/questions/93923",
+                          "_tsDateAdded":  1762247586,
+                          "_tsDateModified":  1762247586,
+                          "_bHasFiles":  false,
+                          "_aTags":  [
+
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aMetadata":  {
+                                                                    "_sState":  "answered",
+                                                                    "_sSnippet":  "I saw a mod where galbrena’s hair is in s ponitail but couldn’t find it anywhere. Does anybody have ...",
+                                                                    "_nPostCount":  5
+                                                                }
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  4849090,
+                                              "_sName":  "Mr_Adr1an_Bandit",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/4849090",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/static/img/defaults/avatar.gif"
+                                          },
+                          "_aGame":  {
+                                         "_idRow":  20357,
+                                         "_sName":  "Wuthering Waves",
+                                         "_sProfileUrl":  "https://gamebanana.com/games/20357",
+                                         "_sIconUrl":  "https://images.gamebanana.com/img/ico/games/686bf76048ba2.png"
+                                     },
+                          "_aRootCategory":  {
+                                                 "_sName":  "Skins",
+                                                 "_sProfileUrl":  "https://gamebanana.com/questions/cats/2052",
+                                                 "_sIconUrl":  ""
+                                             },
+                          "_bIsStuck":  false,
+                          "_akState":  "answered",
+                          "_sState":  "Answered",
+                          "_sInitialVisibility":  "show",
+                          "_bHasContentRatings":  false,
+                          "_nPostCount":  5,
+                          "_bWasFeatured":  false,
+                          "_nViewCount":  1195,
+                          "_bIsOwnedByAccessor":  false
+                      },
+                      {
+                          "_idRow":  537550,
+                          "_sModelName":  "Mod",
+                          "_sSingularTitle":  "Mod",
+                          "_sIconClasses":  "SubmissionType Mod",
+                          "_sName":  "jinhsi manuka switch",
+                          "_sProfileUrl":  "https://gamebanana.com/mods/537550",
+                          "_tsDateAdded":  1724496176,
+                          "_tsDateModified":  1789566806,
+                          "_bHasFiles":  true,
+                          "_aTags":  [
+                                         "jinhsi: manuka"
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/mods",
+                                                                      "_sFile":  "66c9b8089574d.jpg",
+                                                                      "_sFile220":  "220-90_66c9b8089574d.jpg",
+                                                                      "_hFile220":  157,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "530-90_66c9b8089574d.jpg",
+                                                                      "_hFile530":  379,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_66c9b8089574d.jpg",
+                                                                      "_hFile100":  71,
+                                                                      "_wFile100":  100
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  2437196,
+                                              "_sName":  "kongxinrumeng",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/2437196",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/img/av/6679c24a9f53a.jpg"
+                                          },
+                          "_aGame":  {
+                                         "_idRow":  20357,
+                                         "_sName":  "Wuthering Waves",
+                                         "_sProfileUrl":  "https://gamebanana.com/games/20357",
+                                         "_sIconUrl":  "https://images.gamebanana.com/img/ico/games/686bf76048ba2.png"
+                                     },
+                          "_aRootCategory":  {
+                                                 "_sName":  "Skins",
+                                                 "_sProfileUrl":  "https://gamebanana.com/mods/cats/29524",
+                                                 "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6654b6596ba11.png"
+                                             },
+                          "_aSubCategory":  {
+                                                "_sName":  "Jinhsi",
+                                                "_sProfileUrl":  "https://gamebanana.com/mods/cats/30264",
+                                                "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6683c65ae3201.png"
+                                            },
+                          "_sVersion":  "1.2",
+                          "_bIsObsolete":  false,
+                          "_sInitialVisibility":  "show",
+                          "_bHasContentRatings":  false,
+                          "_nLikeCount":  164,
+                          "_nPostCount":  11,
+                          "_bWasFeatured":  false,
+                          "_nViewCount":  43303,
+                          "_bIsOwnedByAccessor":  false
+                      },
+                      {
+                          "_idRow":  529580,
+                          "_sModelName":  "Mod",
+                          "_sSingularTitle":  "Mod",
+                          "_sIconClasses":  "SubmissionType Mod",
+                          "_sName":  "JinhsiModify",
+                          "_sProfileUrl":  "https://gamebanana.com/mods/529580",
+                          "_tsDateAdded":  1721563457,
+                          "_tsDateModified":  1721563457,
+                          "_bHasFiles":  true,
+                          "_aTags":  [
+
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/mods",
+                                                                      "_sFile":  "669cf93c16f0c.jpg",
+                                                                      "_sFile220":  "220-90_669cf93c16f0c.jpg",
+                                                                      "_hFile220":  129,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "530-90_669cf93c16f0c.jpg",
+                                                                      "_hFile530":  311,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_669cf93c16f0c.jpg",
+                                                                      "_hFile100":  59,
+                                                                      "_wFile100":  100
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  2809772,
+                                              "_sName":  "Oriman",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/2809772",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/img/av/669b24816a3b4.png"
+                                          },
+                          "_aGame":  {
+                                         "_idRow":  20357,
+                                         "_sName":  "Wuthering Waves",
+                                         "_sProfileUrl":  "https://gamebanana.com/games/20357",
+                                         "_sIconUrl":  "https://images.gamebanana.com/img/ico/games/686bf76048ba2.png"
+                                     },
+                          "_aRootCategory":  {
+                                                 "_sName":  "Skins",
+                                                 "_sProfileUrl":  "https://gamebanana.com/mods/cats/29524",
+                                                 "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6654b6596ba11.png"
+                                             },
+                          "_aSubCategory":  {
+                                                "_sName":  "Jinhsi",
+                                                "_sProfileUrl":  "https://gamebanana.com/mods/cats/30264",
+                                                "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6683c65ae3201.png"
+                                            },
+                          "_sVersion":  "",
+                          "_bIsObsolete":  false,
+                          "_sInitialVisibility":  "show",
+                          "_bHasContentRatings":  false,
+                          "_nLikeCount":  52,
+                          "_nPostCount":  6,
+                          "_bWasFeatured":  false,
+                          "_nViewCount":  28564,
+                          "_bIsOwnedByAccessor":  false
+                      },
+                      {
+                          "_idRow":  568261,
+                          "_sModelName":  "Mod",
+                          "_sSingularTitle":  "Mod",
+                          "_sIconClasses":  "SubmissionType Mod",
+                          "_sName":  "Jinhsi PEACH BLOSSOM NSFW outfit",
+                          "_sProfileUrl":  "https://gamebanana.com/mods/568261",
+                          "_tsDateAdded":  1736582898,
+                          "_tsDateModified":  1789565378,
+                          "_bHasFiles":  true,
+                          "_aTags":  [
+                                         "Jinhsi: PEACH BLOSSOM"
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/mods",
+                                                                      "_sFile":  "6782241be74ac.jpg",
+                                                                      "_sFile220":  "220-90_6782241be74ac.jpg",
+                                                                      "_hFile220":  124,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "530-90_6782241be74ac.jpg",
+                                                                      "_hFile530":  298,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_6782241be74ac.jpg",
+                                                                      "_hFile100":  56,
+                                                                      "_wFile100":  100
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  2437196,
+                                              "_sName":  "kongxinrumeng",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/2437196",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/img/av/6679c24a9f53a.jpg"
+                                          },
+                          "_aGame":  {
+                                         "_idRow":  20357,
+                                         "_sName":  "Wuthering Waves",
+                                         "_sProfileUrl":  "https://gamebanana.com/games/20357",
+                                         "_sIconUrl":  "https://images.gamebanana.com/img/ico/games/686bf76048ba2.png"
+                                     },
+                          "_aRootCategory":  {
+                                                 "_sName":  "Skins",
+                                                 "_sProfileUrl":  "https://gamebanana.com/mods/cats/29524",
+                                                 "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6654b6596ba11.png"
+                                             },
+                          "_aSubCategory":  {
+                                                "_sName":  "Jinhsi",
+                                                "_sProfileUrl":  "https://gamebanana.com/mods/cats/30264",
+                                                "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6683c65ae3201.png"
+                                            },
+                          "_sVersion":  "1.5",
+                          "_bIsObsolete":  false,
+                          "_sInitialVisibility":  "hide",
+                          "_bHasContentRatings":  true,
+                          "_nLikeCount":  936,
+                          "_nPostCount":  84,
+                          "_bWasFeatured":  false,
+                          "_nViewCount":  83246,
+                          "_bIsOwnedByAccessor":  false
+                      }
+                  ]
+}
