@@ -48,6 +48,12 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     /// <summary>下载面板（单例）。页面只负责开合它，队列与行都在它那边。</summary>
     private readonly ModDownloadManagerViewModel _downloadManager;
 
+    /// <summary>
+    /// 「已装 / 可更新」要问它（它手里是本地安装记录 + 本地 mod 列表）。
+    /// 只借它的判定与安装完成事件，**不在这里发部署动作** —— 那条路走下载面板。
+    /// </summary>
+    private readonly ModStoreDeploymentService _deploymentService;
+
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _sidebarCts;
     private CancellationTokenSource? _detailCts;
@@ -59,13 +65,15 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     private bool _rebuildingSidebar;
 
     public ModStoreViewModel(ILogger logger, ModStoreService storeService, IGameService gameService,
-        NotificationManager notificationManager, ModDownloadManagerViewModel downloadManager)
+        NotificationManager notificationManager, ModDownloadManagerViewModel downloadManager,
+        ModStoreDeploymentService deploymentService)
     {
         _logger = logger.ForContext<ModStoreViewModel>();
         _storeService = storeService;
         _gameService = gameService;
         _notificationManager = notificationManager;
         _downloadManager = downloadManager;
+        _deploymentService = deploymentService;
     }
 
     // ─── 左侧栏 ────────────────────────────────────────────────
@@ -163,16 +171,56 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     public async void OnNavigatedTo(object parameter)
     {
+        // 装完一个商店 mod 之后重打「已安装」角标（理由见 InstallRecorded 的说明）。
+        // 先减再挂：导航服务万一在没走 OnNavigatedFrom 的情况下又调了一次本方法，重复订阅会让一次安装白打好几遍。
+        _deploymentService.InstallRecorded -= OnStoreModInstalled;
+        _deploymentService.InstallRecorded += OnStoreModInstalled;
+
         await LoadSidebarAsync();
         await ReloadAsync();
     }
 
     public void OnNavigatedFrom()
     {
+        _deploymentService.InstallRecorded -= OnStoreModInstalled;
+
         // 离开页面就别再补计数/发搜索/补详情了 —— 那些请求的结果没人看，还占着接口。
         _sidebarCts?.Cancel();
         _searchCts?.Cancel();
         _detailCts?.Cancel();
+    }
+
+    // ─── 安装状态（已装 / 可更新） ─────────────────────────────
+
+    /// <summary>
+    /// 部署服务写完一条安装记录 → 把卡片与抽屉上的「已安装」重判一遍。
+    ///
+    /// 事件来自后台续体（向导关掉之后），改绑定源必须回 UI 线程。
+    /// </summary>
+    private void OnStoreModInstalled(object? sender, EventArgs e)
+    {
+        var dispatcher = App.MainWindow?.DispatcherQueue;
+        if (dispatcher is null)
+            return;
+
+        if (dispatcher.HasThreadAccess)
+            RefreshInstallBadges();
+        else
+            dispatcher.TryEnqueue(RefreshInstallBadges);
+    }
+
+    /// <summary>
+    /// 重判整列卡片的角标。**整列重判而不是只改那一条**：事件不带「装的是哪个 mod」，
+    /// 而且判定本身是幂等的 —— 顺手还能纠正「用户在别处把某个 mod 删了」这类变化。
+    /// </summary>
+    private void RefreshInstallBadges()
+    {
+        foreach (var item in Mods)
+            item.IsInstalled = _deploymentService.IsInstalled(item.GbModId);
+
+        // 抽屉可能正开着那条刚装完的 mod（「可更新」不在这里重判：那要有新的文件清单）。
+        if (DetailItem is { } detail)
+            detail.IsInstalled = _deploymentService.IsInstalled(detail.GbModId);
     }
 
     // ─── 属性变化 ──────────────────────────────────────────────
@@ -263,6 +311,11 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
             }
 
             item.ApplyDetail(detail);
+
+            // 「可更新」只有到这一步才判得了（要文件清单，而列表记录里没有文件信息）：
+            // 拿刚取回来的清单跟安装记录比一次，顺带把按钮换成「更新到最新版本」。
+            item.ApplyInstallStatus(_deploymentService.IsInstalled(mod.GbModId),
+                _deploymentService.FindRecord(mod.GbModId));
         }
         catch (OperationCanceledException)
         {
@@ -502,7 +555,13 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
             }
 
             if (!append) Mods.Clear();
-            foreach (var item in result.Items) Mods.Add(item);
+            foreach (var item in result.Items)
+            {
+                // 「已安装」角标来自本地安装记录（+ 那份 mod 目录还在不在），不是 GameBanana 的列表记录 ——
+                // 所以打在这里，而不是 ModStoreItem.FromMod 那个纯映射里。
+                item.IsInstalled = _deploymentService.IsInstalled(item.GbModId);
+                Mods.Add(item);
+            }
 
             // 失败时**不动**游标：Failure 的 NextPage 是 1，照抄会让「加载更多」失败后重取第一页。
             _nextPage = result.NextPage;
