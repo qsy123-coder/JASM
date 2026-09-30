@@ -40,16 +40,17 @@ public sealed class ModStoreInstallIndexTests : IDisposable
     }
 
     private static ModStoreInstallRecord Record(string modId, string folderPath,
-        string fileId = "100", string? md5 = "abc", string? version = "1.0") =>
+        string fileId = "100", string? md5 = "abc", string? version = "1.0", Guid? localModId = null) =>
         new(modId, fileId, md5, version, "Qingxiao", $"https://gamebanana.com/mods/{modId}",
-            folderPath, DateTimeOffset.UnixEpoch);
+            folderPath, localModId, DateTimeOffset.UnixEpoch);
 
     [Fact]
     public async Task Upsert_IsReadBackByAFreshInstance()
     {
         var folder = CreateInstalledFolder();
+        var localModId = Guid.NewGuid();
 
-        await CreateIndex().UpsertAsync(Record("709792", folder));
+        await CreateIndex().UpsertAsync(Record("709792", folder, localModId: localModId));
 
         var record = CreateIndex().Find("709792");
 
@@ -60,6 +61,7 @@ public sealed class ModStoreInstallIndexTests : IDisposable
         Assert.Equal("Qingxiao", record.Character);
         Assert.Equal("https://gamebanana.com/mods/709792", record.ModPageUrl);
         Assert.Equal(folder, record.FolderPath);
+        Assert.Equal(localModId, record.LocalModId);
         Assert.Equal(DateTimeOffset.UnixEpoch, record.InstalledAt);
     }
 
