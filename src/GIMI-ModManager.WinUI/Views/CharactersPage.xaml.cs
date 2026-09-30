@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 using CommunityToolkit.WinUI;
 using GIMI_ModManager.WinUI.Helpers.Xaml;
 using GIMI_ModManager.WinUI.Models;
@@ -112,7 +113,8 @@ public sealed partial class CharactersPage : Page
 
         if (((Grid)sender).DataContext is CharacterGridItemModel characterGridItem)
         {
-            // 记一笔落点角色：认错角色（压到了旁边的卡）事后只能靠这条日志分辨
+            // 记一笔落点卡片：落在哪张卡上不等于用户想装给谁（下面就把包改判给自动识别了），
+            // 事后只能靠这条日志分辨「他瞄的是谁」，所以照记不误
             Log.Information("Drop on character card: {Character}", characterGridItem.Character.InternalName.Id);
 
             var urlFormats = new[] { "Text", "UniformResourceLocatorW", "UniformResourceLocator" };
@@ -129,7 +131,23 @@ public sealed partial class CharactersPage : Page
                 }
             }
             else
-                await ViewModel.ModDroppedOnCharacterAsync(characterGridItem, await e.DataView.GetStorageItemsAsync());
+            {
+                var storageItems = await e.DataView.GetStorageItemsAsync();
+
+                // 压缩包 / 自解压 exe 一律改判给自动识别：用户拖包进来要的是「你帮我认这是谁的」，
+                // 落点在哪张卡上并不代表他知道是谁的 —— 实机连着两次都把包拖在了卡片上，
+                // 结果装进了压到的那张卡的角色（其中一次还被他瞄着的角色不是同一只）。
+                // 文件夹不在此列：文件夹是用户自己整理好的「这就是 X 的」，仍旧装进落点那个角色。
+                if (storageItems.Count > 0 && storageItems.All(item => item is StorageFile))
+                {
+                    Log.Information("A file drop on a character card is handed to auto detect");
+                    await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
+                }
+                else
+                {
+                    await ViewModel.ModDroppedOnCharacterAsync(characterGridItem, storageItems);
+                }
+            }
         }
 
         var gridItem = ((Grid)sender);
