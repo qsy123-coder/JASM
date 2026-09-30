@@ -765,7 +765,10 @@
     <value>仅显示至少启用了一个模组的情况</value>
   </data>
   <data name="Characters_DropHereLabel.Text" xml:space="preserve">
-    <value>拖放到此处以自动检测模组…</value>
+    <value>拖放到此处以自动检测模组</value>
+  </data>
+  <data name="Characters_DropHereHint.Text" xml:space="preserve">
+    <value>支持压缩包与自解压 exe。想装进某个角色，把它拖到那张卡片上。</value>
   </data>
   <data name="CharGallery_SelectSkinButton.Content" xml:space="preserve">
     <value>选择皮肤</value>
