@@ -85,6 +85,12 @@ public sealed class ApiSubfeedRecord
 
     [JsonPropertyName("_nViewCount")] public int? ViewCount { get; init; }
 
+    /// <summary>
+    /// 评论（帖子）数。实测 **Subfeed / Search / Mod/Index 三个列表端点都给**，
+    /// 所以卡片上的第三个统计可以放心用它（不像 <c>_nDownloadCount</c> 只有详情页有）。
+    /// </summary>
+    [JsonPropertyName("_nPostCount")] public int? PostCount { get; init; }
+
     [JsonPropertyName("_aRootCategory")] public ApiSubfeedCategory? RootCategory { get; init; }
 
     /// <summary>
