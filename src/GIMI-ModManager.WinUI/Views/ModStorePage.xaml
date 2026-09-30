@@ -9,6 +9,7 @@
     xmlns:local="using:GIMI_ModManager.WinUI.Views.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:GIMI_ModManager.WinUI.Models"
+    xmlns:views="using:GIMI_ModManager.WinUI.Views"
     mc:Ignorable="d">
 
     <Page.Resources>
@@ -250,5 +251,8 @@
                 </Grid>
             </Grid>
         </Grid>
+
+        <!-- 详情抽屉:盖住整页(含左侧栏),与市场侧同一个挂法 -->
+        <views:ModStoreDetailPanel x:Name="DetailPanel" Grid.ColumnSpan="2" />
     </Grid>
 </Page>
