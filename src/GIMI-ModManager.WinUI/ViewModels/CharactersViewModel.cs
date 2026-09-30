@@ -1040,7 +1040,12 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
         }
 
         if (storageItems.Count == 0)
+        {
+            // 别静默返回：这条与「压根没走到这里」在日志里长得一样，
+            // 排查「一次拖拽装进了两个角色」时正是靠它区分两条落点路径
+            _logger.Information("Auto detect drop carried no storage items; nothing to do");
             return;
+        }
 
         if (storageItems.Count > 1)
         {
