@@ -278,6 +278,15 @@
   <data name="Shell_ModMarket.Content" xml:space="preserve">
     <value>Mod Market</value>
   </data>
+  <data name="Shell_ModStore.Content" xml:space="preserve">
+    <value>Mod Store</value>
+  </data>
+  <data name="ModStore_CharactersTitle.Text" xml:space="preserve">
+    <value>Characters</value>
+  </data>
+  <data name="ModStore_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>Search mods...</value>
+  </data>
   <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
     <value>Categories</value>
   </data>
