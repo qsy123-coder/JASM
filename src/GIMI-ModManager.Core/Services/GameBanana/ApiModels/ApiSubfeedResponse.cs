@@ -87,6 +87,13 @@ public sealed class ApiSubfeedRecord
 
     [JsonPropertyName("_aRootCategory")] public ApiSubfeedCategory? RootCategory { get; init; }
 
+    /// <summary>
+    /// 子分类 —— **角色名在这里**（实测 <c>Jinhsi</c> / <c>Qingxiao</c> / <c>Hsin</c> …）。
+    ///
+    /// ⚠️ 不是每条记录都有：UI 类记录里这个键**整个不存在**（实测），所以角色必须可空。
+    /// </summary>
+    [JsonPropertyName("_aSubCategory")] public ApiSubfeedCategory? SubCategory { get; init; }
+
     [JsonPropertyName("_aSubmitter")] public ApiAuthor? Author { get; init; }
 
     [JsonPropertyName("_aPreviewMedia")] public ApiImagesRoot? PreviewMedia { get; init; }
@@ -100,10 +107,16 @@ public sealed class ApiSubfeedRecord
 }
 
 /// <summary>
-/// 分类。
+/// 分类对象。两个字段位置用到它，含义**不一样**，别搞混：
+/// <list type="bullet">
+///   <item><c>_aRootCategory</c>：根分类。实测鸣潮板块只有三个 —— <c>Skins</c>(29524) /
+///         <c>Other/Misc</c>(29493) / <c>UI</c>(29496)，完整清单在
+///         <c>Game/{id}/ProfilePage._aModRootCategories</c>。</item>
+///   <item><c>_aSubCategory</c>：子分类，**鸣潮板块下才是角色名**（<c>Jinhsi</c> / <c>Qingxiao</c> / …）。
+///         所以「按角色筛选」要落在这个字段上，不是根分类。</item>
+/// </list>
 ///
-/// ⚠️ 实测**没有** <c>_idRow</c>，id 只能从 <c>_sProfileUrl</c>（<c>…/mods/cats/29496</c>）末段抠。
-/// 鸣潮板块的分类**就是角色名**，所以「按角色筛选」落在 <c>_sName</c> 上。
+/// ⚠️ 两者都**没有 <c>_idRow</c>**，id 只能从 <c>_sProfileUrl</c>（<c>…/mods/cats/29496</c>）末段抠。
 /// </summary>
 public sealed class ApiSubfeedCategory
 {
