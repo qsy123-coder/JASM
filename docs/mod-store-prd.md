@@ -130,11 +130,17 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 **So that** 我不会重复装，也不会错过更新
 
 **Acceptance Criteria:**
-- [ ] 装完写一条本地安装记录（mod id、file id、md5、版本、时间、安装位置）
-- [ ] 商店卡片对已装 mod 打「已安装」角标；有新版时打「可更新」并可一键更新
-- [ ] 更新判定依据：该 mod 最新 file 的 id/md5 与本地索引不一致
-- [ ] 用户手动删掉 mod 目录后，「已安装」角标**不应**残留（索引 + 目录存在性双重判定）
-- [ ] 判定不依赖任何服务端存储
+- [x] 装完写一条本地安装记录（mod id、file id、md5、版本、时间、安装位置）—— `%LOCALAPPDATA%\JASM\ModStoreInstalls.json`，写入点是 `ModStoreDeploymentService.TrackOutcomeAsync` 的 `Success` 分支（向导关掉之后才知道用户到底装成了没有）
+- [x] 商店卡片对已装 mod 打「已安装」角标；有新版时打「可更新」并可一键更新 —— 卡片打「已安装」；「可更新」只打在**详情抽屉**里（见下方说明），那时按钮文案变成「更新到最新版本」，走的是同一条下载→安装路，部署时会被就地更新到原来那一份上（`ModStoreDeploymentService.ResolveModToUpdate` → `InstallOptions.ExistingModIdToUpdate`）
+- [x] 更新判定依据：该 mod 最新 file 的 id/md5 与本地索引不一致 —— 见 `ModStoreInstallStatus.HasUpdate`。**md5 两边都有时以 md5 为准**（作者重压一遍、内容没变、file id 变了 → 不算更新），缺一边时才退回比 file id；版本号字符串不参与判定（上游文件级版本经常整个键缺失、格式也不统一，拿它比只会造误报）
+- [x] 用户手动删掉 mod 目录后，「已安装」角标**不应**残留（索引 + 目录存在性双重判定）—— 见 `ModStoreInstallStatus.IsInstalled`。另有 PRD 边界「用户手动重命名目录 → 视为已装」：路径优先取**本地 mod 列表现在认的**那条（记录里存的那条在改名后已经过期），读不到才退回记录里的路径
+- [x] 判定不依赖任何服务端存储 —— 只有本地 JSON + 磁盘 + 本地 mod 列表
+
+**卡片上为什么不打「可更新」**：精确判定要文件清单（file id / md5），而列表端点根本不返回文件信息——给每张卡都补一次 `DownloadPage` 请求，一屏十几张就是十几个请求；而拿 `_tsDateUpdated` 之类的字段近似判断，作者只改了正文也会被报成「有新版」。收益与代价不成比例，所以「可更新」留在详情抽屉（那里本来就有完整文件清单）。卡片上的**发生**时机也不一样：装完之后不刷新列表角标也会亮——向导是独立窗口，装完这一页停在原地，靠 `ModStoreDeploymentService.InstallRecorded` 事件把整列重判一遍。
+
+**判定的可测性**：`ModStoreInstallStatus`（Core）是**静态纯函数**（环境相关的「那份 mod 现在在哪 / 文件清单长什么样」由调用方传进来），因此这一项的 KPI「已装 / 可更新误报 ≤ 1%」能靠单测反复验：`ModStoreInstallStatusTests` 覆盖了目录被删、用户改名、作者重压同一份内容、md5 缺失、只有归档文件等边界。
+
+> ⚠️ 与第 6/7 项同样**尚未实机验收**：本机上另有一份同名 JASM 在跑且共用 `%LOCALAPPDATA%\JASM`，冒烟测要等用户手动验（重点：装完角标是否立刻出现、改过名的 mod 是否仍算「已装」）。
 
 ### Story 5: 成人内容控制
 
@@ -365,15 +371,20 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
     - **WinUI**：右侧抽屉 `ModDownloadPanel`（460 宽，与商店详情抽屉同一套滑入滑出）+ 单例 VM `ModDownloadManagerViewModel` + 行 VM `ModDownloadItemViewModel`；入口是详情抽屉文件列表下方的「下载选中文件」（**多文件时由用户自己挑**，不自动选）
     - **两条刻意的设计决定**：① 抽屉的 VM 是**单例**（下载跨页面存活，与队列本身的生命期对应）；② 队列表是**队列快照的整表重刷**，不做增量同步 —— `Changed` 事件不带载荷，而同时最多几个任务，遍历比维护增量便宜且不会漏
     - 完成回调（下载完 → 入库 → 拉安装向导）在第 7 项接上了：`ModDownloadQueue.CompletedHandler` 在 `App.xaml.cs` 的 DI 工厂里指向 `ModStoreDeploymentService.DeployAsync`
-7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录 — ✅ 前两步已完成（写安装记录是第 8 项）
+7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录 — ✅ 已完成（写安装记录落在第 8 项；**未实机验收**）
     - **Core**：`ModStoreTargetCharacter`（「装到哪个角色」的判定，纯函数 + 11 条单测）。只认**完全相等**：内部名 → 显示名 → 别名，都不中落 `Others`。**刻意不做模糊匹配** —— 猜错会把 mod 悄悄装进别的角色，比落到「Others」里让用户自己拖走难发现得多
     - **WinUI**：`ModStoreDeploymentService`（`src/GIMI-ModManager.WinUI/Services/ModStore/`）。三件事按序做：**入库**（`CopyAndTrackModArchiveAsync` —— 暂存目录是「取消即清」的语义，不入库的话缓存命中永远查不到；入库顺带把 id/md5 写进文件名，那是第 8 项「已装 / 可更新」的依据）→ **解压 + 改名**（向导吃文件夹不吃压缩包，且归档名带着 `_!!_` 后缀，得先摘掉，与 `ModPageVM.StartInstall` 同一套动作）→ **拉向导**（`StartModInstallationAsync`，`setup` 里把 mod 页面地址填进 `ModUrl`，JASM 靠它把本地 mod 认回 GameBanana 条目）
     - **完成回调不等向导关闭**：`CompletedHandler` 是在队列的工作线程上被 await 的，在那儿等用户点完向导会把后面的下载全堵死（用户开着向导去喝杯水，队列就停了）。所以 `DeployAsync` 只负责「把向导开起来」，关闭之后的收尾（提示 / 第 8 项的安装记录）交给一条分离的续体 `TrackOutcomeAsync`
     - **两种失败分开**：下载本身失败 → 行的 `ErrorMessage`；下好了但入库/拉向导失败 → 行的 `FollowUpError`（文件是好的，不该显示成下载失败）
     - 同一角色同时只能有一个安装向导（与拖放同一条规矩：`IWindowManagerService.GetWindow(modList)`）。缓存命中时这条冲突只提示不回落下载 —— 命中意味着字节完全相同，再下一遍只会得到同一个文件
     - 顺带修掉一条既有实现问题：`GameBananaCoreService.DownloadModAsync` 只读 `_aFiles`（见文末第四轮证据）
-8. 本地安装索引 + 已装角标 + 可更新提示
-    - 写入点已经留好：`ModStoreDeploymentService.TrackOutcomeAsync` 的 `Success` 分支 —— **只有到那一步才知道用户到底装成了没有**（向导关掉之前，取消 = 什么都没发生）。入库时归档文件名里已经带着 mod id / file id / md5，是现成的记录素材
+8. 本地安装索引 + 已装角标 + 可更新提示 — ✅ 已完成（未实机验收，见 Story 4）
+    - **Core**：`ModStoreInstallIndex`（`%LOCALAPPDATA%\JASM\ModStoreInstalls.json`，原子落盘：临时文件 + `File.Move(overwrite)`；只读取自内存字典，写才碰磁盘；文件坏了当空索引并且**不删**）+ `ModStoreInstallStatus`（判定：`IsInstalled` / `HasUpdate` / `FindLatestFile`，静态纯函数，环境相关的一半由调用方传进来）
+    - **写记录**：`ModStoreDeploymentService.TrackOutcomeAsync` 的 `Success` 分支 —— **只有到那一步才知道用户到底装成了没有**（向导关掉之前，取消 = 什么都没发生）。装了什么靠**前后对比该角色的 mod 列表**拿（向导的关闭事件只带一个「成功」、不带装了什么）：多出来恰好一个才是新装，0 个且这次是就地更新时认被顶掉的那个，其余（含一次装进多个）不写 —— 记错一条会让「可更新」对着一个错的 mod 报
+    - **角标**：卡片打「已安装」（`ModStoreItem.IsInstalled`，唯一可观察的字段）；详情抽屉打「已安装」+「可更新」，并把按钮换成「更新到最新版本」（预选文件同时换成判定所指的那个最新文件 —— 角标与选中项必须出自同一个判定，否则用户点「更新」会装上自己已经装过的那份）
+    - **装完立刻亮**：`ModStoreDeploymentService.InstallRecorded`（**写完记录之后**才发；事件在后台续体上发出，订阅方自己切回 UI 线程）→ 商店页把整列卡片重判一遍。少了这一步角标要等用户换个筛选条件才出现，看起来就像没装上
+    - **卡片上不打「可更新」**：精确判定要文件清单，列表端点不给文件信息 —— 理由与代价见 Story 4 末尾那段
+    - ⏳ 已知偏差（记着，别当成 bug）：① 同一 mod 的多形态文件（「有图版」/「无图版」）按不同日期上传时，「最新」可能是另一个形态，装的是旧形态会被判成「可更新」；② 记录存在而目录已被删时**不删记录**（留着才能认出「这是从商店装过的那份」，删掉等于把这层关系永久降级成「没装过」）；③ `ModStoreInstallIndex.RemoveAsync` 目前没有生产调用方
 9. NSFW：设置页开关（默认隐藏）+ 客户端过滤 — 页面内下拉已可用（会话级，未落盘；设置页开关未做）
 10. 跨游戏目录定位（读 WuWa 游戏级配置 + 未配置时的引导态）
 11. **Phase 1 内需收口的验证项**：
