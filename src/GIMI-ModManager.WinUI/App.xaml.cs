@@ -5,6 +5,7 @@ using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.Core.Services.CommandService;
+using GIMI_ModManager.Core.Services.Downloading;
 using GIMI_ModManager.Core.Services.GameBanana;
 using GIMI_ModManager.Core.Services.ModPresetService;
 using GIMI_ModManager.WinUI.Activation;
@@ -315,6 +316,26 @@ public partial class App : Application
                                 TimeSpan.FromMilliseconds(500), 3, null, true))
                     );
 
+                // Mod 商店的下载（GameBanana CDN）。具名 client 的理由与 ModEnv 那份一样：
+                // 下载要的是长超时，而上面那个 API client 挂着限流与短超时。
+                // 刻意**不挂** Polly 重试：重试 / 退避已经由 ResumableDownloader 负责
+                // （它知道 .part 断了从哪续），两处各一套只会把重试次数乘起来。
+                services.AddHttpClient(ModDownloadQueue.HttpClientName, client =>
+                    {
+                        client.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager");
+                        client.DefaultRequestHeaders.Add("Accept", "*/*");
+                        client.Timeout = TimeSpan.FromMinutes(30);
+                    });
+
+                // 下载队列：单例（面板切页不丢任务）。暂存目录放在应用数据目录下，
+                // 不用临时目录 —— 那里的 .part 会被系统清理，而它正是「同一个文件重新入队时
+                // 自动接着传」的依据。
+                services.AddSingleton(sp => new ModDownloadQueue(
+                    sp.GetRequiredService<IHttpClientFactory>().CreateClient(ModDownloadQueue.HttpClientName),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "JASM", "ModStoreDownloads"),
+                    sp.GetService<ILogger>()));
+
                 // Views and ViewModels
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<SettingsPage>();
@@ -370,6 +391,9 @@ public partial class App : Application
                 services.AddTransient<ModStoreViewModel>();
                 services.AddTransient<ModStorePage>();
                 services.AddSingleton<ModStoreService>();
+
+                // 下载面板：单例 —— 下载是跨页面的（在商店里点了下载，切走再回来行还得在）。
+                services.AddSingleton<ModDownloadManagerViewModel>();
 
                 // Configuration
                 services.Configure<ModMarketOptions>(
