@@ -5,6 +5,7 @@ using GIMI_ModManager.Core.ModStore;
 using GIMI_ModManager.Core.Services.Downloading;
 using GIMI_ModManager.Core.Services.GameBanana.ApiModels;
 using GIMI_ModManager.Core.Services.GameBanana.Models;
+using Serilog;
 
 namespace JASM.Tests;
 
@@ -574,6 +575,15 @@ public class ModDownloadQueueTests : IDisposable
 
     private static readonly Uri DownloadUri = new("https://gamebanana.com/dl/1");
 
+    /// <summary>
+    /// 队列不传 logger 时会退回**全局**的 <c>Log.Logger</c>，而 <see cref="GameServiceInitializationTests"/>
+    /// 会把全局 logger 换成它自己的 MockLogger，再断言「里面没有 Warning / Error」。
+    /// 这个文件里的失败用例（哈希不符、传输中断……）是**故意**要写出 Error 级日志的，
+    /// 一落进那个共享列表就会让那边的断言翻车（并发写还会撞坏它的 List）。
+    /// 所以这里显式给一个什么都不写的 logger，把两边彻底隔开。
+    /// </summary>
+    private static readonly ILogger SilentLogger = new LoggerConfiguration().CreateLogger();
+
     private static byte[] Payload(int size)
     {
         var data = new byte[size];
@@ -589,6 +599,7 @@ public class ModDownloadQueueTests : IDisposable
         Func<ModDownloadItem, CancellationToken, Task>? onCompleted = null, int maxAttempts = 1)
     {
         return new ModDownloadQueue(new HttpClient(handler), Path.Combine(_directory, "staging"),
+            SilentLogger,
             downloaderOptions: new ResumableDownloaderOptions
             {
                 MaxAttempts = maxAttempts,
