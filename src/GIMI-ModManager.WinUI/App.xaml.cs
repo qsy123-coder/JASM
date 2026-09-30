@@ -155,6 +155,10 @@ public partial class App : Application
                 services.AddSingleton<AutoUpdaterService>();
                 services.AddSingleton<SingleFileSelfUpdater>();
 
+                // 应用自身的更新源（COS 清单优先 + GitHub 回退）与带进度的下载器
+                services.AddSingleton<AppUpdateManifestService>();
+                services.AddSingleton<AppUpdateDownloader>();
+
                 services.AddSingleton<ImageHandlerService>();
                 services.AddSingleton<SelectedGameService>();
 
@@ -314,6 +318,21 @@ public partial class App : Application
                                 TimeSpan.FromMilliseconds(500), 3, null, true))
                     );
 
+                // 应用更新：同一个客户端既拉 COS 清单/包，也拉 GitHub 回退的 releases API，
+                // 所以 Accept 保持 */*（GitHub 的 API 默认就返回 JSON）。超时与重试沿用 ModEnv 那套 ——
+                // 那边同样是"Range 续传 + 活动超时"的下载形态，已实机验证过。
+                services.AddHttpClient(AppUpdateManifestService.HttpClientName, client =>
+                    {
+                        client.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager");
+                        client.DefaultRequestHeaders.Add("Accept", "*/*");
+                        client.Timeout = TimeSpan.FromMinutes(30);
+                    })
+                    .AddPolicyHandler(
+                        HttpPolicyExtensions.HandleTransientHttpError()
+                            .WaitAndRetryAsync(Backoff.DecorrelatedJitterBackoffV2(
+                                TimeSpan.FromMilliseconds(500), 3, null, true))
+                    );
+
                 // Views and ViewModels
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<SettingsPage>();
@@ -372,6 +391,8 @@ public partial class App : Application
                     context.Configuration.GetSection(nameof(LocalSettingsOptions)));
                 services.Configure<ModEnvSetupOptions>(
                     context.Configuration.GetSection(ModEnvSetupOptions.SectionName));
+                services.Configure<AppUpdateOptions>(
+                    context.Configuration.GetSection(AppUpdateOptions.SectionName));
 
                 services.AddSingleton<ModRandomizationService>();
             }).Build();
