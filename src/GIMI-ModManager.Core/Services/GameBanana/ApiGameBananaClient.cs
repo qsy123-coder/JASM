@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
+using GIMI_ModManager.Core.ModStore;
 using GIMI_ModManager.Core.Services.GameBanana.ApiModels;
 using GIMI_ModManager.Core.Services.GameBanana.Models;
 using Polly;
@@ -24,6 +25,12 @@ public sealed class ApiGameBananaClient(
     private const string DownloadUrl = "https://gamebanana.com/dl/";
     private const string ApiUrl = "https://gamebanana.com/apiv11/Mod/";
     private const string HealthCheckUrl = "https://gamebanana.com/apiv11";
+
+    /// <summary>板块内容流：<c>apiv11/Game/{gameId}/Subfeed</c>。</summary>
+    private const string GameSubfeedApiUrl = "https://gamebanana.com/apiv11/Game/";
+
+    /// <summary>站内搜索：<c>apiv11/Util/Search/Results</c>（跨类型，返回混合提交）。</summary>
+    private const string SearchApiUrl = "https://gamebanana.com/apiv11/Util/Search/Results";
 
     public async Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default)
     {
@@ -125,6 +132,74 @@ public sealed class ApiGameBananaClient(
     {
         return new Uri(
             $"https://api.gamebanana.com/Core/Item/Data?itemid={modFileId}&itemtype=File&fields=file");
+    }
+
+    public Task<ModStorePage?> GetGameSubfeedAsync(GbGameId gameId, GbSubfeedSort sort, int page,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(gameId);
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+
+        // _csvModelInclusions=Mod 是**服务端**过滤，实测有效（6090 条提交 → 3062 个 mod）——
+        // 与搜索接口不同，这里可以放心只要 Mod。
+        var requestUrl = new Uri(GameSubfeedApiUrl + gameId + "/Subfeed" +
+                                $"?_nPage={page}" +
+                                $"&_csvModelInclusions={ApiSubfeedRecord.ModModelName}" +
+                                $"&_sSort={sort.ToApiValue()}");
+
+        return GetModStorePageAsync(requestUrl, cancellationToken);
+    }
+
+    public Task<ModStorePage?> SearchGameModsAsync(GbGameId gameId, string searchQuery, int page,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(gameId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(searchQuery);
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+
+        // 搜索接口的混合类型是**服务端行为**：这里没有 _csvModelInclusions 可用
+        // （实测该参数在 Search 上无效），只能取回来再在客户端过滤。
+        var requestUrl = new Uri(SearchApiUrl +
+                                $"?_sSearchString={Uri.EscapeDataString(searchQuery)}" +
+                                $"&_idGameRow={gameId}" +
+                                $"&_nPage={page}");
+
+        return GetModStorePageAsync(requestUrl, cancellationToken);
+    }
+
+    /// <summary>
+    /// 商店列表的统一取数路径。
+    ///
+    /// 与 <see cref="GetModProfileAsync"/> 那族**刻意不同**：那些方法失败就抛（调用方是后台服务，
+    /// 需要知道失败了），而商店是个用户正在看的页面 —— 一次翻页失败应该显示空态/重试，
+    /// 不该把异常抛进 UI 线程。所以这里失败记 Warning 并返回 null（=「没取到」，
+    /// 与「取到了但是空的」<see cref="ModStorePage.Empty"/> 区分开）。
+    /// </summary>
+    private async Task<ModStorePage?> GetModStorePageAsync(Uri requestUrl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await SendRequest(requestUrl, cancellationToken).ConfigureAwait(false);
+
+            await using var contentStream =
+                await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            var apiResponse = await JsonSerializer
+                .DeserializeAsync<ApiSubfeedResponse>(contentStream, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            return ModStorePage.FromApi(apiResponse);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 用户切页/关页导致的取消不该被当成失败吞掉。
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "获取 GameBanana 列表失败，商店页将按空态处理 | Url: {Url}", requestUrl);
+            return null;
+        }
     }
 
     public async Task DownloadModAsync(GbModFileId modFileId, FileStream destinationFile, IProgress<int>? progress,
