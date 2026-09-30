@@ -254,5 +254,9 @@
 
         <!-- 详情抽屉:盖住整页(含左侧栏),与市场侧同一个挂法 -->
         <views:ModStoreDetailPanel x:Name="DetailPanel" Grid.ColumnSpan="2" />
+
+        <!-- 下载管理抽屉:挂在详情抽屉**之后**，所以「在详情里点下载 → 面板盖在详情上面」是自然层序。
+             它自己认队列的状态(ViewModel.IsOpen)决定开合，页面不需要转发。 -->
+        <views:ModDownloadPanel x:Name="DownloadPanel" Grid.ColumnSpan="2" />
     </Grid>
 </Page>
