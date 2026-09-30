@@ -1,0 +1,33 @@
+{
+    "_idRow":  20357,
+    "_sName":  "Wuthering Waves",
+    "_sProfileUrl":  "https://gamebanana.com/games/20357",
+    "_bHasFiles":  false,
+    "_nSubscriberCount":  76520,
+    "_aModRootCategories":  [
+                                {
+                                    "_idRow":  29524,
+                                    "_sName":  "Skins",
+                                    "_nItemCount":  2815,
+                                    "_nCategoryCount":  59,
+                                    "_sUrl":  "https://gamebanana.com/mods/cats/29524",
+                                    "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6654b6596ba11.png"
+                                },
+                                {
+                                    "_idRow":  29493,
+                                    "_sName":  "Other/Misc",
+                                    "_nItemCount":  155,
+                                    "_nCategoryCount":  0,
+                                    "_sUrl":  "https://gamebanana.com/mods/cats/29493",
+                                    "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6692c90cba314.png"
+                                },
+                                {
+                                    "_idRow":  29496,
+                                    "_sName":  "UI",
+                                    "_nItemCount":  84,
+                                    "_nCategoryCount":  0,
+                                    "_sUrl":  "https://gamebanana.com/mods/cats/29496",
+                                    "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6692c913ddf00.png"
+                                }
+                            ]
+}
