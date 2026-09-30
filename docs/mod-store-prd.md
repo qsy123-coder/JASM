@@ -199,10 +199,19 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 **Feature 4: 下载器**
 
-- **Description**: 抽出一份公共下载件（进度 + 断点续传 + 哈希校验），**本期只给商店用**。
-- **Design note**: 项目内已有两份刻意重复的实现（`AppUpdateDownloader`、`ModEnvInstallerService.DownloadWithResumeAsync`），`AppUpdateDownloader.cs` 的类注释写明「出现第三个调用方时应抽成共享 helper」—— 商店正是第三个调用方。本期抽公共件但**不迁移**那两条已实机验证的链路，降低回归风险。
-- **Edge cases**: 服务器忽略 `Range` 返回 200 → 从头重下；`416` → 丢弃 `.part` 重来；服务器无 `Content-Length` → 退回按已知大小估算进度。
-- **Error handling**: 活动超时（无数据）判失败并自动续传重试；重试耗尽后暴露失败原因。
+- **Description**: 抽出一份公共下载件（进度 + 断点续传 + 哈希校验），**本期只给商店用**。已实现为 `GIMI-ModManager.Core/Services/Downloading/ResumableDownloader.cs`。
+- **Design note**（2026-09-30 核实后**改写**）：原先这里写「已有两份刻意重复的实现（`AppUpdateDownloader`、`ModEnvInstallerService.DownloadWithResumeAsync`），前者注释要求抽公共件」—— **`AppUpdateDownloader.cs` 已经不存在了**（应用更新迁 COS 时被 `SingleFileSelfUpdater` 取代）。当前真实的重复情况是两份、成熟度差得很远：
+  - `ModEnvInstallerService.DownloadWithResumeAsync`：Range 续传 + 活动超时 + 退避重试 + SHA256 校验，**已实机验证** → 公共件就是照它的形状写的；
+  - `SingleFileSelfUpdater.DownloadAsync`：一句 `CopyToAsync`，无续传、无校验、无进度。
+
+  所以本期**抽公共件但不迁移任何一条**：动那两条各自都是一次完整回归，而商店只要能下自己的文件（Phase 2 再迁）。
+- **交付的行为**（每条都有一条单测钉住）：
+  - 落 `.part` 再续传；服务端回 200（不认 `Range`）→ 丢弃重下；`416` → 丢弃重来一次；`206` 但起点不是我们要的位置 → 同样按重下处理（否则会拼出错位文件）；
+  - 数据源声明的体积（`_nFilesize`）用来识破「比目标还大的陈旧 `.part`」，也用来在服务端不给 `Content-Length` 时兜住进度；
+  - 哈希不符 → 删 `.part` 并按 `HashMismatch` 失败（**不自动重试**：同一份坏数据重试没有意义）；上游没给哈希 ≠ 校验失败（空值**跳过**校验，不删好文件）；
+  - 可重试的失败（连接失败/中断/5xx/408/假死）按 1s→8s 退避重试 `MaxAttempts` 次，`.part` 始终保留；4xx 与用户取消都不重试；
+  - **取消/暂停不删 `.part`** —— 那是「继续」能成立的前提。
+- **本期边界**：这是纯下载件，**没有生产调用方** —— 商店侧的调用点、归档缓存复用（`ModArchiveRepository.CopyAndTrackModArchiveAsync`）与队列属于第 6 项；下载**前**按 MD5 命中归档缓存跳过下载也落在那一项。
 
 **Feature 5: 本地安装索引**
 
@@ -297,7 +306,8 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 | 角色/游戏数据 | `GameService.InitializeCharactersAsync` 读 `Assets/Games/WuWa/characters.json`（`GameService.cs:810-864`）。WuWa 资源齐全，无需新增 |
 | 游戏级配置 | `SelectedGameService`：配置按游戏隔离在 `%LocalAppData%\JASM\ApplicationData_<game>\`（`SelectedGameService.cs:41-51`、`:96-108`） |
 | 本地索引 | 沿用 `ILocalSettingsService`（`Services/LocalSettingsService.cs`，游戏级 `LocalSettings.json`，`SettingScope.Game`）。归档命名沿用 `ModArchiveRepository` 的 `<name>_!!_<modId>_!!_<fileId>_!!_<md5>` 约定 |
-| 下载器蓝本 | `ModEnvInstallerService.DownloadWithResumeAsync:145` / `DownloadOnceAsync:199`（`.part` + `Range` + 活动超时 + 指数退避 + SHA256）；`AppUpdateDownloader.cs:11-23` 的注释明确要求抽公共件 |
+| 下载器蓝本 | `ModEnvInstallerService.DownloadWithResumeAsync:145` / `DownloadOnceAsync:199`（`.part` + `Range` + 活动超时 + 指数退避 + SHA256）→ 已据此写出 `Core/Services/Downloading/ResumableDownloader.cs`。⚠️ 另一份曾计划共享的 `AppUpdateDownloader.cs` **已不存在**（被 `SingleFileSelfUpdater` 取代，那个只有一句 `CopyToAsync`） |
+| 归档缓存 | `ModArchiveRepository`：下载**前**按 `GetLocalModArchiveByMd5HashAsync` 命中即跳过；下载完用 `CopyAndTrackModArchiveAsync(路径, identifier)` 入库（它自己算 MD5 并拼 `<name>_!!_<modId>_!!_<fileId>_!!_<md5>` 名字）。⚠️ 它的 `CreateAndTrackModArchiveAsync` **自己持有 FileStream**，与「`.part` + 续传」不兼容，所以商店走「下载件写 .part → 校验 → CopyAndTrack」这条路 |
 | HTTP client | `App.xaml.cs:197-206` 已有具名/类型化 GameBanana client（自定义 UA、Polly 限流 + 重试）。商店复用该 client，**不新建** |
 
 ### Performance
@@ -334,7 +344,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 2. GameBanana 客户端扩展：列表（Subfeed）、搜索（Search/Results）、分类索引（Mod/Index）、根分类（ProfilePage）、列表记录模型 — ✅ 已完成
 3. 浏览能力：分页、搜索、排序（默认/最新/最近更新）、按根分类（服务端 `_aFilters[Generic_Category]`）与按角色（搜索端点）筛选、左侧栏分类与计数 — ✅ 已完成
 4. 详情抽屉：截图、作者、说明、统计、文件列表 — ✅ 已完成（`ModStoreDetailPanel` + `ModStoreDetail` 映射；文件清单以 `DownloadPage` 为准、`ProfilePage` 兜底；成人内容按 `_aContentRatings` 判定；**未含**下载按钮 —— 它要配套第 5 / 7 项）
-5. 公共下载件（进度 + 断点续传 + MD5 校验），**只给商店用**
+5. 公共下载件（进度 + 断点续传 + MD5 校验），**只给商店用** — ✅ 已完成（`ResumableDownloader`：Range 续传 / 200 重下 / 416 / 206 起点错位 / 活动超时 / 退避重试 / 校验通过才落盘 / 取消保留 `.part`；21 条单测）。**尚无生产调用方**，商店侧接线在第 6 项
 6. 下载管理器：串行队列 + 暂停/继续 + 取消 + 进度
 7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录
 8. 本地安装索引 + 已装角标 + 可更新提示
@@ -348,7 +358,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 ### Phase 2: Enhancements（发布后）
 
-- 把 `AppUpdateDownloader` / `ModEnvInstallerService` 迁移到公共下载件，消除三份重复
+- 把 `SingleFileSelfUpdater.DownloadAsync` / `ModEnvInstallerService.DownloadWithResumeAsync` 迁移到公共下载件（`ResumableDownloader`），消除两份重复
 - 商店内卸载 / 回滚
 - 点赞/下载量排序（若 Phase 1 未收口）
 - 更细的分类树筛选（分类筛选本身已服务端化；上游没有「列出板块子分类」的端点，要做得自己维护一份 id 映射）
