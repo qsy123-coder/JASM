@@ -18,6 +18,11 @@ namespace GIMI_ModManager.Core.ModStore;
 /// <param name="Character">装到的本地角色内部名。</param>
 /// <param name="ModPageUrl">mod 页面地址。</param>
 /// <param name="FolderPath">装好的 mod 目录（绝对路径）。</param>
+/// <param name="LocalModId">
+/// 装出来那个 mod 的本地 id（JASM 自己发的 Guid，与「模组更新」那条路给安装向导的是同一个）。
+/// 再装一次时靠它让向导**就地更新**而不是在同一角色下多塞一份；读不出来时为 null
+/// （那时向导会退化成「新增一个」，不会出错）。
+/// </param>
 /// <param name="InstalledAt">写入这条记录的时间。</param>
 public sealed record ModStoreInstallRecord(
     string ModId,
@@ -27,6 +32,7 @@ public sealed record ModStoreInstallRecord(
     string? Character,
     string? ModPageUrl,
     string FolderPath,
+    Guid? LocalModId,
     DateTimeOffset InstalledAt);
 
 /// <summary>落盘形状。包一层而不是直接存数组：将来加字段 / 换结构时有地方放版本号。</summary>
