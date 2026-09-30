@@ -186,6 +186,24 @@ public sealed class ModStoreService(
     }
 
     /// <summary>
+    /// 取一条 mod 的详情（详情抽屉用）。**不缓存**：详情里的统计/版本会变，
+    /// 而重开一个抽屉本来就是用户主动动作，多打两个请求比给用户看过期的下载量划算。
+    ///
+    /// 与列表那条链路同一约定：失败返回 null，由界面显示「加载失败 + 重试」，
+    /// 不把异常抛进 UI 线程（<see cref="IApiGameBananaClient.GetModStoreDetailAsync"/> 内部已收敛）。
+    /// </summary>
+    /// <param name="gbModId">GameBanana mod id（字符串，卡片上带的就是它）</param>
+    public async Task<ModStoreDetail?> GetDetailAsync(string gbModId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(gbModId))
+            return null;
+
+        return await client.GetModStoreDetailAsync(new GbModId(gbModId.Trim()), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// 取一「屏」数据：从 <paramref name="startPage"/> 开始，直到筛出至少一条、
     /// 或服务端说到头了、或连续空页到上限。
     /// </summary>
