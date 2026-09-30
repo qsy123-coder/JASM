@@ -4,8 +4,11 @@ using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Services.GameBanana.Models;
+using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Contracts.ViewModels;
 using GIMI_ModManager.WinUI.Models;
+using GIMI_ModManager.WinUI.Models.Settings;
+using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.ModStore;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using Serilog;
@@ -54,9 +57,18 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     /// </summary>
     private readonly ModStoreDeploymentService _deploymentService;
 
+    /// <summary>「隐藏成人内容」存它（App 级，见 <see cref="ModStoreSettings"/>）。</summary>
+    private readonly ILocalSettingsService _localSettingsService;
+
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _sidebarCts;
     private CancellationTokenSource? _detailCts;
+
+    /// <summary>
+    /// 从设置里恢复下拉初值的那一刻，压住 setter 里的重取与回写（见
+    /// <see cref="ApplyAdultContentSettingAsync"/>）。
+    /// </summary>
+    private bool _suppressContentFilterReload;
 
     /// <summary>抽屉当前这条 mod 对应的列表记录 —— 重试时要从它重新开一次。</summary>
     private ModStoreItem? _detailSource;
@@ -66,7 +78,7 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     public ModStoreViewModel(ILogger logger, ModStoreService storeService, IGameService gameService,
         NotificationManager notificationManager, ModDownloadManagerViewModel downloadManager,
-        ModStoreDeploymentService deploymentService)
+        ModStoreDeploymentService deploymentService, ILocalSettingsService localSettingsService)
     {
         _logger = logger.ForContext<ModStoreViewModel>();
         _storeService = storeService;
@@ -74,6 +86,7 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
         _notificationManager = notificationManager;
         _downloadManager = downloadManager;
         _deploymentService = deploymentService;
+        _localSettingsService = localSettingsService;
     }
 
     // ─── 左侧栏 ────────────────────────────────────────────────
@@ -142,8 +155,9 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     /// <summary>
     /// 成人内容开关。默认**隐藏**（PRD 的硬性决定），打开后卡片上会带 NSFW 角标。
     ///
-    /// 这一版是页面内的下拉，会话级、不落盘；PRD Phase 1 第 9 项说的「设置页开关」还没做，
-    /// 到时候两边共用一个设置项即可（服务层只有一个 <c>IncludeAdultContent</c>）。
+    /// 落盘在 <see cref="ModStoreSettings"/>（App 级），与设置页那个复选框同一份：
+    /// 这里改会写回去，设置页改完回到本页会读出来。服务层只有 <c>IncludeAdultContent</c> 一个旋钮，
+    /// 两边都只是它的入口。
     /// </summary>
     [ObservableProperty]
     private string _selectedContentFilter = HideNsfwOption;
@@ -175,6 +189,10 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
         // 先减再挂：导航服务万一在没走 OnNavigatedFrom 的情况下又调了一次本方法，重复订阅会让一次安装白打好几遍。
         _deploymentService.InstallRecorded -= OnStoreModInstalled;
         _deploymentService.InstallRecorded += OnStoreModInstalled;
+
+        // 先把成人内容开关从设置里恢复出来再取数：服务层的筛选决定第一页筛不筛，
+        // 晚一步用户会先看到一屏成人内容、再被配置好的「隐藏」筛掉。
+        await ApplyAdultContentSettingAsync();
 
         await LoadSidebarAsync();
         await ReloadAsync();
@@ -223,6 +241,55 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
             detail.IsInstalled = _deploymentService.IsInstalled(detail.GbModId);
     }
 
+    // ─── 隐藏成人内容（App 级设置） ─────────────────────────────
+
+    /// <summary>
+    /// 把「隐藏成人内容」从设置里读回来，并同步到页内下拉与服务层。
+    ///
+    /// 这个开关有**两个入口**：这里的下拉，以及设置页那个复选框。两处读写的是同一份
+    /// <see cref="ModStoreSettings"/>，所以从设置页改完再回到商店页就能立刻生效
+    /// （本页每次导航都会走 <see cref="OnNavigatedTo"/>，开关就在这里被重新读一遍）。
+    /// </summary>
+    private async Task ApplyAdultContentSettingAsync()
+    {
+        var settings = await _localSettingsService
+            .ReadOrCreateSettingAsync<ModStoreSettings>(ModStoreSettings.Key, SettingScope.App);
+
+        // 走属性（XAML 的下拉要跟着动），但压住 setter 里的重取与回写：
+        // 重取由 OnNavigatedTo 自己发起，回写则是把刚读到的值原样再写一遍。
+        _suppressContentFilterReload = true;
+        try
+        {
+            SelectedContentFilter = settings.HideAdultContent ? HideNsfwOption : ShowNsfwOption;
+        }
+        finally
+        {
+            _suppressContentFilterReload = false;
+        }
+    }
+
+    /// <summary>
+    /// 把下拉的选择落盘。
+    ///
+    /// **失败只记日志**：这是一个纯偏好，写不进去的后果是下次进页面回到默认值，
+    /// 没有理由为它弹一个提示打断用户正在做的事。
+    /// </summary>
+    private async Task SaveAdultContentSettingAsync(bool hide)
+    {
+        try
+        {
+            var settings = await _localSettingsService
+                .ReadOrCreateSettingAsync<ModStoreSettings>(ModStoreSettings.Key, SettingScope.App);
+
+            settings.HideAdultContent = hide;
+            await _localSettingsService.SaveSettingAsync(ModStoreSettings.Key, settings, SettingScope.App);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "保存 Mod 商店的隐藏成人内容开关失败");
+        }
+    }
+
     // ─── 属性变化 ──────────────────────────────────────────────
 
     partial void OnSelectedFilterChanged(ModStoreSidebarItem? value)
@@ -237,7 +304,12 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     {
         // 服务端没有可用的 NSFW 过滤参数（实测），所以过滤在服务层做：改开关 + 重取。
         _storeService.IncludeAdultContent = value == ShowNsfwOption;
+
+        // 恢复初值那条路（ApplyAdultContentSettingAsync）不重取也不回写。
+        if (_suppressContentFilterReload) return;
+
         RequestReload();
+        _ = SaveAdultContentSettingAsync(value == HideNsfwOption);
     }
 
     partial void OnSearchTextChanged(string value)
