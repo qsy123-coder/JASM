@@ -54,19 +54,8 @@ public class ModDragAndDropService
             return null;
         }
 
-        if (_windowManagerService.GetWindow(modList) is { } window)
-        {
-            _notificationManager.ShowNotification(
-                $"Please finish adding the mod for '{modList.Character.DisplayName}' first",
-                $"JASM does not support multiple mod installs for the same character",
-                TimeSpan.FromSeconds(8));
-
-            PInvoke.PlaySound("SystemAsterisk", null,
-                SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_ALIAS | SND_FLAGS.SND_NODEFAULT);
-
-            App.MainWindow.DispatcherQueue.TryEnqueue(() => window.Activate());
+        if (TryActivateExistingInstallWindow(modList))
             return null;
-        }
 
         var storageItem = storageItems.FirstOrDefault();
 
@@ -149,6 +138,98 @@ public class ModDragAndDropService
             .ConfigureAwait(false);
         DragAndDropFinished?.Invoke(this, new DragAndDropFinishedArgs(new List<ExtractPaths>()));
         return installMonitor;
+    }
+
+    /// <summary>
+    /// 「拖到检测区」那条路：把包解压（含密码）→ 交给 <paramref name="resolveModList"/> 认角色 → 装。
+    ///
+    /// <para>
+    /// <b>角色识别不在这里</b>：那要用游戏数据（角色名单、包内目录名比对），是 ViewModel 那边的事。
+    /// 这个方法只管「包」的那一半 —— 解压、临时目录的生与死、最后交给安装向导，
+    /// 也就是 <see cref="AddStorageItemFoldersAsync"/> 用的同一套（同一个「同角色已有安装窗」守卫）。
+    /// </para>
+    ///
+    /// <para>
+    /// 临时目录的清理都收在这个方法里：装成功时<b>不能</b>删（安装向导还在异步读它），
+    /// 其余每一条出路都要删干净，否则用户的 <c>%TEMP%</c> 会攒下一堆解压出来的 Mod。
+    /// </para>
+    /// </summary>
+    /// <param name="storageItem">用户拖进来的东西。只认单个文件 —— 文件夹请拖到具体角色的卡片上。</param>
+    /// <param name="resolveModList">
+    /// 认角色：入参是原文件名与解压结果，返回要装进哪个角色的 mod 列表。
+    /// 返回 <c>null</c> = 认不出来 / 用户没选（调用方自己负责给用户说法，这里不再提示）。
+    /// </param>
+    public async Task<InstallMonitor?> AddDroppedPackageAsync(IStorageItem storageItem,
+        Func<string, DragAndDropScanResult, Task<ICharacterModList?>> resolveModList)
+    {
+        if (storageItem is not StorageFile file)
+        {
+            _logger.Information("Auto detect drop only handles files, got {StorageItemType}",
+                storageItem.GetType());
+            _notificationManager.ShowNotification(
+                "Only archive files can be dropped here",
+                $"Drop the folder onto the character it belongs to instead",
+                TimeSpan.FromSeconds(8));
+            return null;
+        }
+
+        var scanner = new DragAndDropScanner();
+
+        var scanResult = await _archivePasswordService.ExtractAsync(
+            password => scanner.ScanAndGetContents(file.Path, password));
+
+        if (scanResult is null) // 用户放弃输密码
+        {
+            scanner.CleanupWorkFolder();
+            return null;
+        }
+
+        ICharacterModList? modList;
+        try
+        {
+            modList = await resolveModList(file.Name, scanResult);
+        }
+        catch
+        {
+            scanner.CleanupWorkFolder(); // 认角色的过程中炸了，别把已经解压出来的东西留在 %TEMP%
+            throw;
+        }
+
+        if (modList is null) // 认不出角色 / 用户在候选框里取消了
+        {
+            scanner.CleanupWorkFolder();
+            return null;
+        }
+
+        if (TryActivateExistingInstallWindow(modList))
+        {
+            scanner.CleanupWorkFolder(); // 那个角色的安装窗已经开着，这次的包用不上
+            return null;
+        }
+
+        return await _modInstallerService.StartModInstallationAsync(
+            new DirectoryInfo(scanResult.ExtractedFolder.FullPath), modList);
+    }
+
+    /// <summary>
+    /// 同一个角色已经有一个安装窗开着的话：提示 + 把那个窗拉到前面，返回 <c>true</c>。
+    /// 卡片路径与检测区路径共用 —— 这两条路都不该在同一个角色上并行开两个安装窗。
+    /// </summary>
+    private bool TryActivateExistingInstallWindow(ICharacterModList modList)
+    {
+        if (_windowManagerService.GetWindow(modList) is not { } window)
+            return false;
+
+        _notificationManager.ShowNotification(
+            $"Please finish adding the mod for '{modList.Character.DisplayName}' first",
+            $"JASM does not support multiple mod installs for the same character",
+            TimeSpan.FromSeconds(8));
+
+        PInvoke.PlaySound("SystemAsterisk", null,
+            SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_ALIAS | SND_FLAGS.SND_NODEFAULT);
+
+        App.MainWindow.DispatcherQueue.TryEnqueue(() => window.Activate());
+        return true;
     }
 
     // ReSharper disable once InconsistentNaming
