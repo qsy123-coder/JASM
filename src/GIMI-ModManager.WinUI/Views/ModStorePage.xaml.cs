@@ -4,6 +4,7 @@ using GIMI_ModManager.WinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 
 namespace GIMI_ModManager.WinUI.Views;
@@ -100,44 +101,96 @@ public sealed partial class ModStorePage : Page
         card.IsTapEnabled = true;
         card.Tapped += (_, _) => ViewModel.OpenModDetailCommand.Execute(mod);
 
+        var thumb = FindByName<Image>(card, "CardImage");
+        var ring = FindByName<ProgressRing>(card, "CardLoadingRing");
+        var avatarBrush = FindByName<Ellipse>(card, "AuthorAvatar")?.Fill as ImageBrush;
+
+        // 缩略图区的高度按卡片宽度算:横屏卡片的宽度是容器均分出来的,写死高度会在宽窗口下变成细长条。
+        if (FindByName<Grid>(card, "ThumbHost") is { } thumbHost)
+            ApplyThumbHeight(card, thumbHost);
+
+        var avatarUrl = mod.AuthorAvatarUrl;
+        if (avatarBrush is not null && avatarUrl is not null)
+        {
+            // 头像加载失败时清掉笔刷 —— 底下的底色圆就露出来了,不需要额外的可见性切换。
+            avatarBrush.ImageFailed += (_, _) => avatarBrush.ImageSource = null;
+        }
+
         // 懒加载:无预览图直接收起加载圈;有图的入队,滚到视口才设 Source
-        var thumb = FindThumbImage(card);
-        if (mod.PreviewImageUrl is null)
+        if (mod.PreviewImageUrl is null || thumb is null)
         {
             // 没有预览图的卡片永不触发 ImageOpened/ImageFailed,得直接隐藏,否则转圈不停
-            HideCardLoadingRing(card);
+            HideLoadingRing(ring);
         }
-        else if (thumb is not null)
+
+        // 头像与缩略图走同一个队列:一次滚屏冒出几十个请求,头像再小也不合适
+        if (mod.PreviewImageUrl is not null || avatarUrl is not null)
         {
             _pendingImages.Add(new PendingCard
             {
                 Card = card,
                 Thumb = thumb,
-                Ring = FindProgressRing(card),
-                Url = mod.PreviewImageUrl
+                Ring = ring,
+                Url = mod.PreviewImageUrl,
+                AvatarBrush = avatarBrush,
+                AvatarUrl = avatarUrl
             });
         }
 
         ModCardsPanel.Children.Add(card);
     }
 
-    /// <summary>卡片模板根 Border → 顶层 Grid(Height=340) 的直接子级里唯一的 Image 即缩略图。</summary>
-    private static Image? FindThumbImage(FrameworkElement card)
+    // 横屏卡片的图片区比例(16:9)。上下限兜住极端窗口:太扁看不出内容,太高会把信息块挤出去。
+    private const double ThumbAspectRatio = 9d / 16d;
+    private const double MinThumbHeight = 96;
+    private const double MaxThumbHeight = 220;
+
+    /// <summary>
+    /// 图片区高度 = 卡片实际宽度 × 9/16。
+    ///
+    /// 宽度是容器均分出来的(一行 6 个),所以只能在布局之后量;卡片挂上 <c>SizeChanged</c>,
+    /// 首帧落地与之后每次窗口缩放都会走到这里。写入前比对一下,免得设同值引发又一次布局。
+    /// </summary>
+    private static void ApplyThumbHeight(FrameworkElement card, FrameworkElement thumbHost)
     {
-        if (card is not Border { Child: Grid top }) return null;
-        foreach (var child in top.Children)
-            if (child is Image img) return img;
-        return null;
+        card.SizeChanged += (_, e) =>
+        {
+            var height = Math.Clamp(e.NewSize.Width * ThumbAspectRatio, MinThumbHeight, MaxThumbHeight);
+            if (Math.Abs(thumbHost.Height - height) > 0.5)
+                thumbHost.Height = height;
+        };
     }
 
-    private static ProgressRing? FindProgressRing(DependencyObject root)
+    /// <summary>
+    /// 在**逻辑树**里按名字找模板里的元素(那些 x:Name)。
+    ///
+    /// 为什么不用 <c>VisualTreeHelper</c>:卡片是 <c>LoadContent()</c> 刚实例化出来的,还没进可视树,
+    /// 那一刻可视化树是空的 —— 以前按「根 Border 的 Grid 里第一个 Image」找缩略图就是这么写的,
+    /// 换成横屏版式后会静默返回 null(缩略图全不加载)。逻辑树(Panel.Children / Border.Child /
+    /// ContentControl.Content)在解析时就建好了,不依赖布局。
+    /// </summary>
+    private static T? FindByName<T>(DependencyObject root, string name) where T : FrameworkElement
     {
-        if (root is ProgressRing ring) return ring;
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        if (root is T hit && hit.Name == name)
+            return hit;
+
+        if (root is Panel panel)
         {
-            var found = FindProgressRing(VisualTreeHelper.GetChild(root, i));
-            if (found is not null) return found;
+            foreach (var child in panel.Children)
+                if (FindByName<T>(child, name) is { } found)
+                    return found;
         }
+        else if (root is Border { Child: { } borderChild })
+        {
+            if (FindByName<T>(borderChild, name) is { } fromBorder)
+                return fromBorder;
+        }
+        else if (root is ContentControl { Content: DependencyObject content })
+        {
+            if (FindByName<T>(content, name) is { } fromContent)
+                return fromContent;
+        }
+
         return null;
     }
 
@@ -163,12 +216,20 @@ public sealed partial class ModStorePage : Page
                 continue;
             }
             if (y < top || y > bottom) continue;
-            if (e.Ring is not null)
+
+            if (e.Thumb is not null && e.Url is not null)
             {
-                e.Ring.Visibility = Visibility.Visible;
-                e.Ring.IsActive = true;
+                if (e.Ring is not null)
+                {
+                    e.Ring.Visibility = Visibility.Visible;
+                    e.Ring.IsActive = true;
+                }
+                e.Thumb.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(e.Url));
             }
-            e.Thumb.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(e.Url!));
+
+            if (e.AvatarBrush is not null && e.AvatarUrl is not null)
+                e.AvatarBrush.ImageSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(e.AvatarUrl);
+
             _pendingImages.RemoveAt(i);
         }
     }
@@ -179,28 +240,33 @@ public sealed partial class ModStorePage : Page
         public Image? Thumb;
         public ProgressRing? Ring;
         public string? Url;
+
+        /// <summary>作者头像那层圆(用笔刷画,所以拿的是 Ellipse 的 Fill)。</summary>
+        public ImageBrush? AvatarBrush;
+
+        /// <summary>头像地址。缩略图用 string、头像用 Uri,是因为来源本来就不同(一个是 string 属性)。</summary>
+        public Uri? AvatarUrl;
     }
 
-    private void CardImage_Opened(object sender, RoutedEventArgs e)
+    private void CardImage_Opened(object sender, RoutedEventArgs e) => HideRingForImage(sender);
+
+    private void CardImage_Failed(object sender, ExceptionRoutedEventArgs e) => HideRingForImage(sender);
+
+    /// <summary>
+    /// 图片落地(成功或失败)就收掉同一张卡片上的加载圈。能按名字找是因为此刻卡片已经进了可视树,
+    /// 而加载圈与图片同在图片区那一层(ThumbHost)。
+    /// </summary>
+    private static void HideRingForImage(object sender)
     {
-        if (sender is Image { Parent: Grid grid }) HideCardLoadingRing(grid);
+        if (sender is Image { Parent: DependencyObject parent })
+            HideLoadingRing(FindByName<ProgressRing>(parent, "CardLoadingRing"));
     }
 
-    private void CardImage_Failed(object sender, ExceptionRoutedEventArgs e)
+    private static void HideLoadingRing(ProgressRing? ring)
     {
-        if (sender is Image { Parent: Grid grid }) HideCardLoadingRing(grid);
-    }
-
-    private static void HideCardLoadingRing(DependencyObject root)
-    {
-        if (root is ProgressRing ring)
-        {
-            ring.IsActive = false;
-            ring.Visibility = Visibility.Collapsed;
-            return;
-        }
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-            HideCardLoadingRing(VisualTreeHelper.GetChild(root, i));
+        if (ring is null) return;
+        ring.IsActive = false;
+        ring.Visibility = Visibility.Collapsed;
     }
 
     private void ScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
