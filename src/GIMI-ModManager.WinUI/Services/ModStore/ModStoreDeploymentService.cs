@@ -51,6 +51,32 @@ public sealed class ModStoreDeploymentService(
     private readonly NotificationManager _notificationManager = notificationManager;
 
     /// <summary>
+    /// 装完（或就地更新完）一个商店 mod、且**安装记录已经落盘**之后发一次（无载荷）。
+    ///
+    /// 商店页据此把卡片上的「已安装」角标重打一遍：安装向导是**独立窗口**，装完时商店页还停在
+    /// 原地（不会再导航一次、也就不会重新取数），少了这个信号角标要等用户换个筛选条件或者按一次
+    /// 刷新才出现 —— 看起来就像没装上。
+    ///
+    /// 事件在**后台续体**上发出（<see cref="TrackOutcomeAsync"/> 跑在向导关闭之后，不在 UI 线程），
+    /// 订阅方自己负责切回 UI 线程改绑定源。
+    /// </summary>
+    public event EventHandler? InstallRecorded;
+
+    /// <summary>
+    /// 「这个 mod 现在还装着吗」（PRD Story 4 的已装角标）。判定在
+    /// <see cref="ModStoreInstallStatus.IsInstalled"/>，这里只负责把「本地那份 mod 现在在哪」
+    /// 喂给它 —— 用户在 JASM 里给 mod 改过名 / 挪过位置时记录里那条路径已经过期，必须问 mod 列表。
+    /// </summary>
+    public bool IsInstalled(string? modId) =>
+        ModStoreInstallStatus.IsInstalled(installIndex.Find(modId),
+            id => skinManagerService.GetModById(id)?.FullPath);
+
+    /// <summary>
+    /// 这个 mod 的安装记录（没装过时为 null）。给「可更新」判定用 —— 它要比对记录里装的是**哪一份文件**。
+    /// </summary>
+    public ModStoreInstallRecord? FindRecord(string? modId) => installIndex.Find(modId);
+
+    /// <summary>
     /// 队列的完成回调。**会向上抛**：队列把异常记成 <see cref="ModDownloadItem.FollowUpError"/>
     /// （「文件是好的、但后续动作没成」），显示在下载面板那一行上 —— 成功时静默返回。
     /// </summary>
@@ -387,5 +413,8 @@ public sealed class ModStoreDeploymentService(
             installed.FullPath,
             installed.Id,
             DateTimeOffset.Now)).ConfigureAwait(false);
+
+        // 记录已经在索引里了才通知：订阅方（商店页）收到就去索引里查这次装了什么。
+        InstallRecorded?.Invoke(this, EventArgs.Empty);
     }
 }
