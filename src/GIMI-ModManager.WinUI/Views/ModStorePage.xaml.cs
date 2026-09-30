@@ -37,6 +37,10 @@ public sealed partial class ModStorePage : Page
 
         // 重试也走 ViewModel —— 面板没有服务,重新取数要靠它。
         DetailPanel.RetryRequested += (_, _) => ViewModel.RetryModDetailCommand.Execute(null);
+
+        // 「下载选中文件」同样转给 ViewModel：由它把「哪条 mod + 哪个文件」拼成入队请求
+        // （抽屉里那个文件对象只知道自己的显示字段，拼请求要用 Core 那份原始记录）。
+        DetailPanel.DownloadRequested += (_, file) => ViewModel.DownloadSelectedFileCommand.Execute(file);
     }
 
     private void OnDetailItemChanged()
