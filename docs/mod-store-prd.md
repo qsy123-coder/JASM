@@ -113,11 +113,13 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 **So that** 我不用等一个装完再点下一个
 
 **Acceptance Criteria:**
-- [ ] 下载任务串行排队（一次一个活动任务），列表/抽屉可见队列与每个任务的进度
-- [ ] 支持暂停/继续；继续时走 HTTP `Range` 从 `.part` 断点续传
-- [ ] 无数据超时（stall）自动重试，重试有指数退避
-- [ ] 支持取消；取消后清理 `.part` 与临时目录
-- [ ] 应用重启后未完成的下载不自动恢复（明确不做断点跨进程续传），但 `.part` 文件保留
+- [x] 下载任务串行排队（一次一个活动任务），列表/抽屉可见队列与每个任务的进度 —— 队列 `ModDownloadQueue`（单工作线程）、界面右侧抽屉 `ModDownloadPanel`
+- [x] 支持暂停/继续；继续时走 HTTP `Range` 从 `.part` 断点续传
+- [x] 无数据超时（stall）自动重试，重试有指数退避 —— 在 `ResumableDownloader` 里（队列只管先后与用户意图）
+- [x] 支持取消；取消后清理 `.part` 与临时目录
+- [x] 应用重启后未完成的下载不自动恢复（明确不做断点跨进程续传），但 `.part` 文件保留 —— 队列只在内存；按「取消」才删 `.part`，「暂停 / 应用退出」都保留
+
+> 以上五条由单测覆盖（`ModDownloadQueueTests` + `ResumableDownloaderTests`），**尚未实机走一遍**：本机上另有一份同名 JASM 在跑且共用 `%LOCALAPPDATA%\JASM`，冒烟测要等用户手动验。
 
 ### Story 4: 已装检测与更新提示
 
@@ -293,6 +295,17 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 3. **列表与详情的字段不一致**：`_nDownloadCount` 只在详情页有；`_aCategory` 只在详情页有。列表里要用 `_aRootCategory`，别指望复用同一套模型。
 4. **分页与页大小都改不动**：参数是 `_nPage`（不是 `page`），页大小**固定 15**（`perPage` 一族全被忽略）。这带来两个后果：① 列表页大小不能照抄 Mod 市场的 24（那是 Supabase 侧自己定的一页 24 条）；② 一页 15 条里混着非 Mod 时，过滤完可能只剩几条 —— 「还有没有下一页」必须看服务端的 `_bIsComplete`，**不能**用「本页条目数 < 页大小」来判断。
 
+**下载端点（第四轮实测）** —— 第 6 项接线时验的，结论支持「直接下、自己校验」这条路线：
+
+| 能力 | 地址 | 实测结论 |
+|---|---|---|
+| 取文件本体 | `https://gamebanana.com/dl/{fileId}` | ✅ 可用。302 跳到 `files.gamebanana.com` 的实名 CDN（`…/mods/{id}/{fileId}_{hash}.{ext}`），**每一跳都保留了 `Range`**；文件 id 与 `DownloadPage`/`ProfilePage` 里的 `_idRow` 是同一个 |
+| 断点续传 | 同上 + `Range: bytes=N-` | ✅ 返回 206 + 正确的 `Content-Range`（跨重定向后依然成立） |
+| 校验 | `_sMd5Checksum`（文件记录上） | ✅ 实体 MD5 与字段一致 —— 可以只信这一份，不必另找「官方哈希」 |
+| 体积 | `_nFilesize` | 字段单位是**字节**，与 `Content-Length` 一致（不用再乘 1024） |
+
+⚠️ 下载地址的**前缀**（`https://gamebanana.com/dl/`）是写死的，已在 `ApiGameBananaClient` 提为公开常量供下载队列复用，避免两处各写一份。
+
 ### 现有代码落点
 
 | 要做的事 | 复用/改动点 |
@@ -343,9 +356,13 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 1. 导航 + 商店页面骨架，布局复用 Mod 市场 — ✅ 已完成
 2. GameBanana 客户端扩展：列表（Subfeed）、搜索（Search/Results）、分类索引（Mod/Index）、根分类（ProfilePage）、列表记录模型 — ✅ 已完成
 3. 浏览能力：分页、搜索、排序（默认/最新/最近更新）、按根分类（服务端 `_aFilters[Generic_Category]`）与按角色（搜索端点）筛选、左侧栏分类与计数 — ✅ 已完成
-4. 详情抽屉：截图、作者、说明、统计、文件列表 — ✅ 已完成（`ModStoreDetailPanel` + `ModStoreDetail` 映射；文件清单以 `DownloadPage` 为准、`ProfilePage` 兜底；成人内容按 `_aContentRatings` 判定；**未含**下载按钮 —— 它要配套第 5 / 7 项）
-5. 公共下载件（进度 + 断点续传 + MD5 校验），**只给商店用** — ✅ 已完成（`ResumableDownloader`：Range 续传 / 200 重下 / 416 / 206 起点错位 / 活动超时 / 退避重试 / 校验通过才落盘 / 取消保留 `.part`；21 条单测）。**尚无生产调用方**，商店侧接线在第 6 项
-6. 下载管理器：串行队列 + 暂停/继续 + 取消 + 进度
+4. 详情抽屉：截图、作者、说明、统计、文件列表 — ✅ 已完成（`ModStoreDetailPanel` + `ModStoreDetail` 映射；文件清单以 `DownloadPage` 为准、`ProfilePage` 兜底；成人内容按 `_aContentRatings` 判定）。下载按钮在第 6 项补上了，落在文件列表下方
+5. 公共下载件（进度 + 断点续传 + MD5 校验），**只给商店用** — ✅ 已完成（`ResumableDownloader`：Range 续传 / 200 重下 / 416 / 206 起点错位 / 活动超时 / 退避重试 / 校验通过才落盘 / 取消保留 `.part`；21 条单测）。生产调用方 = 第 6 项的队列
+6. 下载管理器：串行队列 + 暂停/继续 + 取消 + 进度 — ✅ 已完成
+    - **Core**：`ModDownloadQueue`（单工作线程串行、按 `ModDownloadKey` 去重、暂停/继续/取消/全部取消/清除已完成、`Changed` 事件不带载荷因此**任意线程**、只存内存不跨进程恢复）+ `ModDownloadItem` 状态机（`Queued` / `Downloading` / `Verifying` / `Paused` / `Completed` / `Failed` / `Canceled`）；`ModDownloadRequest.FromStoreFile` 是文件记录 → 请求的唯一入口
+    - **WinUI**：右侧抽屉 `ModDownloadPanel`（460 宽，与商店详情抽屉同一套滑入滑出）+ 单例 VM `ModDownloadManagerViewModel` + 行 VM `ModDownloadItemViewModel`；入口是详情抽屉文件列表下方的「下载选中文件」（**多文件时由用户自己挑**，不自动选）
+    - **两条刻意的设计决定**：① 抽屉的 VM 是**单例**（下载跨页面存活，与队列本身的生命期对应）；② 队列表是**队列快照的整表重刷**，不做增量同步 —— `Changed` 事件不带载荷，而同时最多几个任务，遍历比维护增量便宜且不会漏
+    - ⏳ 未做：完成回调（下载完 → 入库 → 拉安装向导）是第 7 项；现在下完只是落在暂存目录、行显示「已完成」
 7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录
 8. 本地安装索引 + 已装角标 + 可更新提示
 9. NSFW：设置页开关（默认隐藏）+ 客户端过滤 — 页面内下拉已可用（会话级，未落盘；设置页开关未做）
@@ -413,6 +430,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 - **`Mod/Index`**: `apiv11` 的列表索引端点。本次实测它是**唯一**支持服务端分类筛选（`_aFilters[Generic_Game]` + `[Generic_Category]`）且认 `_nPerpage` 的列表端点；代价是不支持 `_sSort`（400）。
 - **`Generic_Category` 筛选**: 按分类 id 的服务端筛选，形如 `_aFilters[Generic_Category]=29524`。参数名写错（如 `_idCategoryRow`）不会报错，只是被静默忽略。
 - **WWMI**: Wuthering Waves Model Importer，鸣潮的 mod 加载框架（`d3d11.dll`）。
+- **`/dl/{fileId}`**: 取 mod 文件本体的固定地址（前缀是常量 `ApiGameBananaClient.DownloadUrlPrefix`），302 跳到实名 CDN 且保住 `Range`。文件 id 就是文件记录上的 `_idRow`。
 - **一键部署**: 本 PRD 的核心交互 —— 下载完成即零确认弹出安装向导。
 
 ### References
@@ -471,6 +489,17 @@ GET /apiv11/Mod/709792/ProfilePage     → 无 _bHasContentRatings 键；成人�
 GET /apiv11/Mod/709792/ProfilePage     → 596 赞 / 18929 浏览；同 mod 在列表端点上是 593 / 18427（两处数字不一致）
 GET /apiv11/Mod/709792/DownloadPage    → 200，_aFiles 2 条（**同一 mod 的在售文件以这里为准**）
 ```
+
+第四轮（下载链路，第 6 项接线时验）：
+
+```
+HEAD https://gamebanana.com/dl/{fileId}                     → 302 → files.gamebanana.com/.../mods/../{fileId}_{hash}.zip
+                                                              （跳转前后都保留 Range；末跳 Content-Length = _nFilesize）
+GET  https://gamebanana.com/dl/{fileId}  Range: bytes=N-    → 206 + Content-Range: bytes N-/(total)，长度正确
+下载完整实体后算 MD5                                          → 与文件记录的 _sMd5Checksum 一致
+```
+
+⚠️ 另有一条同期的既有实现问题：`GameBananaCoreService.DownloadModAsync` 只看 `_aFiles`、不看 `_aArchivedFiles` —— 隐藏 mod（如 709792）在它那里会「没有文件」。商店这条链路自己读两份，不受影响；顺手修它是第 7 项的事。
 
 ---
 
