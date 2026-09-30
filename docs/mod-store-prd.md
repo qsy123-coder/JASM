@@ -84,10 +84,10 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 - [ ] 列表默认按 `_sSort=default` 拉取鸣潮板块（GameBanana game id **20357**）内容，只展示 `_sModelName == "Mod"` 的记录
 - [ ] 支持滚动加载更多，分页依据 `_aMetadata._bIsComplete`
 - [ ] 排序可选：默认（`_sSort=default`）、最新（`_sSort=new`）、最近更新（`_sSort=updated`）
-- [ ] 左侧栏分三节：`全部` + 板块根分类（`Skins` / `Other·Misc` / `UI`，带服务端给的条目数）+ 角色表（带每角色计数）
+- [ ] 左侧栏分三节：`全部` + 板块根分类（`Skins` / `Other·Misc` / `UI`，带服务端给的条目数 + GameBanana 图标）+ 角色表（带每角色计数 + 图标）
 - [ ] 点根分类走**服务端**筛选（`Mod/Index` 的 `_aFilters[Generic_Category]`，见下节实测表）；点角色走搜索端点按角色名查（上游**没有**「列出板块子分类」的端点）
 - [ ] 排序下拉只在「全部」视图可用（分类端点拒绝 `_sSort`、搜索端点也不吃它），其余情形置灰
-- [ ] 卡片信息：预览图、标题、作者、相对时间、三项统计（浏览 / 点赞 / **评论**）、根分类、角色标签（无角色时不占位）、NSFW 角标
+- [ ] 卡片信息（横屏版式）：预览图、标题（两行）、作者头像 + 作者名、相对时间、三项统计（浏览 / 点赞 / **评论**）、根分类、角色标签（无角色时不占位）、NSFW 角标；**一行 6 个**
 - [ ] 搜索走 `Util/Search/Results`，结果按 `_sModelName` 过滤掉 Concept/Poll 等非 Mod 类型
 - [ ] 商店**不发出任何 Supabase 请求**（可在日志中断言）
 
@@ -184,7 +184,11 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 - **Description**: 复用 Mod 市场布局的新页面，数据源为 GameBanana `apiv11`。
 - **User flow**: 点导航「Mod 商店」→ 左侧栏建好（`全部` + 根分类 + 角色，计数后台补）→ 默认列表加载 → 滚动加载更多 → 用搜索框 / 内容筛选 / 排序筛选 → 点卡片开详情抽屉。
-- **布局**（2026-09-30 与产品确认的版式）：左侧栏标题「分类」= `全部` + `Skins` / `Other·Misc` / `UI`（带条目数）+ 角色 A–Z（带条目数）；工具栏 = 搜索框 + 内容筛选下拉 + 排序下拉 + 下载管理按钮；卡片 250×340。
+- **布局**（2026-09-30 与产品确认的版式；卡片版式于 2026-10-01 复核后修订）：左侧栏标题「分类」= `全部` + `Skins` / `Other·Misc` / `UI`（带条目数 + 图标）+ 角色 A–Z（带条目数 + 图标）；工具栏 = 搜索框 + 内容筛选下拉 + 排序下拉 + 下载管理按钮；**卡片为横屏**——图片在上（16:9，高度随卡片宽度算），白色信息块在下：标题两行 + 作者行（头像 + 名字 + 右侧相对时间）+ 统计三项，**一行 6 个**（宽度均分，窗口窄到每列不足 150px 时自动降列）。
+- **与 2026-09-30 版式的差异**（2026-10-01 修订，实机看过之后提的）：
+  - 卡片由「250×340 竖卡、信息压在底部渐变上」改成**横屏白卡**（对齐 GameBanana 自家页面的卡片），列数由 `WrapGridPanel.Columns` 固定为 6。
+  - 卡片作者行补上**作者头像**（`_aSubmitter._sAvatarUrl`，列表记录自带）；取不到 / 加载失败时露出底色圆。
+  - 侧栏的图标由 Segoe 字形改成 **GameBanana 的真图标**：根分类 `_aModRootCategories[]._sIconUrl`（随板块主页一次回来）、角色 `_aSubCategory._sIconUrl`（搭「补计数」那次搜索的便车）。名字对不上时退回字形图标。
 - **与原版式的差异**（有意为之，不是漏做）：
   - 版式上的第三个下拉「仅Mods」在商店里**没有可筛的东西** —— `Mod/Index` 与 Subfeed 的记录本来就全是 Mod，留着是个点了没反应的空控件。改成「内容筛选（隐藏 / 显示 NSFW）」，服务层 `IncludeAdultContent` 已有。
   - 卡片上多了一块**角色标签**（版式里没有）：角色是商店的核心维度，根分类只有三个，光看分类分不出角色。
@@ -278,6 +282,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 | 子分类（角色）清单 | 无 | ❌ **没有这个端点**：`Game/{id}/Categories` 404、`Mod/Categories?_idGameRow=…` 400、`ModCategory/Index` 忽略游戏过滤按全局分页每页 5 条。侧栏的角色表因此来自**本地游戏数据**（`GameService.GetAllModdableObjectsAsCategory<ICharacter>()`，中文 `DisplayName` 排序） |
 | 评论数 | 三个列表端点的 `_nPostCount` | ✅ Subfeed / Search / Mod-Index **都给** —— 卡片上第三项统计（浏览 / 点赞 / 评论）可以稳定显示。⚠️ `_nDownloadCount` 仍然**只有详情页**有，卡片上不要放下载量 |
 | 角色字段的有无 | Subfeed vs Mod-Index 的 `_aSubCategory` | ⚠️ Subfeed 记录**经常整个没有这个键**（UI 类记录就是这样），而 Mod-Index 记录同时给 `_aSubCategory` 与 `_aGame`。角色字段必须可空，卡片上不占位 |
+| 图片（预览 / 头像 / 分类图标） | 预览 `_aPreviewMedia`、头像 `_aSubmitter._sAvatarUrl`、图标 `_aRootCategory._sIconUrl` / `_aSubCategory._sIconUrl` | ⚠️ **三类图都在 `images.gamebanana.com`**，**不是**主站 `gamebanana.com` —— 白名单校验只认主域的话图标会被全部判掉（`ModStoreCategory.TryCreateIcon` 就因此空转到这次才修）。另：`_sIconUrl` 可能是**空字符串**（不是缺键），拼地址前按空处理；作者没设过头像时服务端给的是默认头像 `…/static/img/defaults/avatar.gif`，不是空值，所以卡片上看不出「他到底有没有头像」 |
 
 **详情端点（ProfilePage / DownloadPage，同日第三轮实测）** —— 抽屉（Phase 1 第 4 项）落地时把这条链路逐个字段验了一遍，有四处**与直觉相反**，改代码前务必先看这张表：
 
