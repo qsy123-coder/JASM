@@ -1,4 +1,5 @@
-﻿using GIMI_ModManager.Core.Services.GameBanana.ApiModels;
+﻿using GIMI_ModManager.Core.ModStore;
+using GIMI_ModManager.Core.Services.GameBanana.ApiModels;
 using GIMI_ModManager.Core.Services.GameBanana.Models;
 
 namespace GIMI_ModManager.Core.Services.GameBanana;
@@ -17,6 +18,32 @@ public interface IApiGameBananaClient
     /// <param name="cancellationToken"></param>
     /// <returns>ApiModProfile if mod exists or null</returns>
     public Task<ApiModProfile?> GetModProfileAsync(GbModId modId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 取游戏板块的内容流（Mod 商店的「浏览」列表）。
+    /// </summary>
+    /// <param name="gameId">GameBanana 板块 Id（鸣潮 = 20357）</param>
+    /// <param name="sort">
+    /// 排序。API 参数名是 <c>_sSort</c>；分页参数是 <c>_nPage</c>，
+    /// 页大小**固定 15 条**（<c>perPage</c> 那一族实测被忽略）。
+    /// </param>
+    /// <param name="page">页码，从 1 开始（<c>_nPage=0</c> 会拿到空结果）</param>
+    /// <returns>解析后的一页；请求/反序列化失败返回 null（空态交给 UI，不把异常抛进调用方）</returns>
+    public Task<ModStorePage?> GetGameSubfeedAsync(GbGameId gameId, GbSubfeedSort sort, int page,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 在板块内搜索（Mod 商店的「搜索」列表）。
+    ///
+    /// ⚠️ 返回的是**混合类型**提交（实测同一页里混着 Mod / Question / Request / Poll …），
+    /// <see cref="ModStorePage.FromApi"/> 会把非 Mod 的滤掉 —— 所以一页 15 条搜出来可能只剩几条，
+    /// 判断「还有没有下一页」要看 <see cref="ModStorePage.HasMore"/> 而不是条目数。
+    /// </summary>
+    /// <param name="gameId">GameBanana 板块 Id</param>
+    /// <param name="searchQuery">搜索词，不能为空</param>
+    /// <param name="page">页码，从 1 开始（<c>_nPage</c>）</param>
+    public Task<ModStorePage?> SearchGameModsAsync(GbGameId gameId, string searchQuery, int page,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the mod files info from the GameBanana API.
