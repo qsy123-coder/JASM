@@ -499,13 +499,13 @@
                         NavigateUri="https://gamebanana.com/tools/14574" />
 
                     <StackPanel Orientation="Horizontal" Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
-                        <TextBlock VerticalAlignment="Center" Text="New Update Available on GitHub:" />
+                        <TextBlock VerticalAlignment="Center" Text="New Update Available:" />
                         <TextBlock
                             Margin="8,0"
                             VerticalAlignment="Center"
                             Text="{x:Bind ViewModel.LatestVersion, Mode=OneWay}" />
 
-                        <controls:LinkButton Link="https://github.com/Jorixon/JASM/releases/latest" Text="See what's new in the latest release" />
+                        <controls:LinkButton Link="{x:Bind ViewModel.LatestVersionNotesUrl, Mode=OneWay}" Text="See what's new in the latest release" />
 
                     </StackPanel>
 
@@ -541,6 +541,17 @@
                             Command="{x:Bind ViewModel.IgnoreNewVersionCommand}"
                             Content="Ignore Current Update?"
                             Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}" />
+                    </StackPanel>
+
+                    <!-- 单文件版进程内自更新的下载进度（folder 版走外部更新器，整块不出现） -->
+                    <StackPanel
+                        Margin="0,0,0,16"
+                        Spacing="4"
+                        Visibility="{x:Bind ViewModel.IsUpdatingJasm, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
+                        <ProgressBar Maximum="100" Value="{x:Bind ViewModel.UpdateProgressPercent, Mode=OneWay}" />
+                        <TextBlock
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.UpdateProgressText, Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
             </StackPanel>
