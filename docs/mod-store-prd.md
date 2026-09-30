@@ -98,13 +98,15 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 **So that** 我不用解压、不用自己挑文件夹
 
 **Acceptance Criteria:**
-- [ ] 卡片/详情页有「一键部署」按钮，点击后开始下载并显示进度
-- [ ] 详情页列出该 mod 的**文件列表**（名字/大小/日期），用户点哪个文件就装哪个
-- [ ] 下载完成后**零中间确认**直接弹出安装向导（`ModInstallerPage`），不出现系统文件选择器
-- [ ] 安装向导行为与「添加模组 → 选中同一份文件夹」完全一致（复用 `ModInstallerService.StartModInstallationAsync`）
-- [ ] 下载前按 `Md5Checksum` 查本地归档缓存，命中则跳过下载直接进安装向导
-- [ ] 下载后校验 MD5，不匹配则报错并允许重试，不进入安装向导
-- [ ] 弹窗出现时若用户正在拖动/交互其他窗口，不阻塞主窗口
+- [x] 卡片/详情页有「一键部署」按钮，点击后开始下载并显示进度 —— 落在详情抽屉文件列表下方的「下载选中文件」（**按文件**部署，因为一个 mod 可能有多个文件）。按钮文案沿用「下载」，没改成「一键部署」：它同时管着「本地已经有 → 直接装」这条不发请求的路，叫「下载」反而更准
+- [x] 详情页列出该 mod 的**文件列表**（名字/大小/日期），用户点哪个文件就装哪个 —— 一个 mod 多个文件时由用户自己挑，不自动选
+- [x] 下载完成后**零中间确认**直接弹出安装向导（`ModInstallerPage`），不出现系统文件选择器
+- [x] 安装向导行为与「添加模组 → 选中同一份文件夹」完全一致（复用 `ModInstallerService.StartModInstallationAsync`）
+- [x] 下载前按 `Md5Checksum` 查本地归档缓存，命中则跳过下载直接进安装向导 —— 入队**之前**查（`ModStoreDeploymentService.TryGetCachedArchiveAsync`）；命中时根本不入队、下载面板也不亮，用户看到的就是向导自己弹出来
+- [x] 下载后校验 MD5，不匹配则报错并允许重试，不进入安装向导 —— 校验在 `ResumableDownloader` 里（第 5 项），不匹配的包**不会**从暂存目录出来，所以走不到部署
+- [x] 弹窗出现时若用户正在拖动/交互其他窗口，不阻塞主窗口 —— 向导是独立窗口；另外队列的完成回调**故意不等向导关闭**（那条续体挂着等，见下）
+
+> ⚠️ **尚未实机验收**：以上是「代码已落地 + 编译/单测绿」，部署链路（解压 → 归档入库 → 拉向导 → 关掉后提示）全是 UI 与真实文件系统的交互，单测覆盖不到，需要人在真机上点一遍。与第 6 项同一个待办。
 
 ### Story 3: 下载管理器
 
@@ -266,7 +268,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 | 能力 | 端点 | 实测结论 |
 |---|---|---|
-| 详情页的文件 | `Mod/{id}/ProfilePage` | ⚠️ **它也给文件**（`_aFiles` / `_aArchivedFiles`），不是「只有 DownloadPage 给」。但**不能**拿它当依据 —— 文件清单以 `DownloadPage` 为准（下载走的也是那份，`GameBananaCoreService.DownloadModAsync` 查的就是 `_aFiles`），ProfilePage 那份只当兜底 |
+| 详情页的文件 | `Mod/{id}/ProfilePage` | ⚠️ **它也给文件**（`_aFiles` / `_aArchivedFiles`），不是「只有 DownloadPage 给」。但**不能**拿它当依据 —— 文件清单以 `DownloadPage` 为准（下载走的也是那份），ProfilePage 那份只当兜底 |
 | 「隐藏 mod 才进归档字段」 | 同上 `_aArchivedFiles` | ❌ **假的**。普通 mod 也带归档文件（575376 / 537550 / 529580 各 1 条旧版本），而隐藏的 **709792** 是 `_aFiles` **整个键不存在**、文件全在 `_aArchivedFiles`。两个字段要**都读**、合并成一个清单（活跃在前、归档在后，各自保持接口给的顺序） |
 | `_aFiles` 会不会缺失 | 同上 | ⚠️ 会。DTO 上就算声明成非空集合，JSON 里**没有这个键**时反序列化结果就是 `null`（声明管不住运行时），遍历前必须判空 |
 | 详情页的 NSFW 信号 | 同上 | ⚠️ 列表侧那个 `_bHasContentRatings` 在这个端点**整个键都不存在**。判定改用 `_aContentRatings`：**对象**不是数组（`{"pn":"Partial Nudity"}`，键是缩写、值是给人看的标签），非空即成人内容 |
@@ -362,9 +364,16 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
     - **Core**：`ModDownloadQueue`（单工作线程串行、按 `ModDownloadKey` 去重、暂停/继续/取消/全部取消/清除已完成、`Changed` 事件不带载荷因此**任意线程**、只存内存不跨进程恢复）+ `ModDownloadItem` 状态机（`Queued` / `Downloading` / `Verifying` / `Paused` / `Completed` / `Failed` / `Canceled`）；`ModDownloadRequest.FromStoreFile` 是文件记录 → 请求的唯一入口
     - **WinUI**：右侧抽屉 `ModDownloadPanel`（460 宽，与商店详情抽屉同一套滑入滑出）+ 单例 VM `ModDownloadManagerViewModel` + 行 VM `ModDownloadItemViewModel`；入口是详情抽屉文件列表下方的「下载选中文件」（**多文件时由用户自己挑**，不自动选）
     - **两条刻意的设计决定**：① 抽屉的 VM 是**单例**（下载跨页面存活，与队列本身的生命期对应）；② 队列表是**队列快照的整表重刷**，不做增量同步 —— `Changed` 事件不带载荷，而同时最多几个任务，遍历比维护增量便宜且不会漏
-    - ⏳ 未做：完成回调（下载完 → 入库 → 拉安装向导）是第 7 项；现在下完只是落在暂存目录、行显示「已完成」
-7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录
+    - 完成回调（下载完 → 入库 → 拉安装向导）在第 7 项接上了：`ModDownloadQueue.CompletedHandler` 在 `App.xaml.cs` 的 DI 工厂里指向 `ModStoreDeploymentService.DeployAsync`
+7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录 — ✅ 前两步已完成（写安装记录是第 8 项）
+    - **Core**：`ModStoreTargetCharacter`（「装到哪个角色」的判定，纯函数 + 11 条单测）。只认**完全相等**：内部名 → 显示名 → 别名，都不中落 `Others`。**刻意不做模糊匹配** —— 猜错会把 mod 悄悄装进别的角色，比落到「Others」里让用户自己拖走难发现得多
+    - **WinUI**：`ModStoreDeploymentService`（`src/GIMI-ModManager.WinUI/Services/ModStore/`）。三件事按序做：**入库**（`CopyAndTrackModArchiveAsync` —— 暂存目录是「取消即清」的语义，不入库的话缓存命中永远查不到；入库顺带把 id/md5 写进文件名，那是第 8 项「已装 / 可更新」的依据）→ **解压 + 改名**（向导吃文件夹不吃压缩包，且归档名带着 `_!!_` 后缀，得先摘掉，与 `ModPageVM.StartInstall` 同一套动作）→ **拉向导**（`StartModInstallationAsync`，`setup` 里把 mod 页面地址填进 `ModUrl`，JASM 靠它把本地 mod 认回 GameBanana 条目）
+    - **完成回调不等向导关闭**：`CompletedHandler` 是在队列的工作线程上被 await 的，在那儿等用户点完向导会把后面的下载全堵死（用户开着向导去喝杯水，队列就停了）。所以 `DeployAsync` 只负责「把向导开起来」，关闭之后的收尾（提示 / 第 8 项的安装记录）交给一条分离的续体 `TrackOutcomeAsync`
+    - **两种失败分开**：下载本身失败 → 行的 `ErrorMessage`；下好了但入库/拉向导失败 → 行的 `FollowUpError`（文件是好的，不该显示成下载失败）
+    - 同一角色同时只能有一个安装向导（与拖放同一条规矩：`IWindowManagerService.GetWindow(modList)`）。缓存命中时这条冲突只提示不回落下载 —— 命中意味着字节完全相同，再下一遍只会得到同一个文件
+    - 顺带修掉一条既有实现问题：`GameBananaCoreService.DownloadModAsync` 只读 `_aFiles`（见文末第四轮证据）
 8. 本地安装索引 + 已装角标 + 可更新提示
+    - 写入点已经留好：`ModStoreDeploymentService.TrackOutcomeAsync` 的 `Success` 分支 —— **只有到那一步才知道用户到底装成了没有**（向导关掉之前，取消 = 什么都没发生）。入库时归档文件名里已经带着 mod id / file id / md5，是现成的记录素材
 9. NSFW：设置页开关（默认隐藏）+ 客户端过滤 — 页面内下拉已可用（会话级，未落盘；设置页开关未做）
 10. 跨游戏目录定位（读 WuWa 游戏级配置 + 未配置时的引导态）
 11. **Phase 1 内需收口的验证项**：
@@ -499,7 +508,7 @@ GET  https://gamebanana.com/dl/{fileId}  Range: bytes=N-    → 206 + Content-Ra
 下载完整实体后算 MD5                                          → 与文件记录的 _sMd5Checksum 一致
 ```
 
-⚠️ 另有一条同期的既有实现问题：`GameBananaCoreService.DownloadModAsync` 只看 `_aFiles`、不看 `_aArchivedFiles` —— 隐藏 mod（如 709792）在它那里会「没有文件」。商店这条链路自己读两份，不受影响；顺手修它是第 7 项的事。
+⚠️ 另有一条同期的既有实现问题：`GameBananaCoreService.DownloadModAsync` 只看 `_aFiles`、不看 `_aArchivedFiles` —— 隐藏 mod（如 709792）在它那里会「没有文件」。商店这条链路自己读两份，不受影响。**已修（第 7 项）**：那个方法改用 `FindFile` 依次查两个字段（活跃优先），所以「知道文件 id 却下不了」这条死路没了 —— 同一条修复也顺带保住了商店与「模组页面」共享的那条下载路径。
 
 ---
 
