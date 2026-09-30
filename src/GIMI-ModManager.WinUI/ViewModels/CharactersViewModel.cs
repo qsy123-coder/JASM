@@ -59,6 +59,12 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
 
     public SimpleSelectProcessDialogVM SimpleSelectProcessDialogVM { get; } = new();
 
+    /// <summary>
+    /// 「有新版本 / 开始更新」的状态与动作（单例，与设置页共用同一份）。
+    /// 本页元素图标那排右边的小按钮就绑它 —— 应用更新的逻辑不在这里另写一份。
+    /// </summary>
+    public AppUpdateViewModel AppUpdate { get; }
+
 
     private IReadOnlyList<IModdableObject> _characters = new List<IModdableObject>();
 
@@ -103,7 +109,8 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
         ModDragAndDropService modDragAndDropService, ModNotificationManager modNotificationManager,
         ModCrawlerService modCrawlerService, ModSettingsService modSettingsService,
         ModUpdateAvailableChecker modUpdateAvailableChecker, ModPresetHandlerService modPresetHandlerService,
-        BusyService busyService, ILanguageLocalizer localizer, ModRandomizationService modRandomizationService)
+        BusyService busyService, ILanguageLocalizer localizer, ModRandomizationService modRandomizationService,
+        AppUpdateViewModel appUpdateViewModel)
     {
         _gameService = gameService;
         _logger = logger.ForContext<CharactersViewModel>();
@@ -123,6 +130,7 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
         _busyService = busyService;
         _localizer = localizer;
         _modRandomizationService = modRandomizationService;
+        AppUpdate = appUpdateViewModel;
 
         ElevatorService.PropertyChanged += (_, args) =>
         {
