@@ -46,6 +46,9 @@ internal sealed class ModStoreInstallIndexFile
 /// <summary>
 /// 本地安装索引（PRD 第 8 项）：一份 JSON，记着「从商店装过哪些 mod」。
 ///
+/// 它只管**存取**，不管判定：「装没装 / 有没有新版」是 <see cref="ModStoreInstallStatus"/> 的事 ——
+/// 那条判定要用到本地 mod 列表（记录里的路径可能已经过期），不是一个 JSON 文件能自己回答的。
+///
 /// 三件事决定了它的形状：
 /// <list type="number">
 ///   <item><b>不依赖任何服务端</b>（PRD 的硬要求）：判定「已装 / 可更新」只用这份本地文件 +
@@ -116,20 +119,6 @@ public sealed class ModStoreInstallIndex
     }
 
     /// <summary>
-    /// 「现在还装着吗」= 有记录 **且** 那个目录还在。
-    ///
-    /// 双重判定是 PRD 的验收项：用户自己把 mod 目录删了，角标不能再显示「已安装」——
-    /// 而索引里那条记录还留着（我们没理由去猜他是删了还是只是挪了个位置）。
-    /// </summary>
-    public bool IsInstalled(string? modId)
-    {
-        var record = Find(modId);
-
-        return record is not null && !string.IsNullOrWhiteSpace(record.FolderPath)
-                                && Directory.Exists(record.FolderPath);
-    }
-
-    /// <summary>
     /// 写入 / 覆盖一条记录（同一个 mod 只留一条：装新版就是覆盖旧记录，不是加一条）。
     ///
     /// **不向上抛**：写失败只记 Error —— 记录是「让界面更聪明」的锦上添花，
@@ -161,8 +150,13 @@ public sealed class ModStoreInstallIndex
     }
 
     /// <summary>
-    /// 删掉一条记录。用于「记录还在、目录已经没了」的自愈 —— 否则文件会一直堆着死记录。
-    /// 与 <see cref="UpsertAsync"/> 一样不向上抛。
+    /// 删掉一条记录。与 <see cref="UpsertAsync"/> 一样不向上抛。
+    ///
+    /// **暂时没有生产调用方**，而且「记录还在、目录已经没了」**不做**自愈（见
+    /// <see cref="ModStoreInstallStatus.IsInstalled"/> 的说明）：用户把 mod 挪走、或者删完又从备份里
+    /// 恢复回来时，记录留着才能一眼认出「这是从商店装过的那份」，删掉等于把这层关系永久降级成
+    /// 「没装过」。留着这个方法是因为记录一旦写进去就只会被同名覆盖 —— 一个按 key 存的记录文件，
+    /// 迟早需要一个「按 key 删」（例如将来的「卸载」入口），而那时再补一次落盘/并发就晚了。
     /// </summary>
     public async Task RemoveAsync(string modId, CancellationToken cancellationToken = default)
     {
