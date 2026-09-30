@@ -155,14 +155,15 @@ public sealed class GameBananaCoreService(
             cachedDataUsed = false;
         }
 
-        var modFileInfo = modFilesInfo.Files.FirstOrDefault(x => x.FileId.ToString() == modFileIdentifier.ModFileId);
+        var modFileInfo = FindFile(modFilesInfo, modFileIdentifier.ModFileId);
         if (modFileInfo is null)
         {
             if (cachedDataUsed)
                 // Mod file not found in cache, try to get it directly from the API
-                modFileInfo = (await GetModFilesInfoAsync(apiGameBananaClient, modFileIdentifier.ModId, true, ct)
-                        .ConfigureAwait(false))
-                    ?.Files.FirstOrDefault(x => x.FileId.ToString() == modFileIdentifier.ModFileId);
+                modFileInfo = FindFile(
+                    await GetModFilesInfoAsync(apiGameBananaClient, modFileIdentifier.ModId, true, ct)
+                        .ConfigureAwait(false),
+                    modFileIdentifier.ModFileId);
 
             if (modFileInfo is null)
                 throw new InvalidOperationException($"Mod file with id {modFileIdentifier.ModFileId} not found");
@@ -223,6 +224,27 @@ public sealed class GameBananaCoreService(
 
 
         return modArchiveHandle.FullName;
+    }
+
+    /// <summary>
+    /// 在文件清单里按文件 id 找一个文件。
+    ///
+    /// **两个字段都要找**：文件列表落在 <c>_aFiles</c>（活跃）与 <c>_aArchivedFiles</c>（归档）
+    /// 两处（见 <see cref="ApiModFilesInfo"/>）—— 被隐藏的 mod（实测 709792，
+    /// <c>_sInitialVisibility=hide</c>）压根没有 <c>_aFiles</c> 这个键、文件全在归档那份里，
+    /// 只看前者会把它当成「这个 mod 没有这个文件」，于是明明能从网页下的东西在这里下不了。
+    ///
+    /// 活跃的排在前面（同一个文件 id 不会同时出现在两处，但顺序定了就不会随清单顺序飘）。
+    /// </summary>
+    private static ApiModFileInfo? FindFile(ApiModFilesInfo? modFilesInfo, string modFileId)
+    {
+        if (modFilesInfo is null)
+            return null;
+
+        // _aFiles 的「非空」声明当不得真（键缺失时反序列化出来就是 null），所以两个都判。
+        var active = modFilesInfo.Files?.FirstOrDefault(x => x.FileId.ToString() == modFileId);
+
+        return active ?? modFilesInfo.ArchivedFiles?.FirstOrDefault(x => x.FileId.ToString() == modFileId);
     }
 
 
