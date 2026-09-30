@@ -314,4 +314,19 @@
   <data name="Overlay_RefreshNow.Content" xml:space="preserve">
     <value>Refresh</value>
   </data>
+  <data name="AppUpdate_NewVersionLabel.Text" xml:space="preserve">
+    <value>New version available</value>
+  </data>
+  <data name="AppUpdate_SeeWhatsNew.Text" xml:space="preserve">
+    <value>See what's new in the latest release</value>
+  </data>
+  <data name="AppUpdate_ConfirmText.Text" xml:space="preserve">
+    <value>JASM will exit and the update will start. Do you want to continue?</value>
+  </data>
+  <data name="AppUpdate_ConfirmButton.Content" xml:space="preserve">
+    <value>Update JASM</value>
+  </data>
+  <data name="AppUpdate_IgnoreButton.Content" xml:space="preserve">
+    <value>Ignore this version</value>
+  </data>
 </root>
