@@ -293,6 +293,36 @@
   <data name="ModStore_DownloadManager.ToolTipService.ToolTip" xml:space="preserve">
     <value>Download Manager</value>
   </data>
+  <data name="ModStore_Detail_FileArchived.Text" xml:space="preserve">
+    <value>Archived</value>
+  </data>
+  <data name="ModStore_Detail_Obsolete.Text" xml:space="preserve">
+    <value>Obsolete</value>
+  </data>
+  <data name="ModStore_Detail_OverviewTab.Content" xml:space="preserve">
+    <value>Overview &amp; Files</value>
+  </data>
+  <data name="ModStore_Detail_DescriptionTab.Content" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ModStore_Detail_Loading.Text" xml:space="preserve">
+    <value>Loading details…</value>
+  </data>
+  <data name="ModStore_Detail_Retry.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="ModStore_Detail_FilesTitle.Text" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="ModStore_Detail_NoFiles.Text" xml:space="preserve">
+    <value>This mod has no downloadable files (the author may have removed them).</value>
+  </data>
+  <data name="ModStore_Detail_NoBody.Text" xml:space="preserve">
+    <value>The author did not provide a text description.</value>
+  </data>
+  <data name="ModStore_Detail_OpenInBrowser.Text" xml:space="preserve">
+    <value>View on GameBanana</value>
+  </data>
   <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
     <value>Categories</value>
   </data>
