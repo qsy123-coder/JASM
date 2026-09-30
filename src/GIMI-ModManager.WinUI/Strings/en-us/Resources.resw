@@ -566,4 +566,52 @@
   <data name="ArchivePassword_ClearBtn" xml:space="preserve">
     <value>Forget saved password</value>
   </data>
+  <data name="CharacterPicker_Title" xml:space="preserve">
+    <value>Which character is this mod for?</value>
+  </data>
+  <data name="CharacterPicker_NoConfidentMatchHint" xml:space="preserve">
+    <value>Could not tell which character this package belongs to.</value>
+  </data>
+  <data name="CharacterPicker_SelectHint" xml:space="preserve">
+    <value>Pick one below if it is in the list. Otherwise cancel and drop the package onto that character's card.</value>
+  </data>
+  <data name="CharacterPicker_ConfirmBtn" xml:space="preserve">
+    <value>That's the one</value>
+  </data>
+  <data name="CharacterPicker_CancelBtn" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="CharacterPicker_OkBtn" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ModDrop_NotArchiveTitle" xml:space="preserve">
+    <value>This is not a mod archive JASM can read</value>
+  </data>
+  <data name="ModDrop_NotArchiveBody" xml:space="preserve">
+    <value>JASM reads zip / rar / 7z files and WinRAR self-extracting exe files. You can also unpack it yourself and drop the folder onto the character's card.</value>
+  </data>
+  <data name="ModDrop_CorruptTitle" xml:space="preserve">
+    <value>The archive could not be read</value>
+  </data>
+  <data name="ModDrop_CorruptBody" xml:space="preserve">
+    <value>It looks damaged or incomplete. Try downloading it again.</value>
+  </data>
+  <data name="ModDrop_EmptyTitle" xml:space="preserve">
+    <value>The archive contained nothing</value>
+  </data>
+  <data name="ModDrop_EmptyBody" xml:space="preserve">
+    <value>Nothing came out of it - it may be incomplete, or the password may be wrong.</value>
+  </data>
+  <data name="ModDrop_ToolFailedTitle" xml:space="preserve">
+    <value>Extraction failed</value>
+  </data>
+  <data name="ModDrop_ToolFailedBody" xml:space="preserve">
+    <value>The bundled 7-Zip could not handle this file. Antivirus software blocking it can also cause this.</value>
+  </data>
+  <data name="ModDrop_FailedTitle" xml:space="preserve">
+    <value>Could not add the mod</value>
+  </data>
+  <data name="ModDrop_FailedBody" xml:space="preserve">
+    <value>The package could not be unpacked.</value>
+  </data>
 </root>
