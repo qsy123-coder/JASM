@@ -32,7 +32,13 @@ public sealed class ModStoreService(
     /// </summary>
     private const int MaxConsecutiveEmptyPages = 4;
 
-    /// <summary>false = 隐藏成人内容（默认）。设置页开关见 PRD Phase 1 第 9 项。</summary>
+    /// <summary>
+    /// false = 隐藏成人内容（默认）。由商店页在取数**之前**从 <c>ModStoreSettings</c> 设置好
+    /// （设置页的复选框与页内那个下拉写的是同一份，见 PRD Phase 1 第 9 项）。
+    ///
+    /// 服务自己**不读设置**：它不知道设置存在哪，也不该知道 —— 这样换默认值 / 换存储位置
+    /// 都只动读取方，取数这一层不必跟着改。
+    /// </summary>
     public bool IncludeAdultContent { get; set; }
 
     /// <summary>浏览：板块内容流。<paramref name="startPage"/> 从 1 开始。</summary>
