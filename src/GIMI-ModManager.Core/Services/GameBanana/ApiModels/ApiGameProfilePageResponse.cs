@@ -31,4 +31,11 @@ public sealed class ApiRootCategory
 
     /// <summary>该分类下的条目数。字段缺失时保持 -1（= 未知），不要当成 0。</summary>
     [JsonPropertyName("_nItemCount")] public int ItemCount { get; init; } = -1;
+
+    /// <summary>
+    /// 分类图标（侧栏用）。实测给的是 <c>https://images.gamebanana.com/img/ico/ModCategory/*.png</c>
+    /// —— 与列表记录里 <c>_aRootCategory._sIconUrl</c> 是同一个图，**不在 gamebanana.com 主域上**，
+    /// 所以校验要走 <c>GameBananaMediaUrls.TryCreateImageUrl</c>（别照「同域」直觉判 host）。
+    /// </summary>
+    [JsonPropertyName("_sIconUrl")] public string? IconUrl { get; init; }
 }
