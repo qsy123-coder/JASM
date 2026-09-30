@@ -303,12 +303,21 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     }
 
     /// <summary>
-    /// 「其他角色」「武器」这类伪角色要排除：GameBanana 上没有对应的 mod 分类，
-    /// 点了只会得到空列表。
+    /// 鸣潮把「武器」这个聚合项写在本地化角色表的头几条里（内部名 <c>Weapons</c>），
+    /// 它不是角色 —— <see cref="GameService.GlidersCharacterInternalName"/> 给的是原神那边的
+    /// <c>Gliders</c>（风之翼），只认那两个属性会漏掉它（实机侧栏上就多出一行「武器」）。
+    /// </summary>
+    private const string WeaponsAggregateInternalName = "Weapons";
+
+    /// <summary>
+    /// 「其他角色」「武器」这类伪角色要排除：GameBanana 上没有对应的 mod 分类，留下的后果不是
+    /// 空列表而是**误导性**结果 —— 侧栏是按角色名走搜索端点的，而搜索是**全文匹配**：
+    /// 实测「武器」能搜出 127 条（全是正文里提到 weapons 的 mod），看着像一百多个武器 mod。
     /// </summary>
     private bool IsPseudoCharacter(ICharacter character) =>
         character.InternalNameEquals(_gameService.OtherCharacterInternalName) ||
-        character.InternalNameEquals(_gameService.GlidersCharacterInternalName);
+        character.InternalNameEquals(_gameService.GlidersCharacterInternalName) ||
+        character.InternalNameEquals(WeaponsAggregateInternalName);
 
     /// <summary>
     /// 给侧栏补计数，「全部」与根分类各一个请求、角色一个请求一个。
