@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="GIMI_ModManager.WinUI.Views.ModStorePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:CommunityToolkit.WinUI.UI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
+    xmlns:local="using:GIMI_ModManager.WinUI.Views.Controls"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:GIMI_ModManager.WinUI.Models"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter
+            x:Key="BoolToVisibilityConverter"
+            TrueValue="Visible"
+            FalseValue="Collapsed" />
+
+        <DataTemplate x:Key="CharacterItemTemplate" x:DataType="models:ModStoreCharacter">
+            <Grid Padding="12,10" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <FontIcon FontSize="15" Glyph="&#xE77B;"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="13"
+                           Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 卡片版式来自 Mod 市场（250×340 竖卡 + 底部渐变 + 图像懒加载）。
+             差异只在水印字段上：商店有作者、没有评论数。 -->
+        <DataTemplate x:Key="ModStoreCardTemplate">
+            <Border Width="250" Margin="6" CornerRadius="8"
+                    BorderBrush="#404040" BorderThickness="0.5">
+                <Grid Height="340">
+                    <!-- 层0: 无图片时的纯色占位背景 -->
+                    <Grid Background="#2A2A2A" />
+                    <!-- 层1: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
+                    <ProgressRing x:Name="CardLoadingRing" IsActive="False"
+                                  Visibility="Collapsed"
+                                  Width="28" Height="28"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Foreground="#0078D4" />
+                    <!-- 层2: 图片铺满(Source 由代码在滚到视口时设置) -->
+                    <Image x:Name="CardImage"
+                           Stretch="UniformToFill"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           ImageOpened="CardImage_Opened" ImageFailed="CardImage_Failed" />
+                    <!-- 层3: 底部渐变条 -->
+                    <Border VerticalAlignment="Bottom" Height="80">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="Transparent" Offset="0" />
+                                <GradientStop Color="#B0000000" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <!-- 层4: 信息叠在底部 -->
+                    <StackPanel VerticalAlignment="Bottom" Padding="8,0,8,6" Spacing="2">
+                        <TextBlock Foreground="White" FontWeight="SemiBold" FontSize="13"
+                                   MaxLines="2" Text="{Binding Title}"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock VerticalAlignment="Center" FontSize="11"
+                                       Foreground="#DDDDDD" Text="{Binding Character}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock VerticalAlignment="Center" FontSize="11"
+                                       Foreground="#AAAAAA" Text="{Binding AuthorName}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock VerticalAlignment="Center" FontSize="11"
+                                       Foreground="#AAAAAA" Text="{Binding RelativeTime}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="14">
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xE890;" />
+                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding ViewsCount}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xEB52;" />
+                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding LikesCount}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                    <!-- 层5: NSFW 角标(右上)。默认隐藏模式下这类条目根本不会进列表,
+                         只有设置里打开开关后才看得到角标。 -->
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                            Margin="4" Padding="6,2" Background="#FF4D4F"
+                            CornerRadius="6"
+                            Visibility="{Binding IsAdult, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Foreground="White" FontSize="10"
+                                   FontWeight="SemiBold" Text="NSFW" />
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="190" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 左侧栏:角色 -->
+        <Grid Grid.Column="0"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+              BorderThickness="0,0,1,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Margin="16,16,16,8" FontSize="18" FontWeight="Bold"
+                       l:Uids.Uid="ModStore_CharactersTitle" Text="角色" />
+            <ListView x:Name="CharacterListView" Grid.Row="1"
+                      ItemTemplate="{StaticResource CharacterItemTemplate}"
+                      ItemsSource="{x:Bind ViewModel.Characters}"
+                      SelectedItem="{x:Bind ViewModel.SelectedCharacter, Mode=TwoWay}"
+                      SelectionMode="Single">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="4,0" />
+                        <Setter Property="CornerRadius" Value="6" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </Grid>
+
+        <!-- 右侧主区 -->
+        <Grid Grid.Column="1" Background="#F5F7FA">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 工具栏 -->
+            <Grid Grid.Row="0" MinHeight="50" Padding="12,8" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="SearchBox" Grid.Column="0"
+                         VerticalAlignment="Center" PlaceholderText="搜索模组..."
+                         l:Uids.Uid="ModStore_SearchPlaceholder"
+                         Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         CornerRadius="6" Margin="0,0,8,0">
+                    <TextBox.Resources>
+                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
+                        <SolidColorBrush x:Key="TextControlBackground" Color="White" />
+                    </TextBox.Resources>
+                </TextBox>
+
+                <!-- 排序只对板块内容流有效:搜索端点不吃排序参数,所以按角色/关键词筛时置灰 -->
+                <ComboBox Grid.Column="1" Width="110" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White"
+                          IsEnabled="{x:Bind ViewModel.CanSort, Mode=OneWay}"
+                          ToolTipService.ToolTip="排序仅对「全部」浏览有效；按角色或关键词查找时顺序由服务端决定"
+                          ItemsSource="{x:Bind ViewModel.SortOptions}"
+                          SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}" />
+            </Grid>
+
+            <!-- 内容区 -->
+            <Grid Grid.Row="1">
+                <ScrollViewer x:Name="CardScrollViewer"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalContentAlignment="Top"
+                              ViewChanged="ScrollViewer_ViewChanged">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <local:WrapGridPanel x:Name="ModCardsPanel" Grid.Row="0"
+                                             VerticalAlignment="Top" />
+                        <!-- 滚动加载更多:内容流末尾,Collapsed 时不占位 -->
+                        <StackPanel Grid.Row="1" HorizontalAlignment="Center"
+                                    Margin="0,8,0,16"
+                                    Visibility="{x:Bind ViewModel.IsLoadingMore, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                            <TextBlock Text="正在加载更多..." HorizontalAlignment="Center"
+                                       Margin="0,4" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- 首次加载/重载指示器 -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"
+                            Visibility="{x:Bind ViewModel.IsInitialLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                    <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                               HorizontalAlignment="Center" Margin="0,4" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <!-- 空状态(含失败原因 + 重试) -->
+                <Grid Background="#F5F7FA"
+                      Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="480">
+                        <TextBlock HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                                   FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="{x:Bind ViewModel.EmptyStateMessage, Mode=OneWay}" />
+                        <Button Content="重试" HorizontalAlignment="Center" Margin="0,12,0,0"
+                                CornerRadius="6"
+                                Command="{x:Bind ViewModel.RefreshCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>
