@@ -40,6 +40,9 @@ public sealed partial class ModStoreDetailPanel : UserControl
     /// <summary>点了「重试」。面板不认识商店服务，得请页面转给 ViewModel。</summary>
     public event EventHandler? RetryRequested;
 
+    /// <summary>点了「下载选中文件」（事件参数就是被选中的那个文件）。面板不认识下载队列，同样请页面转。</summary>
+    public event EventHandler<ModStoreFileItem>? DownloadRequested;
+
     public ModStoreDetailPanel()
     {
         InitializeComponent();
@@ -246,6 +249,15 @@ public sealed partial class ModStoreDetailPanel : UserControl
 
     private void RetryButton_Click(object sender, RoutedEventArgs e) =>
         RetryRequested?.Invoke(this, EventArgs.Empty);
+
+    private void DownloadButton_Click(object sender, RoutedEventArgs e)
+    {
+        // 没有文件时按钮本身是收起的，这里兜的是「清单还在补 / 用户取消选中」那一瞬间。
+        if (_current?.SelectedFile is not { } file)
+            return;
+
+        DownloadRequested?.Invoke(this, file);
+    }
 
     private void OpenInBrowser_Click(object sender, RoutedEventArgs e)
     {
