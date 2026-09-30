@@ -113,19 +113,23 @@ public sealed class ApiSubfeedRecord
 }
 
 /// <summary>
-/// 分类对象。两个字段位置用到它，含义**不一样**，别搞混：
+/// 分类对象。<see cref="Id"/> 与 <see cref="Name"/> 的位置决定含义，别搞混：
 /// <list type="bullet">
-///   <item><c>_aRootCategory</c>：根分类。实测鸣潮板块只有三个 —— <c>Skins</c>(29524) /
+///   <item><c>_aRootCategory</c>（列表）：根分类。实测鸣潮板块只有三个 —— <c>Skins</c>(29524) /
 ///         <c>Other/Misc</c>(29493) / <c>UI</c>(29496)，完整清单在
 ///         <c>Game/{id}/ProfilePage._aModRootCategories</c>。</item>
-///   <item><c>_aSubCategory</c>：子分类，**鸣潮板块下才是角色名**（<c>Jinhsi</c> / <c>Qingxiao</c> / …）。
-///         所以「按角色筛选」要落在这个字段上，不是根分类。</item>
+///   <item><c>_aSubCategory</c>（列表）/ <c>_aCategory</c>（详情）：子分类，**鸣潮板块下才是角色名**
+///         （<c>Jinhsi</c> / <c>Qingxiao</c> / …）。所以「按角色筛选」要落在这个字段上，不是根分类。</item>
 /// </list>
 ///
-/// ⚠️ 两者都**没有 <c>_idRow</c>**，id 只能从 <c>_sProfileUrl</c>（<c>…/mods/cats/29496</c>）末段抠。
+/// ⚠️ 列表侧的两份都**没有 <c>_idRow</c>**，id 只能从 <c>_sProfileUrl</c>（<c>…/mods/cats/29496</c>）
+/// 末段抠；只有**详情**的 <c>_aCategory</c> 直接给 <see cref="Id"/>。
 /// </summary>
 public sealed class ApiSubfeedCategory
 {
+    /// <summary>分类 id。**只有详情端点给**，列表记录里恒为 -1。</summary>
+    [JsonPropertyName("_idRow")] public int Id { get; init; } = -1;
+
     [JsonPropertyName("_sName")] public string? Name { get; init; }
     [JsonPropertyName("_sProfileUrl")] public string? ProfileUrl { get; init; }
     [JsonPropertyName("_sIconUrl")] public string? IconUrl { get; init; }
