@@ -329,4 +329,211 @@
   <data name="AppUpdate_IgnoreButton.Content" xml:space="preserve">
     <value>Ignore this version</value>
   </data>
+  <data name="Settings_Window.Text" xml:space="preserve">
+    <value>Window</value>
+  </data>
+  <data name="Settings_Window_RememberSize.Content" xml:space="preserve">
+    <value>Remember window size</value>
+  </data>
+  <data name="Settings_Window_RememberSize.ToolTipService.ToolTip" xml:space="preserve">
+    <value>If checked then the main window size is saved when JASM exits</value>
+  </data>
+  <data name="Settings_Window_RememberPosition.Content" xml:space="preserve">
+    <value>Remember window position</value>
+  </data>
+  <data name="Settings_Window_RememberPosition.ToolTipService.ToolTip" xml:space="preserve">
+    <value>If checked then the main window position is saved when JASM exits</value>
+  </data>
+  <data name="Settings_GameSettingsNote.Text" xml:space="preserve">
+    <value>Settings are saved independently for each selected game.</value>
+  </data>
+  <data name="Settings_GameDataSyncSectionHeader.Text" xml:space="preserve">
+    <value>Game Data Sync</value>
+  </data>
+  <data name="Settings_GameDataSync_LastSync.Text" xml:space="preserve">
+    <value>Last sync: </value>
+  </data>
+  <data name="Settings_GameDataSync_DataVersion.Text" xml:space="preserve">
+    <value>Data version: </value>
+  </data>
+  <data name="Settings_GameDataSync_Status.Text" xml:space="preserve">
+    <value>Status: </value>
+  </data>
+  <data name="Settings_GameDataSync_CheckButton.Text" xml:space="preserve">
+    <value>Check and sync game data</value>
+  </data>
+  <data name="Settings_GameDataSync_AutoSync.Content" xml:space="preserve">
+    <value>Check for updates automatically when JASM starts</value>
+  </data>
+  <data name="Settings_GameDataSync_Description.Text" xml:space="preserve">
+    <value>Downloads the latest game character data from GitHub, including new characters, NPCs and image assets. Custom characters and mods are preserved.</value>
+  </data>
+  <data name="Settings_Commands.Text" xml:space="preserve">
+    <value>Commands</value>
+  </data>
+  <data name="Settings_Commands_CreateCard.Header" xml:space="preserve">
+    <value>Create Custom Commands</value>
+  </data>
+  <data name="Settings_Commands_CreateCard.Description" xml:space="preserve">
+    <value>Commands (scripts) can be defined and then be run on specified mods</value>
+  </data>
+  <data name="Settings_Folders_Update.Content" xml:space="preserve">
+    <value>Update</value>
+  </data>
+  <data name="Settings_Folders_Update.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Update folder path(s)?</value>
+  </data>
+  <data name="Settings_Folders_ReorganizeMods.Content" xml:space="preserve">
+    <value>Reorganize Mods</value>
+  </data>
+  <data name="Settings_Folders_CleanModsFolder.Content" xml:space="preserve">
+    <value>Clean Mods folder</value>
+  </data>
+  <data name="Settings_Folders_DisableAllMods.Content" xml:space="preserve">
+    <value>Disable All Mods</value>
+  </data>
+  <data name="Settings_Folders_OneClickSetup.Content" xml:space="preserve">
+    <value>One-click Mod environment setup</value>
+  </data>
+  <data name="Settings_Folders_Reset3DmigotoPath.Content" xml:space="preserve">
+    <value>Reset 3Dmigoto Exe Path</value>
+  </data>
+  <data name="Settings_Folders_ResetGenshinPath.Content" xml:space="preserve">
+    <value>Reset Genshin Exe Path</value>
+  </data>
+  <data name="Settings_Folders_CharacterAsSeparate.Content" xml:space="preserve">
+    <value>Treat Character Skins as separate characters</value>
+  </data>
+  <data name="Settings_Folders_CacheDescription.Text" xml:space="preserve">
+    <value>When using JASM to download mods, it automatically caches the archives or zip files. You can specify a maximum limit in gigabytes for the cache directory, and JASM will keep the cache size under the limit when starting up.</value>
+  </data>
+  <data name="Settings_Folders_OpenCacheFolder.Text" xml:space="preserve">
+    <value>Open cache folder...</value>
+  </data>
+  <data name="Settings_Folders_CacheSizeLabel.Text" xml:space="preserve">
+    <value>Current Size of Mod Cache for</value>
+  </data>
+  <data name="Settings_Folders_CacheSizeSeparator.Text" xml:space="preserve">
+    <value>:</value>
+  </data>
+  <data name="Settings_About_Github.Content" xml:space="preserve">
+    <value>Just Another Skin Manager Github</value>
+  </data>
+  <data name="Settings_About_GameBanana.Content" xml:space="preserve">
+    <value>Just Another Skin Manager GameBanana</value>
+  </data>
+  <data name="AppUpdate_UpdateButtonLabel.Text" xml:space="preserve">
+    <value>Update JASM</value>
+  </data>
+  <data name="ElevatorStatus_NotRunning" xml:space="preserve">
+    <value>Not running</value>
+  </data>
+  <data name="ElevatorStatus_Running" xml:space="preserve">
+    <value>Running</value>
+  </data>
+  <data name="ElevatorStatus_InitializingFailed" xml:space="preserve">
+    <value>Initialization failed</value>
+  </data>
+  <data name="Settings_ExportDialog_KeepStructureTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Keeps the jasm mod folder structure. I.e. Characters/Diluc/SomeDilucSkinMod</value>
+  </data>
+  <data name="Settings_ExportDialog_RemoveJasmTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>This is recursive and removes all files AND folders starting with .JASM_</value>
+  </data>
+  <data name="Settings_ExportDialog_ChangeStatusTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Whether to prepend or remove the 'DISABLED_' prefix from the exported mods</value>
+  </data>
+  <data name="SetModStatus_KeepCurrent" xml:space="preserve">
+    <value>Keep current status</value>
+  </data>
+  <data name="SetModStatus_EnableAllMods" xml:space="preserve">
+    <value>Enable all mods</value>
+  </data>
+  <data name="SetModStatus_DisableAllMods" xml:space="preserve">
+    <value>Disable all mods</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncIdle" xml:space="preserve">
+    <value>Idle</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncNone" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncNever" xml:space="preserve">
+    <value>Never</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncChecking" xml:space="preserve">
+    <value>Checking...</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncOK" xml:space="preserve">
+    <value>Sync successful</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncUpToDate" xml:space="preserve">
+    <value>Already up to date</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncFailed" xml:space="preserve">
+    <value>Sync failed</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncNoRelease" xml:space="preserve">
+    <value>No data release found</value>
+  </data>
+  <data name="SettingsVM_ModEnvSetupFailedTitle" xml:space="preserve">
+    <value>Mod environment setup failed</value>
+  </data>
+  <data name="SettingsVM_ModEnvSetupDoneTitle" xml:space="preserve">
+    <value>Mod environment setup finished</value>
+  </data>
+  <data name="SettingsVM_ModEnvSetupDoneText" xml:space="preserve">
+    <value>Paths were filled in, path settings were unchanged.</value>
+  </data>
+  <data name="ModEnv_Dialog.Title" xml:space="preserve">
+    <value>One-click Mod environment setup</value>
+  </data>
+  <data name="ModEnv_Dialog.CloseButtonText" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ModEnv_XxmiVersion.Text" xml:space="preserve">
+    <value>XXMI version</value>
+  </data>
+  <data name="ModEnv_ManualGameDir.Text" xml:space="preserve">
+    <value>Wuthering Waves could not be located automatically. Please select the game folder manually.</value>
+  </data>
+  <data name="ModEnv_GameDirPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>e.g. D:\Wuthering Waves</value>
+  </data>
+  <data name="ModEnv_Browse.Content" xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="ModEnv_Redetect.Content" xml:space="preserve">
+    <value>Detect again</value>
+  </data>
+  <data name="ModEnv_InstallLocation.Text" xml:space="preserve">
+    <value>Install location</value>
+  </data>
+  <data name="ModEnv_ChangeRoot.Content" xml:space="preserve">
+    <value>Change...</value>
+  </data>
+  <data name="ModEnv_UseDefaultRoot.Content" xml:space="preserve">
+    <value>Use default</value>
+  </data>
+  <data name="ModEnv_DetectedGameVersion.Text" xml:space="preserve">
+    <value>Detected game version:</value>
+  </data>
+  <data name="ModEnv_BackupsTitle.Text" xml:space="preserve">
+    <value>Version backups</value>
+  </data>
+  <data name="ModEnv_BackupsDescription.Text" xml:space="preserve">
+    <value>Every time the XXMI version is switched, the previously working version is backed up automatically and can be restored from here. The current version is backed up before restoring as well.</value>
+  </data>
+  <data name="ModEnv_RestoreBackup.Content" xml:space="preserve">
+    <value>Restore this backup</value>
+  </data>
+  <data name="ModEnv_Cancel.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ModEnv_Start.Content" xml:space="preserve">
+    <value>Start setup</value>
+  </data>
+  <data name="ModEnv_TestLaunch.Content" xml:space="preserve">
+    <value>Test launch</value>
+  </data>
 </root>
