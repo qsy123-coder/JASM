@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.ModStore;
 using GIMI_ModManager.Core.Services.Downloading;
 using GIMI_ModManager.Core.Services.GameBanana.Models;
+using GIMI_ModManager.WinUI.Models;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using Serilog;
 
@@ -103,20 +104,25 @@ public partial class ModDownloadManagerViewModel : ObservableObject
     /// 从商店详情里下一个文件。地址 / 哈希 / 体积都在 Core 的 <paramref name="file"/> 上
     /// （上游给的 <c>_sDownloadUrl</c> 优先，缺失时按文件 id 拼），这里不重复判断。
     ///
+    /// 顺手把「下完装哪儿」（<paramref name="detail"/> 上的角色）和「它是哪个 mod 页面」
+    /// 一起塞进请求：队列下完就把请求交给部署阶段，那一步不该再回来问界面 ——
+    /// 用户那时可能已经翻到别的 mod 上去了。
+    ///
     /// 入队后**顺手把面板打开**：用户按了「下载」总得看见它去了哪。
     /// 同一个文件已经在队里时队列不会重复排（连点两下不会下两份）。
     /// </summary>
-    public ModDownloadItem? EnqueueFromDetail(string gbModId, ModStoreFile file, string? modName)
+    public ModDownloadItem? EnqueueFromDetail(ModStoreDetailItem detail, ModStoreFile file)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(gbModId);
+        ArgumentNullException.ThrowIfNull(detail);
         ArgumentNullException.ThrowIfNull(file);
 
-        var request = ModDownloadRequest.FromStoreFile(new GbModId(gbModId), file, modName);
+        var request = ModDownloadRequest.FromStoreFile(new GbModId(detail.GbModId), file, detail.Title,
+            detail.Character, detail.ModPageUrl);
         if (request is null)
         {
             // 正常路径下不会走到这儿（既没有地址、又拼不出地址）。但按钮点了必须有点反应。
             _logger.Warning("商店文件没有可用的下载地址 | ModId: {ModId} FileId: {FileId}",
-                gbModId, file.FileId);
+                detail.GbModId, file.FileId);
             _notificationManager.ShowNotification("下载", "这个文件没有可用的下载地址，无法下载。",
                 TimeSpan.FromSeconds(5));
             return null;
