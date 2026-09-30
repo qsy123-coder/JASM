@@ -63,17 +63,10 @@ public class ModDragAndDropService
         if (storageItem is StorageFile)
         {
             var scanner = new DragAndDropScanner();
+            var extractResult = await ExtractWithCleanupAsync(scanner, storageItem.Path);
 
-            // 加密包（社区分发的 Mod 基本都是）要先拿到密码：用记住的那条试，不行就问用户。
-            // 密码只在这一行里过一道，不进日志、不进异常、不进通知。
-            var extractResult = await _archivePasswordService.ExtractAsync(
-                password => scanner.ScanAndGetContents(storageItem.Path, password));
-
-            if (extractResult is null) // 用户放弃输密码
-            {
-                scanner.CleanupWorkFolder(); // 别把刚建的空临时目录留在 %TEMP%
+            if (extractResult is null) // 用户放弃输密码（临时目录已在里面收拾过）
                 return null;
-            }
 
             installMonitor = await _modInstallerService.StartModInstallationAsync(
                 new DirectoryInfo(extractResult.ExtractedFolder.FullPath), modList);
@@ -174,15 +167,10 @@ public class ModDragAndDropService
         }
 
         var scanner = new DragAndDropScanner();
+        var scanResult = await ExtractWithCleanupAsync(scanner, file.Path);
 
-        var scanResult = await _archivePasswordService.ExtractAsync(
-            password => scanner.ScanAndGetContents(file.Path, password));
-
-        if (scanResult is null) // 用户放弃输密码
-        {
-            scanner.CleanupWorkFolder();
+        if (scanResult is null) // 用户放弃输密码（临时目录已在里面收拾过）
             return null;
-        }
 
         ICharacterModList? modList;
         try
@@ -209,6 +197,36 @@ public class ModDragAndDropService
 
         return await _modInstallerService.StartModInstallationAsync(
             new DirectoryInfo(scanResult.ExtractedFolder.FullPath), modList);
+    }
+
+    /// <summary>
+    /// 解压（含密码：用记住的那条试，不行就问用户），<b>失败或用户放弃时把临时目录收拾掉</b>。
+    /// 返回 <c>null</c> = 用户放弃输密码。
+    ///
+    /// <para>
+    /// 卡片路径与检测区路径共用这一份：清理这件事不能让哪条路忘了写 ——
+    /// 忘一条，用户的 <c>%TEMP%\JASM_TMP</c> 就会攒下一堆解压出来的 Mod。
+    /// 密码只在内存里过一道，不进日志、不进异常、不进通知。
+    /// </para>
+    /// </summary>
+    private async Task<DragAndDropScanResult?> ExtractWithCleanupAsync(DragAndDropScanner scanner, string path)
+    {
+        DragAndDropScanResult? scanResult;
+        try
+        {
+            scanResult = await _archivePasswordService.ExtractAsync(
+                password => scanner.ScanAndGetContents(path, password));
+        }
+        catch
+        {
+            scanner.CleanupWorkFolder(); // 解压失败：半截内容也别留在 %TEMP%
+            throw;
+        }
+
+        if (scanResult is null)
+            scanner.CleanupWorkFolder(); // 用户放弃输密码
+
+        return scanResult;
     }
 
     /// <summary>
