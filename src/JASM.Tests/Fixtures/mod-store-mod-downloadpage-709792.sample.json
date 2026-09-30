@@ -1,0 +1,44 @@
+{
+    "_bIsTrashed": false,
+    "_bIsWithheld": false,
+    "_aArchivedFiles": [
+        {
+            "_idRow": 1798486,
+            "_sFile": "qingxiaosfw_3ef7a.zip",
+            "_nFilesize": 38526565,
+            "_tsDateAdded": 1787790102,
+            "_nDownloadCount": 799,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1798486",
+            "_sMd5Checksum": "2d5ebbb43ff0a9e727d69a8b52320d5f",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": true,
+            "_bHasContents": true,
+            "_sVersion": "1.1"
+        },
+        {
+            "_idRow": 1831586,
+            "_sFile": "qingxiao.zip",
+            "_nFilesize": 51720051,
+            "_tsDateAdded": 1790740175,
+            "_nDownloadCount": 119,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831586",
+            "_sMd5Checksum": "6ed98976427785ff0ac36b81db185e57",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": true,
+            "_bHasContents": true,
+            "_sVersion": "1.2",
+            "_sDescription": "NSFW"
+        }
+    ],
+    "_bAcceptsDonations": false,
+    "_bShowRipePromo": true,
+    "_sLicense": "<a rel=\"license\" href=\"http:\/\/creativecommons.org\/licenses\/by-nc-nd\/4.0\/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https:\/\/i.creativecommons.org\/l\/by-nc-nd\/4.0\/88x31.png\" \/><\/a><br \/>This work is licensed under a <a rel=\"license\" href=\"http:\/\/creativecommons.org\/licenses\/by-nc-nd\/4.0\/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License<\/a>."
+}
