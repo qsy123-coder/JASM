@@ -7,29 +7,34 @@ using GIMI_ModManager.Core.Services.GameBanana.Models;
 namespace JASM.Tests;
 
 /// <summary>
-/// 用两份从线上真实响应裁出来的 fixture 锁住商店列表这条链路。
+/// 用三份从线上真实响应裁出来的 fixture 锁住商店列表这条链路。
 ///
 /// 它们是**实测证据的固化**：<c>docs/mod-store-prd.md</c> 里「已验证的 GameBanana API 事实」
 /// 那张表中每一条能写成断言的，都在这里可执行 —— 那些坑（参数名被静默忽略、混合类型、
 /// 总数口径随视图变）在真机上全部表现为「不报错但数据是错的」，只有测试能拦住。
 ///
-/// fixture 是原样抓取后只裁短了记录条数（subfeed 3 条 / search 6 条），字段与嵌套结构未改。
+/// fixture 是原样抓取后只裁短了记录条数（subfeed 3 条 / search 6 条 / profilepage 只留
+/// 板块自身的几个标量 + 完整的根分类清单），字段名与嵌套结构与线上一致。
 /// </summary>
 public class ModStoreBrowseTests
 {
     /// <summary>Subfeed：<c>_nPage=1&amp;_csvModelInclusions=Mod&amp;_sSort=updated</c> —— 3 条全 Mod、tags 全空。</summary>
-    private static readonly ApiSubfeedResponse Subfeed = Load("mod-store-subfeed.sample.json");
+    private static readonly ApiSubfeedResponse Subfeed = Load<ApiSubfeedResponse>("mod-store-subfeed.sample.json");
 
     /// <summary>Search：<c>_sSearchString=skin&amp;_idGameRow=20357</c> —— 6 条里只有 3 条是 Mod（其余是 Request/Question）。</summary>
-    private static readonly ApiSubfeedResponse Search = Load("mod-store-search.sample.json");
+    private static readonly ApiSubfeedResponse Search = Load<ApiSubfeedResponse>("mod-store-search.sample.json");
 
-    private static ApiSubfeedResponse Load(string fileName)
+    /// <summary>ProfilePage：<c>Game/20357/ProfilePage</c> —— 侧栏「分类」与那些条目数都出自这里。</summary>
+    private static readonly ApiGameProfilePageResponse ProfilePage =
+        Load<ApiGameProfilePageResponse>("mod-store-game-profilepage.sample.json");
+
+    private static T Load<T>(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", fileName);
         if (!File.Exists(path))
             throw new FileNotFoundException($"缺少 fixture：{path}（csproj 的 CopyToOutputDirectory 没生效？）", path);
 
-        return JsonSerializer.Deserialize<ApiSubfeedResponse>(File.ReadAllText(path))
+        return JsonSerializer.Deserialize<T>(File.ReadAllText(path))
                ?? throw new InvalidOperationException($"fixture 反序列化成了 null：{path}");
     }
 
@@ -168,6 +173,7 @@ public class ModStoreBrowseTests
         Assert.Equal("1.2", mod.Version);
         Assert.Equal(593, mod.LikeCount);
         Assert.Equal(18427, mod.ViewCount);
+        Assert.Equal(6, mod.CommentCount);
         Assert.True(mod.HasFiles);
         Assert.False(mod.IsObsolete);
         Assert.Equal("https://gamebanana.com/mods/709792", mod.ModPageUrl!.ToString());
@@ -191,8 +197,37 @@ public class ModStoreBrowseTests
         Assert.Null(mod.DateUpdated);
     }
 
+    // ---- 评论数 ------------------------------------------------------------
+
     /// <summary>
-    /// 分类的 Id **不在** <c>_aRootCategory</c> 里（实测没有 <c>_idRow</c>），只能从
+    /// 卡片上第三项统计取 <c>_nPostCount</c>。它必须**三个列表端点都给**才敢往卡片上放 ——
+    /// 这里把两份 fixture（浏览 / 搜索）逐条对一遍；一旦哪个端点悄悄不给了，这条会红。
+    ///
+    /// 对照：<c>_nDownloadCount</c> 只有详情页有，所以卡片上**没有**下载量那一项。
+    /// </summary>
+    [Fact]
+    public void Mod_MapsCommentCountFromPostCount()
+    {
+        var subfeed = SubfeedPage().Items.ToDictionary(m => m.Id.ModId, m => m.CommentCount);
+        Assert.Equal(85, subfeed["658343"]);
+        Assert.Equal(364, subfeed["575376"]);
+        Assert.Equal(6, subfeed["709792"]);
+
+        var search = SearchPage().Items.ToDictionary(m => m.Id.ModId, m => m.CommentCount);
+        Assert.Equal(11, search["537550"]);
+        Assert.Equal(6, search["529580"]);
+        Assert.Equal(84, search["568261"]);
+    }
+
+    /// <summary>接口这一条没给 <c>_nPostCount</c> 时是 null（卡片上不显示数字），不能变成 0 条评论。</summary>
+    [Fact]
+    public void Mod_CommentCountIsNullWhenTheFieldIsMissing()
+    {
+        var mod = ModStoreMod.TryCreate(new ApiSubfeedRecord { ModelName = "Mod", ModId = 7 });
+
+        Assert.Null(mod!.CommentCount);
+    }
+
     /// <c>_sProfileUrl</c> 末段抠。这里锁的 Name 是**根分类**（Skins / UI），
     /// 不是角色 —— 角色在 <c>_aSubCategory</c>，见 <see cref="Character_ComesFromSubCategory"/>。
     /// </summary>
@@ -458,5 +493,64 @@ public class ModStoreBrowseTests
         // 隐式转成 string 后能直接拼进 URL（客户端就是这么用的）。
         Assert.Equal("https://gamebanana.com/apiv11/Game/20357/Subfeed",
             "https://gamebanana.com/apiv11/Game/" + new GbGameId(20357) + "/Subfeed");
+    }
+
+    // ---- 侧栏「分类」用的根分类清单 ----------------------------------------
+
+    /// <summary>
+    /// 侧栏那三行（Skins 2815 / Other·Misc 155 / UI 84）就来自这里，数字是服务端给的
+    /// <c>_nItemCount</c>，不是我们数出来的 —— 数出来得翻几十页。
+    ///
+    /// 同时也钉住「根分类只有这三个」：角色**不是**根分类（它们是子分类，见
+    /// <see cref="Character_ComesFromSubCategory"/>），侧栏的角色表来自本地游戏数据。
+    /// </summary>
+    [Fact]
+    public void RootCategories_ComeFromTheProfilePageWithTheirCounts()
+    {
+        var raw = ProfilePage.ModRootCategories!;
+        Assert.Equal(3, raw.Length);
+
+        // 响应里每条还带着 _nCategoryCount / _sUrl / _sIconUrl 等用不上的字段 ——
+        // DTO 只认自己要的三个，多出来的字段不能让反序列化出错。
+        var mapped = raw.Select(ModStoreRootCategory.FromApi).OfType<ModStoreRootCategory>().ToArray();
+
+        Assert.Equal(3, mapped.Length);
+        Assert.Equal([29524, 29493, 29496], mapped.Select(c => c.Id).ToArray());
+        Assert.Equal(["Skins", "Other/Misc", "UI"], mapped.Select(c => c.Name).ToArray());
+        Assert.Equal([2815, 155, 84], mapped.Select(c => c.ItemCount).ToArray());
+
+        // 三个分类之和（3054）**不等于**「全部」那个数字（板块内容流报 3056）——
+        // 口径不同（分类归属 vs 板块记录数），所以这里刻意不断言两者相等。
+        Assert.Equal(3054, mapped.Sum(c => c.ItemCount));
+    }
+
+    /// <summary>
+    /// 名称为空白、或 id 无效的根分类直接丢掉 —— 建不出能点选的筛选项。
+    /// 缺 <c>_nItemCount</c> 时保持 -1（= 未知），界面据此不显示数字；**不能是 0**，
+    /// 那会在侧栏上写成「这个分类一条 mod 都没有」。
+    /// </summary>
+    [Fact]
+    public void RootCategory_DegradesWithoutThrowing()
+    {
+        Assert.Null(ModStoreRootCategory.FromApi(null));
+        Assert.Null(ModStoreRootCategory.FromApi(new ApiRootCategory { Id = 29524, Name = "   " }));
+        Assert.Null(ModStoreRootCategory.FromApi(new ApiRootCategory { Name = "Skins" })); // 缺 _idRow => 默认 -1
+        Assert.Null(ModStoreRootCategory.FromApi(new ApiRootCategory { Id = 0, Name = "Skins" }));
+
+        var noCount = ModStoreRootCategory.FromApi(new ApiRootCategory { Id = 29524, Name = " Skins " });
+
+        Assert.Equal(29524, noCount!.Id);
+        Assert.Equal("Skins", noCount.Name);   // 首尾空白去掉
+        Assert.Equal(-1, noCount.ItemCount);   // 未知，不是 0
+    }
+
+    /// <summary>响应里没有根分类清单（板块主页结构变了 / 被裁）时是 null，不是抛异常。</summary>
+    [Fact]
+    public void ProfilePage_WithoutRootCategoriesDegradesToNull()
+    {
+        var parsed = JsonSerializer.Deserialize<ApiGameProfilePageResponse>("{}");
+
+        Assert.NotNull(parsed);
+        Assert.Null(parsed.ModRootCategories);
     }
 }
