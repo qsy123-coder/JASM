@@ -2434,4 +2434,34 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModEnv_TestLaunch.Content" xml:space="preserve">
     <value>测试启动</value>
   </data>
+  <data name="ArchivePassword_NeedsTitle" xml:space="preserve">
+    <value>需要密码</value>
+  </data>
+  <data name="ArchivePassword_WrongTitle" xml:space="preserve">
+    <value>密码不正确</value>
+  </data>
+  <data name="ArchivePassword_NeedsHint" xml:space="preserve">
+    <value>这个压缩包是加密的，请输入密码。</value>
+  </data>
+  <data name="ArchivePassword_WrongHint" xml:space="preserve">
+    <value>上次用的密码不对，请重新输入。</value>
+  </data>
+  <data name="ArchivePassword_ClearedHint" xml:space="preserve">
+    <value>已清除记住的密码，请输入。</value>
+  </data>
+  <data name="ArchivePassword_Placeholder" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="ArchivePassword_Note" xml:space="preserve">
+    <value>密码只保存在本机设置里，下次会自动使用。</value>
+  </data>
+  <data name="ArchivePassword_ConfirmBtn" xml:space="preserve">
+    <value>确定</value>
+  </data>
+  <data name="ArchivePassword_CancelBtn" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ArchivePassword_ClearBtn" xml:space="preserve">
+    <value>清除已记住的密码</value>
+  </data>
 </root>
