@@ -10,6 +10,13 @@ namespace GIMI_ModManager.WinUI.Models;
 /// </summary>
 public sealed class ModStoreFileItem
 {
+    /// <summary>
+    /// Core 的那份原始记录。**留着的理由**：下载请求要的是地址、哈希、体积这些「数据」，
+    /// 而不是上面那些「给人看的文案」—— 拿显示字段再拼回请求，等于把 Core 已经洗过一遍的
+    /// 事情（https + gamebanana.com 校验、字节数归一化）在这里重做一遍，还容易做得不一致。
+    /// </summary>
+    public required ModStoreFile Source { get; init; }
+
     /// <summary>GameBanana 文件 id，下载时要用（<c>GbModFileId</c> 就是它）。</summary>
     public string FileId { get; init; } = string.Empty;
 
@@ -55,6 +62,7 @@ public sealed class ModStoreFileItem
     {
         return new ModStoreFileItem
         {
+            Source = file,
             FileId = file.FileId.ToString(),
             FileName = file.FileName,
             Version = file.Version,
@@ -70,8 +78,11 @@ public sealed class ModStoreFileItem
     /// <summary>
     /// 二进制单位（1 KB = 1024 B）—— 与 Windows 资源管理器同一口径，
     /// 免得用户对着「你以为的 1 GB」和实际下载量反复对账。
+    ///
+    /// 公开是因为下载面板的行（<c>ModDownloadItemViewModel</c>）也要显示字节数：
+    /// 同一个数字在同一个界面里不该有两套单位口径，所以那边直接复用这一个。
     /// </summary>
-    private static string FormatSize(long bytes) => bytes switch
+    public static string FormatSize(long bytes) => bytes switch
     {
         < 0 => string.Empty,
         < 1024 => $"{bytes} B",
