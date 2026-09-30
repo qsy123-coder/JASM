@@ -23,7 +23,19 @@
 
 
     </Page.Resources>
-    <Grid Margin="0,-24,0,0" Background="Transparent">
+    <!--
+        页面根 Grid 接管整页的拖拽：一是让「拖到这儿自动识别」那块在拖拽进入时显形
+        （Collapsed 的元素自己收不到拖拽事件，自己显形是不可能的），二是不落在角色卡片上的那些拖放走这条路。
+        卡片有自己的 DragEnter/Drop，它们会把事件标记为已处理，不会冒到这里。
+    -->
+    <Grid
+        Margin="0,-24,0,0"
+        AllowDrop="True"
+        Background="Transparent"
+        DragEnter="PageRoot_OnDragEnter"
+        DragLeave="PageRoot_OnDragLeave"
+        DragOver="PageRoot_OnDragOver"
+        Drop="PageRoot_OnDrop">
         <Grid.Resources>
             <MenuFlyout x:Name="ImageCommandsFlyout" Opening="ImageCommandsFlyout_OnOpening">
                 <MenuFlyoutItem
