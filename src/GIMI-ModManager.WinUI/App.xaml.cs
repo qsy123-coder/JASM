@@ -330,11 +330,21 @@ public partial class App : Application
                 // 下载队列：单例（面板切页不丢任务）。暂存目录放在应用数据目录下，
                 // 不用临时目录 —— 那里的 .part 会被系统清理，而它正是「同一个文件重新入队时
                 // 自动接着传」的依据。
-                services.AddSingleton(sp => new ModDownloadQueue(
-                    sp.GetRequiredService<IHttpClientFactory>().CreateClient(ModDownloadQueue.HttpClientName),
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "JASM", "ModStoreDownloads"),
-                    sp.GetService<ILogger>()));
+                //
+                // CompletedHandler 在**这里**接上：队列只管把文件下完整，下完干什么
+                // （入库 + 拉起安装向导）是商店那侧的事，不该写进 Core 的队列里。
+                services.AddSingleton(sp =>
+                {
+                    var queue = new ModDownloadQueue(
+                        sp.GetRequiredService<IHttpClientFactory>().CreateClient(ModDownloadQueue.HttpClientName),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                            "JASM", "ModStoreDownloads"),
+                        sp.GetService<ILogger>());
+
+                    var deployment = sp.GetRequiredService<ModStoreDeploymentService>();
+                    queue.CompletedHandler = (item, ct) => deployment.DeployAsync(item, ct);
+                    return queue;
+                });
 
                 // Views and ViewModels
                 services.AddTransient<SettingsViewModel>();
@@ -391,6 +401,7 @@ public partial class App : Application
                 services.AddTransient<ModStoreViewModel>();
                 services.AddTransient<ModStorePage>();
                 services.AddSingleton<ModStoreService>();
+                services.AddSingleton<ModStoreDeploymentService>();
 
                 // 下载面板：单例 —— 下载是跨页面的（在商店里点了下载，切走再回来行还得在）。
                 services.AddSingleton<ModDownloadManagerViewModel>();
