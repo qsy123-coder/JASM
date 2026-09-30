@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GIMI_ModManager.Core.GamesService;
+using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Services.GameBanana.Models;
 using GIMI_ModManager.WinUI.Contracts.ViewModels;
 using GIMI_ModManager.WinUI.Models;
@@ -13,37 +15,62 @@ namespace GIMI_ModManager.WinUI.ViewModels;
 /// <summary>
 /// 「Mod 商店」页 —— 布局照搬 Mod 市场，数据来源完全独立（GameBanana 直连，不经过 Supabase）。
 ///
-/// 三种取数模式，优先级从高到低：
+/// 取数模式由左侧栏那一项的身份 + 搜索框决定，优先级从高到低：
 /// <list type="number">
-///   <item>搜索框有词 → 搜索端点，词就是关键词；</item>
-///   <item>左侧选了角色 → 搜索端点，**角色名**当关键词（不能浏览，理由见
+///   <item>搜索框有词 → 搜索端点，词就是关键词（此时左侧栏只当「再按角色收窄」用）；</item>
+///   <item>左侧栏选了**角色** → 搜索端点，角色名当关键词（不能浏览，理由见
 ///         <see cref="ModStoreService.SearchAsync"/>）；</item>
-///   <item>都没有 → 板块内容流，此时排序才有意义。</item>
+///   <item>左侧栏选了**根分类** → 按分类 id 走服务端筛选（见
+///         <see cref="ModStoreService.BrowseCategoryAsync"/>）；</item>
+///   <item>都没有（「全部」）→ 板块内容流，此时排序才有意义。</item>
 /// </list>
-/// 所以排序下拉只在第 3 种模式下可用，见 <see cref="CanSort"/>。
+/// 所以排序下拉只在第 4 种模式下可用，见 <see cref="CanSort"/>。
 /// </summary>
 public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 {
-    private readonly ILogger _logger;
-    private readonly ModStoreService _storeService;
-    private readonly NotificationManager _notificationManager;
-    private CancellationTokenSource? _searchCts;
-
     /// <summary>搜索防抖窗口。跟市场页同值 —— 同一套手感，没有理由不一致。</summary>
     private const int SearchDebounceMs = 400;
+
+    /// <summary>
+    /// 侧栏计数同时问几个。一个角色一个请求（没有批量端点，实测），五十多个角色全量补计数时
+    /// 别把接口打满、也别让用户等一串串请求。
+    /// </summary>
+    private const int CountProbeConcurrency = 2;
+
+    private const string ShowNsfwOption = "显示 NSFW";
+    private const string HideNsfwOption = "隐藏 NSFW";
+
+    private readonly ILogger _logger;
+    private readonly ModStoreService _storeService;
+    private readonly IGameService _gameService;
+    private readonly NotificationManager _notificationManager;
+
+    private CancellationTokenSource? _searchCts;
+    private CancellationTokenSource? _sidebarCts;
+
+    /// <summary>正在重建侧栏列表 —— 期间的选中变化是内部行为，不是用户操作。</summary>
+    private bool _rebuildingSidebar;
+
+    public ModStoreViewModel(ILogger logger, ModStoreService storeService, IGameService gameService,
+        NotificationManager notificationManager)
+    {
+        _logger = logger.ForContext<ModStoreViewModel>();
+        _storeService = storeService;
+        _gameService = gameService;
+        _notificationManager = notificationManager;
+    }
 
     // ─── 左侧栏 ────────────────────────────────────────────────
 
     /// <summary>
-    /// 这一版**只有「全部」**：角色表要接本地游戏数据（内部名即 GameBanana 子分类名），
-    /// 属于 PRD Phase 1 第 3 项的剩余部分。筛选链路（服务端参数 + 客户端比对）已就位，
-    /// 补上列表即生效。
+    /// 左侧栏：<c>全部</c> + 板块根分类 + 角色，一条平铺列表（照搬 Mod 市场的样子）。
+    /// 角色来自本地游戏数据，分类与计数来自 GameBanana，见 <see cref="LoadSidebarAsync"/>。
     /// </summary>
-    public ObservableCollection<ModStoreCharacter> Characters { get; } = [ModStoreCharacter.All];
+    public ObservableCollection<ModStoreSidebarItem> Filters { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSort))]
-    private ModStoreCharacter? _selectedCharacter = ModStoreCharacter.All;
+    private ModStoreSidebarItem? _selectedFilter;
 
     // ─── 卡片列表 ──────────────────────────────────────────────
 
@@ -76,7 +103,7 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private bool _hasMorePages = true;
 
-    // ─── 搜索 / 排序 ───────────────────────────────────────────
+    // ─── 搜索 / 排序 / 内容筛选 ─────────────────────────────────
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSort))]
@@ -87,8 +114,23 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     public IReadOnlyList<string> SortOptions { get; } = ["默认", "最新", "最近更新"];
 
-    /// <summary>排序只对板块内容流有效（搜索端点不吃排序参数），所以筛了角色或搜了词就禁用下拉。</summary>
-    public bool CanSort => SelectedCharacter?.GbName is null && string.IsNullOrWhiteSpace(SearchText);
+    /// <summary>
+    /// 成人内容开关。默认**隐藏**（PRD 的硬性决定），打开后卡片上会带 NSFW 角标。
+    ///
+    /// 这一版是页面内的下拉，会话级、不落盘；PRD Phase 1 第 9 项说的「设置页开关」还没做，
+    /// 到时候两边共用一个设置项即可（服务层只有一个 <c>IncludeAdultContent</c>）。
+    /// </summary>
+    [ObservableProperty]
+    private string _selectedContentFilter = HideNsfwOption;
+
+    public IReadOnlyList<string> ContentFilterOptions { get; } = [HideNsfwOption, ShowNsfwOption];
+
+    /// <summary>
+    /// 排序只对板块内容流有效：搜索端点不吃排序参数，分类端点（Mod/Index）更是直接拒绝
+    /// <c>_sSort</c>（任何值都报 400），所以筛了东西就禁用下拉。
+    /// </summary>
+    public bool CanSort =>
+        string.IsNullOrWhiteSpace(SearchText) && SelectedFilter?.Kind == ModStoreSidebarKind.All;
 
     // ─── 分页游标 ──────────────────────────────────────────────
 
@@ -100,27 +142,37 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     private bool _reloadPending;
 
-    public ModStoreViewModel(ILogger logger, ModStoreService storeService, NotificationManager notificationManager)
-    {
-        _logger = logger.ForContext<ModStoreViewModel>();
-        _storeService = storeService;
-        _notificationManager = notificationManager;
-    }
-
     // ─── 导航 ──────────────────────────────────────────────────
 
     public async void OnNavigatedTo(object parameter)
     {
+        await LoadSidebarAsync();
         await ReloadAsync();
     }
 
-    public void OnNavigatedFrom() { }
+    public void OnNavigatedFrom()
+    {
+        // 离开页面就别再补计数/发搜索了 —— 那些请求的结果没人看，还占着接口。
+        _sidebarCts?.Cancel();
+        _searchCts?.Cancel();
+    }
 
     // ─── 属性变化 ──────────────────────────────────────────────
 
-    partial void OnSelectedCharacterChanged(ModStoreCharacter? value) => RequestReload();
+    partial void OnSelectedFilterChanged(ModStoreSidebarItem? value)
+    {
+        if (_rebuildingSidebar) return;
+        RequestReload();
+    }
 
     partial void OnSelectedSortOptionChanged(string value) => RequestReload();
+
+    partial void OnSelectedContentFilterChanged(string value)
+    {
+        // 服务端没有可用的 NSFW 过滤参数（实测），所以过滤在服务层做：改开关 + 重取。
+        _storeService.IncludeAdultContent = value == ShowNsfwOption;
+        RequestReload();
+    }
 
     partial void OnSearchTextChanged(string value)
     {
@@ -157,6 +209,169 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     [RelayCommand]
     private async Task RefreshAsync() => await ReloadAsync();
+
+    /// <summary>
+    /// 工具栏那个下载按钮。下载管理队列是 PRD Phase 1 第 6 项，还没做 ——
+    /// 先跟市场页一样给一条占位提示，别让按钮点了没反应。
+    /// </summary>
+    [RelayCommand]
+    private void OpenDownloadManager()
+    {
+        _notificationManager.ShowNotification("下载管理",
+            "下载管理功能即将推出，敬请期待。",
+            TimeSpan.FromSeconds(4));
+    }
+
+    // ─── 侧栏 ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// 建左侧栏。
+    ///
+    /// 顺序上有讲究：**先把名字摆出来**（分类要一次接口，角色是本地数据），计数再慢慢补 ——
+    /// 五十多个角色一个个问接口要好几十秒，等齐了再渲染等于页面一直空着。
+    /// </summary>
+    private async Task LoadSidebarAsync()
+    {
+        _sidebarCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _sidebarCts = cts;
+        var token = cts.Token;
+
+        var previous = SelectedFilter;
+
+        // 重建列表期间 ListView 会先把选中置空、再选回新实例，那两次变化都不该触发取数
+        // （否则一次导航要打三次接口）。用这个闸门挡掉，选完再把闸门打开。
+        _rebuildingSidebar = true;
+        try
+        {
+            Filters.Clear();
+            Filters.Add(ModStoreSidebarItem.CreateAll());
+
+            foreach (var category in await _storeService.GetRootCategoriesAsync(token))
+                Filters.Add(ModStoreSidebarItem.FromRootCategory(category));
+
+            foreach (var (gbName, displayName) in GetLocalCharacters())
+                Filters.Add(ModStoreSidebarItem.FromCharacter(gbName, displayName));
+
+            // 保住上次的选择：角色表来自本地数据、顺序稳定，按身份 + 名字还能找回原来那一项。
+            SelectedFilter = FindSameFilter(previous) ?? Filters[0];
+        }
+        finally
+        {
+            _rebuildingSidebar = false;
+        }
+
+        if (!token.IsCancellationRequested)
+            _ = FillCountsAsync(token);
+    }
+
+    private ModStoreSidebarItem? FindSameFilter(ModStoreSidebarItem? previous)
+    {
+        if (previous is null)
+            return null;
+
+        return Filters.FirstOrDefault(item =>
+            item.Kind == previous.Kind &&
+            string.Equals(item.GbName, previous.GbName, StringComparison.OrdinalIgnoreCase) &&
+            item.RootCategoryId == previous.RootCategoryId);
+    }
+
+    /// <summary>
+    /// 侧栏角色表：来自**本地游戏数据**（<c>characters.json</c>），不是 GameBanana 的分类接口。
+    ///
+    /// 两个理由：侧栏要和游戏里的角色一一对应（后面「一键部署」得落到对应角色的 mod 文件夹），
+    /// 而 GameBanana 根本没有「列出板块子分类」的端点（实测 <c>Game/{id}/Categories</c> 404、
+    /// <c>Mod/Category</c> 那族不按板块分页）。
+    /// </summary>
+    private List<(string GbName, string DisplayName)> GetLocalCharacters()
+    {
+        try
+        {
+            return _gameService.GetAllModdableObjectsAsCategory<ICharacter>()
+                .Where(character => !IsPseudoCharacter(character))
+                .Select(character => (GbName: character.InternalName.Id, DisplayName: character.DisplayName))
+                .Where(character => !string.IsNullOrWhiteSpace(character.GbName))
+                .OrderBy(character => character.DisplayName, StringComparer.CurrentCulture)
+                .ToList();
+        }
+        catch (Exception e)
+        {
+            // 本地数据读不出来不该让页面整个空掉：退化成「只有分类」照样能看内容。
+            _logger.Warning(e, "读取本地角色表失败，商店侧栏将只显示分类");
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// 「其他角色」「武器」这类伪角色要排除：GameBanana 上没有对应的 mod 分类，
+    /// 点了只会得到空列表。
+    /// </summary>
+    private bool IsPseudoCharacter(ICharacter character) =>
+        character.InternalNameEquals(_gameService.OtherCharacterInternalName) ||
+        character.InternalNameEquals(_gameService.GlidersCharacterInternalName);
+
+    /// <summary>
+    /// 给侧栏补计数，「全部」与根分类各一个请求、角色一个请求一个。
+    ///
+    /// 尽力而为：限并发、可取消、失败就空着（界面对 null 不显示数字），
+    /// 不让一件锦上添花的事情把页面拖住或者刷满日志。
+    /// </summary>
+    private async Task FillCountsAsync(CancellationToken token)
+    {
+        try
+        {
+            var total = await _storeService.GetAllModCountAsync(token).ConfigureAwait(false);
+            SetCount(item => item.Kind == ModStoreSidebarKind.All, total);
+
+            var pending = Filters
+                .Where(item => item.Kind == ModStoreSidebarKind.Character && !string.IsNullOrWhiteSpace(item.GbName))
+                .ToArray();
+
+            if (pending.Length == 0)
+                return;
+
+            using var throttle = new SemaphoreSlim(CountProbeConcurrency);
+
+            await Task.WhenAll(pending.Select(async item =>
+            {
+                await throttle.WaitAsync(token).ConfigureAwait(false);
+                try
+                {
+                    var count = await _storeService.GetCharacterModCountAsync(item.GbName!, token)
+                        .ConfigureAwait(false);
+
+                    if (!token.IsCancellationRequested)
+                        SetCount(target => ReferenceEquals(target, item), count);
+                }
+                finally
+                {
+                    throttle.Release();
+                }
+            })).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户换了筛选/离开页面，正常。
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "商店侧栏计数失败（界面只是不显示数字）");
+        }
+    }
+
+    /// <summary>计数是后台线程取回来的，改绑定源必须回 UI 线程。</summary>
+    private void SetCount(Func<ModStoreSidebarItem, bool> predicate, int? count)
+    {
+        // null = 不知道（没取到 / 接口不给），界面不显示数字；0 是真实结果，要显示。
+        if (count is null)
+            return;
+
+        App.MainWindow.DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (var item in Filters.Where(predicate))
+                item.ItemCount = count;
+        });
+    }
 
     // ─── 取数 ──────────────────────────────────────────────────
 
@@ -221,13 +436,17 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     private Task<ModStoreResult> FetchAsync()
     {
         var query = SearchText.Trim();
-        var character = SelectedCharacter?.GbName;
+        var filter = SelectedFilter;
 
         if (query.Length > 0)
-            return _storeService.SearchAsync(query, _nextPage, character);
+            return _storeService.SearchAsync(query, _nextPage, filter?.GbName);
 
-        // 选了角色又没有搜索词：拿角色名当关键词打搜索端点（浏览翻不到那么深）。
-        if (character is not null)
+        // 用属性模式而不是 switch：顺手把「filter 不为 null」证给编译器看，
+        // 免得每个分支都得写一次 ! 或者吃一条 CS8602。
+        if (filter is { Kind: ModStoreSidebarKind.RootCategory, RootCategoryId: { } categoryId })
+            return _storeService.BrowseCategoryAsync(categoryId, _nextPage);
+
+        if (filter is { Kind: ModStoreSidebarKind.Character, GbName: { } character })
             return _storeService.SearchAsync(character, _nextPage, character);
 
         return _storeService.BrowseAsync(ParseSort(SelectedSortOption), _nextPage);
@@ -242,17 +461,24 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     /// <summary>
     /// 空结果的原因不止一种，说清楚点击的筛选条件，别让用户以为整个板块都没 mod。
-    /// 另外提醒一句 NSFW 是被默认藏起来的 —— 这是「明明有却搜不到」的常见来源。
+    /// 另外提醒一句 NSFW 是被藏起来的 —— 这是「明明有却搜不到」的常见来源。
     /// </summary>
     private string BuildEmptyMessage()
     {
-        var who = SelectedCharacter?.GbName;
-        if (who is not null)
-            return $"没有找到「{who}」的 Mod（成人内容默认隐藏，可在设置里打开）";
+        var hint = SelectedContentFilter == HideNsfwOption ? "（成人内容已隐藏，可切换上方筛选显示）" : string.Empty;
 
-        return string.IsNullOrWhiteSpace(SearchText)
-            ? "没有找到 Mod（成人内容默认隐藏，可在设置里打开）"
-            : $"没有找到与「{SearchText.Trim()}」匹配的 Mod（成人内容默认隐藏，可在设置里打开）";
+        if (!string.IsNullOrWhiteSpace(SearchText))
+            return $"没有找到与「{SearchText.Trim()}」匹配的 Mod{hint}";
+
+        var filter = SelectedFilter;
+
+        if (filter is { Kind: ModStoreSidebarKind.Character })
+            return $"没有找到「{filter.DisplayName}」的 Mod{hint}";
+
+        if (filter is { Kind: ModStoreSidebarKind.RootCategory })
+            return $"「{filter.DisplayName}」分类下没有找到 Mod{hint}";
+
+        return $"没有找到 Mod{hint}";
     }
 
     /// <summary>
