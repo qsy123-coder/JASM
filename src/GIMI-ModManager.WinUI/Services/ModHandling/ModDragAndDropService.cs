@@ -2,6 +2,7 @@
 using Windows.Win32;
 using Windows.Win32.Media.Audio;
 using GIMI_ModManager.Core.Contracts.Entities;
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Views;
@@ -15,6 +16,7 @@ public class ModDragAndDropService
     private readonly ILogger _logger;
     private readonly ModInstallerService _modInstallerService;
     private readonly IWindowManagerService _windowManagerService;
+    private readonly ArchivePasswordService _archivePasswordService;
 
 
     private readonly Notifications.NotificationManager _notificationManager;
@@ -22,11 +24,13 @@ public class ModDragAndDropService
     public event EventHandler<DragAndDropFinishedArgs>? DragAndDropFinished;
 
     public ModDragAndDropService(ILogger logger, Notifications.NotificationManager notificationManager,
-        ModInstallerService modInstallerService, IWindowManagerService windowManagerService)
+        ModInstallerService modInstallerService, IWindowManagerService windowManagerService,
+        ArchivePasswordService archivePasswordService)
     {
         _notificationManager = notificationManager;
         _modInstallerService = modInstallerService;
         _windowManagerService = windowManagerService;
+        _archivePasswordService = archivePasswordService;
         _logger = logger.ForContext<ModDragAndDropService>();
     }
 
@@ -51,19 +55,8 @@ public class ModDragAndDropService
             return null;
         }
 
-        if (_windowManagerService.GetWindow(modList) is { } window)
-        {
-            _notificationManager.ShowNotification(
-                $"Please finish adding the mod for '{modList.Character.DisplayName}' first",
-                $"JASM does not support multiple mod installs for the same character",
-                TimeSpan.FromSeconds(8));
-
-            PInvoke.PlaySound("SystemAsterisk", null,
-                SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_ALIAS | SND_FLAGS.SND_NODEFAULT);
-
-            App.MainWindow.DispatcherQueue.TryEnqueue(() => window.Activate());
+        if (TryActivateExistingInstallWindow(modList))
             return null;
-        }
 
         var storageItem = storageItems.FirstOrDefault();
 
@@ -71,11 +64,12 @@ public class ModDragAndDropService
         if (storageItem is StorageFile)
         {
             var scanner = new DragAndDropScanner();
-            var extractResult = scanner.ScanAndGetContents(storageItem.Path);
+            var extractResult = await ExtractWithCleanupAsync(scanner, storageItem.Path);
 
+            if (extractResult is null) // 用户放弃输密码（临时目录已在里面收拾过）
+                return null;
 
-            installMonitor = await _modInstallerService.StartModInstallationAsync(
-                new DirectoryInfo(extractResult.ExtractedFolder.FullPath), modList);
+            installMonitor = await StartInstallationAsync(extractResult, modList);
 
             return installMonitor;
         }
@@ -137,6 +131,162 @@ public class ModDragAndDropService
             .ConfigureAwait(false);
         DragAndDropFinished?.Invoke(this, new DragAndDropFinishedArgs(new List<ExtractPaths>()));
         return installMonitor;
+    }
+
+    /// <summary>
+    /// 「拖到检测区」那条路：把包解压（含密码）→ 交给 <paramref name="resolveModList"/> 认角色 → 装。
+    ///
+    /// <para>
+    /// <b>角色识别不在这里</b>：那要用游戏数据（角色名单、包内目录名比对），是 ViewModel 那边的事。
+    /// 这个方法只管「包」的那一半 —— 解压、临时目录的生与死、最后交给安装向导，
+    /// 也就是 <see cref="AddStorageItemFoldersAsync"/> 用的同一套（同一个「同角色已有安装窗」守卫）。
+    /// </para>
+    ///
+    /// <para>
+    /// 临时目录的清理都收在这个方法里：装成功时<b>不能</b>删（安装向导还在异步读它），
+    /// 其余每一条出路都要删干净，否则用户的 <c>%TEMP%</c> 会攒下一堆解压出来的 Mod。
+    /// </para>
+    /// </summary>
+    /// <param name="storageItem">用户拖进来的东西。只认单个文件 —— 文件夹请拖到具体角色的卡片上。</param>
+    /// <param name="resolveModList">
+    /// 认角色：入参是原文件名与解压结果，返回要装进哪个角色的 mod 列表。
+    /// 返回 <c>null</c> = 认不出来 / 用户没选（调用方自己负责给用户说法，这里不再提示）。
+    /// </param>
+    public async Task<InstallMonitor?> AddDroppedPackageAsync(IStorageItem storageItem,
+        Func<string, DragAndDropScanResult, Task<ICharacterModList?>> resolveModList)
+    {
+        if (storageItem is not StorageFile file)
+        {
+            _logger.Information("Auto detect drop only handles files, got {StorageItemType}",
+                storageItem.GetType());
+            _notificationManager.ShowNotification(
+                "Only archive files can be dropped here",
+                $"Drop the folder onto the character it belongs to instead",
+                TimeSpan.FromSeconds(8));
+            return null;
+        }
+
+        var scanner = new DragAndDropScanner();
+        var scanResult = await ExtractWithCleanupAsync(scanner, file.Path);
+
+        if (scanResult is null) // 用户放弃输密码（临时目录已在里面收拾过）
+            return null;
+
+        ICharacterModList? modList;
+        try
+        {
+            modList = await resolveModList(file.Name, scanResult);
+        }
+        catch
+        {
+            scanner.CleanupWorkFolder(); // 认角色的过程中炸了，别把已经解压出来的东西留在 %TEMP%
+            throw;
+        }
+
+        if (modList is null) // 认不出角色 / 用户在候选框里取消了
+        {
+            scanner.CleanupWorkFolder();
+            return null;
+        }
+
+        if (TryActivateExistingInstallWindow(modList))
+        {
+            scanner.CleanupWorkFolder(); // 那个角色的安装窗已经开着，这次的包用不上
+            return null;
+        }
+
+        return await StartInstallationAsync(scanResult, modList);
+    }
+
+    /// <summary>
+    /// 把解压结果交给安装向导 —— 两条拖拽路径共用。
+    ///
+    /// <para>
+    /// 先把 <c>JASM_TMP\&lt;guid&gt;</c> 这层包装剥掉，再看包内容根<b>自己带不带 ini</b>：
+    /// 带的（多合一包）就<b>钦定根为 mod 根</b>，整个包当一个 Mod 装 —— 否则向导会去取
+    /// 树里第一个 <c>mod.ini</c>（多半是包里某个子目录），用户只装到包的一个碎片，
+    /// 而按键切换那些逻辑还留在没被装进去的根 ini 里。
+    /// </para>
+    ///
+    /// <para>
+    /// 不带的（一堆互不相干的 Mod 打成包）维持原样，仍然交给向导自己的启发式去猜 —— 那条路走了很久，
+    /// 没有明确证据不该动。判定见 <see cref="ModPackageRootResolver"/>。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>树根给内容根的父目录、钦定的根给内容根自己</b>，这不是绕远路：向导认 mod 根靠
+    /// 「在树里按路径选中一项」（<c>ModInstallerVM</c> 的 <c>RootFolder.GetByPath</c> → <c>SetRootFolderAsync</c>），
+    /// 而 <c>GetByPath</c> 只在<b>子节点</b>里找，树根本身（<c>RootFolder</c> 类）不是 <c>FileSystemItem</c>、
+    /// 选中不了。把内容根直接当树根就会选不中 ⇒ <c>LastSelectedRootFolder</c> 一直为空 ⇒
+    /// 「添加模组」按钮（它的 CanExecute 刷新只挂在 <c>SetRootFolderAsync</c> 里）**永远是灰的**。
+    /// 父目录同时让选中项露在树的第一层，用户一眼能看到选中了哪个文件夹。
+    /// </para>
+    /// </summary>
+    private Task<InstallMonitor> StartInstallationAsync(DragAndDropScanResult scanResult,
+        ICharacterModList modList)
+    {
+        var extractedRoot = new DirectoryInfo(scanResult.ExtractedFolder.FullPath);
+        var contentRoot = ModPackageRootResolver.ResolveContentRoot(extractedRoot);
+
+        if (!ModPackageRootResolver.LooksLikeSelfContainedModRoot(contentRoot))
+            return _modInstallerService.StartModInstallationAsync(extractedRoot, modList);
+
+        _logger.Information("The package is a single mod root ('{ModRoot}'), installing it as a whole",
+            contentRoot.Name);
+
+        return _modInstallerService.StartModInstallationAsync(contentRoot.Parent ?? extractedRoot, modList,
+            setup: options => options.ModRootFolder = contentRoot);
+    }
+
+    /// <summary>
+    /// 解压（含密码：用记住的那条试，不行就问用户），<b>失败或用户放弃时把临时目录收拾掉</b>。
+    /// 返回 <c>null</c> = 用户放弃输密码。
+    ///
+    /// <para>
+    /// 卡片路径与检测区路径共用这一份：清理这件事不能让哪条路忘了写 ——
+    /// 忘一条，用户的 <c>%TEMP%\JASM_TMP</c> 就会攒下一堆解压出来的 Mod。
+    /// 密码只在内存里过一道，不进日志、不进异常、不进通知。
+    /// </para>
+    /// </summary>
+    private async Task<DragAndDropScanResult?> ExtractWithCleanupAsync(DragAndDropScanner scanner, string path)
+    {
+        DragAndDropScanResult? scanResult;
+        try
+        {
+            scanResult = await _archivePasswordService.ExtractAsync(
+                password => scanner.ScanAndGetContents(path, password));
+        }
+        catch
+        {
+            scanner.CleanupWorkFolder(); // 解压失败：半截内容也别留在 %TEMP%
+            throw;
+        }
+
+        if (scanResult is null)
+            scanner.CleanupWorkFolder(); // 用户放弃输密码
+
+        return scanResult;
+    }
+
+    /// <summary>
+    /// 同一个角色已经有一个安装窗开着的话：提示 + 把那个窗拉到前面，返回 <c>true</c>。
+    /// 卡片路径与检测区路径共用 —— 这两条路都不该在同一个角色上并行开两个安装窗。
+    /// </summary>
+    private bool TryActivateExistingInstallWindow(ICharacterModList modList)
+    {
+        if (_windowManagerService.GetWindow(modList) is not { } window)
+            return false;
+
+        _notificationManager.ShowNotification(
+            $"Please finish adding the mod for '{modList.Character.DisplayName}' first",
+            $"JASM does not support multiple mod installs for the same character",
+            TimeSpan.FromSeconds(8));
+
+        PInvoke.PlaySound("SystemAsterisk", null,
+            SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_ALIAS | SND_FLAGS.SND_NODEFAULT);
+
+        App.MainWindow.DispatcherQueue.TryEnqueue(() => window.Activate());
+        return true;
     }
 
     // ReSharper disable once InconsistentNaming

@@ -101,6 +101,10 @@ public sealed partial class CharactersPage : Page
 
     private async void CharacterThumbnail_OnDrop(object sender, DragEventArgs e)
     {
+        // 卡片认领这一下：别再冒泡到页面根 Grid —— 那儿是「自动识别」，会照另一个角色再装一遍
+        e.Handled = true;
+        HideAutoDetectArea();
+
         if (((Grid)sender).DataContext is CharacterGridItemModel characterGridItem)
         {
             var urlFormats = new[] { "Text", "UniformResourceLocatorW", "UniformResourceLocator" };
@@ -124,15 +128,52 @@ public sealed partial class CharactersPage : Page
         SetGridDropHereVisibility(gridItem, Visibility.Collapsed);
     }
 
+    /// <summary>
+    /// 「拖到这儿自动识别」那块平时是收起的：Collapsed 的元素收不到拖拽事件，所以显形只能由页面根 Grid 点。
+    /// </summary>
+    private void PageRoot_OnDragEnter(object sender, DragEventArgs e)
+    {
+        e.AcceptedOperation = DataPackageOperation.Copy;
+        DragAndDropArea.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// DragOver 每次指针移动都会来一发。留着它是为了兜住这种情况：指针挪到角色卡片上方时，
+    /// 根 Grid 可能先收到一次 DragLeave（拖拽事件会在子元素之间来回冒），检测区就灭了 ——
+    /// 靠这一手补回来。显示是幂等的，多来几次没有代价。
+    /// </summary>
+    private void PageRoot_OnDragOver(object sender, DragEventArgs e)
+    {
+        e.AcceptedOperation = DataPackageOperation.Copy;
+        DragAndDropArea.Visibility = Visibility.Visible;
+    }
+
+    private void PageRoot_OnDragLeave(object sender, DragEventArgs e) => HideAutoDetectArea();
+
+    /// <summary>
+    /// 落在页面空白处（既不是卡片也不是检测区）的拖放：只把检测区收起来。
+    /// 真正安装的是 <see cref="DragAndDropArea_OnDrop"/> —— 检测区是有边框、写了字的明确落点。
+    /// </summary>
+    private void PageRoot_OnDrop(object sender, DragEventArgs e) => HideAutoDetectArea();
+
+    private void HideAutoDetectArea() => DragAndDropArea.Visibility = Visibility.Collapsed;
+
     private void DragAndDropArea_OnDragEnter(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
-        Log.Information("DragEnter_DragAndDropArea_OnDragEnter");
+        DragAndDropArea.Visibility = Visibility.Visible;
     }
 
-    private void DragAndDropArea_OnDrop(object sender, DragEventArgs e)
+    private async void DragAndDropArea_OnDrop(object sender, DragEventArgs e)
     {
-        Log.Information("Drop_DragAndDropArea_OnDrop");
+        // 认领这一下：别再冒泡到页面根 Grid
+        e.Handled = true;
+        HideAutoDetectArea();
+
+        var storageItems = await e.DataView.GetStorageItemsAsync();
+        Log.Information("Auto detect drop: {ItemCount} item(s)", storageItems.Count);
+
+        await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
     }
 
     private void BitmapImage_OnImageFailed(object sender, ExceptionRoutedEventArgs e)
