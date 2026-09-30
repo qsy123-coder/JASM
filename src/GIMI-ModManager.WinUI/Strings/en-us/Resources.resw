@@ -323,8 +323,20 @@
   <data name="ModStore_Detail_OpenInBrowser.Text" xml:space="preserve">
     <value>View on GameBanana</value>
   </data>
-  <data name="ModStore_Detail_Download.Content" xml:space="preserve">
+  <data name="ModStore_Detail_Download.Text" xml:space="preserve">
     <value>Download Selected File</value>
+  </data>
+  <data name="ModStore_Card_Installed.Text" xml:space="preserve">
+    <value>Installed</value>
+  </data>
+  <data name="ModStore_Detail_Installed.Text" xml:space="preserve">
+    <value>Installed</value>
+  </data>
+  <data name="ModStore_Detail_Updatable.Text" xml:space="preserve">
+    <value>Update Available</value>
+  </data>
+  <data name="ModStore_Detail_Update.Text" xml:space="preserve">
+    <value>Update to Latest Version</value>
   </data>
   <data name="ModStore_Download_Title.Text" xml:space="preserve">
     <value>Downloads</value>
