@@ -600,7 +600,7 @@
                         HorizontalAlignment="Center"
                         MaxWidth="520"
                         Style="{ThemeResource BodyTextBlockStyle}"
-                        Text="Archives and self-extracting .exe files are supported. Drop onto a character card to install straight into that character."
+                        Text="Archives and self-extracting .exe files are supported: the character is identified for you on drop. A folder can be dropped onto a character card to install straight into that character."
                         TextAlignment="Center"
                         TextWrapping="Wrap"
                         l:Uids.Uid="Characters_DropHereHint" />
