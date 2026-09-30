@@ -66,16 +66,48 @@ public class ModPackageRootResolverTests : IDisposable
         Assert.Equal("Xuanling_Pyroath", contentRoot.Name);
     }
 
-    /// <summary>载荷是散文件（没有顶层目录）时，别顺着「只有一个子目录」一路挖进 <c>Meshes</c> 里。</summary>
+    /// <summary>
+    /// <b>本次回归的形状</b>：包装层里除了那个包目录，还躺着作者的散文件（预览图、站点快捷方式），
+    /// 这一层因此有 3 个条目 —— 早先「本层只准有一个条目才往下剥」的判据到这儿就停下，退回老启发式，
+    /// 于是又只装了包里第一个子目录。判据必须只看<b>子目录个数</b>。
+    /// </summary>
     [Fact]
-    public void APayloadOfLooseFilesStopsTheDescent()
+    public void LooseFilesNextToThePackageDoNotStopTheDescent()
     {
-        MakeFile(@"xuanling.rar\mod.ini");
-        MakeDirectory(@"xuanling.rar\Meshes");
+        const string wrapper = @"达妮娅-原版切换 by weiwuxc888.exe\达妮娅-原版切换 by weiwuxc888";
+        MakeFile(wrapper + @"\preview.png");
+        MakeFile(wrapper + @"\mod主站网址.url");
+        MakeFile(wrapper + @"\达妮娅可调体型切换版\Master_daniya.ini");
+        MakeDirectory(wrapper + @"\达妮娅可调体型切换版\世界熊");
 
         var contentRoot = ModPackageRootResolver.ResolveContentRoot(_extractedRoot);
 
-        Assert.Equal("xuanling.rar", contentRoot.Name);
+        Assert.Equal("达妮娅可调体型切换版", contentRoot.Name);
+        Assert.True(ModPackageRootResolver.LooksLikeSelfContainedModRoot(contentRoot));
+    }
+
+    /// <summary>整层只有散文件、一个子目录都没有时无处可去，原样返回（交给调用方的启发式）。</summary>
+    [Fact]
+    public void ALevelWithOnlyLooseFilesIsReturnedAsIs()
+    {
+        MakeFile("readme.txt");
+        MakeFile("preview.png");
+
+        var contentRoot = ModPackageRootResolver.ResolveContentRoot(_extractedRoot);
+
+        Assert.Equal(_extractedRoot.FullName, contentRoot.FullName);
+    }
+
+    /// <summary>一层里有多个子目录 = 内容层（一堆互不相干的 Mod），不往里剥，维持原行为。</summary>
+    [Fact]
+    public void SeveralModFoldersInOneLevelAreNotDescendedInto()
+    {
+        MakeFile(@"ModA\mod.ini");
+        MakeFile(@"ModB\mod.ini");
+
+        var contentRoot = ModPackageRootResolver.ResolveContentRoot(_extractedRoot);
+
+        Assert.Equal(_extractedRoot.FullName, contentRoot.FullName);
     }
 
     /// <summary>什么都没解出来时原样返回，不抛异常（后面还有失败处理去给用户说法）。</summary>
@@ -149,11 +181,23 @@ public class ModPackageRootResolverTests : IDisposable
 
     // ---------- 两者串起来 ----------
 
-    /// <summary>端到端判定：达妮娅的包剥掉包装层后，应当被认成「整包一个 Mod」。</summary>
+    /// <summary>
+    /// 端到端判定：达妮娅的包剥掉包装层后，应当被认成「整包一个 Mod」。
+    ///
+    /// <para>
+    /// 这里的目录树是照着真实解压结果一比一搭的（含包装层里那两个散文件）——
+    /// 不是示意图，改这个用例前先拿真包解一遍核对。
+    /// </para>
+    /// </summary>
     [Fact]
     public void TheDeniaStylePackageResolvesToTheWholePack()
     {
-        const string inner = @"达妮娅-原版切换 by weiwuxc888.exe\达妮娅-原版切换 by weiwuxc888\达妮娅可调体型切换版";
+        const string wrapper = @"达妮娅-原版切换（上下左右ctrl+，。切换）by weiwuxc888.exe\达妮娅-原版切换（上下左右ctrl+，。切换）by weiwuxc888";
+        const string packName = "达妮娅可调体型切换版-ctrl+句号逗号调体型-左右切衣服上下切绒鞋子";
+        const string inner = wrapper + @"\" + packName;
+
+        MakeFile(wrapper + @"\preview.png");
+        MakeFile(wrapper + @"\mod主站网址.url");
 
         MakeFile(inner + @"\Master_daniya.ini");
         MakeFile(inner + @"\Read me-DeniaBodyTypeToggleMod.txt");
@@ -164,8 +208,7 @@ public class ModPackageRootResolverTests : IDisposable
         MakeDirectory(inner + @"\界面\Textures");
 
         var contentRoot = ModPackageRootResolver.ResolveContentRoot(_extractedRoot);
-
-        Assert.Equal("达妮娅可调体型切换版", contentRoot.Name);
+        Assert.Equal(packName, contentRoot.Name);
         Assert.True(ModPackageRootResolver.LooksLikeSelfContainedModRoot(contentRoot));
     }
 
