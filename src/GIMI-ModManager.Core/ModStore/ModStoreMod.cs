@@ -13,8 +13,9 @@ namespace GIMI_ModManager.Core.ModStore;
 ///   <item><c>_nDownloadCount</c> 只在详情页 ProfilePage 有 —— 卡片上不要显示下载量，
 ///         列表里根本没有这个值。</item>
 ///   <item><c>_aTags</c> 只在**搜索**接口有值，Subfeed（浏览）恒为空数组 —— 所以它不能作为
-///         浏览视图的筛选维度，要筛选走 <see cref="Category"/>。</item>
-///   <item><c>_aRootCategory</c> 没有 <c>_idRow</c>，见 <see cref="ModStoreCategory.Id"/>。</item>
+///         浏览视图的筛选维度，要筛选走 <see cref="Character"/> 或 <see cref="Category"/>。</item>
+///   <item><c>_aRootCategory</c> 和 <c>_aSubCategory</c> 都没有 <c>_idRow</c>，见
+///         <see cref="ModStoreCategory.Id"/>。</item>
 /// </list>
 /// </summary>
 public sealed class ModStoreMod
@@ -27,6 +28,7 @@ public sealed class ModStoreMod
         ModPageUrl = TryCreateModPageUrl(record.ProfileUrl);
         PreviewImages = GameBananaMediaUrls.GetPreviewImages(record.PreviewMedia);
         Category = ModStoreCategory.FromApi(record.RootCategory);
+        Character = NullIfBlank(record.SubCategory?.Name);
         Version = NullIfBlank(record.Version);
         LikeCount = record.LikeCount;
         ViewCount = record.ViewCount;
@@ -67,6 +69,14 @@ public sealed class ModStoreMod
     public string Name { get; }
 
     public string? AuthorName { get; }
+
+    /// <summary>
+    /// 角色名，来自 <c>_aSubCategory</c>（鸣潮板块的子分类就是角色：<c>Jinhsi</c> / <c>Qingxiao</c> …）。
+    ///
+    /// ⚠️ **可空**：UI 类记录没有 <c>_aSubCategory</c> 这个键（实测），它们本来就不属于任何角色。
+    /// 「按角色筛选」落在这里 —— 根分类只有 Skins / UI / Other-Misc 三个，不是角色。
+    /// </summary>
+    public string? Character { get; }
 
     /// <summary>mod 详情页地址；不是 https 的 gamebanana.com 时为 null。</summary>
     public Uri? ModPageUrl { get; }
