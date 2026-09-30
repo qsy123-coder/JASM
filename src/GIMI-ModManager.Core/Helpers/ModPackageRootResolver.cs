@@ -36,8 +36,15 @@ public static class ModPackageRootResolver
     /// 顺着「只有一个子目录」的链条往下走，返回真正的包内容根；没有可剥的层时原样返回入参。
     ///
     /// <para>
-    /// 判据只看「是不是只有一个子目录」，不比对目录名 —— 比对名字会把
-    /// 「载荷里就一层目录、但名字与包名无关」的情况漏掉。
+    /// 判据只看<b>子目录的个数</b>：不比对目录名（比对名字会把「载荷里就一层目录、
+    /// 名字与包名无关」的情况漏掉），也<b>不算同层的散文件</b> —— 实测达妮娅包的包装层里
+    /// 躺着 <c>preview.png</c> 与一个站点 <c>.url</c> 快捷方式，连同那个包目录一共 3 个条目，
+    /// 早先「这一层只准有一个条目」的判据到这儿就停下不走了，于是又退回老启发式。
+    /// </para>
+    ///
+    /// <para>
+    /// 往下剥之前先问一句 <see cref="LooksLikeSelfContainedModRoot"/>：这一层自己就是 Mod
+    /// 就地停下 —— 否则「根带 ini + 一个变体子目录」的包会被剥成只剩子目录。
     /// </para>
     /// </summary>
     public static DirectoryInfo ResolveContentRoot(DirectoryInfo extractedRoot)
@@ -48,10 +55,13 @@ public static class ModPackageRootResolver
 
         for (var depth = 0; depth < MaxWrapperDepth; depth++)
         {
-            FileSystemInfo[] entries;
+            if (LooksLikeSelfContainedModRoot(current))
+                return current;
+
+            DirectoryInfo[] subFolders;
             try
             {
-                entries = current.GetFileSystemInfos();
+                subFolders = current.GetDirectories();
             }
             catch (Exception)
             {
@@ -59,13 +69,12 @@ public static class ModPackageRootResolver
                 return current;
             }
 
-            if (entries.Length != 1)
+            // 正好一个子目录 ⇒ 这是包装层，继续往下剥；
+            // 零个（只剩散文件）或多个（一堆互不相干的 Mod）⇒ 剥不动了，交给调用方原有的启发式
+            if (subFolders.Length != 1)
                 return current;
 
-            if (entries[0] is not DirectoryInfo onlySubFolder)
-                return current;
-
-            current = onlySubFolder;
+            current = subFolders[0];
         }
 
         return current;
