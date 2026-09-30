@@ -27,6 +27,7 @@ public partial class ModStoreDetailItem : ObservableObject
         _likesCount = card.LikesCount;
         _commentsCount = card.CommentsCount;
         _updatedAt = card.UpdatedAt;
+        _isInstalled = card.IsInstalled;
         ModPageUrl = card.ModPageUrl;
         PreviewImageUrl = card.PreviewImageUrl;
     }
@@ -67,6 +68,27 @@ public partial class ModStoreDetailItem : ObservableObject
 
     /// <summary>列表里的预览图；详情回来前先用它撑住画面。</summary>
     public string? PreviewImageUrl { get; }
+
+    // ─── 安装状态 ──────────────────────────────────────────────
+
+    /// <summary>
+    /// 「已安装」角标。先跟着卡片走（同一次列表加载里判的），详情回来之后由
+    /// <see cref="ApplyInstallStatus"/> 再确认一次 —— 那时才拿到文件清单，也就才判得了「可更新」。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isInstalled;
+
+    /// <summary>
+    /// 「可更新」角标（PRD Story 4）。**只有详情里判得了**：判定要文件清单（file id / md5），
+    /// 而列表记录里根本没有文件信息 —— 给每张卡都补一次 DownloadPage 请求，一屏十几张就是十几个请求，
+    /// 代价与收益不成比例，所以卡片上不打这个角标（见 docs/mod-store-prd.md 第 8 项）。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsNotUpdatable))]
+    private bool _hasUpdate;
+
+    /// <summary>「不是可更新」。下载按钮上那两句话（「下载选中文件」/「更新到最新版本」）靠它二选一。</summary>
+    public bool IsNotUpdatable => !HasUpdate;
 
     // ─── 详情回来才有的 ────────────────────────────────────────
 
@@ -222,5 +244,27 @@ public partial class ModStoreDetailItem : ObservableObject
         // 默认选中第一个「活跃」文件（归档的排在清单后面）。用户仍然可以改选 ——
         // 这里只是不想让「还没选任何文件」成为初始状态（那样下一步的部署按钮看起来是坏的）。
         SelectedFile = files.FirstOrDefault(file => !file.IsArchived) ?? files.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// 详情回来之后补上安装状态（角标 + 按钮文案）。判定本身在 Core 的
+    /// <see cref="ModStoreInstallStatus"/>，这里只负责把结果落到界面。
+    /// </summary>
+    /// <param name="installed">页面判出来的「现在还装着吗」（要查磁盘 + 本地 mod 列表，不是这里能回答的）。</param>
+    /// <param name="record">安装记录；没装过时为 null。</param>
+    public void ApplyInstallStatus(bool installed, ModStoreInstallRecord? record)
+    {
+        IsInstalled = installed;
+
+        var files = Files.Select(file => file.Source).ToArray();
+        HasUpdate = installed && ModStoreInstallStatus.HasUpdate(record, files);
+
+        if (!HasUpdate)
+            return;
+
+        // 角标说「有新版本」，而默认选中的还是清单里第一个活跃文件 —— 用户直接点「更新」就会装上
+        // 自己已经装过的那一份。预选必须跟着**同一个判定**走（FindLatestFile）。
+        if (ModStoreInstallStatus.FindLatestFile(files) is { } latest)
+            SelectedFile = Files.FirstOrDefault(file => file.FileId == latest.FileId.ToString()) ?? SelectedFile;
     }
 }
