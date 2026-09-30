@@ -193,8 +193,8 @@ public class ModStoreBrowseTests
 
     /// <summary>
     /// 分类的 Id **不在** <c>_aRootCategory</c> 里（实测没有 <c>_idRow</c>），只能从
-    /// <c>_sProfileUrl</c> 末段抠；Name 是角色名（Subfeed 里实测出现过 <c>Skins</c>/<c>UI</c> 这类，
-    /// Search 里同一个 <c>/mods/cats/29524</c> 也叫 <c>Skins</c>）。
+    /// <c>_sProfileUrl</c> 末段抠。这里锁的 Name 是**根分类**（Skins / UI），
+    /// 不是角色 —— 角色在 <c>_aSubCategory</c>，见 <see cref="Character_ComesFromSubCategory"/>。
     /// </summary>
     [Fact]
     public void Category_ParsesTheIdOutOfTheProfileUrl()
@@ -206,6 +206,37 @@ public class ModStoreBrowseTests
         var skins = SubfeedPage().Items.Single(m => m.Id.ModId == "709792").Category!;
         Assert.Equal("Skins", skins.Name);
         Assert.Equal(29524, skins.Id);
+    }
+
+    /// <summary>
+    /// 角色来自 <c>_aSubCategory</c> 而**不是**根分类 —— 这是上线前差点搞错的一处：
+    /// 根分类实测只有 Skins / UI / Other-Misc 三个（不是角色），真正按角色筛的是子分类。
+    ///
+    /// 同时锁住「UI 类记录没有角色」：这类记录里 <c>_aSubCategory</c> 这个键**整个不存在**，
+    /// 所以必须是 null 而不是空串（卡片上不占位）。
+    /// </summary>
+    [Fact]
+    public void Character_ComesFromSubCategory()
+    {
+        var skins = SubfeedPage().Items.Single(m => m.Id.ModId == "709792");
+        Assert.Equal("Qingxiao", skins.Character);
+        Assert.Equal("Skins", skins.Category!.Name); // 根分类与角色是两回事
+
+        var ui = SubfeedPage().Items.Single(m => m.Id.ModId == "658343");
+        Assert.Null(ui.Character);
+        Assert.Equal("UI", ui.Category!.Name);
+    }
+
+    /// <summary>子分类名称为空白时按「没有角色」处理，不留空串给 UI 判。</summary>
+    [Fact]
+    public void Character_IsNullWhenSubCategoryIsBlank()
+    {
+        var mod = ModStoreMod.TryCreate(new ApiSubfeedRecord
+        {
+            ModelName = "Mod", ModId = 1, SubCategory = new ApiSubfeedCategory { Name = "   " }
+        });
+
+        Assert.Null(mod!.Character);
     }
 
     /// <summary>分类缺失 / 名称为空 / 地址抠不出 id 时，都不能让映射炸掉。</summary>
@@ -232,6 +263,7 @@ public class ModStoreBrowseTests
         Assert.Null(mod.ModPageUrl);
         Assert.Empty(mod.PreviewImages);
         Assert.Null(mod.Category);
+        Assert.Null(mod.Character);
         Assert.Empty(mod.Tags);
     }
 
