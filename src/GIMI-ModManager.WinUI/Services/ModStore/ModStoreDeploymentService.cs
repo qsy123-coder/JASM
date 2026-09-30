@@ -44,6 +44,7 @@ public sealed class ModStoreDeploymentService(
     ISkinManagerService skinManagerService,
     ModInstallerService modInstallerService,
     IWindowManagerService windowManagerService,
+    ModStoreInstallIndex installIndex,
     NotificationManager notificationManager)
 {
     private readonly ILogger _logger = logger.ForContext<ModStoreDeploymentService>();
@@ -174,6 +175,10 @@ public sealed class ModStoreDeploymentService(
         _logger.Information("Deploying store mod {Key} into character {Character}",
             request.Key, modList.Character.InternalName);
 
+        // 向导关掉之后要写安装记录，而它的关闭事件只带一个「成功」、不带「装了什么」。
+        // 所以先把这一刻已有的 mod id 记下来：之后多出来的那个就是刚装进去的（见 RecordInstallAsync）。
+        var modsBefore = modList.Mods.Select(entry => entry.Id).ToHashSet();
+
         var monitor = await modInstallerService.StartModInstallationAsync(installerRoot, modList,
             setup: options =>
             {
@@ -182,7 +187,7 @@ public sealed class ModStoreDeploymentService(
                 options.ModUrl = request.ModPageUrl;
             }).ConfigureAwait(false);
 
-        TrackOutcomeAsync(monitor, request);
+        TrackOutcomeAsync(monitor, request, modList, modsBefore);
         return true;
     }
 
@@ -248,13 +253,14 @@ public sealed class ModStoreDeploymentService(
     // ─── 向导关闭之后 ──────────────────────────────────────────
 
     /// <summary>
-    /// 等向导关闭，然后提示结果。**故意不 await**：调用方在队列的工作线程上，
+    /// 等向导关闭，然后提示结果 + 写安装记录。**故意不 await**：调用方在队列的工作线程上，
     /// 在那里等用户点完向导会把后面的下载全堵死（见类注释）。
     ///
-    /// 安装记录（PRD Phase 1 第 8 项）也挂在这里 —— 只有到这一步才知道用户到底装成了没有。
-    /// 在那之前这条续体只做提示。
+    /// 安装记录（PRD Phase 1 第 8 项）只能挂在这里 —— 只有到这一步才知道用户到底装成了没有：
+    /// 向导关掉之前用户点取消 = 什么都没发生，那时写记录等于撒谎。
     /// </summary>
-    private async void TrackOutcomeAsync(InstallMonitor monitor, ModDownloadRequest request)
+    private async void TrackOutcomeAsync(InstallMonitor monitor, ModDownloadRequest request,
+        ICharacterModList modList, IReadOnlySet<Guid> modsBefore)
     {
         var displayName = request.ModName ?? request.FileName;
 
@@ -270,6 +276,8 @@ public sealed class ModStoreDeploymentService(
                         _logger.Information("Store install finished for {Key}", request.Key);
                         _notificationManager.ShowNotification("Mod 商店",
                             $"『{displayName}』安装完成。", TimeSpan.FromSeconds(5));
+
+                        await RecordInstallAsync(request, modList, modsBefore).ConfigureAwait(false);
                         break;
                     case CloseRequestedArgs.CloseReasons.Error:
                         _logger.Error(result.Exception, "Store install failed for {Key}", request.Key);
@@ -288,5 +296,46 @@ public sealed class ModStoreDeploymentService(
             // async void：漏出去就是进程级未处理异常。向导关掉之后的收尾失败不影响已装好的 mod。
             _logger.Error(ex, "Post-install handling failed for {Key}", request.Key);
         }
+    }
+
+    /// <summary>
+    /// 写一条本地安装记录（PRD 第 8 项），让商店卡片能说「已安装 / 可更新」。
+    ///
+    /// 「装到哪了」靠**前后对比这个角色的 mod 列表**拿：向导的关闭事件只带一个 Success、
+    /// 不带装了什么（向导不归商店改），而 mod 的 Guid 是现成的 —— 不用去读每个 mod 的设置
+    /// （那是一条 mod 一次异步 I/O，而我们只要刚装进去的那一个）。
+    ///
+    /// **多出来恰好一个才是我们要的**：0 个 = 没装成（用户在向导里改了目标或走了别的分支），
+    /// 多个 = 这份归档里含多个 mod；两种都记不了 —— 记成「一个 mod 的记录」会让第 8 项的
+    /// 更新判定对着一个错的 mod 报「可更新」。这两种情况只记日志。
+    /// </summary>
+    private async Task RecordInstallAsync(ModDownloadRequest request, ICharacterModList modList,
+        IReadOnlySet<Guid> modsBefore)
+    {
+        var added = modList.Mods
+            .Where(entry => !modsBefore.Contains(entry.Id))
+            .Select(entry => entry.Mod)
+            .ToArray();
+
+        if (added.Length != 1)
+        {
+            _logger.Warning("Store mod {Key} reported a successful install but {Count} new mods appeared, " +
+                            "no install record written", request.Key, added.Length);
+            return;
+        }
+
+        var installed = added[0];
+
+        _logger.Information("Recording store install of {Key} at {ModName}", request.Key, installed.Name);
+
+        await installIndex.UpsertAsync(new ModStoreInstallRecord(
+            request.Key.ModId,
+            request.Key.ModFileId,
+            request.ExpectedMd5,
+            request.Version,
+            modList.Character.InternalName,
+            request.ModPageUrl?.ToString(),
+            installed.FullPath,
+            DateTimeOffset.Now)).ConfigureAwait(false);
     }
 }
