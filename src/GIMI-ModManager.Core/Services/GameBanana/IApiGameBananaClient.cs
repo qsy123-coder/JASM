@@ -63,6 +63,23 @@ public interface IApiGameBananaClient
         int? perPage = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 取一条 mod 的详情（Mod 商店的详情抽屉）—— 内部并发拉
+    /// <c>Mod/{id}/ProfilePage</c> 与 <c>Mod/{id}/DownloadPage</c> 合成一个模型。
+    ///
+    /// 与 <see cref="GetModProfileAsync"/> 那族**刻意不同**：那些方法失败就抛（调用方是后台服务），
+    /// 而这是用户正点开的详情页 —— 一次失败应该显示「加载失败，请重试」，
+    /// 不该把异常抛进 UI 线程。所以这里失败记 Warning 并返回 null。
+    ///
+    /// ⚠️ 只跑 <c>ProfilePage</c> 是不够的：文件清单以 <c>DownloadPage</c> 为准
+    /// （下载走的也是那份，两边对不上就会出现「详情里列出的文件下不了」），
+    /// <c>ProfilePage</c> 自带的那份只当兜底。反过来 <c>DownloadPage</c> 又不给下载量/正文/分级，
+    /// 所以缺哪个都不行 —— 两个端点都拉。
+    /// </summary>
+    /// <param name="modId">GameBanana mod Id</param>
+    /// <returns>详情；任一端取不到都返回 null（不抛）</returns>
+    public Task<ModStoreDetail?> GetModStoreDetailAsync(GbModId modId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 取板块的根分类清单（带条目数），供商店侧栏「分类」一节使用。
     /// </summary>
     /// <returns>解析后的分类；请求/反序列化失败返回 null（UI 就只显示「全部」）</returns>
