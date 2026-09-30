@@ -411,7 +411,11 @@ public partial class App : Application
                 // 路径直接拼 %LOCALAPPDATA%\JASM（与上面的下载暂存目录同一个根），**不用**
                 // ILocalSettingsService.ApplicationDataFolder —— 那个是**游戏级**的目录
                 // （ApplicationData_<游戏>），玩家切一次游戏就换一个，装过什么会跟着「消失」。
-                // 商店固定只服务鸣潮，记录也该与当前选中的游戏无关。
+                //
+                // 商店目前跟随**当前选中的游戏**（取数按 game.json 的 GameBananaUrl 参数化），
+                // 但记录不能跟着游戏走：切一次游戏再切回来，mod 一直在磁盘上、记录却没了，
+                // 那就会把一个装过的 mod 说成「没装过」（PRD 的 Story 6 曾打算让商店固定只服务鸣潮，
+                // 后来按「沿用跟随当前游戏」改写了，这条取舍与它无关）。
                 services.AddSingleton(sp => new ModStoreInstallIndex(
                     sp.GetRequiredService<ILogger>(),
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
