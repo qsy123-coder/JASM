@@ -27,6 +27,18 @@
     <AdditionalFiles Include="NativeMethods.txt" />
   </ItemGroup>
 
+  <!--
+    「更新到哪个版本、包在哪」的决策逻辑与主程序共用同一份源码（COS 清单优先 + GitHub 回退）。
+    这里用「源链接」把它编译进来，而不是加 ProjectReference：本 exe 是随包分发的独立更新器，
+    引 Core 会连带把 Supabase / Newtonsoft 等整条依赖链拖进产物。同样的手法见 Elevator.csproj。
+    这些文件都自带显式 using —— 本工程没开 ImplicitUsings。
+  -->
+  <ItemGroup>
+    <Compile Include="..\GIMI-ModManager.Core\Helpers\AppUpdateManifest.cs" Link="Linked\AppUpdateManifest.cs" />
+    <Compile Include="..\GIMI-ModManager.Core\Helpers\AppUpdateManifestParser.cs" Link="Linked\AppUpdateManifestParser.cs" />
+    <Compile Include="..\GIMI-ModManager.Core\Helpers\AppUpdateReleaseResolver.cs" Link="Linked\AppUpdateReleaseResolver.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.250402" />
