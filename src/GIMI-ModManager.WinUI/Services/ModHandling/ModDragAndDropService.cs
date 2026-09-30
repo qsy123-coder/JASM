@@ -212,22 +212,29 @@ public class ModDragAndDropService
     /// 不带的（一堆互不相干的 Mod 打成包）维持原样，仍然交给向导自己的启发式去猜 —— 那条路走了很久，
     /// 没有明确证据不该动。判定见 <see cref="ModPackageRootResolver"/>。
     /// </para>
+    ///
+    /// <para>
+    /// <b>树根给内容根的父目录、钦定的根给内容根自己</b>，这不是绕远路：向导认 mod 根靠
+    /// 「在树里按路径选中一项」（<c>ModInstallerVM</c> 的 <c>RootFolder.GetByPath</c> → <c>SetRootFolderAsync</c>），
+    /// 而 <c>GetByPath</c> 只在<b>子节点</b>里找，树根本身（<c>RootFolder</c> 类）不是 <c>FileSystemItem</c>、
+    /// 选中不了。把内容根直接当树根就会选不中 ⇒ <c>LastSelectedRootFolder</c> 一直为空 ⇒
+    /// 「添加模组」按钮（它的 CanExecute 刷新只挂在 <c>SetRootFolderAsync</c> 里）**永远是灰的**。
+    /// 父目录同时让选中项露在树的第一层，用户一眼能看到选中了哪个文件夹。
+    /// </para>
     /// </summary>
     private Task<InstallMonitor> StartInstallationAsync(DragAndDropScanResult scanResult,
         ICharacterModList modList)
     {
-        var contentRoot = ModPackageRootResolver.ResolveContentRoot(
-            new DirectoryInfo(scanResult.ExtractedFolder.FullPath));
+        var extractedRoot = new DirectoryInfo(scanResult.ExtractedFolder.FullPath);
+        var contentRoot = ModPackageRootResolver.ResolveContentRoot(extractedRoot);
 
         if (!ModPackageRootResolver.LooksLikeSelfContainedModRoot(contentRoot))
-            return _modInstallerService.StartModInstallationAsync(
-                new DirectoryInfo(scanResult.ExtractedFolder.FullPath), modList);
+            return _modInstallerService.StartModInstallationAsync(extractedRoot, modList);
 
         _logger.Information("The package is a single mod root ('{ModRoot}'), installing it as a whole",
             contentRoot.Name);
 
-        // 目录树也从内容根开始：用户一眼能看到包里全部的东西，而不是先展开三层包装
-        return _modInstallerService.StartModInstallationAsync(contentRoot, modList,
+        return _modInstallerService.StartModInstallationAsync(contentRoot.Parent ?? extractedRoot, modList,
             setup: options => options.ModRootFolder = contentRoot);
     }
 
