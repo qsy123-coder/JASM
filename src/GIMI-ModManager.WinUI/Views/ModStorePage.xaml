@@ -106,15 +106,24 @@
                         <TextBlock Foreground="White" FontSize="10" FontWeight="SemiBold"
                                    Text="{Binding Character}" TextTrimming="CharacterEllipsis" />
                     </Border>
-                    <!-- 层6: NSFW 角标(右上)。默认隐藏模式下这类条目根本不会进列表,
-                         只有内容筛选切到「显示 NSFW」后才看得到角标。 -->
-                    <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                            Margin="4" Padding="6,2" Background="#FF4D4F"
-                            CornerRadius="6"
-                            Visibility="{Binding IsAdult, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Foreground="White" FontSize="10"
-                                   FontWeight="SemiBold" Text="NSFW" />
-                    </Border>
+                    <!-- 层6: 右上角标(竖着排:NSFW 在上、已安装在下面一格)。
+                         NSFW 这类条目默认隐藏模式下根本不会进列表,只有内容筛选切到「显示 NSFW」后才看得到。
+                         已安装来自本地安装记录(不是 GameBanana 的记录),装完不刷新列表也会亮 —— 见 ModStoreItem.IsInstalled。 -->
+                    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="4" Spacing="4">
+                        <Border HorizontalAlignment="Right" Padding="6,2" Background="#FF4D4F"
+                                CornerRadius="6"
+                                Visibility="{Binding IsAdult, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Foreground="White" FontSize="10"
+                                       FontWeight="SemiBold" Text="NSFW" />
+                        </Border>
+                        <Border HorizontalAlignment="Right" Padding="6,2" Background="#FF107C10"
+                                CornerRadius="6"
+                                Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Foreground="White" FontSize="10" FontWeight="SemiBold"
+                                       l:Uids.Uid="ModStore_Card_Installed" Text="已安装" />
+                        </Border>
+                    </StackPanel>
                 </Grid>
             </Border>
         </DataTemplate>
