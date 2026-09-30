@@ -2,6 +2,7 @@
 using Windows.Win32;
 using Windows.Win32.Media.Audio;
 using GIMI_ModManager.Core.Contracts.Entities;
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Views;
@@ -68,8 +69,7 @@ public class ModDragAndDropService
             if (extractResult is null) // 用户放弃输密码（临时目录已在里面收拾过）
                 return null;
 
-            installMonitor = await _modInstallerService.StartModInstallationAsync(
-                new DirectoryInfo(extractResult.ExtractedFolder.FullPath), modList);
+            installMonitor = await StartInstallationAsync(extractResult, modList);
 
             return installMonitor;
         }
@@ -195,8 +195,40 @@ public class ModDragAndDropService
             return null;
         }
 
-        return await _modInstallerService.StartModInstallationAsync(
-            new DirectoryInfo(scanResult.ExtractedFolder.FullPath), modList);
+        return await StartInstallationAsync(scanResult, modList);
+    }
+
+    /// <summary>
+    /// 把解压结果交给安装向导 —— 两条拖拽路径共用。
+    ///
+    /// <para>
+    /// 先把 <c>JASM_TMP\&lt;guid&gt;</c> 这层包装剥掉，再看包内容根<b>自己带不带 ini</b>：
+    /// 带的（多合一包）就<b>钦定根为 mod 根</b>，整个包当一个 Mod 装 —— 否则向导会去取
+    /// 树里第一个 <c>mod.ini</c>（多半是包里某个子目录），用户只装到包的一个碎片，
+    /// 而按键切换那些逻辑还留在没被装进去的根 ini 里。
+    /// </para>
+    ///
+    /// <para>
+    /// 不带的（一堆互不相干的 Mod 打成包）维持原样，仍然交给向导自己的启发式去猜 —— 那条路走了很久，
+    /// 没有明确证据不该动。判定见 <see cref="ModPackageRootResolver"/>。
+    /// </para>
+    /// </summary>
+    private Task<InstallMonitor> StartInstallationAsync(DragAndDropScanResult scanResult,
+        ICharacterModList modList)
+    {
+        var contentRoot = ModPackageRootResolver.ResolveContentRoot(
+            new DirectoryInfo(scanResult.ExtractedFolder.FullPath));
+
+        if (!ModPackageRootResolver.LooksLikeSelfContainedModRoot(contentRoot))
+            return _modInstallerService.StartModInstallationAsync(
+                new DirectoryInfo(scanResult.ExtractedFolder.FullPath), modList);
+
+        _logger.Information("The package is a single mod root ('{ModRoot}'), installing it as a whole",
+            contentRoot.Name);
+
+        // 目录树也从内容根开始：用户一眼能看到包里全部的东西，而不是先展开三层包装
+        return _modInstallerService.StartModInstallationAsync(contentRoot, modList,
+            setup: options => options.ModRootFolder = contentRoot);
     }
 
     /// <summary>
