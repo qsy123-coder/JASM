@@ -1,3 +1,4 @@
+using GIMI_ModManager.Core.Services.GameBanana;
 using GIMI_ModManager.Core.Services.GameBanana.ApiModels;
 
 namespace GIMI_ModManager.Core.ModStore;
@@ -26,6 +27,11 @@ public sealed class ModStoreCategory
 
     public string Name { get; }
 
+    /// <summary>
+    /// 分类图标（实测在 <c>images.gamebanana.com/img/ico/ModCategory/*.png</c>）。
+    /// 校验走 <see cref="GameBananaMediaUrls.TryCreateImageUrl(string?)"/>：空串（部分记录的分类图标就是空串）
+    /// 与非本图床的地址都按「没有」处理。
+    /// </summary>
     public Uri? IconUrl { get; }
 
     /// <summary>名称为空（有些提交确实没有分类）时返回 null。</summary>
@@ -34,7 +40,8 @@ public sealed class ModStoreCategory
         if (category is null || string.IsNullOrWhiteSpace(category.Name))
             return null;
 
-        return new ModStoreCategory(ParseId(category.ProfileUrl), category.Name.Trim(), TryCreateIcon(category.IconUrl));
+        return new ModStoreCategory(ParseId(category.ProfileUrl), category.Name.Trim(),
+            GameBananaMediaUrls.TryCreateImageUrl(category.IconUrl));
     }
 
     /// <summary>从 <c>…/mods/cats/29496</c> 这类地址取末段整数。取不到返回 null（不抛）。</summary>
@@ -47,19 +54,5 @@ public sealed class ModStoreCategory
         var last = url.Segments.Length > 0 ? url.Segments[^1].Trim('/') : string.Empty;
 
         return int.TryParse(last, out var id) && id > 0 ? id : null;
-    }
-
-    private static Uri? TryCreateIcon(string? iconUrl)
-    {
-        // 图标同样来自远端，只接受 https 的 gamebanana.com —— 它不像图片有独立图床域名。
-        if (string.IsNullOrWhiteSpace(iconUrl) ||
-            !Uri.TryCreate(iconUrl, UriKind.Absolute, out var url))
-            return null;
-
-        if (url.Scheme != Uri.UriSchemeHttps ||
-            !url.Host.Equals("gamebanana.com", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        return url;
     }
 }
