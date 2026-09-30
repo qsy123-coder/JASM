@@ -242,7 +242,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 ## Technical Constraints
 
-### 已验证的 GameBanana API 事实（2026-09-30 实测）
+### 已验证的 GameBanana API 事实（2026-09-30 实测；`_sSort` 取值于 2026-10-01 枚举收口）
 
 所有结论均从本机直连 GameBanana 实测得出（**无需代理**，`apiv11` 返回 200）。这些是本次 PRD 里最承重的部分 —— 实现前**不要**凭直觉改参数名。
 
@@ -250,7 +250,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 |---|---|---|
 | 列表 | `GET /apiv11/Game/20357/Subfeed?_nPage=1&_csvModelInclusions=Mod&_sSort=<v>` | 可用。`_aMetadata` 给 `_nRecordCount`、`_nPerpage`、`_bIsComplete`。**分页参数是 `_nPage`，页大小固定 15** —— `perPage` / `_nPerpage` / `_nPerPage` 全部被忽略（要 3 条照样给 15 条）。`_csvModelInclusions=Mod` 是**服务端**过滤，实测有效（6090 条提交 → 3062 个 Mod） |
 | 列表总数 | `_aMetadata._nRecordCount` | ⚠️ **随排序视图变**：`default` / `new` 报 3062，`updated` 只报 1333（「最近更新」视图只覆盖有更新记录的提交）。它是「当前视图的记录数」，UI 上**不能**写成「板块共 N 个 mod」 |
-| 排序 | 同上 `_sSort` | **参数名是 `_sSort`，不是 `sort`** —— `sort=new/likes/...` 全部被静默忽略（返回结果与默认完全一致）。已确认可用值：`default`（默认/热度）、`new`（实测首条为当天）、`updated`（实测首条为最近更新日）。`_sSort=newest` 返回 **400**，说明该参数被真正解析。深翻页有效（实测 `updated` 下 `_nPage=80` 仍正常返回 15 条），**不需要**做「只能看前 N 页」的限制。**点赞/下载量排序的取值需在 Phase 1 枚举确认** |
+| 排序 | 同上 `_sSort` | **参数名是 `_sSort`，不是 `sort`** —— `sort=new/likes/...` 全部被静默忽略（返回结果与默认完全一致）。已确认可用值：`default`（默认/热度）、`new`（实测首条为当天）、`updated`（实测首条为最近更新日）。`_sSort=newest` 返回 **400**，说明该参数被真正解析。深翻页有效（实测 `updated` 下 `_nPage=80` 仍正常返回 15 条），**不需要**做「只能看前 N 页」的限制。✅ 取值已枚举收口（2026-10-01）：**只有这三个** —— `default` / `new` / `updated`。点赞、下载量、浏览量、评论数、热度、标题等 34 个候选值（`likes` / `downloads` / `popular` / `trending` / `top` / `views` / `rating` / `hot` / `oldest` / `az` …）**一律 400**；对照组 `zzz` 同样 400，说明该参数确实按枚举解析、「400 = 不是合法取值」这个判据成立。另注：Subfeed 记录**根本没有 `_nDownloadCount` 键**，所以即便上游给下载量排序，卡片上也表示不出来 |
 | 搜索 | `GET /apiv11/Util/Search/Results?_sSearchString=<q>&_idGameRow=20357&_nPage=<n>` | 可用。**返回混合类型提交**（实测一页 6 条里混着 Request / Question / Mod），必须逐条过滤 `_sModelName`（该端点上没有可用的服务端类型过滤参数）。实测关键词 `skin`：全类型命中 705、其中 Mod 277 —— `_nRecordCount` 是**全类型**总数，要取 Mod 数得读 `_aMetadata._aSectionMatchCounts` 里的 `Mod` 项。分页同样是 `_nPage`、页大小 15 |
 | 详情 | `GET /apiv11/Mod/{id}/ProfilePage` | 可用。含 `_aCategory._sName`、`_aFiles`、`_nDownloadCount`、`_nLikeCount`、`_nViewCount`、`_sVersion`、`_sText`、`_aSubmitter`、`_aPreviewMedia`、`_bHasUpdates`、`_nUpdatesCount` |
 | 文件列表 | `GET /apiv11/Mod/{id}/DownloadPage` | 项目内已有调用（`IApiGameBananaClient.GetModFilesInfoAsync`） |
@@ -389,7 +389,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 10. 跨游戏目录定位（读 WuWa 游戏级配置 + 未配置时的引导态）
 11. **Phase 1 内需收口的验证项**：
     - ✅ 分类筛选已收口：服务端参数是 `_aFilters[Generic_Game]` + `[Generic_Category]`，走 `Mod/Index`（原先猜的 `_idCategoryRow` 是错的，会被静默忽略）
-    - ⏳ 仍待枚举：`_sSort` 的点赞 / 下载量排序取值（`Mod/Index` 不接受 `_sSort`，只能落在 Subfeed 的「全部」视图上）
+    - ✅ `_sSort` 已收口（2026-10-01）：**可用值只有 `default` / `new` / `updated` 三个**。点赞、下载量、浏览量、评论数、热度、标题等 34 个候选值一律 400，对照组 `zzz` 同样 400（证明「400 = 非法取值」这个判据成立，不是端点抽风）。**「点赞排序」「下载量排序」就此明确为「上游不提供」**，不是「本期没做」—— 三处 UI 都不必为它们留位。另：Subfeed 记录没有 `_nDownloadCount` 键，下载量本来也只能从详情页拿，卡片上的第三项统计是**评论数**。`Mod/Index` 不接受 `_sSort` 这一点不变（见分类端点那行）
 
 **MVP Definition**：用户能在 JASM 里搜到鸣潮 mod、点一下、装进游戏，且装过的东西 JASM 记得住。
 
@@ -397,7 +397,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 - 把 `SingleFileSelfUpdater.DownloadAsync` / `ModEnvInstallerService.DownloadWithResumeAsync` 迁移到公共下载件（`ResumableDownloader`），消除两份重复
 - 商店内卸载 / 回滚
-- 点赞/下载量排序（若 Phase 1 未收口）
+- 点赞/下载量排序 —— ⚠️ **上游不提供**（2026-10-01 枚举收口，见第 11 项）。真要做只能是页内客户端排序，只覆盖已经加载的那几页，语义上得改叫「本页热门」并在 UI 上说明，否则会读成「全站热门」
 - 更细的分类树筛选（分类筛选本身已服务端化；上游没有「列出板块子分类」的端点，要做得自己维护一份 id 映射）
 
 ### Future Considerations
@@ -412,7 +412,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 | Risk | Probability | Impact | Mitigation Strategy |
 |---|---|---|---|
-| **排序参数取值不全**：`_sSort` 的点赞/下载量排序未确认 | 中 | 中 | Phase 1 内枚举确认；退路是页内客户端排序（仅影响单页，需在 UI 上说明或改为「热门」语义） |
+| ~~排序参数取值不全~~ **已关闭（2026-10-01）**：`_sSort` 只有 `default` / `new` / `updated` 三个取值，点赞 / 下载量排序上游不提供 | — | 低 | 枚举收口见第 11 项与「排序」实测表；UI 不预留位置，真要做只能是页内客户端排序（只覆盖已加载的那几页，得改名成「本页热门」） |
 | **GameBanana API 非官方契约**：上游已在讨论弃用，字段可能变 | 中 | 高 | 所有解析做防御式：缺字段退化为 null/空，绝不抛异常（沿用 `AppUpdateReleaseResolver` 的既有风格）；API 挂掉只影响商店页，不拖累 App |
 | **NSFW 只能客户端过滤** | 中 | 中 | 列表用 `_bHasContentRatings`；✅ 详情的信号已收口：详情端点**没有** `_bHasContentRatings`，改用 `_aContentRatings`（对象非空即成人内容，见第三轮实测表） |
 | **下载器抽取引入回归** | 低 | 高 | 本期公共件**只给商店用**，不动两条已实机验证的链路；公共件以 `ModEnvInstallerService` 的成熟形状为蓝本 |
@@ -430,7 +430,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 - 「添加模组 → 安装向导」链路零游戏硬编码 —— **已确认，非阻塞**
 
 **Known Blockers**
-- 无硬性阻塞。`_sSort` 的排序取值枚举是 Phase 1 内的自收口任务，不依赖外部。
+- 无硬性阻塞。`_sSort` 的排序取值枚举**已收口（2026-10-01）**：只有 `default` / `new` / `updated`，点赞 / 下载量排序上游不提供。
 
 **Working-tree 风险（非技术）**：本 PRD 落盘时当前分支为 `feat/update-cos-and-progress`，该分支有 8 个未提交的修改文件，且另有 agent 在别的分支上作业。本功能应在新分支上实施。
 
@@ -442,7 +442,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 - **`apiv11`**: GameBanana 的公开只读 API，无需认证。
 - **Subfeed**: 游戏板块的内容流端点，商店的列表数据源。
-- **`_sSort`**: 排序参数。**不是 `sort`** —— 用错名字会被静默忽略（无报错、结果不变），是本次最容易踩的坑。
+- **`_sSort`**: 排序参数。**不是 `sort`** —— 用错名字会被静默忽略（无报错、结果不变），是本次最容易踩的坑。取值只有 `default` / `new` / `updated` 三个（2026-10-01 枚举收口，非法值 400）；另一层的坑是**走 `Mod/Index` 时任何取值都 400**，排序只在 Subfeed 的「全部」视图上存在。
 - **`_nPage`**: 分页参数。**不是 `page`** —— 同样会被静默忽略；页大小固定 15，`perPage` 一族都改不动。
 - **`_bHasContentRatings`**: 列表记录里唯一可靠的成人内容标志。
 - **`_aRootCategory`**: **列表**记录上的**根**分类对象（鸣潮只有 `Skins` / `Other-Misc` / `UI`），且**没有 `_idRow`**，id 只能从 `_sProfileUrl` 末段抠。
@@ -518,6 +518,19 @@ HEAD https://gamebanana.com/dl/{fileId}                     → 302 → files.ga
 GET  https://gamebanana.com/dl/{fileId}  Range: bytes=N-    → 206 + Content-Range: bytes N-/(total)，长度正确
 下载完整实体后算 MD5                                          → 与文件记录的 _sMd5Checksum 一致
 ```
+
+第五轮（`_sSort` 取值枚举，第 11 项收口，2026-10-01）：
+
+```
+GET /apiv11/Game/20357/Subfeed?_nPage=1&_csvModelInclusions=Mod&_sSort=default → 200  首条 575376（642 赞 / 147969 浏览），_nRecordCount=3063
+                                        （对照）...&_sSort=updated              → 200  首条 658343，_nRecordCount=1333
+likes | downloads | download | dl | dls | popular | trending | top | hot | featured
+| views | view | views_desc | rating | toprated | best | best_match | loved | loves
+| hearts | likes_desc | comments | posts | mostliked | mostdownloaded | oldest | az
+| date | added | modified | random | relevance | submissions | newest | "" | zzz   → 全部 400
+```
+
+两个结论：① **「不是 400 的都算合法」这个判据站得住** —— 对照组 `zzz`（明显不是任何排序名）同样 400，所以 400 真的是「非法取值」，不是端点偶发抽风；② 因此**合法取值只有 `default` / `new` / `updated` 三个**，点赞 / 下载量排序**上游就是没有**。顺带查到 Subfeed 记录根本没有 `_nDownloadCount` 键（全量字段见上），下载量只在详情页有 —— 就算真有下载量排序，卡片上也没有这个数字可显示。
 
 ⚠️ 另有一条同期的既有实现问题：`GameBananaCoreService.DownloadModAsync` 只看 `_aFiles`、不看 `_aArchivedFiles` —— 隐藏 mod（如 709792）在它那里会「没有文件」。商店这条链路自己读两份，不受影响。**已修（第 7 项）**：那个方法改用 `FindFile` 依次查两个字段（活跃优先），所以「知道文件 id 却下不了」这条死路没了 —— 同一条修复也顺带保住了商店与「模组页面」共享的那条下载路径。
 
