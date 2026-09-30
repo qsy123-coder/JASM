@@ -306,7 +306,8 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
         if (file is null || DetailItem is not { } detail)
             return;
 
-        _downloadManager.EnqueueFromDetail(detail.GbModId, file.Source, detail.Title);
+        // 整份 detail 过去：除了 mod id，队列还要「下完装哪儿」（角色）与 mod 页面地址。
+        _downloadManager.EnqueueFromDetail(detail, file.Source);
     }
 
     // ─── 侧栏 ──────────────────────────────────────────────────
