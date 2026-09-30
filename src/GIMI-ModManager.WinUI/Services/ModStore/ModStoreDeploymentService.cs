@@ -81,6 +81,37 @@ public sealed class ModStoreDeploymentService(
         return OpenInstallerAsync(archive, request);
     }
 
+    /// <summary>
+    /// 「这份文件本地已经有归档了吗」—— 下载**之前**问一次，命中就不必再从网上拉一遍
+    /// （PRD Story 2 的验收项）。
+    ///
+    /// 认的是 md5 而不是 mod / 文件 id：作者换个文件名、重压一遍就会在 GameBanana 上
+    /// 变成一个新的文件 id，而内容没变的话 md5 就没变 —— 那正是「装出来的东西一模一样」的意思。
+    /// 反过来，**没有 md5 就一律不命中**：少了这个凭据，任何「看起来像」的判断都可能是错的，
+    /// 而装错版本比多下一次糟得多。
+    /// </summary>
+    /// <returns>命中的归档；没有（或上游没给 md5）时 null。</returns>
+    public async Task<ModArchiveHandle?> TryGetCachedArchiveAsync(ModDownloadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrWhiteSpace(request.ExpectedMd5))
+            return null;
+
+        // FirstOrDefaultAsync 沿途会跳过已经不存在的文件，所以这里不必再查一次 Exists。
+        // 比较方式与 GameBananaCoreService.GetLocalModArchiveByMd5HashAsync 保持一致 ——
+        // 两处对「这份文件下过没有」必须给出同一个答案。
+        var archive = await archiveRepository
+            .FirstOrDefaultAsync(handle => handle.MD5Hash == request.ExpectedMd5, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (archive is not null)
+            _logger.Information("Archive cache hit for {Key}, download can be skipped", request.Key);
+
+        return archive;
+    }
+
     // ─── 下载 → 归档 ───────────────────────────────────────────
 
     /// <summary>
