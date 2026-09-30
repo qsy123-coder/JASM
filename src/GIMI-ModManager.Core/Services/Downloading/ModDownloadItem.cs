@@ -27,6 +27,15 @@ public readonly record struct ModDownloadKey(string ModId, string ModFileId)
 /// <param name="FileSizeBytes">声明的字节数；只用于进度分母和识破陈旧的 <c>.part</c>。</param>
 /// <param name="ModName">mod 名（面板里显示，不影响下载）。</param>
 /// <param name="Version">版本号（面板里显示）。</param>
+/// <param name="Character">
+/// 目标角色（商店给的是 GameBanana 的子分类名，如 <c>Jinhsi</c>）；UI 类 mod 没有，为 null。
+/// **下载不用它**，是给下载完之后的部署阶段用的 —— 队列的契约是「拿到请求就自足」，
+/// 所以「下完装哪儿」也得跟着请求走，不能留一张界面侧的表等着查。
+/// </param>
+/// <param name="ModPageUrl">
+/// mod 页面地址。部署时当安装向导的 <c>ModUrl</c> 传进去 —— JASM 靠它把本地 mod 与
+/// GameBanana 上的条目对上（「可更新」提示就是这么认的），漏了它装出来的 mod 会变成无主的。
+/// </param>
 public sealed record ModDownloadRequest(
     ModDownloadKey Key,
     Uri DownloadUrl,
@@ -34,7 +43,9 @@ public sealed record ModDownloadRequest(
     string? ExpectedMd5 = null,
     long? FileSizeBytes = null,
     string? ModName = null,
-    string? Version = null)
+    string? Version = null,
+    string? Character = null,
+    Uri? ModPageUrl = null)
 {
     /// <summary>
     /// 把商店详情里的一个文件转成下载请求。
@@ -44,9 +55,13 @@ public sealed record ModDownloadRequest(
     /// 这不是猜的：<c>ApiGameBananaClient.DownloadModAsync</c> 一直就是这么下的，实测
     /// 302 两次后回 206，<c>Range</c> 续传可用。
     /// </summary>
+    /// <param name="modName">mod 名（面板显示）。</param>
+    /// <param name="character">目标角色（GameBanana 子分类名）；UI 类 mod 传 null。</param>
+    /// <param name="modPageUrl">mod 页面地址；部署时当安装向导的 <c>ModUrl</c>。</param>
     /// <returns>请求；文件既没有地址也拼不出地址时返回 null（调用方按「这个文件下不了」处理——
     /// 正常路径下不会发生，是防御性的）。</returns>
-    public static ModDownloadRequest? FromStoreFile(GbModId modId, ModStoreFile file, string? modName)
+    public static ModDownloadRequest? FromStoreFile(GbModId modId, ModStoreFile file, string? modName,
+        string? character = null, Uri? modPageUrl = null)
     {
         ArgumentNullException.ThrowIfNull(modId);
         ArgumentNullException.ThrowIfNull(file);
@@ -63,7 +78,9 @@ public sealed record ModDownloadRequest(
             file.FileSize,
             modName,
             // ModStoreFile.Version 已经把「文件级缺失就退回 mod 级」做完了，这里直接用。
-            file.Version);
+            file.Version,
+            character,
+            modPageUrl);
     }
 
     private static Uri? TryBuildDownloadUrl(GbModFileId fileId)
@@ -117,6 +134,8 @@ public sealed class ModDownloadItem
         FileSizeBytes = request.FileSizeBytes;
         ModName = request.ModName;
         Version = request.Version;
+        Character = request.Character;
+        ModPageUrl = request.ModPageUrl;
         DestinationPath = destinationPath;
 
         // 声明体积先垫上：这样进度条在第一份数据到达之前就有分母（否则会先显示一段「未知进度」）。
@@ -137,6 +156,12 @@ public sealed class ModDownloadItem
     public string? ModName { get; }
 
     public string? Version { get; }
+
+    /// <summary>目标角色（商店的 GameBanana 子分类名）；UI 类 mod 为 null —— 部署时退回「Others」。</summary>
+    public string? Character { get; }
+
+    /// <summary>mod 页面地址；部署时当安装向导的 <c>ModUrl</c>。</summary>
+    public Uri? ModPageUrl { get; }
 
     /// <summary>落盘位置（暂存目录里的完整路径）。</summary>
     public string DestinationPath { get; }
