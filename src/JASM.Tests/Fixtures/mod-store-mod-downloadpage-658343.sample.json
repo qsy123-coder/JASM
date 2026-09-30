@@ -1,0 +1,89 @@
+{
+    "_bIsTrashed": false,
+    "_bIsWithheld": false,
+    "_aFiles": [
+        {
+            "_idRow": 1831976,
+            "_sFile": "37hashupdater.rar",
+            "_nFilesize": 6022,
+            "_tsDateAdded": 1790768299,
+            "_nDownloadCount": 16,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831976",
+            "_sMd5Checksum": "0621fa1d9aee29ae44b4aca7bf58fef4",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Use this to update Chisa\/Mornye effect hashes",
+            "_aAnalysisWarnings": {
+                "contains_exe": [
+                    "PortraitHash3.7.bat"
+                ]
+            }
+        },
+        {
+            "_idRow": 1831982,
+            "_sFile": "chibiportraitsv2_272f9.rar",
+            "_nFilesize": 192502398,
+            "_tsDateAdded": 1790768554,
+            "_nDownloadCount": 23,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831982",
+            "_sMd5Checksum": "353716d2f29605f514a162e2ce9c0c8a",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Hsin added"
+        },
+        {
+            "_idRow": 1831977,
+            "_sFile": "portrait_driver_56427.rar",
+            "_nFilesize": 4340,
+            "_tsDateAdded": 1790768299,
+            "_nDownloadCount": 13,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831977",
+            "_sMd5Checksum": "4a60572dc99819b3c0ed8fc858aa158e",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Updated for 3.7"
+        },
+        {
+            "_idRow": 1831978,
+            "_sFile": "portrait_builder_74a19.rar",
+            "_nFilesize": 388905,
+            "_tsDateAdded": 1790768299,
+            "_nDownloadCount": 8,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831978",
+            "_sMd5Checksum": "f5f4e155cc702758d1657ce1cb0f9b38",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Updated for 3.7. Suoming waiting room",
+            "_aAnalysisWarnings": {
+                "contains_exe": [
+                    "Portrait Builder\/Generate Portrait Toggle.bat",
+                    "Portrait Builder\/texassemble.exe",
+                    "Portrait Builder\/texconv.exe"
+                ]
+            }
+        }
+    ],
+    "_bAcceptsDonations": false,
+    "_bShowRipePromo": true,
+    "_sLicense": "<a rel=\"license\" href=\"http:\/\/creativecommons.org\/licenses\/by-nc-nd\/4.0\/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https:\/\/i.creativecommons.org\/l\/by-nc-nd\/4.0\/88x31.png\" \/><\/a><br \/>This work is licensed under a <a rel=\"license\" href=\"http:\/\/creativecommons.org\/licenses\/by-nc-nd\/4.0\/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License<\/a>."
+}
