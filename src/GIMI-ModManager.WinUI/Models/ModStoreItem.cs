@@ -24,6 +24,12 @@ public sealed class ModStoreItem
     /// </summary>
     public string? Character { get; init; }
 
+    /// <summary>
+    /// 卡片上那块角色标签显示不显示。给 XAML 绑定用（<c>BoolToVisibilityConverter</c> 只吃 bool，
+    /// 字符串非空判断放这儿比再写一个转换器省事）。
+    /// </summary>
+    public bool HasCharacter => !string.IsNullOrWhiteSpace(Character);
+
     /// <summary>根分类名：<c>Skins</c> / <c>UI</c> / <c>Other-Misc</c>（鸣潮板块只有这三个）。</summary>
     public string? RootCategory { get; init; }
 
@@ -32,6 +38,12 @@ public sealed class ModStoreItem
     public int? LikesCount { get; init; }
 
     public int? ViewsCount { get; init; }
+
+    /// <summary>
+    /// 评论数（GameBanana 的 <c>_nPostCount</c>）。三个列表端点都给，所以卡片上的第三项统计
+    /// 可以稳定显示 —— 不像下载量只有详情页才有。
+    /// </summary>
+    public int? CommentsCount { get; init; }
 
     /// <summary>
     /// 成人内容（列表里的 <c>_bHasContentRatings</c>）。卡片上只用它显示角标 ——
@@ -61,6 +73,7 @@ public sealed class ModStoreItem
             Version = mod.Version,
             LikesCount = mod.LikeCount,
             ViewsCount = mod.ViewCount,
+            CommentsCount = mod.CommentCount,
             IsAdult = mod.IsAdult,
             PreviewImageUrl = mod.PreviewImages.Count > 0 ? mod.PreviewImages[0].ToString() : null,
             ModPageUrl = mod.ModPageUrl,
