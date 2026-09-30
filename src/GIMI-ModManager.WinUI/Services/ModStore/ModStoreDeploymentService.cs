@@ -175,6 +175,15 @@ public sealed class ModStoreDeploymentService(
         _logger.Information("Deploying store mod {Key} into character {Character}",
             request.Key, modList.Character.InternalName);
 
+        // 这个 mod 之前从商店装过吗（同一个角色下）？装过就让向导**就地更新**那份，
+        // 而不是在同一个角色下再塞一份 —— 靠安装记录里的本地 mod id，与「模组更新」那条路
+        // 给 InstallOptions.ExistingModIdToUpdate 的是同一个东西。
+        //
+        // 角色要对得上才算：用户完全可能故意把同一个 mod 放在两个角色下各一份，
+        // 那时「已装」指的是另一份，不该把它顶掉。记录里的那份要是已经被用户删了，
+        // 向导那边 GetModById 会返回 null 并自动退化成「新增」，不用我们操心。
+        var modToUpdate = ResolveModToUpdate(request, modList);
+
         // 向导关掉之后要写安装记录，而它的关闭事件只带一个「成功」、不带「装了什么」。
         // 所以先把这一刻已有的 mod id 记下来：之后多出来的那个就是刚装进去的（见 RecordInstallAsync）。
         var modsBefore = modList.Mods.Select(entry => entry.Id).ToHashSet();
@@ -185,10 +194,33 @@ public sealed class ModStoreDeploymentService(
                 // 与「从 GameBanana 页面安装」一致地把页面地址记进 mod 设置里：
                 // JASM 的更新检查就是靠它把本地 mod 认回 GameBanana 条目的。
                 options.ModUrl = request.ModPageUrl;
+                options.ExistingModIdToUpdate = modToUpdate;
             }).ConfigureAwait(false);
 
-        TrackOutcomeAsync(monitor, request, modList, modsBefore);
+        TrackOutcomeAsync(monitor, request, modList, modsBefore, modToUpdate);
         return true;
+    }
+
+    /// <summary>
+    /// 该就地更新哪一份 mod；这次是新增（或者说不清）时返回 null。
+    /// </summary>
+    private Guid? ResolveModToUpdate(ModDownloadRequest request, ICharacterModList modList)
+    {
+        var record = installIndex.Find(request.Key.ModId);
+
+        if (record is null)
+            return null;
+
+        if (!string.Equals(record.Character, modList.Character.InternalName, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (record.LocalModId is not { } localModId)
+            return null;
+
+        _logger.Information("Store mod {Key} is already installed as {LocalModId}, updating it in place",
+            request.Key, localModId);
+
+        return localModId;
     }
 
     /// <summary>
@@ -260,7 +292,7 @@ public sealed class ModStoreDeploymentService(
     /// 向导关掉之前用户点取消 = 什么都没发生，那时写记录等于撒谎。
     /// </summary>
     private async void TrackOutcomeAsync(InstallMonitor monitor, ModDownloadRequest request,
-        ICharacterModList modList, IReadOnlySet<Guid> modsBefore)
+        ICharacterModList modList, IReadOnlySet<Guid> modsBefore, Guid? modToUpdate)
     {
         var displayName = request.ModName ?? request.FileName;
 
@@ -277,7 +309,7 @@ public sealed class ModStoreDeploymentService(
                         _notificationManager.ShowNotification("Mod 商店",
                             $"『{displayName}』安装完成。", TimeSpan.FromSeconds(5));
 
-                        await RecordInstallAsync(request, modList, modsBefore).ConfigureAwait(false);
+                        await RecordInstallAsync(request, modList, modsBefore, modToUpdate).ConfigureAwait(false);
                         break;
                     case CloseRequestedArgs.CloseReasons.Error:
                         _logger.Error(result.Exception, "Store install failed for {Key}", request.Key);
@@ -305,26 +337,43 @@ public sealed class ModStoreDeploymentService(
     /// 不带装了什么（向导不归商店改），而 mod 的 Guid 是现成的 —— 不用去读每个 mod 的设置
     /// （那是一条 mod 一次异步 I/O，而我们只要刚装进去的那一个）。
     ///
-    /// **多出来恰好一个才是我们要的**：0 个 = 没装成（用户在向导里改了目标或走了别的分支），
-    /// 多个 = 这份归档里含多个 mod；两种都记不了 —— 记成「一个 mod 的记录」会让第 8 项的
-    /// 更新判定对着一个错的 mod 报「可更新」。这两种情况只记日志。
+    /// **多出来恰好一个才是我们要的**：0 个 = 没装成（用户在向导里改了目标、或者这次是
+    /// 就地更新 —— 更新不新增 mod），多个 = 这份归档里含多个 mod；后两种都记不了 ——
+    /// 记成「一个 mod 的记录」会让第 8 项的更新判定对着一个错的 mod 报「可更新」。
     /// </summary>
     private async Task RecordInstallAsync(ModDownloadRequest request, ICharacterModList modList,
-        IReadOnlySet<Guid> modsBefore)
+        IReadOnlySet<Guid> modsBefore, Guid? modToUpdate)
     {
         var added = modList.Mods
             .Where(entry => !modsBefore.Contains(entry.Id))
             .Select(entry => entry.Mod)
             .ToArray();
 
-        if (added.Length != 1)
+        ISkinMod? installed;
+        switch (added.Length)
         {
-            _logger.Warning("Store mod {Key} reported a successful install but {Count} new mods appeared, " +
-                            "no install record written", request.Key, added.Length);
-            return;
-        }
+            case 1:
+                installed = added[0];
+                break;
 
-        var installed = added[0];
+            case 0 when modToUpdate is { } updatedId:
+                // 就地更新：没有新 mod，被顶掉的那个（id 没变）就是它 —— 路径也还是老路径。
+                installed = modList.Mods.FirstOrDefault(entry => entry.Id == updatedId)?.Mod;
+
+                if (installed is null)
+                {
+                    _logger.Warning("Store mod {Key} was updated in place but {LocalModId} is gone, " +
+                                    "no install record written", request.Key, updatedId);
+                    return;
+                }
+
+                break;
+
+            default:
+                _logger.Warning("Store mod {Key} reported a successful install but {Count} new mods appeared, " +
+                                "no install record written", request.Key, added.Length);
+                return;
+        }
 
         _logger.Information("Recording store install of {Key} at {ModName}", request.Key, installed.Name);
 
@@ -336,6 +385,7 @@ public sealed class ModStoreDeploymentService(
             modList.Character.InternalName,
             request.ModPageUrl?.ToString(),
             installed.FullPath,
+            installed.Id,
             DateTimeOffset.Now)).ConfigureAwait(false);
     }
 }
