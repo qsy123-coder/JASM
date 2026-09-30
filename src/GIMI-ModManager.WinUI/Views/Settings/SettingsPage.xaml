@@ -498,60 +498,76 @@
                         Content="Just Another Skin Manager GameBanana"
                         NavigateUri="https://gamebanana.com/tools/14574" />
 
-                    <StackPanel Orientation="Horizontal" Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
-                        <TextBlock VerticalAlignment="Center" Text="New Update Available:" />
-                        <TextBlock
-                            Margin="8,0"
-                            VerticalAlignment="Center"
-                            Text="{x:Bind ViewModel.LatestVersion, Mode=OneWay}" />
+                    <!--
+                        有新版时的提示块：拆成两行，别把「文案 + 版本号 + 说明链接 + 两个按钮」全塞进一行横排
+                        （窄窗下会互相压成一团）。整块只在有新版本时出现。
+                    -->
+                    <StackPanel
+                        Margin="0,12,0,0"
+                        Spacing="12"
+                        Visibility="{x:Bind ViewModel.AppUpdate.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
 
-                        <controls:LinkButton Link="{x:Bind ViewModel.LatestVersionNotesUrl, Mode=OneWay}" Text="See what's new in the latest release" />
+                        <!-- 第 1 行：文案 + 版本号 + 「查看更新内容」 -->
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Text="New version available"
+                                l:Uids.Uid="AppUpdate_NewVersionLabel" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.AppUpdate.LatestVersion, Mode=OneWay}" />
+                            <controls:LinkButton
+                                VerticalAlignment="Center"
+                                Link="{x:Bind ViewModel.AppUpdate.LatestVersionNotesUrl, Mode=OneWay}"
+                                Text="See what's new in the latest release"
+                                l:Uids.Uid="AppUpdate_SeeWhatsNew" />
+                        </StackPanel>
 
-                    </StackPanel>
-
-
-                    <StackPanel Margin="0,16,0,16" Orientation="Horizontal">
-                        <Button
-                            Margin="0,0,20,0"
-                            VerticalAlignment="Center"
-                            Background="{ThemeResource AccentFillColorSelectedTextBackgroundBrush}"
-                            Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
-                            <Button.Flyout>
-                                <Flyout ShouldConstrainToRootBounds="False">
-                                    <StackPanel>
-                                        <TextBlock TextWrapping="WrapWholeWords" Text="JASM will exit and the update will start. Do you want to continue?" />
-                                        <Button Command="{x:Bind ViewModel.UpdateJasmCommand}" Content="Yes, Update JASM 😎" />
+                        <!-- 第 2 行：两个操作按钮独立一行 -->
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource AccentFillColorSelectedTextBackgroundBrush}">
+                                <Button.Flyout>
+                                    <Flyout ShouldConstrainToRootBounds="False">
+                                        <StackPanel Spacing="8">
+                                            <TextBlock
+                                                TextWrapping="WrapWholeWords"
+                                                Text="JASM will exit and the update will start. Do you want to continue?"
+                                                l:Uids.Uid="AppUpdate_ConfirmText" />
+                                            <Button
+                                                Command="{x:Bind ViewModel.AppUpdate.UpdateJasmCommand}"
+                                                Content="Update JASM"
+                                                l:Uids.Uid="AppUpdate_ConfirmButton" />
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                                <Button.Content>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock VerticalAlignment="Center" Text="Update JASM" />
+                                        <FontIcon Glyph="&#xE896;" />
                                     </StackPanel>
-                                </Flyout>
-                            </Button.Flyout>
-                            <Button.Content>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock VerticalAlignment="Center" Text="Update JASM to " />
-                                    <TextBlock
-                                        Margin="4,0"
-                                        VerticalAlignment="Center"
-                                        Text="{x:Bind ViewModel.LatestVersion, Mode=OneWay}" />
-                                    <FontIcon Glyph="&#xE896;" />
-                                </StackPanel>
-                            </Button.Content>
-                        </Button>
+                                </Button.Content>
+                            </Button>
 
-                        <Button
-                            VerticalAlignment="Center"
-                            Command="{x:Bind ViewModel.IgnoreNewVersionCommand}"
-                            Content="Ignore Current Update?"
-                            Visibility="{x:Bind ViewModel.ShowNewVersionAvailable, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}" />
+                            <Button
+                                VerticalAlignment="Center"
+                                Command="{x:Bind ViewModel.AppUpdate.IgnoreNewVersionCommand}"
+                                Content="Ignore this version"
+                                l:Uids.Uid="AppUpdate_IgnoreButton" />
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- 单文件版进程内自更新的下载进度（folder 版走外部更新器，整块不出现） -->
                     <StackPanel
-                        Margin="0,0,0,16"
+                        Margin="0,16,0,16"
                         Spacing="4"
-                        Visibility="{x:Bind ViewModel.IsUpdatingJasm, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
-                        <ProgressBar Maximum="100" Value="{x:Bind ViewModel.UpdateProgressPercent, Mode=OneWay}" />
+                        Visibility="{x:Bind ViewModel.AppUpdate.IsUpdatingJasm, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}">
+                        <ProgressBar Maximum="100" Value="{x:Bind ViewModel.AppUpdate.UpdateProgressPercent, Mode=OneWay}" />
                         <TextBlock
                             Style="{ThemeResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.UpdateProgressText, Mode=OneWay}" />
+                            Text="{x:Bind ViewModel.AppUpdate.UpdateProgressText, Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
             </StackPanel>
