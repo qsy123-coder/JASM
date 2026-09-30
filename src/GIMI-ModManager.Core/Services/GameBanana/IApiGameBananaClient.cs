@@ -96,14 +96,17 @@ public interface IApiGameBananaClient
     public Task<int?> GetGameModCountAsync(GbGameId gameId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 取搜索命中的 Mod 数（<c>_aMetadata._aSectionMatchCounts</c> 里 <c>Mod</c> 那一项）。
+    /// 一次搜索的摘要：命中数（<c>_aMetadata._aSectionMatchCounts</c> 里 <c>Mod</c> 那一项）
+    /// + 子分类图标（侧栏角色用）。
     ///
     /// 商店用它给侧栏每个角色标条目数：按名字查的唯一办法就是搜索（没有按名字筛的列表端点，
     /// <c>Mod/Index</c> 的 <c>_sName</c> 实测被忽略）。注意它同时受 <c>_idGameRow</c> 约束，
     /// 拿到的是**本板块内**的命中数。
+    ///
+    /// 图标是搭同一次请求的便车（见 <see cref="GbSearchSummary"/>）—— 别为了它另开一个端点。
     /// </summary>
-    /// <returns>命中数；取不到返回 null</returns>
-    public Task<int?> GetSearchModCountAsync(GbGameId gameId, string searchQuery,
+    /// <returns>摘要；连计数和图标都没拿到时返回 null</returns>
+    public Task<GbSearchSummary?> GetSearchSummaryAsync(GbGameId gameId, string searchQuery,
         CancellationToken cancellationToken = default);
 
     /// <summary>
