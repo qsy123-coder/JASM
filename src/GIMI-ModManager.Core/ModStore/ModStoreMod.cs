@@ -32,6 +32,7 @@ public sealed class ModStoreMod
         Version = NullIfBlank(record.Version);
         LikeCount = record.LikeCount;
         ViewCount = record.ViewCount;
+        CommentCount = record.PostCount;
         HasFiles = record.HasFiles;
         IsObsolete = record.IsObsolete;
         IsAdult = record.HasContentRatings;
@@ -90,6 +91,12 @@ public sealed class ModStoreMod
     public int? LikeCount { get; }
 
     public int? ViewCount { get; }
+
+    /// <summary>
+    /// 评论数（<c>_nPostCount</c>）。与 <c>_nDownloadCount</c> 不同，这个列表接口**就给**，
+    /// 所以卡片上第三项统计用它。
+    /// </summary>
+    public int? CommentCount { get; }
 
     public bool HasFiles { get; }
 
