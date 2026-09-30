@@ -135,6 +135,8 @@ public partial class App : Application
                 services.AddSingleton<NotificationManager>();
                 services.AddSingleton<ModNotificationManager>();
                 services.AddTransient<ModDragAndDropService>();
+                // 加密 Mod 压缩包的密码：读回来 / 问用户 / 记住（拖入 Mod 包那条链路用，见 ModDragAndDropService）
+                services.AddSingleton<ArchivePasswordService>();
                 services.AddSingleton<CharacterSkinService>();
 
                 // 单 exe 版的提权助手只能从主 exe 内嵌资源释放出来，先于 ElevatorService 注册（后者构造时注入）
