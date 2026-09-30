@@ -24,9 +24,10 @@
 
     </Page.Resources>
     <!--
-        页面根 Grid 接管整页的拖拽：一是让「拖到这儿自动识别」那块在拖拽进入时显形
-        （Collapsed 的元素自己收不到拖拽事件，自己显形是不可能的），二是不落在角色卡片上的那些拖放走这条路。
-        卡片有自己的 DragEnter/Drop，它们会把事件标记为已处理，不会冒到这里。
+        页面根 Grid 接管整页的拖拽：一是让盖住角色列表的毛玻璃提示层在拖拽进入时显形
+        （Collapsed 的元素自己收不到拖拽事件，自己显形是不可能的），二是不落在角色卡片上的
+        那些拖放走这条路 —— 解压、认角色、交给安装向导都在 PageRoot_OnDrop 里。
+        卡片有自己的 DragEnter/Drop，它们会把事件标记为已处理，不会冒到这里（落点角色以卡片为准）。
     -->
     <Grid
         Margin="0,-24,0,0"
@@ -417,28 +418,6 @@
                 </StackPanel>
             </StackPanel>
 
-            <Grid
-                x:Name="DragAndDropArea"
-                Grid.Column="2"
-                AllowDrop="True"
-                Background="Transparent"
-                BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                BorderThickness="1"
-                CornerRadius="8"
-                DragEnter="DragAndDropArea_OnDragEnter"
-                Drop="DragAndDropArea_OnDrop"
-                Visibility="Collapsed">
-
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Style="{ThemeResource SubtitleTextBlockStyle}"
-                    TextWrapping="NoWrap"
-                    Text="Drop Here to Auto Detect Mod..."
-                    l:Uids.Uid="Characters_DropHereLabel" />
-
-            </Grid>
-
             <StackPanel
                 Grid.Column="3"
                 HorizontalAlignment="Right"
@@ -587,5 +566,46 @@
                 </DataTemplate>
             </controls:AdaptiveGridView.ItemTemplate>
         </controls:AdaptiveGridView>
+
+        <!--
+            拖拽悬停时盖住整个角色列表的毛玻璃提示层。
+            刻意 IsHitTestVisible="False"：它只是一层提示，不参与落点判定 ——
+            指针下面是角色卡片时，那一下仍旧归卡片（按落点角色装）；落在列表空白处时，
+            命中测试会穿过这层落到下面的列表 / 页面根 Grid 上，走「自动识别」。
+            毛玻璃用 SystemControlAcrylicWindowBrush（同 ModDetailPanel 的用法）。
+        -->
+        <Grid
+            x:Name="AutoDetectOverlay"
+            Grid.Row="2"
+            Margin="0,0,0,8"
+            IsHitTestVisible="False"
+            Visibility="Collapsed">
+            <Border Background="{ThemeResource SystemControlAcrylicWindowBrush}" CornerRadius="8">
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="12">
+                    <FontIcon
+                        HorizontalAlignment="Center"
+                        FontSize="40"
+                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                        Glyph="&#xE74B;" />
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Style="{ThemeResource SubtitleTextBlockStyle}"
+                        Text="Drop Here to Auto Detect Mods"
+                        TextWrapping="Wrap"
+                        l:Uids.Uid="Characters_DropHereLabel" />
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        MaxWidth="520"
+                        Style="{ThemeResource BodyTextBlockStyle}"
+                        Text="Archives and self-extracting .exe files are supported. Drop onto a character card to install straight into that character."
+                        TextAlignment="Center"
+                        TextWrapping="Wrap"
+                        l:Uids.Uid="Characters_DropHereHint" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Page>
