@@ -17,22 +17,29 @@
             TrueValue="Visible"
             FalseValue="Collapsed" />
 
-        <DataTemplate x:Key="CharacterItemTemplate" x:DataType="models:ModStoreCharacter">
+        <!-- 左侧栏一项:图标 + 名字 + 条目数。条目数在后台一个个补,所以是 OneWay 而不是 OneTime,
+             还没取到(Null)时那一格是空的 —— 不显示数字,也不显示假的 0。 -->
+        <DataTemplate x:Key="SidebarItemTemplate" x:DataType="models:ModStoreSidebarItem">
             <Grid Padding="12,10" ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <FontIcon FontSize="15" Glyph="&#xE77B;"
+                <FontIcon FontSize="15" Glyph="{x:Bind Glyph}"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                           VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="13"
                            Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="{x:Bind ItemCount, Mode=OneWay}" />
             </Grid>
         </DataTemplate>
 
         <!-- 卡片版式来自 Mod 市场（250×340 竖卡 + 底部渐变 + 图像懒加载）。
-             差异只在水印字段上：商店有作者、没有评论数。 -->
+             水印那一行按市场的样子排:小圆点 + 名字 + 相对时间,统计三项（浏览/点赞/评论）。
+             商店比市场多一层信息:左上角那块角色标签(市场没有这个维度)。 -->
         <DataTemplate x:Key="ModStoreCardTemplate">
             <Border Width="250" Margin="6" CornerRadius="8"
                     BorderBrush="#404040" BorderThickness="0.5">
@@ -66,11 +73,11 @@
                                    MaxLines="2" Text="{Binding Title}"
                                    TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Border Width="16" Height="16" CornerRadius="8"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}" />
                             <TextBlock VerticalAlignment="Center" FontSize="11"
-                                       Foreground="#DDDDDD" Text="{Binding Character}"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock VerticalAlignment="Center" FontSize="11"
-                                       Foreground="#AAAAAA" Text="{Binding AuthorName}"
+                                       Foreground="#DDDDDD" Text="{Binding AuthorName}"
                                        TextTrimming="CharacterEllipsis" />
                             <TextBlock VerticalAlignment="Center" FontSize="11"
                                        Foreground="#AAAAAA" Text="{Binding RelativeTime}" />
@@ -84,10 +91,22 @@
                                 <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xEB52;" />
                                 <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding LikesCount}" />
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xE8F2;" />
+                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding CommentsCount}" />
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
-                    <!-- 层5: NSFW 角标(右上)。默认隐藏模式下这类条目根本不会进列表,
-                         只有设置里打开开关后才看得到角标。 -->
+                    <!-- 层5: 角色标签(左上)。不是每条记录都有角色(UI 类 mod 就没有),没有就不显示。 -->
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Margin="4" Padding="6,2" Background="#99000000"
+                            CornerRadius="6"
+                            Visibility="{Binding HasCharacter, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Foreground="White" FontSize="10" FontWeight="SemiBold"
+                                   Text="{Binding Character}" TextTrimming="CharacterEllipsis" />
+                    </Border>
+                    <!-- 层6: NSFW 角标(右上)。默认隐藏模式下这类条目根本不会进列表,
+                         只有内容筛选切到「显示 NSFW」后才看得到角标。 -->
                     <Border HorizontalAlignment="Right" VerticalAlignment="Top"
                             Margin="4" Padding="6,2" Background="#FF4D4F"
                             CornerRadius="6"
@@ -102,11 +121,11 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="190" />
+            <ColumnDefinition Width="200" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <!-- 左侧栏:角色 -->
+        <!-- 左侧栏:分类(全部 + 板块根分类 + 角色) -->
         <Grid Grid.Column="0"
               Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
@@ -116,11 +135,11 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Margin="16,16,16,8" FontSize="18" FontWeight="Bold"
-                       l:Uids.Uid="ModStore_CharactersTitle" Text="角色" />
-            <ListView x:Name="CharacterListView" Grid.Row="1"
-                      ItemTemplate="{StaticResource CharacterItemTemplate}"
-                      ItemsSource="{x:Bind ViewModel.Characters}"
-                      SelectedItem="{x:Bind ViewModel.SelectedCharacter, Mode=TwoWay}"
+                       l:Uids.Uid="ModStore_CategoriesTitle" Text="分类" />
+            <ListView x:Name="SidebarListView" Grid.Row="1"
+                      ItemTemplate="{StaticResource SidebarItemTemplate}"
+                      ItemsSource="{x:Bind ViewModel.Filters}"
+                      SelectedItem="{x:Bind ViewModel.SelectedFilter, Mode=TwoWay}"
                       SelectionMode="Single">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
@@ -139,10 +158,12 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- 工具栏 -->
+            <!-- 工具栏:搜索 + 内容筛选 + 排序 + 下载管理(版式同 Mod 市场) -->
             <Grid Grid.Row="0" MinHeight="50" Padding="12,8" VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
@@ -157,13 +178,27 @@
                     </TextBox.Resources>
                 </TextBox>
 
-                <!-- 排序只对板块内容流有效:搜索端点不吃排序参数,所以按角色/关键词筛时置灰 -->
-                <ComboBox Grid.Column="1" Width="110" VerticalAlignment="Center"
-                          CornerRadius="6" Background="White"
+                <ComboBox Grid.Column="1" Width="120" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White" Margin="0,0,8,0"
+                          l:Uids.Uid="ModStore_ContentFilter"
+                          ItemsSource="{x:Bind ViewModel.ContentFilterOptions}"
+                          SelectedItem="{x:Bind ViewModel.SelectedContentFilter, Mode=TwoWay}" />
+
+                <!-- 排序只对板块内容流有效:搜索端点不吃排序参数,分类端点直接拒绝 _sSort,
+                     所以按分类/角色筛、或搜索时就置灰 -->
+                <ComboBox Grid.Column="2" Width="100" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White" Margin="0,0,8,0"
                           IsEnabled="{x:Bind ViewModel.CanSort, Mode=OneWay}"
-                          ToolTipService.ToolTip="排序仅对「全部」浏览有效；按角色或关键词查找时顺序由服务端决定"
+                          ToolTipService.ToolTip="排序仅对「全部」浏览有效；按分类、角色或关键词查找时顺序由服务端决定"
                           ItemsSource="{x:Bind ViewModel.SortOptions}"
                           SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}" />
+
+                <Button Grid.Column="3" Width="36" Height="36" VerticalAlignment="Center"
+                        ToolTipService.ToolTip="下载管理" l:Uids.Uid="ModStore_DownloadManager"
+                        Background="Transparent" BorderThickness="0" CornerRadius="6"
+                        Command="{x:Bind ViewModel.OpenDownloadManagerCommand}">
+                    <FontIcon FontSize="16" Glyph="&#xE896;" />
+                </Button>
             </Grid>
 
             <!-- 内容区 -->
