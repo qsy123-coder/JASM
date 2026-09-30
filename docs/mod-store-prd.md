@@ -84,7 +84,10 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 - [ ] 列表默认按 `_sSort=default` 拉取鸣潮板块（GameBanana game id **20357**）内容，只展示 `_sModelName == "Mod"` 的记录
 - [ ] 支持滚动加载更多，分页依据 `_aMetadata._bIsComplete`
 - [ ] 排序可选：默认（`_sSort=default`）、最新（`_sSort=new`）、最近更新（`_sSort=updated`）
-- [ ] 可按分类筛选，分类取自列表记录的 `_aRootCategory`（鸣潮板块的分类即角色名，实测如 `Hsin`、`UI`）
+- [ ] 左侧栏分三节：`全部` + 板块根分类（`Skins` / `Other·Misc` / `UI`，带服务端给的条目数）+ 角色表（带每角色计数）
+- [ ] 点根分类走**服务端**筛选（`Mod/Index` 的 `_aFilters[Generic_Category]`，见下节实测表）；点角色走搜索端点按角色名查（上游**没有**「列出板块子分类」的端点）
+- [ ] 排序下拉只在「全部」视图可用（分类端点拒绝 `_sSort`、搜索端点也不吃它），其余情形置灰
+- [ ] 卡片信息：预览图、标题、作者、相对时间、三项统计（浏览 / 点赞 / **评论**）、根分类、角色标签（无角色时不占位）、NSFW 角标
 - [ ] 搜索走 `Util/Search/Results`，结果按 `_sModelName` 过滤掉 Concept/Poll 等非 Mod 类型
 - [ ] 商店**不发出任何 Supabase 请求**（可在日志中断言）
 
@@ -161,11 +164,17 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 **Feature 1: 商店页面与浏览**
 
 - **Description**: 复用 Mod 市场布局的新页面，数据源为 GameBanana `apiv11`。
-- **User flow**: 点导航「Mod 商店」→ 默认列表加载 → 滚动加载更多 → 用搜索框/分类/排序筛选 → 点卡片开详情抽屉。
+- **User flow**: 点导航「Mod 商店」→ 左侧栏建好（`全部` + 根分类 + 角色，计数后台补）→ 默认列表加载 → 滚动加载更多 → 用搜索框 / 内容筛选 / 排序筛选 → 点卡片开详情抽屉。
+- **布局**（2026-09-30 与产品确认的版式）：左侧栏标题「分类」= `全部` + `Skins` / `Other·Misc` / `UI`（带条目数）+ 角色 A–Z（带条目数）；工具栏 = 搜索框 + 内容筛选下拉 + 排序下拉 + 下载管理按钮；卡片 250×340。
+- **与原版式的差异**（有意为之，不是漏做）：
+  - 版式上的第三个下拉「仅Mods」在商店里**没有可筛的东西** —— `Mod/Index` 与 Subfeed 的记录本来就全是 Mod，留着是个点了没反应的空控件。改成「内容筛选（隐藏 / 显示 NSFW）」，服务层 `IncludeAdultContent` 已有。
+  - 卡片上多了一块**角色标签**（版式里没有）：角色是商店的核心维度，根分类只有三个，光看分类分不出角色。
 - **Edge cases**:
   - GameBanana 不可达 / 返回非 JSON → 显示错误态与「重试」，**不**回退到 Mod 市场数据（数据独立的硬要求）。
   - 搜索结果里混入 Concept/Poll 等非 Mod 类型 → 按 `_sModelName` 过滤。
   - 列表返回的 `_aTags` 实测为空 → **不可**用标签做筛选维度。
+  - 本地角色数据读不出来（`characters.json` 缺失）→ 侧栏退化成「只有分类」，页面照常能看内容。
+  - 侧栏计数取不到 → 那一格**不显示数字**（不是显示 0）；计数是尽力而为的后台补齐，失败不阻塞页面。
 - **Error handling**: 所有解析失败退化为空列表 + 可重试的错误态，不抛异常到 UI 线程。
 
 **Feature 2: 详情与文件选择**
@@ -228,6 +237,27 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 | 文件列表 | `GET /apiv11/Mod/{id}/DownloadPage` | 项目内已有调用（`IApiGameBananaClient.GetModFilesInfoAsync`） |
 | 下载 | `GET /gamebanana.com/dl/{fileId}` | 项目内已有（`DownloadModAsync`）。`ApiModFileInfo` 已带 `Md5Checksum` |
 
+**分类筛选与计数（同日第二轮实测）** —— 侧栏「分类」那一节与卡片上的第三项统计就靠这几条：
+
+| 能力 | 端点 | 实测结论 |
+|---|---|---|
+| 按分类筛 | `GET /apiv11/Mod/Index?_nPage=1&_nPerpage=30&_aFilters[Generic_Game]=20357&_aFilters[Generic_Category]=29524` | ✅ **唯一可行的服务端分类筛选**。Subfeed 上**任何**分类参数都被忽略。`_aFilters` 下只有 `Generic_Game` / `Generic_Category` / `Generic_Submitter` 三个键存在（`Generic_Name` / `Generic_Text` 等一律 400） |
+| 分类端点分页 | 同上 `_nPerpage` | ✅ 这个端点**认 `_nPerpage`**（1 / 5 / 30 / 50 均可用，**100 → 400**）；`_nPage` 分页正确且不重叠。⚠️ 与 Subfeed（页大小定死 15、`perPage` 一族改不动）**行为不同**，两个端点要分别对待 |
+| 分类端点排序 | 同上 `_sSort` | ❌ **任何值都 400** —— 走分类路径时没有排序可用，UI 上把排序下拉置灰（`ModStoreViewModel.CanSort`） |
+| 板块 Mod 总数 | `Mod/Index?_nPage=1&_nPerpage=1&_aFilters[Generic_Game]=20357` | ✅ `_nRecordCount=3056`（整板块口径，与排序视图无关）。比 Subfeed 的总数可靠 —— 那个换个排序就从 3062 变 1333 |
+| 关键词命中数 | `Search/Results` 的 `_aMetadata._aSectionMatchCounts` | 取 `Mod` 项的 `_nMatchCount`；⚠️ **命中 0 时服务端不给这一项**（不是给 0），要按「有清单但没 Mod 项 = 0」处理，否则空结果会被当成「未知」而一直显示不出「没有找到」 |
+| 根分类清单 + 条目数 | `GET /apiv11/Game/20357/ProfilePage` | ✅ `_aModRootCategories[]` 带 `_idRow` + `_nItemCount`：`Skins` 29524/2815、`Other/Misc` 29493/155、`UI` 29496/84。**一次请求拿全**，不用翻列表去数 |
+| 子分类（角色）清单 | 无 | ❌ **没有这个端点**：`Game/{id}/Categories` 404、`Mod/Categories?_idGameRow=…` 400、`ModCategory/Index` 忽略游戏过滤按全局分页每页 5 条。侧栏的角色表因此来自**本地游戏数据**（`GameService.GetAllModdableObjectsAsCategory<ICharacter>()`，中文 `DisplayName` 排序） |
+| 评论数 | 三个列表端点的 `_nPostCount` | ✅ Subfeed / Search / Mod-Index **都给** —— 卡片上第三项统计（浏览 / 点赞 / 评论）可以稳定显示。⚠️ `_nDownloadCount` 仍然**只有详情页**有，卡片上不要放下载量 |
+| 角色字段的有无 | Subfeed vs Mod-Index 的 `_aSubCategory` | ⚠️ Subfeed 记录**经常整个没有这个键**（UI 类记录就是这样），而 Mod-Index 记录同时给 `_aSubCategory` 与 `_aGame`。角色字段必须可空，卡片上不占位 |
+
+**侧栏「分类」的设计决定**（据上表）：
+
+- `全部` 用 `Mod/Index` 的 `_nRecordCount`（3056）；三个根分类的数字零成本（ProfilePage 一次给全）。
+- **角色计数没有批量端点**，只能一个角色一个请求（每个约 35 KB）→ 并发限 2、可取消、会话内缓存；界面**先出名字**、数字后台逐个补，取不到就不显示数字（**不是**显示 0，那会读成「这个角色没有 mod」）。
+- 分类数字之和（2815+155+84=3054）与「全部」（3056）**口径不同**，差两条，不要互相推。
+- 分类路径一页取 30（`_nPerpage` 上限 50）；搜索端点页大小定死 15。
+
 **列表记录（Subfeed）可用字段**（实测全量）：
 `_idRow`、`_sModelName`、`_sName`、`_sProfileUrl`、`_tsDateAdded`、`_tsDateModified`、`_tsDateUpdated`、`_bHasFiles`、`_sVersion`、`_bIsObsolete`、`_aRootCategory`、`_aSubCategory`、`_aPreviewMedia`、`_aSubmitter`、`_nLikeCount`、`_nViewCount`、`_nPostCount`、`_bWasFeatured`、`_sInitialVisibility`、`_bHasContentRatings`、`_aTags`、`_bIsOwnedByAccessor`
 
@@ -236,7 +266,8 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 **四个必须写进实现的坑**：
 
 1. **NSFW 无法服务端过滤**：`_bShowNsfw=false` 参数实测**无效**（记录数 6090 → 6090，无变化）。列表侧唯一可靠信号是 **`_bHasContentRatings`**（布尔）。因此「默认隐藏」必须是**客户端过滤**。注意：详情页文本里出现的 "adult/NSFW content" 字样属于 `_aLicenseChecklist` 的许可条款文案，**不是** NSFW 标志，不要误用。
-2. **`_aTags` 两个端点行为不同**：Subfeed 恒为空数组（抽样 15 条全空，本次抓的 3 条也全空），但 **Search 会返回真值**（实测 `jinhsi: manuka`）。所以「按标签筛选」在**浏览视图**下不可行（搜索视图下或许可以，但两个视图行为不一致的筛选维度不要做）；「按角色筛选」要落在 `_aRootCategory` 上（鸣潮板块的分类就是角色名，实测 `Hsin`、`UI`、`Skins`）。
+2. **`_aTags` 两个端点行为不同**：Subfeed 恒为空数组（抽样 15 条全空，本次抓的 3 条也全空），但 **Search 会返回真值**（实测 `jinhsi: manuka`）。所以「按标签筛选」在**浏览视图**下不可行（搜索视图下或许可以，但两个视图行为不一致的筛选维度不要做）。
+   > **勘误（同日第二轮）**：这里原先写「`_aRootCategory` 的分类即角色名（实测 `Hsin`、`UI`、`Skins`）」—— **错了**。`_aRootCategory`（列表字段）只有 `Skins` / `Other-Misc` / `UI` 三个**根**分类；`Hsin` 来自**详情页**的 `_aCategory._sName`，那是**子**分类。两处字段名像，语义不同：列表记录的角色在 `_aSubCategory`，分类筛选请走 `Mod/Index` 的 `_aFilters[Generic_Category]`（见上表）。
 3. **列表与详情的字段不一致**：`_nDownloadCount` 只在详情页有；`_aCategory` 只在详情页有。列表里要用 `_aRootCategory`，别指望复用同一套模型。
 4. **分页与页大小都改不动**：参数是 `_nPage`（不是 `page`），页大小**固定 15**（`perPage` 一族全被忽略）。这带来两个后果：① 列表页大小不能照抄 Mod 市场的 24（那是 Supabase 侧自己定的一页 24 条）；② 一页 15 条里混着非 Mod 时，过滤完可能只剩几条 —— 「还有没有下一页」必须看服务端的 `_bIsComplete`，**不能**用「本页条目数 < 页大小」来判断。
 
@@ -258,7 +289,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 ### Performance
 
-- 首页加载 ≤ 2s（在正常网络下），列表走分页（每页 15–24）。
+- 首页加载 ≤ 2s（在正常网络下），列表走分页：浏览 / 搜索端点**页大小定死 15**（改不动），分类端点取 30（上限 50）。
 - 搜索输入做去抖（≥ 300ms），避免撞击 GameBanana 限流。
 - 复用现有 Polly 令牌桶限流；商店新增的请求量必须落在同一限流策略内。
 
@@ -286,17 +317,19 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 
 ### Phase 1: MVP（本 PRD 范围）
 
-1. 导航 + 商店页面骨架，布局复用 Mod 市场
-2. GameBanana 客户端扩展：列表（Subfeed）、搜索（Search/Results）、列表记录模型
-3. 浏览能力：分页、搜索、排序（默认/最新/最近更新）、按分类（角色）筛选
+1. 导航 + 商店页面骨架，布局复用 Mod 市场 — ✅ 已完成
+2. GameBanana 客户端扩展：列表（Subfeed）、搜索（Search/Results）、分类索引（Mod/Index）、根分类（ProfilePage）、列表记录模型 — ✅ 已完成
+3. 浏览能力：分页、搜索、排序（默认/最新/最近更新）、按根分类（服务端 `_aFilters[Generic_Category]`）与按角色（搜索端点）筛选、左侧栏分类与计数 — ✅ 已完成
 4. 详情抽屉：截图、作者、说明、统计、文件列表
 5. 公共下载件（进度 + 断点续传 + MD5 校验），**只给商店用**
 6. 下载管理器：串行队列 + 暂停/继续 + 取消 + 进度
 7. 一键部署：下载完成 → 零确认弹安装向导 → 写安装记录
 8. 本地安装索引 + 已装角标 + 可更新提示
-9. NSFW：设置页开关（默认隐藏）+ 客户端过滤
+9. NSFW：设置页开关（默认隐藏）+ 客户端过滤 — 页面内下拉已可用（会话级，未落盘；设置页开关未做）
 10. 跨游戏目录定位（读 WuWa 游戏级配置 + 未配置时的引导态）
-11. **Phase 1 内需收口的验证项**：枚举 `_sSort` 的点赞/下载量排序取值；确认分类筛选是否需要服务端参数（候选 `_idCategoryRow`）还是客户端过滤足够
+11. **Phase 1 内需收口的验证项**：
+    - ✅ 分类筛选已收口：服务端参数是 `_aFilters[Generic_Game]` + `[Generic_Category]`，走 `Mod/Index`（原先猜的 `_idCategoryRow` 是错的，会被静默忽略）
+    - ⏳ 仍待枚举：`_sSort` 的点赞 / 下载量排序取值（`Mod/Index` 不接受 `_sSort`，只能落在 Subfeed 的「全部」视图上）
 
 **MVP Definition**：用户能在 JASM 里搜到鸣潮 mod、点一下、装进游戏，且装过的东西 JASM 记得住。
 
@@ -305,7 +338,7 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 - 把 `AppUpdateDownloader` / `ModEnvInstallerService` 迁移到公共下载件，消除三份重复
 - 商店内卸载 / 回滚
 - 点赞/下载量排序（若 Phase 1 未收口）
-- 分类筛选服务端化，支持更细的分类树
+- 更细的分类树筛选（分类筛选本身已服务端化；上游没有「列出板块子分类」的端点，要做得自己维护一份 id 映射）
 
 ### Future Considerations
 
@@ -323,8 +356,8 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 | **GameBanana API 非官方契约**：上游已在讨论弃用，字段可能变 | 中 | 高 | 所有解析做防御式：缺字段退化为 null/空，绝不抛异常（沿用 `AppUpdateReleaseResolver` 的既有风格）；API 挂掉只影响商店页，不拖累 App |
 | **NSFW 只能客户端过滤**，且详情页没有干净的 NSFW 布尔字段 | 中 | 中 | 列表用 `_bHasContentRatings`；详情页另找可靠信号，找不到就在详情侧对成人内容做保守标注 |
 | **下载器抽取引入回归** | 低 | 高 | 本期公共件**只给商店用**，不动两条已实机验证的链路；公共件以 `ModEnvInstallerService` 的成熟形状为蓝本 |
-| **`_aTags` 为空导致「按角色筛选」质量不达标** | 中 | 中 | 角色筛选落在 `_aRootCategory`（实测即角色名）；若分类覆盖不全，退化为「分类筛选」并在文案上不承诺「角色全量可选」 |
-| **6090 条内容的分类靠客户端聚合**，可能刷不出完整分类清单 | 中 | 低 | 分类列表改为「碰到即收录 + 缓存」，不追求首屏完整；必要时 Phase 2 服务端化 |
+| **角色筛选靠「角色名当关键词搜」**，本地 `InternalName` 与 GameBanana 子分类名对不齐（如 `YangyangXuanling` vs `Yangyang: Xuanling`） | 中 | 中 | 分类（根分类）走服务端精确筛选不受影响；角色命中不齐时用户还能用搜索框自己搜 —— 文案上不承诺「角色全量可选」 |
+| **角色计数要一个角色一个请求**（约 35 KB / 个，五十多个角色） | 高 | 低 | 并发限 2 + 可取消 + 会话内缓存 + 拿不到就不显示数字；用户先看到内容，计数只是锦上添花 |
 | **跨游戏写配置的耦合**（商店读另一游戏的配置目录） | 中 | 中 | 封装成单一服务（如 `ModStoreTargetResolver`），只读 + 一次解析 + 明确失败态；未配置时禁用部署并引导 |
 
 ---
@@ -352,7 +385,10 @@ JASM **没有遥测**（不采集用户数据），以上指标以「本机日�
 - **`_sSort`**: 排序参数。**不是 `sort`** —— 用错名字会被静默忽略（无报错、结果不变），是本次最容易踩的坑。
 - **`_nPage`**: 分页参数。**不是 `page`** —— 同样会被静默忽略；页大小固定 15，`perPage` 一族都改不动。
 - **`_bHasContentRatings`**: 列表记录里唯一可靠的成人内容标志。
-- **`_aRootCategory`**: 列表记录的分类对象；鸣潮板块的分类即角色名。
+- **`_aRootCategory`**: **列表**记录上的**根**分类对象（鸣潮只有 `Skins` / `Other-Misc` / `UI`），且**没有 `_idRow`**，id 只能从 `_sProfileUrl` 末段抠。
+- **`_aSubCategory`**: **列表**记录上的**子**分类对象，鸣潮板块的子分类就是角色名（`Jinhsi` / `Qingxiao` …）。⚠️ 记录里**可以整个没有这个键**（UI 类 mod 就没有）。
+- **`Mod/Index`**: `apiv11` 的列表索引端点。本次实测它是**唯一**支持服务端分类筛选（`_aFilters[Generic_Game]` + `[Generic_Category]`）且认 `_nPerpage` 的列表端点；代价是不支持 `_sSort`（400）。
+- **`Generic_Category` 筛选**: 按分类 id 的服务端筛选，形如 `_aFilters[Generic_Category]=29524`。参数名写错（如 `_idCategoryRow`）不会报错，只是被静默忽略。
 - **WWMI**: Wuthering Waves Model Importer，鸣潮的 mod 加载框架（`d3d11.dll`）。
 - **一键部署**: 本 PRD 的核心交互 —— 下载完成即零确认弹出安装向导。
 
@@ -379,6 +415,24 @@ GET /apiv11/Util/Search/Results?_sSearchString=skin&_idGameRow=20357 → 200, 70
                                                              （一页 6 条里混着 Request / Question / Mod）
 GET /apiv11/Mod/722504/ProfilePage                         → _aCategory._sName="Hsin", _sInitialVisibility="hide"
 GET /apiv11/Mod/575376/ProfilePage                         → _aCategory._sName="UI",   _sInitialVisibility="show"
+```
+
+第二轮（分类筛选 / 计数）：
+
+```
+GET /apiv11/Mod/Index?_aFilters[Generic_Game]=20357                     → 200, _nRecordCount=3056（整板块）
+GET /apiv11/Mod/Index?...&_nPerpage=30                                   → 200, 30 条，_nPerpage=30（**该端点认页大小**）
+GET /apiv11/Mod/Index?...&_nPerpage=100                                  → 400（上限 50 有效）
+GET /apiv11/Mod/Index?...&_nPage=2                                       → 200，与第 1 页不重叠
+GET /apiv11/Mod/Index?...&_sSort=new                                     → 400（**该端点不支持排序**）
+GET /apiv11/Mod/Index?...&_aFilters[Generic_Category]=29524              → 200, _nRecordCount=2817（Skins）
+GET /apiv11/Mod/Index?...&_aFilters[Generic_Category]=46598              → 200, _nRecordCount=2（某角色子分类）
+GET /apiv11/Game/20357/Subfeed?...&_aFilters[Generic_Category]=29524     → 29524 被**静默忽略**（记录与不传时一致）
+GET /apiv11/Mod/Index?...&_aFilters[Generic_Name]=foo                    → 400（没有这个键）
+GET /apiv11/Game/20357/ProfilePage                                       → _aModRootCategories = [Skins 29524/2815, Other/Misc 29493/155, UI 29496/84]
+GET /apiv11/Game/20357/Categories                                        → 404（没有「列出板块子分类」的端点）
+GET /apiv11/ModCategory/Index                                            → 忽略游戏过滤，全局分页每页 5 条
+GET /apiv11/Util/Search/Results?_sSearchString=<q>&_idGameRow=20357      → _aSectionMatchCounts 里 Mod 项 = 命中数；**命中 0 时这一项不存在**
 ```
 
 ---
