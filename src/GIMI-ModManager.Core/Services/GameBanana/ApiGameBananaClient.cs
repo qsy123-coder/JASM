@@ -22,7 +22,12 @@ public sealed class ApiGameBananaClient(
     private readonly ResiliencePipeline _resiliencePipeline = resiliencePipelineProvider.GetPipeline(HttpClientName);
     public const string HttpClientName = nameof(IApiGameBananaClient);
 
-    private const string DownloadUrl = "https://gamebanana.com/dl/";
+    /// <summary>
+    /// 按文件 id 拼下载地址的前缀（<c>https://gamebanana.com/dl/{fileId}</c>）。
+    /// 公开是因为商店的下载队列也要用它（上游 <c>_sDownloadUrl</c> 缺失时的兜底）——
+    /// 这个字面量已经在这个仓库里出现过三处，新代码不该再多一处。
+    /// </summary>
+    public const string DownloadUrlPrefix = "https://gamebanana.com/dl/";
     private const string ApiUrl = "https://gamebanana.com/apiv11/Mod/";
     private const string HealthCheckUrl = "https://gamebanana.com/apiv11";
 
@@ -393,7 +398,7 @@ public sealed class ApiGameBananaClient(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modFileId, nameof(modFileId));
         ArgumentNullException.ThrowIfNull(destinationFile);
-        var downloadUrl = DownloadUrl + modFileId;
+        var downloadUrl = DownloadUrlPrefix + modFileId;
 
 
         using var response = await _httpClient
