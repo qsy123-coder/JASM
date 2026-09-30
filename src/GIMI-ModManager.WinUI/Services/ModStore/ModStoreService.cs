@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.ModStore;
 using GIMI_ModManager.Core.Services.GameBanana;
@@ -59,6 +60,129 @@ public sealed class ModStoreService(
     {
         return FetchAsync($"搜索「{query}」", character,
             (page, ct) => client.SearchGameModsAsync(ResolveGameId(), query, page, ct), startPage, cancellationToken);
+    }
+
+    /// <summary>
+    /// 分类视图一页取多少条。Subfeed 的页大小写死 15，但 <c>Mod/Index</c> 的 <c>_nPerpage</c> 有效，
+    /// 这里取 30：服务端已经按分类筛过了，客户端只剩 NSFW 一条过滤规则，页大一点能少翻几次。
+    /// </summary>
+    private const int CategoryPageSize = 30;
+
+    // ─── 计数（服务是单例，同一会话里只问接口一次）────────────────
+
+    /// <summary>
+    /// 角色名 → 命中数。「问过但没问到」也记成 null，免得每次进页面都重打一遍接口。
+    ///
+    /// 用 <see cref="ConcurrentDictionary{TKey,TValue}"/> 是因为侧栏的计数是**后台并发补**的
+    /// （见 <c>ModStoreViewModel.FillCharacterCountsAsync</c>），不是 UI 线程串行调用。
+    /// </summary>
+    private readonly ConcurrentDictionary<string, int?> _characterCounts =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private IReadOnlyList<ModStoreRootCategory>? _rootCategories;
+    private int? _allModCount;
+
+    /// <summary>
+    /// 按**分类**浏览：<c>Mod/Index?_aFilters[Generic_Game]&amp;[Generic_Category]</c>，
+    /// 服务端精确筛选（根分类 / 角色子分类 id 都吃）。
+    ///
+    /// 与 <see cref="SearchAsync"/> 的分工：那个是「按名字模糊找」，这个是「按分类精确定位」。
+    /// 分类 id 不像角色名那样会出现「本地表叫 YangyangXuanling、GameBanana 上叫 Yangyang: Xuanling」
+    /// 的错配 —— 只要 id 对得上就一定筛得准。
+    /// </summary>
+    public Task<ModStoreResult> BrowseCategoryAsync(int categoryId, int startPage,
+        CancellationToken cancellationToken = default)
+    {
+        return FetchAsync("分类浏览", null,
+            (page, ct) => client.GetGameModsByCategoryAsync(ResolveGameId(), categoryId, page, CategoryPageSize, ct),
+            startPage, cancellationToken);
+    }
+
+    /// <summary>
+    /// 板块的根分类（带条目数），供侧栏「分类」一节使用。**会话内缓存**（成功才缓存）。
+    /// </summary>
+    /// <returns>取不到时返回空表 —— 侧栏只剩「全部」，不影响看内容，所以不报错。</returns>
+    public async Task<IReadOnlyList<ModStoreRootCategory>> GetRootCategoriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_rootCategories is { } cached)
+            return cached;
+
+        try
+        {
+            var categories =
+                await client.GetGameRootCategoriesAsync(ResolveGameId(), cancellationToken).ConfigureAwait(false);
+
+            // null = 这次没取到，**不缓存**：下次进页面再试一次。
+            if (categories is null)
+                return [];
+
+            _rootCategories = categories;
+            return categories;
+        }
+        catch (InvalidOperationException)
+        {
+            // 当前游戏没有板块地址（ResolveGameId 抛的就是这个）。不缓存：配置随时可能补上。
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// 板块的 mod 总数（侧栏「全部」那一项的计数）。**会话内缓存**（成功才缓存）。
+    /// </summary>
+    /// <returns>取不到返回 null —— 界面就不显示数字，不显示假的 0。</returns>
+    public async Task<int?> GetAllModCountAsync(CancellationToken cancellationToken = default)
+    {
+        if (_allModCount is { } cached)
+            return cached;
+
+        try
+        {
+            var count = await client.GetGameModCountAsync(ResolveGameId(), cancellationToken).ConfigureAwait(false);
+            if (count is null)
+                return null;
+
+            _allModCount = count;
+            return count;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 按角色名问一次命中数（侧栏「角色」那一节的数字）。**会话内缓存**（含失败的 null）。
+    /// </summary>
+    /// <remarks>
+    /// 只能走搜索接口 —— 实测没有「按名字筛」的列表端点（<c>Mod/Index</c> 的 <c>_sName</c> 被忽略）。
+    /// 所以这是**模糊命中数**，不是该角色分类下的精确条目数；名字对不上时拿到 0，
+    /// 0 是真实结果（GameBanana 上确实没有），别当失败去重试。
+    /// </remarks>
+    public async Task<int?> GetCharacterModCountAsync(string gbName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(gbName))
+            return null;
+
+        var key = gbName.Trim();
+
+        if (_characterCounts.TryGetValue(key, out var cached))
+            return cached;
+
+        try
+        {
+            var count = await client.GetSearchModCountAsync(ResolveGameId(), key, cancellationToken)
+                .ConfigureAwait(false);
+
+            _characterCounts[key] = count;
+            return count;
+        }
+        catch (InvalidOperationException)
+        {
+            // 没有板块地址时不缓存：等配置补上还要能用。
+            return null;
+        }
     }
 
     /// <summary>
