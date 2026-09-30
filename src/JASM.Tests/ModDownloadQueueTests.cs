@@ -571,6 +571,32 @@ public class ModDownloadQueueTests : IDisposable
         Assert.Equal("某个 mod", request.ModName);
     }
 
+    [Fact]
+    public void FromStoreFile_KeepsTheDeploymentBits()
+    {
+        // 角色与 mod 页面地址下载时用不上，但**必须跟着请求走**：队列下完就把请求交给部署阶段，
+        // 那时界面早翻到别的 mod 上去了，回头再查「这条是谁的」是查不到的。
+        var file = StoreFile(fileId: 12345, downloadUrl: null);
+        var modPageUrl = new Uri("https://gamebanana.com/mods/658343");
+
+        var request = ModDownloadRequest.FromStoreFile(new GbModId(658343), file, "某个 mod", "Jinhsi", modPageUrl);
+
+        Assert.Equal("Jinhsi", request!.Character);
+        Assert.Equal(modPageUrl, request.ModPageUrl);
+    }
+
+    [Fact]
+    public void FromStoreFile_LeavesTheCharacterNullForUiMods()
+    {
+        // UI 类 mod 在 GameBanana 上没有子分类（实测）：角色得是 null，部署阶段据此退回「Others」。
+        var file = StoreFile(fileId: 12345, downloadUrl: null);
+
+        var request = ModDownloadRequest.FromStoreFile(new GbModId(575376), file, "某个 UI mod");
+
+        Assert.Null(request!.Character);
+        Assert.Null(request.ModPageUrl);
+    }
+
     // ── 脚手架 ──────────────────────────────────────────────
 
     private static readonly Uri DownloadUri = new("https://gamebanana.com/dl/1");
