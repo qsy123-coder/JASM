@@ -320,13 +320,7 @@ public sealed class ApiGameBananaClient(
     {
         try
         {
-            using var response = await SendRequest(requestUrl, cancellationToken).ConfigureAwait(false);
-
-            await using var contentStream =
-                await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-            var apiResponse = await JsonSerializer
-                .DeserializeAsync<ApiSubfeedResponse>(contentStream, cancellationToken: cancellationToken)
+            var apiResponse = await GetStoreJsonAsync<ApiSubfeedResponse>(requestUrl, cancellationToken)
                 .ConfigureAwait(false);
 
             return ModStorePage.FromApi(apiResponse);
@@ -339,6 +333,57 @@ public sealed class ApiGameBananaClient(
         catch (Exception e)
         {
             _logger.Warning(e, "获取 GameBanana 列表失败，商店页将按空态处理 | Url: {Url}", requestUrl);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 取一份 JSON 并反序列化。<c>SendRequest</c> 走的仍是同一条 Polly 通道（重试 + 限流）——
+    /// 商店这条链路只是把「失败降级成 null」的决定权留在各自的公开方法里。
+    /// </summary>
+    /// <returns>反序列化结果；响应体是 <c>null</c> 字面量时同样返回 null。</returns>
+    private async Task<T?> GetStoreJsonAsync<T>(Uri requestUrl, CancellationToken cancellationToken)
+        where T : class
+    {
+        using var response = await SendRequest(requestUrl, cancellationToken).ConfigureAwait(false);
+
+        await using var contentStream =
+            await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        return await JsonSerializer.DeserializeAsync<T>(contentStream, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 取一条 mod 的详情：两个端点并发，合成一个 <see cref="ModStoreDetail"/>。
+    ///
+    /// 两个请求都在同一个 try 里：**任一端失败就当详情整体失败**返回 null ——
+    /// 只有文件清单或只有简介的半份详情，比一句「加载失败，请重试」更让人困惑。
+    /// </summary>
+    public async Task<ModStoreDetail?> GetModStoreDetailAsync(GbModId modId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(modId);
+
+        try
+        {
+            var profileTask = GetStoreJsonAsync<ApiModProfile>(GetModInfoUrl(modId), cancellationToken);
+            var filesTask = GetStoreJsonAsync<ApiModFilesInfo>(GetModFilesInfoUrl(modId), cancellationToken);
+
+            await Task.WhenAll(profileTask, filesTask).ConfigureAwait(false);
+
+            return ModStoreDetail.TryCreate(await profileTask.ConfigureAwait(false),
+                await filesTask.ConfigureAwait(false));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 用户关掉抽屉/切到别的 mod 导致的取消不该被当成失败吞掉。
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "获取 GameBanana mod 详情失败，商店详情将按失败态处理 | ModId: {ModId}",
+                modId.ModId);
             return null;
         }
     }
