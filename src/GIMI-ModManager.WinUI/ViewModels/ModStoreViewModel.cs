@@ -47,6 +47,10 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _sidebarCts;
+    private CancellationTokenSource? _detailCts;
+
+    /// <summary>抽屉当前这条 mod 对应的列表记录 —— 重试时要从它重新开一次。</summary>
+    private ModStoreItem? _detailSource;
 
     /// <summary>正在重建侧栏列表 —— 期间的选中变化是内部行为，不是用户操作。</summary>
     private bool _rebuildingSidebar;
@@ -103,6 +107,15 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private bool _hasMorePages = true;
 
+    // ─── 详情抽屉 ──────────────────────────────────────────────
+
+    /// <summary>
+    /// 抽屉里正在看的那条。**非 null = 抽屉打开** —— 页面监听这个属性的变化去 Show/Hide，
+    /// 「关闭」就是把它置回 null（与市场页 <c>SelectedMod</c> 同一套做法）。
+    /// </summary>
+    [ObservableProperty]
+    private ModStoreDetailItem? _detailItem;
+
     // ─── 搜索 / 排序 / 内容筛选 ─────────────────────────────────
 
     [ObservableProperty]
@@ -152,9 +165,10 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     public void OnNavigatedFrom()
     {
-        // 离开页面就别再补计数/发搜索了 —— 那些请求的结果没人看，还占着接口。
+        // 离开页面就别再补计数/发搜索/补详情了 —— 那些请求的结果没人看，还占着接口。
         _sidebarCts?.Cancel();
         _searchCts?.Cancel();
+        _detailCts?.Cancel();
     }
 
     // ─── 属性变化 ──────────────────────────────────────────────
@@ -209,6 +223,67 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     [RelayCommand]
     private async Task RefreshAsync() => await ReloadAsync();
+
+    /// <summary>
+    /// 打开详情抽屉：先把卡片上已有的字段画出来（<see cref="ModStoreDetailItem.FromCard"/>），
+    /// 再补详情。这样点一下就有反应，而不是等两个请求回来才弹。
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenModDetail(ModStoreItem? mod)
+    {
+        if (mod is null)
+            return;
+
+        // 上一次的详情请求作废：用户已经在看别的 mod 了。
+        _detailCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _detailCts = cts;
+        _detailSource = mod;
+
+        var item = ModStoreDetailItem.FromCard(mod);
+        DetailItem = item;
+        item.IsLoading = true;
+
+        try
+        {
+            var detail = await _storeService.GetDetailAsync(mod.GbModId, cts.Token);
+
+            // 期间用户关了抽屉或点了别的 mod → 这次结果没人要，丢掉（别写进已换掉的那份）。
+            if (cts.Token.IsCancellationRequested || !ReferenceEquals(DetailItem, item))
+                return;
+
+            if (detail is null)
+            {
+                item.ErrorMessage = "详情加载失败，请重试";
+                return;
+            }
+
+            item.ApplyDetail(detail);
+        }
+        catch (OperationCanceledException)
+        {
+            // 关掉抽屉 / 换了 mod，正常。
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "Mod 商店详情加载失败 | ModId: {ModId}", mod.GbModId);
+            if (ReferenceEquals(DetailItem, item))
+                item.ErrorMessage = "详情加载失败，请重试";
+        }
+        finally
+        {
+            if (ReferenceEquals(DetailItem, item))
+                item.IsLoading = false;
+        }
+    }
+
+    /// <summary>抽屉里「重试」按钮：拿当前这条 mod 重新补一次详情。</summary>
+    [RelayCommand]
+    private Task RetryModDetail() => _detailSource is { } source ? OpenModDetail(source) : Task.CompletedTask;
+
+    /// <summary>关抽屉。置空而不是让面板自己 Collapsed —— 面板的状态（标签页/滚动）由 Show 重置。</summary>
+    [RelayCommand]
+    private void CloseDetailPanel() => DetailItem = null;
 
     /// <summary>
     /// 工具栏那个下载按钮。下载管理队列是 PRD Phase 1 第 6 项，还没做 ——
