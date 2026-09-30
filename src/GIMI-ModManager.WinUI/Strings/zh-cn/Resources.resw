@@ -2221,8 +2221,20 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModStore_Detail_OpenInBrowser.Text" xml:space="preserve">
     <value>查看 GameBanana 页面</value>
   </data>
-  <data name="ModStore_Detail_Download.Content" xml:space="preserve">
+  <data name="ModStore_Detail_Download.Text" xml:space="preserve">
     <value>下载选中文件</value>
+  </data>
+  <data name="ModStore_Card_Installed.Text" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="ModStore_Detail_Installed.Text" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="ModStore_Detail_Updatable.Text" xml:space="preserve">
+    <value>可更新</value>
+  </data>
+  <data name="ModStore_Detail_Update.Text" xml:space="preserve">
+    <value>更新到最新版本</value>
   </data>
   <data name="ModStore_Download_Title.Text" xml:space="preserve">
     <value>下载管理</value>
