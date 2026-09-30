@@ -46,6 +46,50 @@ public interface IApiGameBananaClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 按分类浏览板块：<c>apiv11/Mod/Index</c> + <c>_aFilters[Generic_Game]</c> / <c>[Generic_Category]</c>。
+    ///
+    /// 这是商店里**唯一能真正在服务端按分类筛**的端点（Subfeed 忽略分类参数，实测）：
+    /// 根分类（Skins/UI/Other-Misc，来自 <see cref="GetGameRootCategoriesAsync"/>）
+    /// 和角色子分类（<c>…/mods/cats/46598</c> 那类 id）都吃。
+    ///
+    /// ⚠️ 与 Subfeed 的两处差异：这里 <c>_nPerpage</c> **有效**（15/30/50 都行，100 报 400），
+    /// 且不吃 <c>_sSort</c>（任何排序值都报 400）—— 所以分类视图没有排序可选。
+    /// </summary>
+    /// <param name="gameId">GameBanana 板块 Id</param>
+    /// <param name="categoryId">分类 id（根分类或子分类都行）</param>
+    /// <param name="page">页码，从 1 开始</param>
+    /// <param name="perPage">页大小；null = 用端点默认（15）</param>
+    public Task<ModStorePage?> GetGameModsByCategoryAsync(GbGameId gameId, int categoryId, int page,
+        int? perPage = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 取板块的根分类清单（带条目数），供商店侧栏「分类」一节使用。
+    /// </summary>
+    /// <returns>解析后的分类；请求/反序列化失败返回 null（UI 就只显示「全部」）</returns>
+    public Task<IReadOnlyList<ModStoreRootCategory>?> GetGameRootCategoriesAsync(GbGameId gameId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 取板块的 mod 总数（<c>Mod/Index</c> 只要 metadata，<c>_nPerpage=1</c> 让响应尽量小）。
+    ///
+    /// 用它而不用 Subfeed 的 <c>_nRecordCount</c>：后者是**视图**的记录数（实测同一板块
+    /// <c>_sSort=updated</c> 只报 1333），拿它当「板块共 N 个 mod」会少报一半。
+    /// </summary>
+    /// <returns>总数；取不到返回 null</returns>
+    public Task<int?> GetGameModCountAsync(GbGameId gameId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 取搜索命中的 Mod 数（<c>_aMetadata._aSectionMatchCounts</c> 里 <c>Mod</c> 那一项）。
+    ///
+    /// 商店用它给侧栏每个角色标条目数：按名字查的唯一办法就是搜索（没有按名字筛的列表端点，
+    /// <c>Mod/Index</c> 的 <c>_sName</c> 实测被忽略）。注意它同时受 <c>_idGameRow</c> 约束，
+    /// 拿到的是**本板块内**的命中数。
+    /// </summary>
+    /// <returns>命中数；取不到返回 null</returns>
+    public Task<int?> GetSearchModCountAsync(GbGameId gameId, string searchQuery,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets the mod files info from the GameBanana API.
     /// </summary>
     /// <param name="modId">The Game banana's mod Id</param>
