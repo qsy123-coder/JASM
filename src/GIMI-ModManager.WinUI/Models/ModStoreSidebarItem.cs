@@ -45,8 +45,22 @@ public partial class ModStoreSidebarItem : ObservableObject
 
     public string DisplayName { get; init; } = string.Empty;
 
-    /// <summary>左侧的小图标（Segoe Fluent 字形）。</summary>
+    /// <summary>左侧的兜底字形（Segoe Fluent）—— 只有在没有 GameBanana 真图标时才显示。</summary>
     public string Glyph { get; init; } = FolderGlyph;
+
+    /// <summary>
+    /// GameBanana 的分类 / 角色图标（根分类来自板块主页，角色来自搜索记录）。null = 没有，
+    /// 界面显示 <see cref="Glyph"/> 兜底 —— 不是留一格空白。
+    ///
+    /// 可变：角色图标与条目数来自同一次搜索请求，是后台一个个补进来的
+    /// （见 <c>ModStoreViewModel.FillCountsAsync</c>），所以它跟着 <see cref="ItemCount"/> 一起晚到。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasIcon))]
+    private Uri? _iconUrl;
+
+    /// <summary>有没有真图。给 XAML 的 <c>BoolToVisibilityConverter</c> 用（判空逻辑放这儿，省一个转换器）。</summary>
+    public bool HasIcon => IconUrl is not null;
 
     /// <summary>
     /// 条目数。<b>null = 还不知道 / 没取到</b>（界面上就不显示数字），0 是真实结果，两者别混。
@@ -70,7 +84,9 @@ public partial class ModStoreSidebarItem : ObservableObject
         RootCategoryId = category.Id,
         DisplayName = category.Name,
         // 接口没给条目数时是负数（见 ModStoreRootCategory.ItemCount），按「未知」处理。
-        ItemCount = category.ItemCount >= 0 ? category.ItemCount : null
+        ItemCount = category.ItemCount >= 0 ? category.ItemCount : null,
+        // 根分类的图标随板块主页一次取回，是同步就有的（角色图标才需要等后台补）。
+        IconUrl = category.IconUrl
     };
 
     public static ModStoreSidebarItem FromCharacter(string gbName, string displayName) => new()
