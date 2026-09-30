@@ -253,7 +253,7 @@ public sealed class ApiGameBananaClient(
         return GetCountAsync(requestUrl, sectionModelName: null, cancellationToken);
     }
 
-    public Task<int?> GetSearchModCountAsync(GbGameId gameId, string searchQuery,
+    public async Task<GbSearchSummary?> GetSearchSummaryAsync(GbGameId gameId, string searchQuery,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(gameId);
@@ -263,7 +263,39 @@ public sealed class ApiGameBananaClient(
                                  $"?_sSearchString={Uri.EscapeDataString(searchQuery)}" +
                                  $"&_idGameRow={gameId}&_nPage=1");
 
-        return GetCountAsync(requestUrl, ApiSubfeedRecord.ModModelName, cancellationToken);
+        try
+        {
+            using var response = await SendRequest(requestUrl, cancellationToken).ConfigureAwait(false);
+
+            await using var contentStream =
+                await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            var apiResponse = await JsonSerializer
+                .DeserializeAsync<ApiSubfeedResponse>(contentStream, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (apiResponse is null)
+                return null;
+
+            // 图标只在这份记录里（搜索是侧栏唯一会打的「按名字」端点），所以顺手一起抠出来 ——
+            // 这正是这次取数存在的理由，见 GameBananaSubCategoryIcons 的说明。
+            var icon = GameBananaSubCategoryIcons.TryPick(apiResponse.Records, searchQuery);
+
+            var count = ReadSectionCount(apiResponse.Metadata, ApiSubfeedRecord.ModModelName);
+
+            // 两样都空才算整体失败：图标本来就不是每个角色都有（很多子分类没设过图），
+            // 那种情况下数字仍然有效，不能因为缺图标就说「没取到」。
+            return count is null && icon is null ? null : new GbSearchSummary(count, icon);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "获取 GameBanana 搜索摘要失败 | Url: {Url}", requestUrl);
+            return null;
+        }
     }
 
     /// <summary>
@@ -292,17 +324,9 @@ public sealed class ApiGameBananaClient(
             if (apiResponse?.Metadata is not { } metadata)
                 return null;
 
-            if (sectionModelName is null)
-                return metadata.RecordCount >= 0 ? metadata.RecordCount : null;
-
-            if (metadata.SectionMatchCounts is null)
-                return null;
-
-            // 命中数为 0 时服务端不会给这一项，所以「有清单但没有 Mod 项」= 0 条，不是未知。
-            var section = metadata.SectionMatchCounts
-                .FirstOrDefault(s => string.Equals(s.ModelName, sectionModelName, StringComparison.OrdinalIgnoreCase));
-
-            return section is { MatchCount: >= 0 } ? section.MatchCount : 0;
+            return sectionModelName is null
+                ? metadata.RecordCount >= 0 ? metadata.RecordCount : null
+                : ReadSectionCount(metadata, sectionModelName);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -313,6 +337,25 @@ public sealed class ApiGameBananaClient(
             _logger.Warning(e, "获取 GameBanana 计数失败 | Url: {Url}", requestUrl);
             return null;
         }
+    }
+
+    /// <summary>
+    /// 从 <c>_aMetadata._aSectionMatchCounts</c> 里读某个模型的命中数。
+    ///
+    /// **0 与 null 是两回事**：命中 0 时服务端干脆不给这一项，所以「有清单但没有 Mod 项」= 0 条
+    /// （真实结果），只有清单整个缺失才是「不知道」。侧栏里这两种显示得不一样。
+    ///
+    /// 搜索摘要与 <see cref="GetCountAsync"/> 共用这一处 —— 两处各写一份迟早会分叉成两种语义。
+    /// </summary>
+    private static int? ReadSectionCount(ApiSubfeedMetadata? metadata, string sectionModelName)
+    {
+        if (metadata?.SectionMatchCounts is null)
+            return null;
+
+        var section = metadata.SectionMatchCounts
+            .FirstOrDefault(s => string.Equals(s.ModelName, sectionModelName, StringComparison.OrdinalIgnoreCase));
+
+        return section is { MatchCount: >= 0 } ? section.MatchCount : 0;
     }
 
     ///
