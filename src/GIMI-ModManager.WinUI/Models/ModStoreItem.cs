@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using GIMI_ModManager.Core.ModStore;
 
 namespace GIMI_ModManager.WinUI.Models;
@@ -8,8 +9,12 @@ namespace GIMI_ModManager.WinUI.Models;
 /// 为什么不复用市场侧的 <c>ModMarketMod</c>：那个是 Supabase 表行（snake_case 列 + 网盘直链），
 /// 这个是 GameBanana 列表记录（Unix 秒时间戳 + 分类对象 + 没有下载量），来源与形状都不同 ——
 /// 合成一个类就得在每个属性上注明「哪种来源时它有值」，两个来源会互相牵制。
+///
+/// 映射出来的字段**建完就不变**（一条 GameBanana 记录就是那样），卡片在代码里手工搭出来、
+/// 绑定也是一次性的；唯一的例外是 <see cref="IsInstalled"/> —— 它不属于列表记录，而是本地状态，
+/// 装完之后可以不刷新列表就变，所以只有它是可观察的。
 /// </summary>
-public sealed class ModStoreItem
+public sealed partial class ModStoreItem : ObservableObject
 {
     /// <summary>GameBanana mod id —— 详情页、文件列表、下载都靠它。</summary>
     public string GbModId { get; init; } = string.Empty;
@@ -57,6 +62,17 @@ public sealed class ModStoreItem
     public Uri? ModPageUrl { get; init; }
 
     public DateTimeOffset? UpdatedAt { get; init; }
+
+    /// <summary>
+    /// 「已安装」角标（PRD Story 4）。**故意不放进 <see cref="FromMod"/>**：那个映射只认 GameBanana
+    /// 给的列表记录，而「装没装过」是本地的事（安装记录 + 那份 mod 目录还在不在，见
+    /// <see cref="ModStoreInstallStatus"/>）—— 页面取完数、把卡片加进列表之前判一次填上。
+    ///
+    /// 可观察是为了**装完立刻显示**：向导是独立窗口，装完时这一页还停在原地，
+    /// 部署服务的 <c>InstallRecorded</c> 会让页面把这一列重判一遍（见 ModStoreViewModel）。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isInstalled;
 
     /// <summary>相对时间文案；没有时间戳时是空串（卡片上就什么都不显示）。</summary>
     public string RelativeTime => UpdatedAt is { } time ? GetRelativeTime(time) : string.Empty;
