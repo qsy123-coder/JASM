@@ -510,8 +510,8 @@ public class ModStoreBrowseTests
         var raw = ProfilePage.ModRootCategories!;
         Assert.Equal(3, raw.Length);
 
-        // 响应里每条还带着 _nCategoryCount / _sUrl / _sIconUrl 等用不上的字段 ——
-        // DTO 只认自己要的三个，多出来的字段不能让反序列化出错。
+        // 响应里每条还带着 _nCategoryCount / _sUrl 等用不上的字段 ——
+        // DTO 只认自己要的四个，多出来的字段不能让反序列化出错。
         var mapped = raw.Select(ModStoreRootCategory.FromApi).OfType<ModStoreRootCategory>().ToArray();
 
         Assert.Equal(3, mapped.Length);
@@ -552,5 +552,186 @@ public class ModStoreBrowseTests
 
         Assert.NotNull(parsed);
         Assert.Null(parsed.ModRootCategories);
+    }
+
+    // ---- 卡片上的作者头像 --------------------------------------------------
+
+    /// <summary>
+    /// 作者头像来自列表记录自带的 <c>_aSubmitter._sAvatarUrl</c> —— 不必为它再打一次详情接口。
+    ///
+    /// 同一份 fixture 里两种取值都在，两种都要映射出来：
+    /// 真头像（<c>img/av/*</c>）与**默认头像**（<c>static/img/defaults/avatar.gif</c>，
+    /// 作者没设过头像时 GameBanana 给的就是它，而不是空值）—— 别把默认头像当成「缺失」判掉。
+    /// </summary>
+    [Fact]
+    public void ModAuthor_AvatarComesFromTheListRecord()
+    {
+        var withRealAvatar = Search.Records!
+            .Select(ModStoreMod.TryCreate)
+            .OfType<ModStoreMod>()
+            .First(m => m.AuthorAvatarUrl?.AbsolutePath.Contains("/img/av/") == true);
+
+        Assert.Equal("https://images.gamebanana.com/img/av/6679c24a9f53a.jpg",
+            withRealAvatar.AuthorAvatarUrl!.ToString());
+
+        var withDefaultAvatar = Subfeed.Records!
+            .Select(ModStoreMod.TryCreate)
+            .OfType<ModStoreMod>()
+            .First(m => m.AuthorAvatarUrl?.AbsolutePath.Contains("defaults/avatar") == true);
+
+        Assert.Equal("https://images.gamebanana.com/static/img/defaults/avatar.gif",
+            withDefaultAvatar.AuthorAvatarUrl!.ToString());
+    }
+
+    /// <summary>
+    /// 头像也是远端可控字符串，照预览图同一套规则校验：只认 https 的 <c>images.gamebanana.com</c>。
+    /// 不合法就映射成 null，卡片露出底色圆（而不是让别家的地址进 <c>ImageBrush</c>）。
+    /// </summary>
+    [Fact]
+    public void ModAuthor_AvatarIsValidated()
+    {
+        static Uri? AvatarOf(string? url) => ModStoreMod.TryCreate(new ApiSubfeedRecord
+        {
+            ModId = 1,
+            ModelName = ApiSubfeedRecord.ModModelName,
+            Name = "x",
+            Author = url is null ? null : new ApiAuthor { AuthorName = "a", AvatarImageUrl = url }
+        })!.AuthorAvatarUrl;
+
+        Assert.NotNull(AvatarOf("https://images.gamebanana.com/img/av/x.png"));
+
+        Assert.Null(AvatarOf("https://evil.example.com/avatar.png"));
+        Assert.Null(AvatarOf("http://images.gamebanana.com/img/av/x.png")); // 非 https
+        Assert.Null(AvatarOf(string.Empty));
+        Assert.Null(AvatarOf(null)); // 没有 _aSubmitter
+    }
+
+    // ---- 侧栏图标（根分类 + 角色）-----------------------------------------
+
+    /// <summary>
+    /// 侧栏根分类的图标随板块主页一次回来。顺带钉住「列表记录里 <c>_aRootCategory._sIconUrl</c>
+    /// 与板块主页给的是同一张图」—— 两处都能拿到，别为图标再找个新端点。
+    /// </summary>
+    [Fact]
+    public void RootCategories_CarryTheirIcons()
+    {
+        var mapped = ProfilePage.ModRootCategories!
+            .Select(ModStoreRootCategory.FromApi)
+            .OfType<ModStoreRootCategory>()
+            .ToArray();
+
+        Assert.All(mapped, category => Assert.NotNull(category.IconUrl));
+        Assert.All(mapped, category =>
+            Assert.Equal("images.gamebanana.com", category.IconUrl!.Host));
+
+        var uiFromProfilePage = mapped.Single(category => category.Name == "UI").IconUrl;
+        var uiFromListRecord = Subfeed.Records!
+            .Select(ModStoreMod.TryCreate)
+            .OfType<ModStoreMod>()
+            .Select(mod => mod.Category)
+            .OfType<ModStoreCategory>()
+            .First(category => category.Name == "UI")
+            .IconUrl;
+
+        Assert.Equal(uiFromProfilePage, uiFromListRecord);
+
+        // 图标缺失（或非法）时是 null —— 界面退回字形图标，不是抛异常。
+        Assert.Null(ModStoreRootCategory.FromApi(new ApiRootCategory { Id = 29524, Name = "Skins" })!.IconUrl);
+    }
+
+    /// <summary>
+    /// 分类图标托管在 <c>images.gamebanana.com</c>（与预览图同一个图床），**不在 gamebanana.com 主域**。
+    ///
+    /// 早先的实现按「图标应该跟页面同域」只认后一个 host，于是把真图标全丢了（<c>IconUrl</c> 恒为 null，
+    /// 侧栏因此一直显示字形图标）。这条就是那个 bug 的回归锁。
+    /// </summary>
+    [Fact]
+    public void CategoryIcon_AcceptsTheImageHostNotTheSiteHost()
+    {
+        var iconOnImageHost = ModStoreCategory.FromApi(new ApiSubfeedCategory
+        {
+            Name = "Jinhsi",
+            IconUrl = "https://images.gamebanana.com/img/ico/ModCategory/6683c65ae3201.png"
+        });
+
+        Assert.Equal("https://images.gamebanana.com/img/ico/ModCategory/6683c65ae3201.png",
+            iconOnImageHost!.IconUrl!.ToString());
+
+        Assert.Null(ModStoreCategory
+            .FromApi(new ApiSubfeedCategory { Name = "Jinhsi", IconUrl = "https://gamebanana.com/img/ico/x.png" })!
+            .IconUrl);
+
+        // 实测有记录的分类图标是空串（不是缺键）—— 按「没有」处理。
+        Assert.Null(ModStoreCategory
+            .FromApi(new ApiSubfeedCategory { Name = "Jinhsi", IconUrl = string.Empty })!
+            .IconUrl);
+    }
+
+    /// <summary>
+    /// 角色图标搭的是**侧栏补计数那次搜索**的便车：命中记录的 <c>_aSubCategory._sIconUrl</c>
+    /// 就是这个角色的图。所以不必为图标多打任何请求（侧栏五十多个角色，一角色一次已经够多）。
+    /// </summary>
+    [Fact]
+    public void CharacterIcon_IsPickedFromTheSearchRecords()
+    {
+        var icon = GameBananaSubCategoryIcons.TryPick(Search.Records, "Jinhsi");
+
+        Assert.Equal("https://images.gamebanana.com/img/ico/ModCategory/6683c65ae3201.png", icon!.ToString());
+    }
+
+    /// <summary>
+    /// 本地内部名与 GameBanana 子分类名并不总是一字不差（<c>YangyangXuanling</c> vs
+    /// <c>Yangyang: Xuanling</c>），所以比对前先归一化（只留字母数字、统一小写）。
+    /// </summary>
+    [Fact]
+    public void CharacterIcon_MatchesNamesThatDifferInPunctuation()
+    {
+        var records = new[]
+        {
+            new ApiSubfeedRecord
+            {
+                ModId = 1,
+                ModelName = ApiSubfeedRecord.ModModelName,
+                Name = "x",
+                SubCategory = new ApiSubfeedCategory
+                {
+                    Name = "Yangyang: Xuanling",
+                    IconUrl = "https://images.gamebanana.com/img/ico/ModCategory/yy.png"
+                }
+            }
+        };
+
+        Assert.Equal(records[0].SubCategory!.IconUrl,
+            GameBananaSubCategoryIcons.TryPick(records, "YangyangXuanling")!.ToString());
+
+        // 空白与大小写同样不该影响命中
+        Assert.NotNull(GameBananaSubCategoryIcons.TryPick(records, " yangyang xuanling "));
+    }
+
+    /// <summary>
+    /// 对不上就是 null —— 界面退回字形图标。**不能**退而求其次拿别的角色的图标顶上：
+    /// 那会在 Jinhsi 那一行显示别人的头像，比没有图标糟得多。
+    /// </summary>
+    [Fact]
+    public void CharacterIcon_DegradesToNull()
+    {
+        Assert.Null(GameBananaSubCategoryIcons.TryPick(Search.Records, "NotACharacterName"));
+        Assert.Null(GameBananaSubCategoryIcons.TryPick([], "Jinhsi"));
+        Assert.Null(GameBananaSubCategoryIcons.TryPick(null, "Jinhsi"));
+        Assert.Null(GameBananaSubCategoryIcons.TryPick(Search.Records, "   "));
+
+        // 子分类图标的实测取值里有空串：那条记录不算「找到了」，否则会把 null 当图标设进 Image.Source。
+        var blankIcon = new[]
+        {
+            new ApiSubfeedRecord
+            {
+                ModId = 1,
+                ModelName = ApiSubfeedRecord.ModModelName,
+                Name = "x",
+                SubCategory = new ApiSubfeedCategory { Name = "Jinhsi", IconUrl = string.Empty }
+            }
+        };
+
+        Assert.Null(GameBananaSubCategoryIcons.TryPick(blankIcon, "Jinhsi"));
     }
 }
