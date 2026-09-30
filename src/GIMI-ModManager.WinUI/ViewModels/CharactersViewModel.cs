@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkitWrapper;
+using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
@@ -46,6 +47,7 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
     private readonly ModPresetHandlerService _modPresetHandlerService;
     private readonly BusyService _busyService;
     private readonly ModRandomizationService _modRandomizationService;
+    private readonly CharacterPickerService _characterPickerService;
 
     public readonly GenshinProcessManager GenshinProcessManager;
     public readonly ThreeDMigtoProcessManager ThreeDMigtoProcessManager;
@@ -110,7 +112,7 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
         ModCrawlerService modCrawlerService, ModSettingsService modSettingsService,
         ModUpdateAvailableChecker modUpdateAvailableChecker, ModPresetHandlerService modPresetHandlerService,
         BusyService busyService, ILanguageLocalizer localizer, ModRandomizationService modRandomizationService,
-        AppUpdateViewModel appUpdateViewModel)
+        AppUpdateViewModel appUpdateViewModel, CharacterPickerService characterPickerService)
     {
         _gameService = gameService;
         _logger = logger.ForContext<CharactersViewModel>();
@@ -130,6 +132,7 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
         _busyService = busyService;
         _localizer = localizer;
         _modRandomizationService = modRandomizationService;
+        _characterPickerService = characterPickerService;
         AppUpdate = appUpdateViewModel;
 
         ElevatorService.PropertyChanged += (_, args) =>
@@ -1016,6 +1019,146 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
         {
             IsAddingMod = false;
         }
+    }
+
+    /// <summary>
+    /// 包被拖到「自动识别」检测区：解压 → 认出角色 → 交给安装向导。
+    /// 与卡片路径的区别就是<b>角色不是用户定的</b>，得从包名 / 包内目录名认出来。
+    /// </summary>
+    public async Task ModDroppedOnAutoDetectAreaAsync(IReadOnlyList<IStorageItem> storageItems)
+    {
+        if (IsAddingMod)
+        {
+            _logger.Warning("Already adding mod");
+            return;
+        }
+
+        if (storageItems.Count == 0)
+            return;
+
+        if (storageItems.Count > 1)
+        {
+            // 与卡片路径同一套说法：一次只处理一个包
+            NotificationManager.ShowNotification(
+                "Drag and drop called with more than one storage item, this is currently not supported", "",
+                TimeSpan.FromSeconds(5));
+            return;
+        }
+
+        try
+        {
+            IsAddingMod = true;
+
+            await _modDragAndDropService.AddDroppedPackageAsync(storageItems[0],
+                ResolveDroppedCharacterListAsync);
+        }
+        catch (ArchiveExtractionException e)
+        {
+            // 到这儿说明是「包本身就不行」（认角色失败不会抛异常，它在下面自己处理）
+            _logger.Warning("Dropped package could not be extracted: {Reason}", e.Reason);
+            ShowExtractionFailureNotification(e.Reason);
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "Error adding mod from the auto detect area");
+            NotificationManager.ShowNotification("Error adding mod", e.Message, TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            IsAddingMod = false;
+        }
+    }
+
+    /// <summary>
+    /// 认角色：给「原文件名 + 包内顶层目录名」打分，够自信就直接用，拿不准就弹候选框让用户选。
+    /// 返回 <c>null</c> = 认不出来 / 用户取消。
+    /// </summary>
+    private async Task<ICharacterModList?> ResolveDroppedCharacterListAsync(string fileName,
+        DragAndDropScanResult scanResult)
+    {
+        var ranked = CharacterNameMatcher.Rank(_gameService.GetAllModdableObjectsAsCategory<ICharacter>(),
+            CluesForCharacterMatch(fileName, scanResult),
+            new[]
+            {
+                _gameService.OtherCharacterInternalName,
+                _gameService.GlidersCharacterInternalName,
+                _gameService.WeaponsCharacterInternalName
+            });
+
+        if (CharacterNameMatcher.IsConfident(ranked))
+        {
+            _logger.Information("Dropped package '{FileName}' resolved to {Character}", fileName,
+                ranked[0].InternalName);
+
+            return FindModList(ranked[0].Character);
+        }
+
+        // 认不出来是**正常结果**，认错才是事故 —— 所以拿不准一律交给用户（见 CharacterNameMatcher 的注释）
+        _logger.Information("Dropped package '{FileName}' was not resolved confidently ({Count} candidates)",
+            fileName, ranked.Count);
+
+        var chosen = await _characterPickerService.PickAsync(ranked);
+        return chosen is null ? null : FindModList(chosen);
+    }
+
+    /// <summary>
+    /// 认角色用的线索：原文件名，以及<b>包内顶层目录名</b>。
+    /// 后者往往就是 <c>ModFilesName</c>（比如 <c>Xuanling_Pyroath</c>），比作者写成中文长标题的文件名更准。
+    /// </summary>
+    private static IEnumerable<string> CluesForCharacterMatch(string fileName, DragAndDropScanResult scanResult)
+    {
+        yield return fileName;
+
+        // 解压出来的内容在 JASM_TMP\<guid>\<原文件名>\ 下，包内顶层就是这一层
+        foreach (var directory in Directory.EnumerateDirectories(scanResult.ExtractedFolder.FullPath))
+            yield return Path.GetFileName(directory);
+    }
+
+    private ICharacterModList? FindModList(ICharacter character)
+    {
+        var modList = _skinManagerService.CharacterModLists
+            .FirstOrDefault(x => x.Character.InternalNameEquals(character));
+
+        if (modList is null)
+            _logger.Warning("No mod list found for character {Character}", character.InternalName.Id);
+
+        return modList;
+    }
+
+    /// <summary>
+    /// 解压失败按<b>原因</b>给不同的话：用户看到的「装不上」得能自解释（要么自助解决，要么知道下一步干嘛）。
+    /// 密码那两种原因正常到不了这里 —— 密码服务会一直问到成功或用户取消。
+    /// </summary>
+    private void ShowExtractionFailureNotification(ArchiveExtractionFailureReason reason)
+    {
+        var (titleUid, bodyUid, titleDefault, bodyDefault) = reason switch
+        {
+            ArchiveExtractionFailureReason.NotAnArchive => (
+                "ModDrop_NotArchiveTitle", "ModDrop_NotArchiveBody",
+                "This is not a mod archive JASM can read",
+                "JASM reads zip / rar / 7z files and WinRAR self-extracting exe files. You can also unpack it yourself and drop the folder onto the character's card."),
+            ArchiveExtractionFailureReason.Corrupt => (
+                "ModDrop_CorruptTitle", "ModDrop_CorruptBody",
+                "The archive could not be read",
+                "It looks damaged or incomplete. Try downloading it again."),
+            ArchiveExtractionFailureReason.EmptyOutput => (
+                "ModDrop_EmptyTitle", "ModDrop_EmptyBody",
+                "The archive contained nothing",
+                "Nothing came out of it - it may be incomplete, or the password may be wrong."),
+            ArchiveExtractionFailureReason.ToolFailed => (
+                "ModDrop_ToolFailedTitle", "ModDrop_ToolFailedBody",
+                "Extraction failed",
+                "The bundled 7-Zip could not handle this file. Antivirus software blocking it can also cause this."),
+            _ => (
+                "ModDrop_FailedTitle", "ModDrop_FailedBody",
+                "Could not add the mod",
+                "The package could not be unpacked.")
+        };
+
+        NotificationManager.ShowNotification(
+            _localizer.GetLocalizedStringOrDefault(titleUid, defaultValue: titleDefault),
+            _localizer.GetLocalizedStringOrDefault(bodyUid, defaultValue: bodyDefault),
+            TimeSpan.FromSeconds(10));
     }
 
     public async Task ModUrlDroppedOnCharacterAsync(CharacterGridItemModel characterGridItemModel, Uri uri)
