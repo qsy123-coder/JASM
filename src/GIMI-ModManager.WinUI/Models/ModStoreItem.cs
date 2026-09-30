@@ -24,6 +24,14 @@ public sealed partial class ModStoreItem : ObservableObject
     public string? AuthorName { get; init; }
 
     /// <summary>
+    /// 作者头像（GameBanana 的 <c>_aSubmitter._sAvatarUrl</c>）。**可空** —— 取不到就走卡片上的底色圆。
+    ///
+    /// 注意：作者没设过头像时 GameBanana 给的是默认头像 URL（不是空值），所以这里非 null
+    /// 不代表「作者上传过头像」，别拿它做什么个性化判断。
+    /// </summary>
+    public Uri? AuthorAvatarUrl { get; init; }
+
+    /// <summary>
     /// 角色名，来自 <c>_aSubCategory</c>。
     /// ⚠️ 不是每条记录都有：UI 类 mod 就没有角色（实测），所以可空，卡片上别硬占位。
     /// </summary>
@@ -84,6 +92,7 @@ public sealed partial class ModStoreItem : ObservableObject
             GbModId = mod.Id.ModId,
             Title = mod.Name,
             AuthorName = mod.AuthorName,
+            AuthorAvatarUrl = mod.AuthorAvatarUrl,
             Character = mod.Character,
             RootCategory = mod.Category?.Name,
             Version = mod.Version,
