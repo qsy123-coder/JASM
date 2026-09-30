@@ -159,6 +159,10 @@ public partial class App : Application
                 services.AddSingleton<AppUpdateManifestService>();
                 services.AddSingleton<AppUpdateDownloader>();
 
+                // 「有新版本 / 开始更新」的状态与动作。**必须是单例**：设置页与角色概览页两个入口
+                // 要看到同一份进度，且更新检查的订阅只该建一次（它俩都是 Transient，各自持有会各订阅一遍）。
+                services.AddSingleton<AppUpdateViewModel>();
+
                 services.AddSingleton<ImageHandlerService>();
                 services.AddSingleton<SelectedGameService>();
 
