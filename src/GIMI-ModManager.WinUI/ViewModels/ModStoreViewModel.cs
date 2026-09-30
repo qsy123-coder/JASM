@@ -297,17 +297,18 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
     private void OpenDownloadManager() => _downloadManager.TogglePanelCommand.Execute(null);
 
     /// <summary>
-    /// 详情抽屉里点了「下载选中文件」。入队后由下载面板接管（它会自动弹出来显示进度）。
+    /// 详情抽屉里点了「下载选中文件」。入队后由下载面板接管（它会自动弹出来显示进度）；
+    /// 本地归档里已经有这份文件时**不入队**，直接弹安装向导。
     /// </summary>
     [RelayCommand]
-    private void DownloadSelectedFile(ModStoreFileItem? file)
+    private async Task DownloadSelectedFileAsync(ModStoreFileItem? file)
     {
         // 抽屉已经关了 / 换了 mod 时不留残余动作。
         if (file is null || DetailItem is not { } detail)
             return;
 
         // 整份 detail 过去：除了 mod id，队列还要「下完装哪儿」（角色）与 mod 页面地址。
-        _downloadManager.EnqueueFromDetail(detail, file.Source);
+        await _downloadManager.EnqueueFromDetailAsync(detail, file.Source);
     }
 
     // ─── 侧栏 ──────────────────────────────────────────────────
