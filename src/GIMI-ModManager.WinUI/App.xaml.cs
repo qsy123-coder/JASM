@@ -8,6 +8,9 @@ using GIMI_ModManager.Core.Services.CommandService;
 using GIMI_ModManager.Core.Services.Downloading;
 using GIMI_ModManager.Core.Services.GameBanana;
 using GIMI_ModManager.Core.Services.ModPresetService;
+// 别名而不是 using 整个命名空间：Core.ModStore 里也有一个 ModStorePage（商店列表的分页模型），
+// 直接 using 会与 Views.ModStorePage 撞名，注册页面那行就编译不过了。
+using ModStoreInstallIndex = GIMI_ModManager.Core.ModStore.ModStoreInstallIndex;
 using GIMI_ModManager.WinUI.Activation;
 using GIMI_ModManager.WinUI.Configuration;
 using GIMI_ModManager.WinUI.Contracts.Services;
@@ -402,6 +405,17 @@ public partial class App : Application
                 services.AddTransient<ModStorePage>();
                 services.AddSingleton<ModStoreService>();
                 services.AddSingleton<ModStoreDeploymentService>();
+
+                // 本地安装索引：单例、进程内读一次（构造函数把文件读进内存，之后界面查角标不碰磁盘）。
+                //
+                // 路径直接拼 %LOCALAPPDATA%\JASM（与上面的下载暂存目录同一个根），**不用**
+                // ILocalSettingsService.ApplicationDataFolder —— 那个是**游戏级**的目录
+                // （ApplicationData_<游戏>），玩家切一次游戏就换一个，装过什么会跟着「消失」。
+                // 商店固定只服务鸣潮，记录也该与当前选中的游戏无关。
+                services.AddSingleton(sp => new ModStoreInstallIndex(
+                    sp.GetRequiredService<ILogger>(),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "JASM", "ModStoreInstalls.json")));
 
                 // 下载面板：单例 —— 下载是跨页面的（在商店里点了下载，切走再回来行还得在）。
                 services.AddSingleton<ModDownloadManagerViewModel>();
