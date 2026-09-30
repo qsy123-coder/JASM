@@ -15,6 +15,7 @@ public class ModDragAndDropService
     private readonly ILogger _logger;
     private readonly ModInstallerService _modInstallerService;
     private readonly IWindowManagerService _windowManagerService;
+    private readonly ArchivePasswordService _archivePasswordService;
 
 
     private readonly Notifications.NotificationManager _notificationManager;
@@ -22,11 +23,13 @@ public class ModDragAndDropService
     public event EventHandler<DragAndDropFinishedArgs>? DragAndDropFinished;
 
     public ModDragAndDropService(ILogger logger, Notifications.NotificationManager notificationManager,
-        ModInstallerService modInstallerService, IWindowManagerService windowManagerService)
+        ModInstallerService modInstallerService, IWindowManagerService windowManagerService,
+        ArchivePasswordService archivePasswordService)
     {
         _notificationManager = notificationManager;
         _modInstallerService = modInstallerService;
         _windowManagerService = windowManagerService;
+        _archivePasswordService = archivePasswordService;
         _logger = logger.ForContext<ModDragAndDropService>();
     }
 
@@ -71,8 +74,17 @@ public class ModDragAndDropService
         if (storageItem is StorageFile)
         {
             var scanner = new DragAndDropScanner();
-            var extractResult = scanner.ScanAndGetContents(storageItem.Path);
 
+            // 加密包（社区分发的 Mod 基本都是）要先拿到密码：用记住的那条试，不行就问用户。
+            // 密码只在这一行里过一道，不进日志、不进异常、不进通知。
+            var extractResult = await _archivePasswordService.ExtractAsync(
+                password => scanner.ScanAndGetContents(storageItem.Path, password));
+
+            if (extractResult is null) // 用户放弃输密码
+            {
+                scanner.CleanupWorkFolder(); // 别把刚建的空临时目录留在 %TEMP%
+                return null;
+            }
 
             installMonitor = await _modInstallerService.StartModInstallationAsync(
                 new DirectoryInfo(extractResult.ExtractedFolder.FullPath), modList);
