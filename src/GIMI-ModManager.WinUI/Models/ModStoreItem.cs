@@ -81,8 +81,12 @@ public sealed class ModStoreItem
         };
     }
 
-    /// <summary>与市场侧同一套文案口径（那边是 ModMarketMod.GetRelativeTime）—— 两处刻意保持一致的措辞。</summary>
-    private static string GetRelativeTime(DateTimeOffset time)
+    /// <summary>
+    /// 与市场侧同一套文案口径（那边是 ModMarketMod.GetRelativeTime）—— 两处刻意保持一致的措辞。
+    /// <c>internal</c> 而非 private：详情抽屉（<c>ModStoreDetailItem</c>）要复用同一套口径，
+    /// 卡片写「3天前」、抽屉写「2026-03-11」这种不一致最容易让人怀疑数据错了。
+    /// </summary>
+    internal static string GetRelativeTime(DateTimeOffset time)
     {
         var span = DateTimeOffset.UtcNow - time;
 
