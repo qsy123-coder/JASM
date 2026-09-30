@@ -560,11 +560,14 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
                 await throttle.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
-                    var count = await _storeService.GetCharacterModCountAsync(item.GbName!, token)
+                    var summary = await _storeService.GetCharacterSummaryAsync(item.GbName!, token)
                         .ConfigureAwait(false);
 
-                    if (!token.IsCancellationRequested)
-                        SetCount(target => ReferenceEquals(target, item), count);
+                    if (token.IsCancellationRequested)
+                        return;
+
+                    SetCount(target => ReferenceEquals(target, item), summary?.ModCount);
+                    SetIcon(target => ReferenceEquals(target, item), summary?.SubCategoryIconUrl);
                 }
                 finally
                 {
@@ -593,6 +596,22 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
         {
             foreach (var item in Filters.Where(predicate))
                 item.ItemCount = count;
+        });
+    }
+
+    /// <summary>
+    /// 与 <see cref="SetCount"/> 同一套：图标也是后台取回来的，晚到就晚填。
+    /// 取不到（接口没给 / 名字对不上）时**什么都不做** —— 界面上留着字形兜底，不留空格子。
+    /// </summary>
+    private void SetIcon(Func<ModStoreSidebarItem, bool> predicate, Uri? iconUrl)
+    {
+        if (iconUrl is null)
+            return;
+
+        App.MainWindow.DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (var item in Filters.Where(predicate))
+                item.IconUrl = iconUrl;
         });
     }
 
