@@ -2227,4 +2227,211 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="AppUpdate_IgnoreButton.Content" xml:space="preserve">
     <value>忽略此版本</value>
   </data>
+  <data name="Settings_Window.Text" xml:space="preserve">
+    <value>窗口</value>
+  </data>
+  <data name="Settings_Window_RememberSize.Content" xml:space="preserve">
+    <value>记住窗口大小</value>
+  </data>
+  <data name="Settings_Window_RememberSize.ToolTipService.ToolTip" xml:space="preserve">
+    <value>勾选后，JASM 退出时保存主窗口大小</value>
+  </data>
+  <data name="Settings_Window_RememberPosition.Content" xml:space="preserve">
+    <value>记住窗口位置</value>
+  </data>
+  <data name="Settings_Window_RememberPosition.ToolTipService.ToolTip" xml:space="preserve">
+    <value>勾选后，JASM 退出时保存主窗口位置</value>
+  </data>
+  <data name="Settings_GameSettingsNote.Text" xml:space="preserve">
+    <value>各项设置按所选游戏分别保存。</value>
+  </data>
+  <data name="Settings_GameDataSyncSectionHeader.Text" xml:space="preserve">
+    <value>游戏数据同步</value>
+  </data>
+  <data name="Settings_GameDataSync_LastSync.Text" xml:space="preserve">
+    <value>上次同步: </value>
+  </data>
+  <data name="Settings_GameDataSync_DataVersion.Text" xml:space="preserve">
+    <value>数据版本: </value>
+  </data>
+  <data name="Settings_GameDataSync_Status.Text" xml:space="preserve">
+    <value>状态: </value>
+  </data>
+  <data name="Settings_GameDataSync_CheckButton.Text" xml:space="preserve">
+    <value>检查并同步游戏数据</value>
+  </data>
+  <data name="Settings_GameDataSync_AutoSync.Content" xml:space="preserve">
+    <value>JASM 启动时自动检查更新</value>
+  </data>
+  <data name="Settings_GameDataSync_Description.Text" xml:space="preserve">
+    <value>从 GitHub 下载最新的游戏角色数据，包括新角色、NPC 和图片资源。自定义角色和 Mod 将被保留。</value>
+  </data>
+  <data name="Settings_Commands.Text" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="Settings_Commands_CreateCard.Header" xml:space="preserve">
+    <value>新建自定义命令</value>
+  </data>
+  <data name="Settings_Commands_CreateCard.Description" xml:space="preserve">
+    <value>可以定义命令（脚本），并在指定的 Mod 上运行</value>
+  </data>
+  <data name="Settings_Folders_Update.Content" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="Settings_Folders_Update.ToolTipService.ToolTip" xml:space="preserve">
+    <value>更新文件夹路径？</value>
+  </data>
+  <data name="Settings_Folders_ReorganizeMods.Content" xml:space="preserve">
+    <value>重新整理模组</value>
+  </data>
+  <data name="Settings_Folders_CleanModsFolder.Content" xml:space="preserve">
+    <value>清理模组文件夹</value>
+  </data>
+  <data name="Settings_Folders_DisableAllMods.Content" xml:space="preserve">
+    <value>禁用所有模组</value>
+  </data>
+  <data name="Settings_Folders_OneClickSetup.Content" xml:space="preserve">
+    <value>一键配置 Mod 环境</value>
+  </data>
+  <data name="Settings_Folders_Reset3DmigotoPath.Content" xml:space="preserve">
+    <value>重置 3Dmigoto 程序路径</value>
+  </data>
+  <data name="Settings_Folders_ResetGenshinPath.Content" xml:space="preserve">
+    <value>重置原神程序路径</value>
+  </data>
+  <data name="Settings_Folders_CharacterAsSeparate.Content" xml:space="preserve">
+    <value>将角色皮肤视为独立角色</value>
+  </data>
+  <data name="Settings_Folders_CacheDescription.Text" xml:space="preserve">
+    <value>使用 JASM 下载 Mod 时，它会自动缓存压缩包或 zip 文件。你可以为缓存目录指定一个以 GB 为单位的上限，JASM 会在启动时把缓存控制在该上限以内。</value>
+  </data>
+  <data name="Settings_Folders_OpenCacheFolder.Text" xml:space="preserve">
+    <value>打开缓存文件夹...</value>
+  </data>
+  <data name="Settings_Folders_CacheSizeLabel.Text" xml:space="preserve">
+    <value>当前 Mod 缓存大小（</value>
+  </data>
+  <data name="Settings_Folders_CacheSizeSeparator.Text" xml:space="preserve">
+    <value>）：</value>
+  </data>
+  <data name="Settings_About_Github.Content" xml:space="preserve">
+    <value>GitHub 仓库</value>
+  </data>
+  <data name="Settings_About_GameBanana.Content" xml:space="preserve">
+    <value>GameBanana 页面</value>
+  </data>
+  <data name="AppUpdate_UpdateButtonLabel.Text" xml:space="preserve">
+    <value>立即更新</value>
+  </data>
+  <data name="ElevatorStatus_NotRunning" xml:space="preserve">
+    <value>未运行</value>
+  </data>
+  <data name="ElevatorStatus_Running" xml:space="preserve">
+    <value>运行中</value>
+  </data>
+  <data name="ElevatorStatus_InitializingFailed" xml:space="preserve">
+    <value>初始化失败</value>
+  </data>
+  <data name="Settings_ExportDialog_KeepStructureTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>保持 JASM 的 Mod 文件夹结构，例如 角色/迪卢克/某个迪卢克皮肤</value>
+  </data>
+  <data name="Settings_ExportDialog_RemoveJasmTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>该操作会递归删除所有以 .JASM_ 开头的文件和文件夹</value>
+  </data>
+  <data name="Settings_ExportDialog_ChangeStatusTip.ToolTipService.ToolTip" xml:space="preserve">
+    <value>是否为导出的 Mod 添加或移除 'DISABLED_' 前缀</value>
+  </data>
+  <data name="SetModStatus_KeepCurrent" xml:space="preserve">
+    <value>保持当前状态</value>
+  </data>
+  <data name="SetModStatus_EnableAllMods" xml:space="preserve">
+    <value>启用所有 Mod</value>
+  </data>
+  <data name="SetModStatus_DisableAllMods" xml:space="preserve">
+    <value>禁用所有 Mod</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncIdle" xml:space="preserve">
+    <value>空闲</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncNone" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncNever" xml:space="preserve">
+    <value>从未同步</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncChecking" xml:space="preserve">
+    <value>正在检查...</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncOK" xml:space="preserve">
+    <value>同步成功</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncUpToDate" xml:space="preserve">
+    <value>已是最新</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncFailed" xml:space="preserve">
+    <value>同步失败</value>
+  </data>
+  <data name="SettingsVM_GameDataSyncNoRelease" xml:space="preserve">
+    <value>未找到数据包</value>
+  </data>
+  <data name="SettingsVM_ModEnvSetupFailedTitle" xml:space="preserve">
+    <value>Mod 环境配置失败</value>
+  </data>
+  <data name="SettingsVM_ModEnvSetupDoneTitle" xml:space="preserve">
+    <value>Mod 环境配置完成</value>
+  </data>
+  <data name="SettingsVM_ModEnvSetupDoneText" xml:space="preserve">
+    <value>路径已填入，路径设置未变化。</value>
+  </data>
+  <data name="ModEnv_Dialog.Title" xml:space="preserve">
+    <value>一键配置 Mod 环境</value>
+  </data>
+  <data name="ModEnv_Dialog.CloseButtonText" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="ModEnv_XxmiVersion.Text" xml:space="preserve">
+    <value>XXMI 版本</value>
+  </data>
+  <data name="ModEnv_ManualGameDir.Text" xml:space="preserve">
+    <value>未自动检测到鸣潮安装位置，请手动选择游戏目录。</value>
+  </data>
+  <data name="ModEnv_GameDirPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>例如：D:\Wuthering Waves</value>
+  </data>
+  <data name="ModEnv_Browse.Content" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="ModEnv_Redetect.Content" xml:space="preserve">
+    <value>重新检测</value>
+  </data>
+  <data name="ModEnv_InstallLocation.Text" xml:space="preserve">
+    <value>安装位置</value>
+  </data>
+  <data name="ModEnv_ChangeRoot.Content" xml:space="preserve">
+    <value>更改…</value>
+  </data>
+  <data name="ModEnv_UseDefaultRoot.Content" xml:space="preserve">
+    <value>用默认</value>
+  </data>
+  <data name="ModEnv_DetectedGameVersion.Text" xml:space="preserve">
+    <value>检测到游戏版本：</value>
+  </data>
+  <data name="ModEnv_BackupsTitle.Text" xml:space="preserve">
+    <value>版本备份</value>
+  </data>
+  <data name="ModEnv_BackupsDescription.Text" xml:space="preserve">
+    <value>每次切换 XXMI 版本前都会自动备份当时可用的版本，可从这里恢复。恢复前也会先备份当前版本。</value>
+  </data>
+  <data name="ModEnv_RestoreBackup.Content" xml:space="preserve">
+    <value>恢复此备份</value>
+  </data>
+  <data name="ModEnv_Cancel.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ModEnv_Start.Content" xml:space="preserve">
+    <value>开始配置</value>
+  </data>
+  <data name="ModEnv_TestLaunch.Content" xml:space="preserve">
+    <value>测试启动</value>
+  </data>
 </root>
