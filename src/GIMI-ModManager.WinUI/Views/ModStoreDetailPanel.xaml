@@ -282,6 +282,19 @@
                                 </Style>
                             </ListView.ItemContainerStyle>
                         </ListView>
+
+                        <!-- 下载**选中的那个**文件：多文件时由用户在上面自己挑(PRD 的要求，不自动挑)，
+                             这里只负责把挑中的交给下载队列。没有文件时按钮与清单一起收起 ——
+                             清单非空时 SelectedFile 一定有值(ApplyDetail 默认选中第一个活跃文件)。 -->
+                        <Button x:Name="DownloadButton" HorizontalAlignment="Stretch"
+                                CornerRadius="6" Click="DownloadButton_Click"
+                                Visibility="{Binding HasFiles, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon FontSize="13" Glyph="&#xE896;" />
+                                <TextBlock FontSize="12"
+                                           l:Uids.Uid="ModStore_Detail_Download" Text="下载选中文件" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
 
                     <!-- 图文描述 -->
