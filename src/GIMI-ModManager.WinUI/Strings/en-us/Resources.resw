@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -281,11 +281,17 @@
   <data name="Shell_ModStore.Content" xml:space="preserve">
     <value>Mod Store</value>
   </data>
-  <data name="ModStore_CharactersTitle.Text" xml:space="preserve">
-    <value>Characters</value>
+  <data name="ModStore_CategoriesTitle.Text" xml:space="preserve">
+    <value>Categories</value>
   </data>
   <data name="ModStore_SearchPlaceholder.PlaceholderText" xml:space="preserve">
     <value>Search mods...</value>
+  </data>
+  <data name="ModStore_ContentFilter.PlaceholderText" xml:space="preserve">
+    <value>Content Filter</value>
+  </data>
+  <data name="ModStore_DownloadManager.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Download Manager</value>
   </data>
   <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
     <value>Categories</value>
