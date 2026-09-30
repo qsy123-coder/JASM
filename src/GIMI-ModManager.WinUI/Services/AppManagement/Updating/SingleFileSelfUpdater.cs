@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
-using Newtonsoft.Json;
+using GIMI_ModManager.Core.Helpers;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Services.AppManagement.Updating;
@@ -21,9 +21,6 @@ public sealed record SingleFileSelfUpdateResult(bool Success, string? Error)
 /// </summary>
 public class SingleFileSelfUpdater
 {
-    private const string ReleasesApiUrl =
-        "https://api.github.com/repos/qsy123-coder/JASM/releases?per_page=2";
-
     private const string SingleFileAssetPrefix = "SingleFile_JASM_";
     private const string ExeName = "JASM - Just Another Skin Manager.exe";
 
@@ -82,35 +79,56 @@ exit 0
 ";
 
     private readonly ILogger _logger;
+    private readonly AppUpdateManifestService _appUpdateManifestService;
+    private readonly AppUpdateDownloader _downloader;
 
-    public SingleFileSelfUpdater(ILogger logger)
+    public SingleFileSelfUpdater(ILogger logger, AppUpdateManifestService appUpdateManifestService,
+        AppUpdateDownloader downloader)
     {
         _logger = logger.ForContext<SingleFileSelfUpdater>();
+        _appUpdateManifestService = appUpdateManifestService;
+        _downloader = downloader;
     }
 
     /// <summary>
     /// 检查是否有更新的单文件包；有则下载并交接给替换脚本。
     /// 返回 <see cref="SingleFileSelfUpdateResult.Success"/> 时调用方应退出应用，由替换脚本接管重启。
     /// </summary>
+    /// <param name="progress">
+    /// 下载进度（已落盘字节 / 总量 / 瞬时速度）。由调用方在 UI 线程上创建，回调因此回到 UI 线程。
+    /// </param>
     public async Task<SingleFileSelfUpdateResult> TryUpdateAsync(Version currentVersion,
-        CancellationToken cancellationToken = default)
+        IProgress<AppUpdateDownloadProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var (assetUrl, version) = await GetSingleFileAssetAsync(cancellationToken);
+            var release = (await _appUpdateManifestService.ResolveLatestAsync(cancellationToken)).Release;
 
-            if (assetUrl is null)
-                return SingleFileSelfUpdateResult.Fail(
-                    "未在 GitHub Releases 找到可用的单文件更新包（SingleFile_JASM_*.zip）。请到 https://github.com/qsy123-coder/JASM/releases 手动下载。");
+            if (release is null)
+                return SingleFileSelfUpdateResult.Fail("暂时查不到可用的更新版本，请稍后再试。");
+
+            if (!AppUpdateManifestParser.TryParseVersion(release.Version, out var version) || version is null)
+                return SingleFileSelfUpdateResult.Fail($"更新版本号无法识别（{release.Version}），请稍后再试。");
 
             if (version <= currentVersion)
                 return SingleFileSelfUpdateResult.Fail($"当前已是最新版本（v{currentVersion}）。");
 
-            // 1. 下载到临时目录
+            // 单文件包由清单的 kind 字段指定，缺省退回文件名前缀 —— 与亮徽标时用的是同一条发布记录，
+            // 所以不可能出现"徽标说 v2.31.0、下载的却是别的版本"。
+            var asset = AppUpdateManifestParser.FindAsset(release, AppUpdateAsset.KindSingleFile,
+                SingleFileAssetPrefix);
+
+            if (asset?.Url is null)
+                return SingleFileSelfUpdateResult.Fail(
+                    $"未找到可用的单文件更新包（{SingleFileAssetPrefix}*.zip）。请到 " +
+                    $"{_appUpdateManifestService.GetNotesUrl(release) ?? "https://github.com/qsy123-coder/JASM/releases"} 手动下载。");
+
+            // 1. 下载到临时目录（断点续传 + 活动超时 + 可选 SHA256 校验）
             var workDir = Path.Combine(Path.GetTempPath(), "JASM_SingleFile_Update");
             Directory.CreateDirectory(workDir);
             var zipPath = Path.Combine(workDir, $"SingleFile_JASM_{version}.zip");
-            await DownloadAsync(assetUrl, zipPath, cancellationToken);
+            await _downloader.DownloadAsync(asset.Url, zipPath + ".part", zipPath, asset.SizeBytes,
+                asset.Sha256, progress, cancellationToken);
 
             // 2. 解出单个 exe
             var stagedExe = Path.Combine(workDir, ExeName);
@@ -135,49 +153,6 @@ exit 0
             _logger.Error(e, "Single-file self update failed.");
             return SingleFileSelfUpdateResult.Fail($"更新失败：{e.Message}");
         }
-    }
-
-    private async Task<(string? Url, Version Version)> GetSingleFileAssetAsync(CancellationToken ct)
-    {
-        using var httpClient = CreateHttpClient();
-        var result = await httpClient.GetAsync(ReleasesApiUrl, ct);
-        if (!result.IsSuccessStatusCode)
-        {
-            _logger.Error("Failed to fetch releases. StatusCode: {StatusCode}", result.StatusCode);
-            return (null, new Version(0, 0, 0));
-        }
-
-        var text = await result.Content.ReadAsStringAsync(ct);
-        var releases = JsonConvert.DeserializeObject<GitHubRelease[]>(text) ?? Array.Empty<GitHubRelease>();
-
-        var latest = releases
-            .Where(r => !r.prerelease)
-            .Where(r => r.assets is { Length: > 0 })
-            .OrderByDescending(r => new Version(r.tag_name?.Trim('v') ?? "0.0.0"))
-            .FirstOrDefault();
-
-        if (latest is null)
-            return (null, new Version(0, 0, 0));
-
-        var version = new Version(latest.tag_name?.Trim('v') ?? "0.0.0");
-        var asset = latest.assets?.FirstOrDefault(a =>
-            a.name?.StartsWith(SingleFileAssetPrefix, StringComparison.CurrentCultureIgnoreCase) ?? false);
-
-        return (asset?.browser_download_url, version);
-    }
-
-    private async Task DownloadAsync(string url, string zipPath, CancellationToken ct)
-    {
-        _logger.Information("Downloading single-file update from {Url}", url);
-        using var httpClient = CreateHttpClient();
-        httpClient.DefaultRequestHeaders.Add("Accept", "application/octet-stream");
-
-        var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
-
-        await using var source = await response.Content.ReadAsStreamAsync(ct);
-        await using var target = File.Create(zipPath);
-        await source.CopyToAsync(target, ct);
     }
 
     private static void ExtractExe(string zipPath, string stagedExe)
@@ -243,30 +218,5 @@ exit 0
         {
             _logger.Warning(e, "Failed to delete {Path}", path);
         }
-    }
-
-    private static HttpClient CreateHttpClient()
-    {
-        var httpClient = new HttpClient(new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            MaxAutomaticRedirections = 3
-        });
-        httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
-        httpClient.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager-Update");
-        return httpClient;
-    }
-
-    private class GitHubRelease
-    {
-        public string? tag_name { get; set; }
-        public bool prerelease { get; set; }
-        public Asset[]? assets { get; set; }
-    }
-
-    private class Asset
-    {
-        public string? name { get; set; }
-        public string? browser_download_url { get; set; }
     }
 }
