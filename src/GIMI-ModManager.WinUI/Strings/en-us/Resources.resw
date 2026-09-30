@@ -536,4 +536,34 @@
   <data name="ModEnv_TestLaunch.Content" xml:space="preserve">
     <value>Test launch</value>
   </data>
+  <data name="ArchivePassword_NeedsTitle" xml:space="preserve">
+    <value>Password required</value>
+  </data>
+  <data name="ArchivePassword_WrongTitle" xml:space="preserve">
+    <value>Wrong password</value>
+  </data>
+  <data name="ArchivePassword_NeedsHint" xml:space="preserve">
+    <value>This archive is encrypted. Enter its password to continue.</value>
+  </data>
+  <data name="ArchivePassword_WrongHint" xml:space="preserve">
+    <value>That password did not work. Please try again.</value>
+  </data>
+  <data name="ArchivePassword_ClearedHint" xml:space="preserve">
+    <value>The saved password was cleared. Enter the password.</value>
+  </data>
+  <data name="ArchivePassword_Placeholder" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="ArchivePassword_Note" xml:space="preserve">
+    <value>The password is saved in this app's local settings and reused next time.</value>
+  </data>
+  <data name="ArchivePassword_ConfirmBtn" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ArchivePassword_CancelBtn" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ArchivePassword_ClearBtn" xml:space="preserve">
+    <value>Forget saved password</value>
+  </data>
 </root>
