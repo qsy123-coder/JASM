@@ -323,6 +323,27 @@
   <data name="ModStore_Detail_OpenInBrowser.Text" xml:space="preserve">
     <value>View on GameBanana</value>
   </data>
+  <data name="ModStore_Detail_Download.Content" xml:space="preserve">
+    <value>Download Selected File</value>
+  </data>
+  <data name="ModStore_Download_Title.Text" xml:space="preserve">
+    <value>Downloads</value>
+  </data>
+  <data name="ModStore_Download_Pause.Content" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="ModStore_Download_Resume.Content" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="ModStore_Download_Cancel.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ModStore_Download_CancelAll.Content" xml:space="preserve">
+    <value>Cancel All</value>
+  </data>
+  <data name="ModStore_Download_ClearFinished.Content" xml:space="preserve">
+    <value>Clear Finished</value>
+  </data>
   <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
     <value>Categories</value>
   </data>
