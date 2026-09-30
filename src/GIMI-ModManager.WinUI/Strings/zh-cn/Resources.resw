@@ -2212,4 +2212,19 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="Overlay_RefreshNow.Content" xml:space="preserve">
     <value>刷新</value>
   </data>
+  <data name="AppUpdate_NewVersionLabel.Text" xml:space="preserve">
+    <value>发现新版本</value>
+  </data>
+  <data name="AppUpdate_SeeWhatsNew.Text" xml:space="preserve">
+    <value>查看更新内容</value>
+  </data>
+  <data name="AppUpdate_ConfirmText.Text" xml:space="preserve">
+    <value>JASM 将退出并开始更新，是否继续？</value>
+  </data>
+  <data name="AppUpdate_ConfirmButton.Content" xml:space="preserve">
+    <value>立即更新</value>
+  </data>
+  <data name="AppUpdate_IgnoreButton.Content" xml:space="preserve">
+    <value>忽略此版本</value>
+  </data>
 </root>
