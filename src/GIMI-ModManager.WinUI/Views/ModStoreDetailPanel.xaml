@@ -204,6 +204,18 @@
                             <TextBlock FontSize="10" Foreground="White"
                                        l:Uids.Uid="ModStore_Detail_Obsolete" Text="已过时" />
                         </Border>
+                        <!-- 安装状态:两个角标可以同时亮(装着、但站上有新版)。
+                             判定在 Core 的 ModStoreInstallStatus,可更新只有到这一步(拿到文件清单)才算得出来。 -->
+                        <Border Padding="6,1" CornerRadius="4" Background="#FF107C10"
+                                Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock FontSize="10" Foreground="White"
+                                       l:Uids.Uid="ModStore_Detail_Installed" Text="已安装" />
+                        </Border>
+                        <Border Padding="6,1" CornerRadius="4" Background="#FF0078D4"
+                                Visibility="{Binding HasUpdate, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock FontSize="10" Foreground="White"
+                                       l:Uids.Uid="ModStore_Detail_Updatable" Text="可更新" />
+                        </Border>
                     </StackPanel>
 
                     <!-- 标签页 -->
@@ -285,14 +297,22 @@
 
                         <!-- 下载**选中的那个**文件：多文件时由用户在上面自己挑(PRD 的要求，不自动挑)，
                              这里只负责把挑中的交给下载队列。没有文件时按钮与清单一起收起 ——
-                             清单非空时 SelectedFile 一定有值(ApplyDetail 默认选中第一个活跃文件)。 -->
+                             清单非空时 SelectedFile 一定有值(ApplyDetail 默认选中第一个活跃文件)。
+
+                             已装且有新版时换个说法(「更新到最新版本」)：底下走的是同一条路，
+                             只是部署时会被就地更新到原来那一份上(见 ModStoreDeploymentService.ResolveModToUpdate)，
+                             而预选文件在 ApplyInstallStatus 里已经换成了判定所指的那个最新文件。 -->
                         <Button x:Name="DownloadButton" HorizontalAlignment="Stretch"
                                 CornerRadius="6" Click="DownloadButton_Click"
                                 Visibility="{Binding HasFiles, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon FontSize="13" Glyph="&#xE896;" />
                                 <TextBlock FontSize="12"
-                                           l:Uids.Uid="ModStore_Detail_Download" Text="下载选中文件" />
+                                           l:Uids.Uid="ModStore_Detail_Download" Text="下载选中文件"
+                                           Visibility="{Binding IsNotUpdatable, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <TextBlock FontSize="12"
+                                           l:Uids.Uid="ModStore_Detail_Update" Text="更新到最新版本"
+                                           Visibility="{Binding HasUpdate, Converter={StaticResource BoolToVisibilityConverter}}" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
