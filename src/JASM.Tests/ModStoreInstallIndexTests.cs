@@ -4,8 +4,9 @@ using Serilog;
 namespace JASM.Tests;
 
 /// <summary>
-/// 商店的本地安装索引。这里锁的是「已装判定不该说谎」这条底线：
-/// 没记录要说没装、目录没了也要说没装，而文件被改坏时**不能**把浏览与安装一起带崩。
+/// 商店的本地安装索引（只管存取）。这里锁的是「记录不能丢、也不能因为一条坏记录把商店带崩」：
+/// 写进去的要能读回来、同名的要覆盖而不是堆着、文件被改坏时要当空索引而不是抛。
+/// 「装没装 / 有没有新版」的判定在 <see cref="ModStoreInstallStatusTests"/>。
 /// </summary>
 public sealed class ModStoreInstallIndexTests : IDisposable
 {
@@ -86,23 +87,6 @@ public sealed class ModStoreInstallIndexTests : IDisposable
     public void Find_ReturnsNullWhenNothingWasInstalled()
     {
         Assert.Null(CreateIndex().Find("709792"));
-        Assert.False(CreateIndex().IsInstalled("709792"));
-    }
-
-    [Fact]
-    public async Task IsInstalled_TurnsFalseAfterTheFolderIsDeleted()
-    {
-        var folder = CreateInstalledFolder();
-        var index = CreateIndex();
-        await index.UpsertAsync(Record("709792", folder));
-
-        Assert.True(index.IsInstalled("709792"));
-
-        // 用户自己把这个 mod 删了：记录还在（我们没理由猜他是删了还是挪了），但角标不能再说「已安装」。
-        Directory.Delete(folder, recursive: true);
-
-        Assert.False(index.IsInstalled("709792"));
-        Assert.NotNull(index.Find("709792"));
     }
 
     [Fact]
