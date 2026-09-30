@@ -8,6 +8,7 @@ using GIMI_ModManager.WinUI.ViewModels.SubVms;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Views;
@@ -89,6 +90,10 @@ public sealed partial class CharactersPage : Page
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
 
+        // 压在卡片上就让毛玻璃退让 —— 落在卡片上时角色是卡片说了算，而提示层写着「松手自动识别」，
+        // 挡着的话用户既看不清自己压的是哪张卡，也被那行字带偏（见 PageRoot_OnDrop 的注释）
+        HideAutoDetectArea();
+
         var gridItem = ((Grid)sender);
         SetGridDropHereVisibility(gridItem, Visibility.Visible);
     }
@@ -107,6 +112,9 @@ public sealed partial class CharactersPage : Page
 
         if (((Grid)sender).DataContext is CharacterGridItemModel characterGridItem)
         {
+            // 记一笔落点角色：认错角色（压到了旁边的卡）事后只能靠这条日志分辨
+            Log.Information("Drop on character card: {Character}", characterGridItem.Character.InternalName.Id);
+
             var urlFormats = new[] { "Text", "UniformResourceLocatorW", "UniformResourceLocator" };
             if (urlFormats.All(format => e.DataView.Contains(format)))
             {
@@ -134,18 +142,17 @@ public sealed partial class CharactersPage : Page
     private void PageRoot_OnDragEnter(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
-        ShowAutoDetectArea();
+        UpdateAutoDetectArea(e);
     }
 
     /// <summary>
-    /// DragOver 每次指针移动都会来一发。留着它是为了兜住这种情况：指针挪到角色卡片上方时，
-    /// 根 Grid 可能先收到一次 DragLeave（拖拽事件会在子元素之间来回冒），提示层就灭了 ——
-    /// 靠这一手补回来。显示是幂等的，多来几次没有代价。
+    /// DragOver 每次指针移动都会来一发。除了兜住「拖拽事件在子元素之间来回冒」导致的误灭，
+    /// 主要靠它把状态纠回来：拖拽中指针一直在动，所以每一动都重新判一次压在卡片上还是空白处。
     /// </summary>
     private void PageRoot_OnDragOver(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
-        ShowAutoDetectArea();
+        UpdateAutoDetectArea(e);
     }
 
     private void PageRoot_OnDragLeave(object sender, DragEventArgs e) => HideAutoDetectArea();
@@ -155,8 +162,14 @@ public sealed partial class CharactersPage : Page
     ///
     /// <para>
     /// 提示层是 <c>IsHitTestVisible="False"</c> 的，接不到事件，所以真正的落点是
-    /// 「列表空白处 → 冒泡到页面根 Grid」。卡片那条路会在自己的 Drop 里把事件标成已处理
-    /// （按落点那张卡片的角色装），到不了这里。
+    /// 「列表空白处 → 冒泡到页面根 Grid」。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>为什么这里还要自己判一次「压没压在卡片上」</b>：卡片那条路只在自己的 Drop 里把事件标成
+    /// <c>Handled</c>，而拖拽事件的 Handled 在 AllowDrop 链上未必拦得住冒泡。一旦漏到这里，
+    /// 同一份包就会「卡片装进 A（用户瞄的角色）+ 自动识别认出 B」—— 一次拖拽装进两个角色，
+    /// 用户看到的是「我明明拖到 X 上，Y 里也冒出来一份」。所以这里再兜一道：落点在卡片上就整件事归卡片。
     /// </para>
     /// </summary>
     private async void PageRoot_OnDrop(object sender, DragEventArgs e)
@@ -164,10 +177,55 @@ public sealed partial class CharactersPage : Page
         e.Handled = true;
         HideAutoDetectArea();
 
+        if (IsPointerOverCharacterCard(e))
+        {
+            Log.Information("A drop on the page root was over a character card; the card path owns it");
+            return;
+        }
+
         var storageItems = await e.DataView.GetStorageItemsAsync();
-        Log.Information("Auto detect drop: {ItemCount} item(s)", storageItems.Count);
+        Log.Information("Auto detect drop on the page root: {ItemCount} item(s)", storageItems.Count);
 
         await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
+    }
+
+    /// <summary>
+    /// 指针压在角色卡片上 → 收起毛玻璃（落点角色由卡片定，提示层只会挡视线、还会被
+    /// 「松手自动识别」那行字带偏）；在列表空白处 → 亮出来，那里的落下确实走自动识别。
+    ///
+    /// <para>
+    /// 每次都从事件本身重判，不靠 Enter/Leave 记账 —— 拖拽事件在父子元素之间来回冒，
+    /// 记账会飘（上一版就是因此加了这个每次 DragOver 都重判的兜底）。
+    /// </para>
+    /// </summary>
+    private void UpdateAutoDetectArea(DragEventArgs e)
+    {
+        if (IsPointerOverCharacterCard(e))
+            HideAutoDetectArea();
+        else
+            ShowAutoDetectArea();
+    }
+
+    /// <summary>
+    /// 这一发拖拽事件是不是发生在某张角色卡片上：拖拽事件的 <c>OriginalSource</c> 就是指针底下的元素，
+    /// 顺着它往上找有没有 <c>DataContext</c> 是 <see cref="CharacterGridItemModel" /> 的祖先 —— 那就是卡片。
+    /// </summary>
+    private bool IsPointerOverCharacterCard(DragEventArgs e)
+    {
+        var current = e.OriginalSource as DependencyObject;
+
+        while (current is not null)
+        {
+            if (current is FrameworkElement { DataContext: CharacterGridItemModel })
+                return true;
+
+            if (ReferenceEquals(current, this))
+                break;
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private void ShowAutoDetectArea() => AutoDetectOverlay.Visibility = Visibility.Visible;
