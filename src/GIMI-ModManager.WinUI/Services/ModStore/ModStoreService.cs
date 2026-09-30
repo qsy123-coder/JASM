@@ -77,12 +77,15 @@ public sealed class ModStoreService(
     // ─── 计数（服务是单例，同一会话里只问接口一次）────────────────
 
     /// <summary>
-    /// 角色名 → 命中数。「问过但没问到」也记成 null，免得每次进页面都重打一遍接口。
+    /// 角色名 → 搜索摘要（命中数 + 角色图标）。
+    ///
+    /// 「问过但没问到」也记成 null，免得每次进页面都重打一遍接口。图标与计数来自**同一个**搜索请求，
+    /// 所以它们必须一起缓存 —— 分开存会出现「数字有了但图标每次重问」的荒唐情况。
     ///
     /// 用 <see cref="ConcurrentDictionary{TKey,TValue}"/> 是因为侧栏的计数是**后台并发补**的
-    /// （见 <c>ModStoreViewModel.FillCharacterCountsAsync</c>），不是 UI 线程串行调用。
+    /// （见 <c>ModStoreViewModel.FillCountsAsync</c>），不是 UI 线程串行调用。
     /// </summary>
-    private readonly ConcurrentDictionary<string, int?> _characterCounts =
+    private readonly ConcurrentDictionary<string, GbSearchSummary?> _characterSummaries =
         new(StringComparer.OrdinalIgnoreCase);
 
     private IReadOnlyList<ModStoreRootCategory>? _rootCategories;
@@ -158,14 +161,16 @@ public sealed class ModStoreService(
     }
 
     /// <summary>
-    /// 按角色名问一次命中数（侧栏「角色」那一节的数字）。**会话内缓存**（含失败的 null）。
+    /// 按角色名问一次搜索摘要（侧栏「角色」那一节的数字与图标）。**会话内缓存**（含失败的 null）。
     /// </summary>
     /// <remarks>
     /// 只能走搜索接口 —— 实测没有「按名字筛」的列表端点（<c>Mod/Index</c> 的 <c>_sName</c> 被忽略）。
     /// 所以这是**模糊命中数**，不是该角色分类下的精确条目数；名字对不上时拿到 0，
     /// 0 是真实结果（GameBanana 上确实没有），别当失败去重试。
+    ///
+    /// 图标也来自这次请求：搜索记录带的子分类图标就是这个角色的图（见 <c>GameBananaSubCategoryIcons</c>）。
     /// </remarks>
-    public async Task<int?> GetCharacterModCountAsync(string gbName,
+    public async Task<GbSearchSummary?> GetCharacterSummaryAsync(string gbName,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(gbName))
@@ -173,16 +178,16 @@ public sealed class ModStoreService(
 
         var key = gbName.Trim();
 
-        if (_characterCounts.TryGetValue(key, out var cached))
+        if (_characterSummaries.TryGetValue(key, out var cached))
             return cached;
 
         try
         {
-            var count = await client.GetSearchModCountAsync(ResolveGameId(), key, cancellationToken)
+            var summary = await client.GetSearchSummaryAsync(ResolveGameId(), key, cancellationToken)
                 .ConfigureAwait(false);
 
-            _characterCounts[key] = count;
-            return count;
+            _characterSummaries[key] = summary;
+            return summary;
         }
         catch (InvalidOperationException)
         {
