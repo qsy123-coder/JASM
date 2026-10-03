@@ -26,8 +26,8 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 
 | 文件 | 内容要求 |
 |---|---|
-| `xxmi-<版本>.zip` | XXMI 注入器框架包，**4 个文件平铺在根**：`3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` / `Manifest.json`。JASM 会把这 4 个文件同时写入 XXMI 根目录和 `Resources\Packages\XXMI\`（后者是启动器读版本号的地方），缺任一个都判「需修复」 |
-| `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」） |
+| `xxmi-<版本>.zip` | XXMI 注入器框架包，**4 个文件平铺在根**：`3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` / `Manifest.json`。JASM 把这 4 个文件写入 XXMI 根目录与 `Resources\Packages\XXMI\`，并在收尾把后两个 dll 部署进 MI 文件夹（`<根>\WWMI\`，**游戏真正加载的那份**），缺任一个都判「需修复」 |
+| `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」）。⚠️ 包里那份 `d3d11.dll` 会被框架部署覆盖成 JASM 管理的 XXMI 版本 —— 它只是为了让校验通过，别指望它生效、也别为「对齐版本」反复重打这个包 |
 | `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）离线包，由官方 Portable 包打出，见下节「打 launcher 包」 |
 | `version.json` | 版本清单，见下节 |
 | `xxmi-versions.json` | **可选**。可选 XXMI 版本目录，让用户在向导里选版本 / 回退，见「生成 xxmi-versions.json」 |
@@ -193,9 +193,11 @@ python Build/PackXxmiVersions.py --base-url https://<你的桶域名>/modenv/
 > 那节同源）打进可公开下载的包里。**不要**为了少一个版本而放宽这个断言。
 > （`Manifest.json` 是唯一被放进来的白名单外延伸文件：它带 `signatures` 是**公开**的验签数据，不是私钥。）
 
-> ⚠️ **`Manifest.json` 不能省**。XXMI 的框架在磁盘上有**两份**：XXMI 根目录（游戏实际加载的）和
-> `Resources\Packages\XXMI\`（**启动器显示版本号的那份**）。少了 `Manifest.json`，JASM 换完 dll
-> 启动器上的版本号也不会变——「回退到 1.0.5 后启动器还显示 1.1.7」就是这么来的。
+> ⚠️ **`Manifest.json` 不能省**。XXMI 的框架在磁盘上有**三处**（逐处说明见 `mod-env-hand-test.md` §14.2 的表）：
+> XXMI 根目录（历史布局，实测已无人读）、`Resources\Packages\XXMI\`（启动器眼里的「已安装包」，
+> **所有部署都从它派生**）、以及 **MI 文件夹 `<根>\WWMI\`（游戏真正加载的注入器；启动器 2.3.x 起还拿它
+> 显示版本号）**。少了 `Manifest.json`，JASM 换完 dll 启动器上的版本号也不会变——「回退到 1.0.5 后启动器
+> 还显示 1.1.7」就是这么来的。
 > 脚本另外会断言包内 `Manifest.json` 的 `version` 与包版本一致、`signatures` 非空，不一致直接退出。
 
 > ⚠️ **同一个 `xxmi-<版本>.zip` 换了内容，就必须同步改 `version.json` 里 xxmi 的 `Sha256`/`SizeBytes`**。
