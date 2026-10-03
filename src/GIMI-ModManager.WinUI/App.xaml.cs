@@ -135,8 +135,6 @@ public partial class App : Application
                 services.AddSingleton<NotificationManager>();
                 services.AddSingleton<ModNotificationManager>();
                 services.AddTransient<ModDragAndDropService>();
-                // 加密 Mod 压缩包的密码：读回来 / 问用户 / 记住（拖入 Mod 包那条链路用，见 ModDragAndDropService）
-                services.AddSingleton<ArchivePasswordService>();
                 // 认不出拖进来的包是谁的时，摆候选角色让用户点一个
                 services.AddSingleton<CharacterPickerService>();
                 services.AddSingleton<CharacterSkinService>();
