@@ -114,7 +114,7 @@ public class ModEnvInstallerService
     /// such as the launcher's Config.json across package updates.
     /// <paramref name="mirrorTargetDirs"/> lists extra absolute folders that receive a second copy of the
     /// same payload. Used for the XXMI base package, which the official layout keeps both at the XXMI root
-    /// and under <c>Resources\Packages\XXMI</c> (the copy the XXMI Launcher reads its version from).
+    /// and under <c>Resources\Packages\XXMI</c> (the installed-package copy every deployment derives from).
     /// </summary>
     public async Task InstallPackageAsync(ModEnvPackage pkg, string targetRoot, string? subDir,
         IProgress<string>? progress, CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null,
