@@ -1,0 +1,395 @@
+{
+    "_idRow": 658343,
+    "_nStatus": "0",
+    "_bIsPrivate": false,
+    "_bAccessorIsSubmitter": false,
+    "_bIsTrashed": false,
+    "_bIsWithheld": false,
+    "_sName": "Chibi Portraits! + Portrait Builder",
+    "_sCommentsMode": "open",
+    "_tsDateModified": 1790769076,
+    "_tsDateAdded": 1772924815,
+    "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/658343",
+    "_aPreviewMedia": {
+        "_aImages": [
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d1a3de14.jpg",
+                "_sFile220": "220-90_6a871d1a3de14.jpg",
+                "_hFile220": 124,
+                "_wFile220": 220,
+                "_sFile530": "530-90_6a871d1a3de14.jpg",
+                "_hFile530": 298,
+                "_wFile530": 530,
+                "_sFile100": "100-90_6a871d1a3de14.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            },
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d19937a5.jpg",
+                "_sFile100": "100-90_6a871d19937a5.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            },
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d199a462.jpg",
+                "_sFile100": "100-90_6a871d199a462.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            },
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d1a5a1d1.jpg",
+                "_sFile100": "100-90_6a871d1a5a1d1.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            },
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d1a2d6a6.jpg",
+                "_sFile100": "100-90_6a871d1a2d6a6.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            },
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d1a6d1ac.jpg",
+                "_sFile100": "100-90_6a871d1a6d1ac.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            },
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d1a2ff30.jpg",
+                "_sFile100": "100-90_6a871d1a2ff30.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            },
+            {
+                "_sType": "screenshot",
+                "_sBaseUrl": "https:\/\/images.gamebanana.com\/img\/ss\/mods",
+                "_sFile": "6a871d1915c93.jpg",
+                "_sFile100": "100-90_6a871d1915c93.jpg",
+                "_hFile100": 56,
+                "_wFile100": 100
+            }
+        ]
+    },
+    "_nUpdatesCount": 22,
+    "_bHasUpdates": true,
+    "_tsDateUpdated": 1790769249,
+    "_nAllTodosCount": 0,
+    "_bHasTodos": false,
+    "_nPostCount": 86,
+    "_aTags": [],
+    "_bCreatedBySubmitter": true,
+    "_bIsPorted": false,
+    "_nThanksCount": 14,
+    "_sInitialVisibility": "show",
+    "_sDownloadUrl": "https:\/\/gamebanana.com\/mods\/download\/658343",
+    "_nDownloadCount": 6871,
+    "_aFiles": [
+        {
+            "_idRow": 1831976,
+            "_sFile": "37hashupdater.rar",
+            "_nFilesize": 6022,
+            "_tsDateAdded": 1790768299,
+            "_nDownloadCount": 16,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831976",
+            "_sMd5Checksum": "0621fa1d9aee29ae44b4aca7bf58fef4",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Use this to update Chisa\/Mornye effect hashes",
+            "_aAnalysisWarnings": {
+                "contains_exe": [
+                    "PortraitHash3.7.bat"
+                ]
+            }
+        },
+        {
+            "_idRow": 1831982,
+            "_sFile": "chibiportraitsv2_272f9.rar",
+            "_nFilesize": 192502398,
+            "_tsDateAdded": 1790768554,
+            "_nDownloadCount": 23,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831982",
+            "_sMd5Checksum": "353716d2f29605f514a162e2ce9c0c8a",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Hsin added"
+        },
+        {
+            "_idRow": 1831977,
+            "_sFile": "portrait_driver_56427.rar",
+            "_nFilesize": 4340,
+            "_tsDateAdded": 1790768299,
+            "_nDownloadCount": 13,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831977",
+            "_sMd5Checksum": "4a60572dc99819b3c0ed8fc858aa158e",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Updated for 3.7"
+        },
+        {
+            "_idRow": 1831978,
+            "_sFile": "portrait_builder_74a19.rar",
+            "_nFilesize": 388905,
+            "_tsDateAdded": 1790768299,
+            "_nDownloadCount": 8,
+            "_sDownloadUrl": "https:\/\/gamebanana.com\/dl\/1831978",
+            "_sMd5Checksum": "f5f4e155cc702758d1657ce1cb0f9b38",
+            "_sAnalysisState": "done",
+            "_sAnalysisResult": "ok",
+            "_sAnalysisResultVerbose": "File passed preliminary analysis",
+            "_sAvState": "done",
+            "_sAvResult": "clean",
+            "_bIsArchived": false,
+            "_bHasContents": true,
+            "_sDescription": "Updated for 3.7. Suoming waiting room",
+            "_aAnalysisWarnings": {
+                "contains_exe": [
+                    "Portrait Builder\/Generate Portrait Toggle.bat",
+                    "Portrait Builder\/texassemble.exe",
+                    "Portrait Builder\/texconv.exe"
+                ]
+            }
+        }
+    ],
+    "_nSubscriberCount": 30,
+    "_aContributingStudios": [],
+    "_sLicense": "<a rel=\"license\" href=\"http:\/\/creativecommons.org\/licenses\/by-nc-nd\/4.0\/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https:\/\/i.creativecommons.org\/l\/by-nc-nd\/4.0\/88x31.png\" \/><\/a><br \/>This work is licensed under a <a rel=\"license\" href=\"http:\/\/creativecommons.org\/licenses\/by-nc-nd\/4.0\/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License<\/a>.",
+    "_aLicenseChecklist": {
+        "yes": [
+            "Download and install this Mod"
+        ],
+        "ask": [
+            "Redistribute this Mod on other sites",
+            "Modify this Mod and distribute the modified Mod on GameBanana",
+            "Modify this Mod and distribute the modified Mod on another site",
+            "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+            "Use parts of this Mod in another Mod and distribute the Mod on another site",
+            "Use this Mod or components of this Mod in adult\/NSFW content"
+        ],
+        "no": [
+            "Use this Mod or components of this Mod commercially"
+        ]
+    },
+    "_bGenerateTableOfContents": false,
+    "_sText": "With the help of Unicorn, Sins and a LOT of vibecoding, I manged to restore portrait mods!<br><br><h1>Features:<\/h1><ul><li>Edit pictures via ini customisation. No need to edit your photos beforehand.<\/li><li>Support for toggles. Comes with a cool GUI editor for building the toggles.<\/li><li>Automatic toggling mode. Will automatically swap to the next image in the toggle each time you open the team menu.<\/li><li>Randomised + Auto randomised toggling. For those who like to mix it up.<\/li><\/ul><br><br><h1>Installation:<\/h1>Everything you need is contained in the ChibiPortraits folder. Open the ChibiPortraits.rar file and drag the ChibiPortraits folder from that rar file into your mods folder.<br><br><h2>Controls:<\/h2><ul><li>\/ - Enables auto-swapping for toggles. (When you open the menu, the next picture in your toggle will appear.)<\/li><li>Alt + \/ - Enables randomised auto-toggles. (Same as above but the picture is randomly selected.)<\/li><li>Down arrow - Remove overlays. (Most of the background stuff<\/li><li>Alt + Down arrow - Swap portrait frame. (Adds a rounded top and transparency gradient to look more like the official skin portraits)<\/li><\/ul><br><br><h1>Customisation:<\/h1>If you want to make your own, just replace the existing image with whatever input image you want.\u00a0<br>Make sure the filename is the same as the image you're replacing.<br><br>You can resize and move the image around using the variables in the ini.<br><ul><li>$offsetX - Controls horizontal position<\/li><li>$offsetY - Controls vertical position<\/li><li>$scaleX - Stretches the image horizontally<\/li><li>$scaleY - Stretches the image vertically<\/li><\/ul>You should be changing these numbers by very small decimals, for example \"global $offsetX = 0.05\". The numbers are very sensitive and if you set them too high, the texture will go flying off the screen.<br><br><h1>Toggles:<\/h1>With V1.5 I've introduced the toggle creator script.\u00a0<br>This GUI will help edit you images and produce your textures and inis for you.<br>Double click on \"Generate Portrait Toggle.bat\" to get started.<br><br><img src=\"https:\/\/iili.io\/qSUSa5l.png\"><br><ol><li>\u00a0Load folder - Prepare the images you want to use for you toggle in a folder, then load that folder to import all the images into the editor.<\/li><li>\u00a0Load\/Save Project - Projects will save all of your edits made within a session.<\/li><li>\u00a0Character\/Hashes - Select the character portrait you want to mod from the drop down menu. The hash(es) will be automatically selected for you.<\/li><li>\u00a0Image selector - All of your loaded images will appear in a list here, click on the icons to swap between images, your progress will be saved on a per-image basis.<\/li><li>\u00a0Editing - X and Y refer to horizontal and vertical movement, scale refers to how zoomed in\/out the image is. Snap points help align the edges of your image to the edges of the slot template and reset will undo all changes you've made.<\/li><li>\u00a0Slot overlay - The white rectangle in the middle is the portrait slot. You can change the colour and opacity of the outline to make it more or less visible.<\/li><li>\u00a0Toggle key - Key combos are made up for a letter and an arrow key direction. The letter will automatically swap to the initial of the character you're modding for, so A for Aemeath. You can change the letter if you want.<\/li><li>\u00a0Export - Once you've made your edits, press Export Portrait and select a folder to output the array and ini file. The progress bar and Log will tell you how the export process is going.<\/li><li>\u00a0Canvas - Left click and drag to move your image. Scroll wheel to zoom in and out. The inside of the Slot overlay is what will appear in the mod, so move\/scale the image as you please.<\/li><\/ol><br><br><h2>Help! My portrait is weirdly dark!<\/h2>As of V1.1, you can now correct colour space within the mod itself, no need to re-export your images in the correct colour space.<br><br>If you notice that your portrait looks darker in-game than the image normally does, open the ini for that character and at the top, change \"global $colour = 0\" to \"global $colour = 2\"<br>This will run a correction that forces linear colour space, brightening your image back to normal.<br><br><h2>Known bug:<\/h2>If you swap from a team with 3 characters to a team with empty slots, the empty slots will have the portraits of the characters from the previous team. If you click on the empty slot then the lingering portraits will go away.\u00a0<br><br><h2>Last words:<\/h2>I'll try to update this with each character I can get hashes for, but there will eventually be gaps either in portrait hashes or Chibi art, so do be patient with me.<br>",
+    "_bIsObsolete": false,
+    "_nLikeCount": 142,
+    "_nViewCount": 22738,
+    "_sVersion": "2.0",
+    "_bAcceptsDonations": false,
+    "_bShowRipePromo": true,
+    "_aEmbeddables": {
+        "_sEmbeddableImageBaseUrl": "https:\/\/gamebanana.com\/mods\/embeddables\/658343",
+        "_aVariants": [
+            "small",
+            "small_square",
+            "medium",
+            "medium_square",
+            "medium_square_minimal",
+            "large",
+            "large_minimal",
+            "large_square",
+            "large_minimal_square",
+            "thumbnail"
+        ]
+    },
+    "_aSubmitter": {
+        "_idRow": 2553720,
+        "_sName": "K.dog",
+        "_sUserTitle": "Bananite",
+        "_sHonoraryTitle": "",
+        "_tsJoinDate": 1679676140,
+        "_sAvatarUrl": "https:\/\/images.gamebanana.com\/static\/img\/defaults\/avatar.gif",
+        "_sSigUrl": "",
+        "_sProfileUrl": "https:\/\/gamebanana.com\/members\/2553720",
+        "_sPointsUrl": "https:\/\/gamebanana.com\/members\/logs\/pointslog\/2553720",
+        "_sMedalsUrl": "https:\/\/gamebanana.com\/members\/stats\/medals\/2553720",
+        "_bIsOnline": false,
+        "_sLocation": "<a href=\"https:\/\/gamebanana.com\">Home<\/a> > <a href=\"https:\/\/gamebanana.com\/games\/20357\"><img src=\"https:\/\/images.gamebanana.com\/img\/ico\/games\/686bf76048ba2.png\"\/><span>Wuthering Waves<\/span><\/a> > <a href=\"https:\/\/gamebanana.com\/mods\/games\/20357\">Mods<\/a> > <a href=\"https:\/\/gamebanana.com\/mods\/cats\/29496\">UI<\/a> > <a href=\"https:\/\/gamebanana.com\/mods\/658343\">Chibi Portraits! + Portrait Builder<\/a>",
+        "_sOnlineTitle": "",
+        "_sOfflineTitle": "",
+        "_nPoints": 14822,
+        "_nPointsRank": 2294,
+        "_aNormalMedals": [
+            [
+                "m_age_1.png",
+                "One month a member",
+                "normal",
+                995915
+            ],
+            [
+                "m_age_2.png",
+                "6 months a member",
+                "normal",
+                1247191
+            ],
+            [
+                "m_age_3.png",
+                "1 year a member",
+                "normal",
+                1661134
+            ],
+            [
+                "m_pr_1.png",
+                "Reached 1,000 Points",
+                "normal",
+                2325796
+            ],
+            [
+                "m_pr_2.png",
+                "Reached 2,500 Points",
+                "normal",
+                2840120
+            ],
+            [
+                "subscribers_1.png",
+                "Reached 10 subscribers",
+                "normal",
+                2852617
+            ],
+            [
+                "thanks_recvd_1.png",
+                "Received thanks 5 times",
+                "normal",
+                2852618
+            ],
+            [
+                "m_age_4.png",
+                "2 years a member",
+                "normal",
+                2970390
+            ],
+            [
+                "m_pr_3.png",
+                "Reached 7,500 Points",
+                "normal",
+                3498914
+            ]
+        ],
+        "_aRareMedals": [
+            [
+                "subscribers_2.png",
+                "Reached 50 subscribers",
+                "rare",
+                4124555
+            ],
+            [
+                "thanks_recvd_2.png",
+                "Received thanks 50 times",
+                "rare",
+                4689569
+            ]
+        ],
+        "_aLegendaryMedals": [],
+        "_bHasRipe": false,
+        "_nBuddyCount": 0,
+        "_nSubscriberCount": 84,
+        "_aDonationMethods": [],
+        "_bAccessorIsBuddy": false,
+        "_bBuddyRequestExistsWithAccessor": false,
+        "_bAccessorIsSubscribed": false,
+        "_aDefaultLicenseChecklist": [
+            "yes",
+            "ask",
+            "ask",
+            "ask",
+            "ask",
+            "ask",
+            "no",
+            "ask"
+        ],
+        "_sDefaultLicense": ""
+    },
+    "_bFollowLinks": true,
+    "_aGame": {
+        "_idRow": 20357,
+        "_sName": "Wuthering Waves",
+        "_sAbbreviation": "WuWa",
+        "_sProfileUrl": "https:\/\/gamebanana.com\/games\/20357",
+        "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/games\/686bf76048ba2.png",
+        "_sBannerUrl": "https:\/\/images.gamebanana.com\/img\/ico\/games\/686bf76048ba2.png",
+        "_nSubscriberCount": 76523,
+        "_bHasSubmissionQueue": false,
+        "_bAccessorIsSubscribed": false
+    },
+    "_aCategory": {
+        "_idRow": 29496,
+        "_sName": "UI",
+        "_sModelName": "ModCategory",
+        "_sProfileUrl": "https:\/\/gamebanana.com\/mods\/cats\/29496",
+        "_sIconUrl": "https:\/\/images.gamebanana.com\/img\/ico\/ModCategory\/6692c913ddf00.png",
+        "_bIsObsolete": false
+    },
+    "_aFeaturings": {
+        "today": {
+            "_sFeatureGroup": "today",
+            "_sTitle": "Today's Pick",
+            "_sIconClasses": "MiscIcon FeaturedTodayIcon",
+            "_tsDate": 1773010801
+        }
+    },
+    "_aCredits": [
+        {
+            "_sGroupName": "Creator",
+            "_aAuthors": [
+                {
+                    "_sRole": "Meat puppet",
+                    "_idRow": 2553720,
+                    "_sName": "K.dog",
+                    "_sProfileUrl": "https:\/\/gamebanana.com\/members\/2553720",
+                    "_sAvatarUrl": "https:\/\/images.gamebanana.com\/static\/img\/defaults\/avatar.gif",
+                    "_bIsOnline": false
+                }
+            ]
+        },
+        {
+            "_sGroupName": "My GOAT",
+            "_aAuthors": [
+                {
+                    "_sRole": "Provider of Mental care",
+                    "_idRow": 3695678,
+                    "_sName": "Unicornshell",
+                    "_sProfileUrl": "https:\/\/gamebanana.com\/members\/3695678",
+                    "_sAvatarUrl": "https:\/\/images.gamebanana.com\/img\/av\/66c17ab6c38e6.png",
+                    "_bIsOnline": false
+                },
+                {
+                    "_sRole": "Genius who scares me",
+                    "_idRow": 2823441,
+                    "_sName": "SinsOfSeven",
+                    "_sProfileUrl": "https:\/\/gamebanana.com\/members\/2823441",
+                    "_sAvatarUrl": "https:\/\/images.gamebanana.com\/img\/av\/6587fd8c69fea.png",
+                    "_bIsOnline": false
+                }
+            ]
+        }
+    ]
+}

@@ -37,6 +37,7 @@ public class PageService : IPageService
         Configure<CommandsSettingsViewModel, CommandsSettingsPage>();
         Configure<CreateCharacterViewModel, CreateCharacterPage>();
         Configure<ModMarketViewModel, ModMarketPage>();
+        Configure<ModStoreViewModel, ModStorePage>();
     }
 
     public Type GetPageType(string key)

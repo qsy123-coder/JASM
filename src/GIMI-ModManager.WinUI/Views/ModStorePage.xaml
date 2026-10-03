@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="GIMI_ModManager.WinUI.Views.ModStorePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:CommunityToolkit.WinUI.UI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:l="using:WinUI3Localizer"
+    xmlns:local="using:GIMI_ModManager.WinUI.Views.Controls"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:GIMI_ModManager.WinUI.Models"
+    xmlns:views="using:GIMI_ModManager.WinUI.Views"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter
+            x:Key="BoolToVisibilityConverter"
+            TrueValue="Visible"
+            FalseValue="Collapsed" />
+
+        <!-- 反向的那份:有真图标时要把底下的字形藏起来 -->
+        <converters:BoolToVisibilityConverter
+            x:Key="InverseBoolToVisibilityConverter"
+            TrueValue="Collapsed"
+            FalseValue="Visible" />
+
+        <!-- 左侧栏一项:图标 + 名字 + 条目数。条目数在后台一个个补,所以是 OneWay 而不是 OneTime,
+             还没取到(Null)时那一格是空的 —— 不显示数字,也不显示假的 0。
+             图标同理但更晚:根分类的图随板块主页一次回来,角色的图要等那次搜索(见 ViewModel),
+             所以两种状态都要能切换 —— 没有图时退回字形,不是留一格空白。 -->
+        <DataTemplate x:Key="SidebarItemTemplate" x:DataType="models:ModStoreSidebarItem">
+            <Grid Padding="12,10" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid Width="20" Height="20" VerticalAlignment="Center">
+                    <FontIcon FontSize="15" Glyph="{x:Bind Glyph}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              Visibility="{x:Bind HasIcon, Converter={StaticResource InverseBoolToVisibilityConverter}, Mode=OneWay}" />
+                    <!-- DecodePixelWidth 按 2 倍显示尺寸解码(高分屏不糊),图标很小,不值得再走懒加载队列 -->
+                    <Image Width="20" Height="20" Stretch="UniformToFill"
+                           Visibility="{x:Bind HasIcon, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <Image.Source>
+                            <BitmapImage DecodePixelWidth="40" UriSource="{x:Bind IconUrl, Mode=OneWay}" />
+                        </Image.Source>
+                    </Image>
+                </Grid>
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="13"
+                           Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="{x:Bind ItemCount, Mode=OneWay}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 卡片版式:横屏 —— 图片在上、白色信息块在下,一行 6 个(列数由 WrapGridPanel.Columns 定,宽度均分)。
+             信息块按 GameBanana 自家页面的卡片排:标题两行 + 作者行(头像 + 名字 + 右侧相对时间) + 统计三项。
+             商店比那段版式多一层信息:图片左上角那块角色标签。
+             图片高度**不写死**:卡片宽度随窗口变,高度由代码按 9:16 算(见 ModStorePage.xaml.cs 的
+             ApplyThumbHeight)——写死会在宽窗口下变成一条细长条。 -->
+        <DataTemplate x:Key="ModStoreCardTemplate">
+            <Border Margin="6" Background="White" CornerRadius="8"
+                    BorderBrush="#E3E6EA" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 行0: 图片区。高度运行时按宽度算,所以这里只给一个下限(布局前的第一帧) -->
+                    <Grid x:Name="ThumbHost" Grid.Row="0" MinHeight="96">
+                        <!-- 层0: 无图片时的纯色占位背景 -->
+                        <Grid Background="#2A2A2A" />
+                        <!-- 层1: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
+                        <ProgressRing x:Name="CardLoadingRing" IsActive="False"
+                                      Visibility="Collapsed"
+                                      Width="28" Height="28"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Foreground="#0078D4" />
+                        <!-- 层2: 图片铺满(Source 由代码在滚到视口时设置) -->
+                        <Image x:Name="CardImage"
+                               Stretch="UniformToFill"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               ImageOpened="CardImage_Opened" ImageFailed="CardImage_Failed" />
+                        <!-- 层3: 角色标签(左上)。不是每条记录都有角色(UI 类 mod 就没有),没有就不显示。 -->
+                        <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="6" Padding="6,2" Background="#99000000"
+                                CornerRadius="6"
+                                Visibility="{Binding HasCharacter, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Foreground="White" FontSize="10" FontWeight="SemiBold"
+                                       Text="{Binding Character}" TextTrimming="CharacterEllipsis" />
+                        </Border>
+                        <!-- 层4: 右上角标(竖着排:NSFW 在上、已安装在下面一格)。
+                             NSFW 这类条目默认隐藏模式下根本不会进列表,只有内容筛选切到「显示 NSFW」后才看得到。
+                             已安装来自本地安装记录(不是 GameBanana 的记录),装完不刷新列表也会亮 —— 见 ModStoreItem.IsInstalled。 -->
+                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Margin="6" Spacing="4">
+                            <Border HorizontalAlignment="Right" Padding="6,2" Background="#FF4D4F"
+                                    CornerRadius="6"
+                                    Visibility="{Binding IsAdult, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Foreground="White" FontSize="10"
+                                           FontWeight="SemiBold" Text="NSFW" />
+                            </Border>
+                            <Border HorizontalAlignment="Right" Padding="6,2" Background="#FF107C10"
+                                    CornerRadius="6"
+                                    Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Foreground="White" FontSize="10" FontWeight="SemiBold"
+                                           l:Uids.Uid="ModStore_Card_Installed" Text="已安装" />
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 行1: 信息块。标题给两行的高度下限而不是固定高:一行标题的卡片也占据同样的高度,
+                         同一行卡片的内容才不会上下错开(卡片本身还会被容器拉齐到下边缘)。 -->
+                    <StackPanel Grid.Row="1" Padding="10,8,10,10" Spacing="6">
+                        <TextBlock Foreground="#1F2328" FontWeight="SemiBold" FontSize="13"
+                                   MinHeight="34" MaxLines="2" Text="{Binding Title}"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!-- 作者头像:底色圆打底,真头像盖在上面(取不到头像 / 图加载失败就露出底色圆,
+                                 所以这里不需要任何可见性切换 —— 清掉笔刷即可,见 LazyLoadVisibleImages)。
+                                 作者没设过头像时 GameBanana 给的是默认头像,不是空值。 -->
+                            <Grid Width="20" Height="20" VerticalAlignment="Center">
+                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+                                <!-- 名字挂在 Ellipse 上(笔刷是 Brush 不是 FrameworkElement,x:Name 认不到它) -->
+                                <Ellipse x:Name="AuthorAvatar">
+                                    <Ellipse.Fill>
+                                        <ImageBrush Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                            </Grid>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12"
+                                       Foreground="#5A6169" Text="{Binding AuthorName}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="#8A9099" Text="{Binding RelativeTime}" />
+                        </Grid>
+                        <!-- 统计三项:点赞 / 浏览 / 评论(顺序与 GameBanana 自家卡片一致) -->
+                        <StackPanel Orientation="Horizontal" Spacing="14">
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <FontIcon FontSize="11" Foreground="#6B7280" Glyph="&#xEB52;" />
+                                <TextBlock FontSize="11" Foreground="#6B7280" Text="{Binding LikesCount}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <FontIcon FontSize="11" Foreground="#6B7280" Glyph="&#xE890;" />
+                                <TextBlock FontSize="11" Foreground="#6B7280" Text="{Binding ViewsCount}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <FontIcon FontSize="11" Foreground="#6B7280" Glyph="&#xE8F2;" />
+                                <TextBlock FontSize="11" Foreground="#6B7280" Text="{Binding CommentsCount}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 左侧栏:分类(全部 + 板块根分类 + 角色) -->
+        <Grid Grid.Column="0"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+              BorderThickness="0,0,1,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Margin="16,16,16,8" FontSize="18" FontWeight="Bold"
+                       l:Uids.Uid="ModStore_CategoriesTitle" Text="分类" />
+            <ListView x:Name="SidebarListView" Grid.Row="1"
+                      ItemTemplate="{StaticResource SidebarItemTemplate}"
+                      ItemsSource="{x:Bind ViewModel.Filters}"
+                      SelectedItem="{x:Bind ViewModel.SelectedFilter, Mode=TwoWay}"
+                      SelectionMode="Single">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="4,0" />
+                        <Setter Property="CornerRadius" Value="6" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </Grid>
+
+        <!-- 右侧主区 -->
+        <Grid Grid.Column="1" Background="#F5F7FA">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 工具栏:搜索 + 内容筛选 + 排序 + 下载管理(版式同 Mod 市场) -->
+            <Grid Grid.Row="0" MinHeight="50" Padding="12,8" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="SearchBox" Grid.Column="0"
+                         VerticalAlignment="Center" PlaceholderText="搜索模组..."
+                         l:Uids.Uid="ModStore_SearchPlaceholder"
+                         Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         CornerRadius="6" Margin="0,0,8,0">
+                    <TextBox.Resources>
+                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
+                        <SolidColorBrush x:Key="TextControlBackground" Color="White" />
+                    </TextBox.Resources>
+                </TextBox>
+
+                <ComboBox Grid.Column="1" Width="120" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White" Margin="0,0,8,0"
+                          l:Uids.Uid="ModStore_ContentFilter"
+                          ItemsSource="{x:Bind ViewModel.ContentFilterOptions}"
+                          SelectedItem="{x:Bind ViewModel.SelectedContentFilter, Mode=TwoWay}" />
+
+                <!-- 排序只对板块内容流有效:搜索端点不吃排序参数,分类端点直接拒绝 _sSort,
+                     所以按分类/角色筛、或搜索时就置灰 -->
+                <ComboBox Grid.Column="2" Width="100" VerticalAlignment="Center"
+                          CornerRadius="6" Background="White" Margin="0,0,8,0"
+                          IsEnabled="{x:Bind ViewModel.CanSort, Mode=OneWay}"
+                          ToolTipService.ToolTip="排序仅对「全部」浏览有效；按分类、角色或关键词查找时顺序由服务端决定"
+                          ItemsSource="{x:Bind ViewModel.SortOptions}"
+                          SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}" />
+
+                <Button Grid.Column="3" Width="36" Height="36" VerticalAlignment="Center"
+                        ToolTipService.ToolTip="下载管理" l:Uids.Uid="ModStore_DownloadManager"
+                        Background="Transparent" BorderThickness="0" CornerRadius="6"
+                        Command="{x:Bind ViewModel.OpenDownloadManagerCommand}">
+                    <FontIcon FontSize="16" Glyph="&#xE896;" />
+                </Button>
+            </Grid>
+
+            <!-- 内容区 -->
+            <Grid Grid.Row="1">
+                <ScrollViewer x:Name="CardScrollViewer"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalContentAlignment="Top"
+                              ViewChanged="ScrollViewer_ViewChanged">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <!-- 固定 6 列(横屏卡片一行 6 个),宽度均分;窗口窄到每列不足 150 时自动降列,
+                             免得卡片被压成碎片 -->
+                        <local:WrapGridPanel x:Name="ModCardsPanel" Grid.Row="0"
+                                             VerticalAlignment="Top"
+                                             Columns="6" MinItemWidth="150" />
+                        <!-- 滚动加载更多:内容流末尾,Collapsed 时不占位 -->
+                        <StackPanel Grid.Row="1" HorizontalAlignment="Center"
+                                    Margin="0,8,0,16"
+                                    Visibility="{x:Bind ViewModel.IsLoadingMore, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                            <TextBlock Text="正在加载更多..." HorizontalAlignment="Center"
+                                       Margin="0,4" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- 首次加载/重载指示器 -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"
+                            Visibility="{x:Bind ViewModel.IsInitialLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                    <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                               HorizontalAlignment="Center" Margin="0,4" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <!-- 空状态(含失败原因 + 重试) -->
+                <Grid Background="#F5F7FA"
+                      Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="480">
+                        <TextBlock HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                                   FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="{x:Bind ViewModel.EmptyStateMessage, Mode=OneWay}" />
+                        <Button Content="重试" HorizontalAlignment="Center" Margin="0,12,0,0"
+                                CornerRadius="6"
+                                Command="{x:Bind ViewModel.RefreshCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- 详情抽屉:盖住整页(含左侧栏),与市场侧同一个挂法 -->
+        <views:ModStoreDetailPanel x:Name="DetailPanel" Grid.ColumnSpan="2" />
+
+        <!-- 下载管理抽屉:挂在详情抽屉**之后**，所以「在详情里点下载 → 面板盖在详情上面」是自然层序。
+             它自己认队列的状态(ViewModel.IsOpen)决定开合，页面不需要转发。 -->
+        <views:ModDownloadPanel x:Name="DownloadPanel" Grid.ColumnSpan="2" />
+    </Grid>
+</Page>

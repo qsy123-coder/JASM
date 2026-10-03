@@ -155,6 +155,17 @@
   <data name="ModsFolderSelector.Title" xml:space="preserve">
     <value>修改文件夹</value>
   </data>
+  <data name="ModStoreHideAdultContentCheckBox.Content" xml:space="preserve">
+    <value>在 Mod 商店中隐藏成人内容</value>
+  </data>
+  <data name="ModStoreHideAdultContentDescription.Text" xml:space="preserve">
+    <value>Mod 商店默认隐藏成人内容。GameBanana 没有可用的服务端过滤参数，所以这一层筛选在本地做（只作用于已加载的那一页）。关掉之后回到商店页即刻生效。
+
+商店页顶部那个「内容筛选」下拉是同一个开关，两边改哪边都一样。</value>
+  </data>
+  <data name="ModStoreSectionHeader.Text" xml:space="preserve">
+    <value>Mod 商店</value>
+  </data>
   <data name="ModUpdateCheckerCheckBox.Content" xml:space="preserve">
     <value>自动检查修改更新</value>
   </data>

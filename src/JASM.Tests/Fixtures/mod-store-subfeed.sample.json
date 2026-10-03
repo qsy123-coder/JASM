@@ -1,0 +1,179 @@
+{
+    "_aMetadata":  {
+                       "_nRecordCount":  1333,
+                       "_nPerpage":  15,
+                       "_bIsComplete":  false
+                   },
+    "_aRecords":  [
+                      {
+                          "_idRow":  658343,
+                          "_sModelName":  "Mod",
+                          "_sSingularTitle":  "Mod",
+                          "_sIconClasses":  "SubmissionType Mod",
+                          "_sName":  "Chibi Portraits! + Portrait Builder",
+                          "_sProfileUrl":  "https://gamebanana.com/mods/658343",
+                          "_tsDateAdded":  1772924815,
+                          "_tsDateModified":  1790769076,
+                          "_bHasFiles":  true,
+                          "_aTags":  [
+
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/mods",
+                                                                      "_sFile":  "6a871d1a3de14.jpg",
+                                                                      "_sFile220":  "220-90_6a871d1a3de14.jpg",
+                                                                      "_hFile220":  124,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "530-90_6a871d1a3de14.jpg",
+                                                                      "_hFile530":  298,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_6a871d1a3de14.jpg",
+                                                                      "_hFile100":  56,
+                                                                      "_wFile100":  100
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  2553720,
+                                              "_sName":  "K.dog",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/2553720",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/static/img/defaults/avatar.gif"
+                                          },
+                          "_aRootCategory":  {
+                                                 "_sName":  "UI",
+                                                 "_sProfileUrl":  "https://gamebanana.com/mods/cats/29496",
+                                                 "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6692c913ddf00.png"
+                                             },
+                          "_sVersion":  "2.0",
+                          "_tsDateUpdated":  1790769249,
+                          "_bIsObsolete":  false,
+                          "_sInitialVisibility":  "show",
+                          "_bHasContentRatings":  false,
+                          "_nLikeCount":  141,
+                          "_nPostCount":  85,
+                          "_bWasFeatured":  true,
+                          "_nViewCount":  22703,
+                          "_bIsOwnedByAccessor":  false
+                      },
+                      {
+                          "_idRow":  575376,
+                          "_sModelName":  "Mod",
+                          "_sSingularTitle":  "Mod",
+                          "_sIconClasses":  "SubmissionType Mod",
+                          "_sName":  "Animated + Static Randomised Loading Screen mod",
+                          "_sProfileUrl":  "https://gamebanana.com/mods/575376",
+                          "_tsDateAdded":  1739565797,
+                          "_tsDateModified":  1790762386,
+                          "_bHasFiles":  true,
+                          "_aTags":  [
+
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/mods",
+                                                                      "_sFile":  "67d31a6829ec2.jpg",
+                                                                      "_sFile220":  "220-90_67d31a6829ec2.jpg",
+                                                                      "_hFile220":  126,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "530-90_67d31a6829ec2.jpg",
+                                                                      "_hFile530":  305,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_67d31a6829ec2.jpg",
+                                                                      "_hFile100":  57,
+                                                                      "_wFile100":  100
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  2553720,
+                                              "_sName":  "K.dog",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/2553720",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/static/img/defaults/avatar.gif"
+                                          },
+                          "_aRootCategory":  {
+                                                 "_sName":  "UI",
+                                                 "_sProfileUrl":  "https://gamebanana.com/mods/cats/29496",
+                                                 "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6692c913ddf00.png"
+                                             },
+                          "_sVersion":  "4.0",
+                          "_tsDateUpdated":  1790762422,
+                          "_bIsObsolete":  false,
+                          "_sInitialVisibility":  "show",
+                          "_bHasContentRatings":  false,
+                          "_nLikeCount":  642,
+                          "_nPostCount":  364,
+                          "_bWasFeatured":  false,
+                          "_nViewCount":  147794,
+                          "_bIsOwnedByAccessor":  false
+                      },
+                      {
+                          "_idRow":  709792,
+                          "_sModelName":  "Mod",
+                          "_sSingularTitle":  "Mod",
+                          "_sIconClasses":  "SubmissionType Mod",
+                          "_sName":  "Qingxiao清宵",
+                          "_sProfileUrl":  "https://gamebanana.com/mods/709792",
+                          "_tsDateAdded":  1787705440,
+                          "_tsDateModified":  1790740266,
+                          "_bHasFiles":  true,
+                          "_aTags":  [
+
+                                     ],
+                          "_aPreviewMedia":  {
+                                                 "_aImages":  [
+                                                                  {
+                                                                      "_sType":  "screenshot",
+                                                                      "_sBaseUrl":  "https://images.gamebanana.com/img/ss/mods",
+                                                                      "_sFile":  "6a8e37c82c9b4.jpg",
+                                                                      "_sFile220":  "220-90_6a8e37c82c9b4.jpg",
+                                                                      "_hFile220":  175,
+                                                                      "_wFile220":  220,
+                                                                      "_sFile530":  "530-90_6a8e37c82c9b4.jpg",
+                                                                      "_hFile530":  421,
+                                                                      "_wFile530":  530,
+                                                                      "_sFile100":  "100-90_6a8e37c82c9b4.jpg",
+                                                                      "_hFile100":  79,
+                                                                      "_wFile100":  100
+                                                                  }
+                                                              ]
+                                             },
+                          "_aSubmitter":  {
+                                              "_idRow":  3462525,
+                                              "_sName":  "_SlugCat",
+                                              "_bIsOnline":  false,
+                                              "_bHasRipe":  false,
+                                              "_sProfileUrl":  "https://gamebanana.com/members/3462525",
+                                              "_sAvatarUrl":  "https://images.gamebanana.com/img/av/690cacbf2a00d.jpg"
+                                          },
+                          "_aRootCategory":  {
+                                                 "_sName":  "Skins",
+                                                 "_sProfileUrl":  "https://gamebanana.com/mods/cats/29524",
+                                                 "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6654b6596ba11.png"
+                                             },
+                          "_aSubCategory":  {
+                                                "_sName":  "Qingxiao",
+                                                "_sProfileUrl":  "https://gamebanana.com/mods/cats/46596",
+                                                "_sIconUrl":  "https://images.gamebanana.com/img/ico/ModCategory/6a31f3068321b.png"
+                                            },
+                          "_sVersion":  "1.2",
+                          "_tsDateUpdated":  1790740376,
+                          "_bIsObsolete":  false,
+                          "_sInitialVisibility":  "hide",
+                          "_bHasContentRatings":  true,
+                          "_nLikeCount":  593,
+                          "_nPostCount":  6,
+                          "_bWasFeatured":  false,
+                          "_nViewCount":  18427,
+                          "_bIsOwnedByAccessor":  false
+                      }
+                  ]
+}

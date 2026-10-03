@@ -116,6 +116,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private bool _isGameDataSyncRunning = false;
     public bool IsGameDataSyncNotRunning => !IsGameDataSyncRunning;
 
+    // Mod 商店
+    /// <summary>
+    /// 「Mod 商店」里隐藏成人内容。默认 true（PRD 的硬性决定：默认不看到）。
+    /// 与商店页顶部那个内容筛选下拉是**同一个设置**（<see cref="ModStoreSettings"/>，App 级）。
+    /// </summary>
+    [ObservableProperty] private bool _hideAdultContentInModStore = true;
+
     private Dictionary<string, string> _nameToLangCode = new();
 
     public PathPicker PathToGIMIFolderPicker { get; }
@@ -830,6 +837,25 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         await _localSettingsService.SaveSettingAsync(GameDataSyncSettings.Key, settings);
     }
 
+    /// <summary>
+    /// 「Mod 商店」的隐藏成人内容开关。与商店页顶部那个下拉写的是同一份设置，
+    /// 所以这里改完回到商店页立刻生效（那边每次导航都会重读）。
+    ///
+    /// 属性**必须先翻转再落盘**：复选框的 <c>IsChecked</c> 是 OneWay 绑定，不翻转的话
+    /// 界面停在用户点出来的样子、存的却还是旧值（下次进设置页就又跳回去了）。
+    /// </summary>
+    [RelayCommand]
+    private async Task ToggleModStoreAdultContentAsync()
+    {
+        HideAdultContentInModStore = !HideAdultContentInModStore;
+
+        var settings = await _localSettingsService
+            .ReadOrCreateSettingAsync<ModStoreSettings>(ModStoreSettings.Key, SettingScope.App);
+
+        settings.HideAdultContent = HideAdultContentInModStore;
+        await _localSettingsService.SaveSettingAsync(ModStoreSettings.Key, settings, SettingScope.App);
+    }
+
     private void RefreshSyncDisplay()
     {
         var game = Enum.Parse<SupportedGames>(SelectedGame);
@@ -876,6 +902,11 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             .ReadOrCreateSettingAsync<GameDataSyncSettings>(GameDataSyncSettings.Key);
         IsGameDataSyncEnabled = syncSettings.AutoSyncOnStartup;
         RefreshSyncDisplay();
+
+        // Mod 商店（App 级：这是个跨游戏都成立的偏好）
+        var modStoreSettings = await _localSettingsService
+            .ReadOrCreateSettingAsync<ModStoreSettings>(ModStoreSettings.Key, SettingScope.App);
+        HideAdultContentInModStore = modStoreSettings.HideAdultContent;
 
         if (IsGameDataSyncEnabled)
         {

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2178,6 +2178,84 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   </data>
   <data name="Shell_ModMarket.Content" xml:space="preserve">
     <value>Mod 市场</value>
+  </data>
+  <data name="Shell_ModStore.Content" xml:space="preserve">
+    <value>Mod 商店</value>
+  </data>
+  <data name="ModStore_CategoriesTitle.Text" xml:space="preserve">
+    <value>分类</value>
+  </data>
+  <data name="ModStore_SearchPlaceholder.PlaceholderText" xml:space="preserve">
+    <value>搜索模组...</value>
+  </data>
+  <data name="ModStore_ContentFilter.PlaceholderText" xml:space="preserve">
+    <value>内容过滤</value>
+  </data>
+  <data name="ModStore_DownloadManager.ToolTipService.ToolTip" xml:space="preserve">
+    <value>下载管理</value>
+  </data>
+  <data name="ModStore_Detail_FileArchived.Text" xml:space="preserve">
+    <value>已归档</value>
+  </data>
+  <data name="ModStore_Detail_Obsolete.Text" xml:space="preserve">
+    <value>已过时</value>
+  </data>
+  <data name="ModStore_Detail_OverviewTab.Content" xml:space="preserve">
+    <value>总览与文件</value>
+  </data>
+  <data name="ModStore_Detail_DescriptionTab.Content" xml:space="preserve">
+    <value>图文描述</value>
+  </data>
+  <data name="ModStore_Detail_Loading.Text" xml:space="preserve">
+    <value>正在加载详情…</value>
+  </data>
+  <data name="ModStore_Detail_Retry.Content" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="ModStore_Detail_FilesTitle.Text" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="ModStore_Detail_NoFiles.Text" xml:space="preserve">
+    <value>这个 mod 没有可下载的文件（作者可能已经撤下）。</value>
+  </data>
+  <data name="ModStore_Detail_NoBody.Text" xml:space="preserve">
+    <value>作者没有提供文字描述。</value>
+  </data>
+  <data name="ModStore_Detail_OpenInBrowser.Text" xml:space="preserve">
+    <value>查看 GameBanana 页面</value>
+  </data>
+  <data name="ModStore_Detail_Download.Text" xml:space="preserve">
+    <value>下载选中文件</value>
+  </data>
+  <data name="ModStore_Card_Installed.Text" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="ModStore_Detail_Installed.Text" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="ModStore_Detail_Updatable.Text" xml:space="preserve">
+    <value>可更新</value>
+  </data>
+  <data name="ModStore_Detail_Update.Text" xml:space="preserve">
+    <value>更新到最新版本</value>
+  </data>
+  <data name="ModStore_Download_Title.Text" xml:space="preserve">
+    <value>下载管理</value>
+  </data>
+  <data name="ModStore_Download_Pause.Content" xml:space="preserve">
+    <value>暂停</value>
+  </data>
+  <data name="ModStore_Download_Resume.Content" xml:space="preserve">
+    <value>继续</value>
+  </data>
+  <data name="ModStore_Download_Cancel.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ModStore_Download_CancelAll.Content" xml:space="preserve">
+    <value>全部取消</value>
+  </data>
+  <data name="ModStore_Download_ClearFinished.Content" xml:space="preserve">
+    <value>清除已完成</value>
   </data>
   <data name="ModMarket_CategoriesTitle.Text" xml:space="preserve">
     <value>分类</value>

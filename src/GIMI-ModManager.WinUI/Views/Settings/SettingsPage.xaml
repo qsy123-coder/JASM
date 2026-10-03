@@ -347,6 +347,25 @@
 
                 </StackPanel>
 
+                <TextBlock
+                    Style="{ThemeResource SubtitleTextBlockStyle}"
+                    Text="Mod Store"
+                    l:Uids.Uid="/Settings/ModStoreSectionHeader" />
+                <StackPanel Margin="{StaticResource SmallTopBottomMargin}">
+                    <CheckBox
+                        Command="{x:Bind ViewModel.ToggleModStoreAdultContentCommand}"
+                        Content="Hide adult content in the Mod Store"
+                        IsChecked="{x:Bind ViewModel.HideAdultContentInModStore, Mode=OneWay}"
+                        l:Uids.Uid="/Settings/ModStoreHideAdultContentCheckBox" />
+                    <TextBlock
+                        Margin="0,8"
+                        VerticalAlignment="Center"
+                        IsTextSelectionEnabled="True"
+                        TextWrapping="WrapWholeWords"
+                        Text="The Mod Store hides adult content by default (GameBanana cannot filter it server-side, so the filter runs locally on the loaded page). Turning this off takes effect as soon as you return to the Mod Store. The same switch is also available as the content filter dropdown on the Mod Store page itself."
+                        l:Uids.Uid="/Settings/ModStoreHideAdultContentDescription" />
+                </StackPanel>
+
                 <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Commands" l:Uids.Uid="Settings_Commands" />
                 <!--  不复用 CommandsSettingsPage 的 CmdSettings_CreateCard：那张卡片的原文是「Create new command」，
                       与这里「Create Custom Commands」不同，复用会连英文文案一起改掉  -->

@@ -5,8 +5,12 @@ using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.Core.Services.CommandService;
+using GIMI_ModManager.Core.Services.Downloading;
 using GIMI_ModManager.Core.Services.GameBanana;
 using GIMI_ModManager.Core.Services.ModPresetService;
+// 别名而不是 using 整个命名空间：Core.ModStore 里也有一个 ModStorePage（商店列表的分页模型），
+// 直接 using 会与 Views.ModStorePage 撞名，注册页面那行就编译不过了。
+using ModStoreInstallIndex = GIMI_ModManager.Core.ModStore.ModStoreInstallIndex;
 using GIMI_ModManager.WinUI.Activation;
 using GIMI_ModManager.WinUI.Configuration;
 using GIMI_ModManager.WinUI.Contracts.Services;
@@ -18,6 +22,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
 using GIMI_ModManager.WinUI.Services.ModExport;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.ModMarket;
+using GIMI_ModManager.WinUI.Services.ModStore;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModEnv;
@@ -339,6 +344,36 @@ public partial class App : Application
                                 TimeSpan.FromMilliseconds(500), 3, null, true))
                     );
 
+                // Mod 商店的下载（GameBanana CDN）。具名 client 的理由与 ModEnv 那份一样：
+                // 下载要的是长超时，而上面那个 API client 挂着限流与短超时。
+                // 刻意**不挂** Polly 重试：重试 / 退避已经由 ResumableDownloader 负责
+                // （它知道 .part 断了从哪续），两处各一套只会把重试次数乘起来。
+                services.AddHttpClient(ModDownloadQueue.HttpClientName, client =>
+                    {
+                        client.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager");
+                        client.DefaultRequestHeaders.Add("Accept", "*/*");
+                        client.Timeout = TimeSpan.FromMinutes(30);
+                    });
+
+                // 下载队列：单例（面板切页不丢任务）。暂存目录放在应用数据目录下，
+                // 不用临时目录 —— 那里的 .part 会被系统清理，而它正是「同一个文件重新入队时
+                // 自动接着传」的依据。
+                //
+                // CompletedHandler 在**这里**接上：队列只管把文件下完整，下完干什么
+                // （入库 + 拉起安装向导）是商店那侧的事，不该写进 Core 的队列里。
+                services.AddSingleton(sp =>
+                {
+                    var queue = new ModDownloadQueue(
+                        sp.GetRequiredService<IHttpClientFactory>().CreateClient(ModDownloadQueue.HttpClientName),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                            "JASM", "ModStoreDownloads"),
+                        sp.GetService<ILogger>());
+
+                    var deployment = sp.GetRequiredService<ModStoreDeploymentService>();
+                    queue.CompletedHandler = (item, ct) => deployment.DeployAsync(item, ct);
+                    return queue;
+                });
+
                 // Views and ViewModels
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<SettingsPage>();
@@ -389,6 +424,30 @@ public partial class App : Application
                 services.AddTransient<ModMarketViewModel>();
                 services.AddTransient<ModMarketPage>();
                 services.AddSingleton<ModMarketService>();
+
+                // Mod Store（GameBanana 直连，与上面的市场数据完全独立）
+                services.AddTransient<ModStoreViewModel>();
+                services.AddTransient<ModStorePage>();
+                services.AddSingleton<ModStoreService>();
+                services.AddSingleton<ModStoreDeploymentService>();
+
+                // 本地安装索引：单例、进程内读一次（构造函数把文件读进内存，之后界面查角标不碰磁盘）。
+                //
+                // 路径直接拼 %LOCALAPPDATA%\JASM（与上面的下载暂存目录同一个根），**不用**
+                // ILocalSettingsService.ApplicationDataFolder —— 那个是**游戏级**的目录
+                // （ApplicationData_<游戏>），玩家切一次游戏就换一个，装过什么会跟着「消失」。
+                //
+                // 商店目前跟随**当前选中的游戏**（取数按 game.json 的 GameBananaUrl 参数化），
+                // 但记录不能跟着游戏走：切一次游戏再切回来，mod 一直在磁盘上、记录却没了，
+                // 那就会把一个装过的 mod 说成「没装过」（PRD 的 Story 6 曾打算让商店固定只服务鸣潮，
+                // 后来按「沿用跟随当前游戏」改写了，这条取舍与它无关）。
+                services.AddSingleton(sp => new ModStoreInstallIndex(
+                    sp.GetRequiredService<ILogger>(),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "JASM", "ModStoreInstalls.json")));
+
+                // 下载面板：单例 —— 下载是跨页面的（在商店里点了下载，切走再回来行还得在）。
+                services.AddSingleton<ModDownloadManagerViewModel>();
 
                 // Configuration
                 services.Configure<ModMarketOptions>(
