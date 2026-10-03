@@ -11,7 +11,7 @@
 version.json         # 含 xxmi / wwmi / launcher 三个包，URL 指向 localhost:8899
 xxmi-1.0.5.zip       # 真实 XXMI 注入器框架包（3 个 DLL）
 wwmi-1.0.0.zip       # 真实 WWMI 游戏包（d3d11.dll + d3dx.ini + Core\ + 空 Mods\）
-launcher-2.2.1.zip   # 真实 XXMI 启动器离线包（~55MB，见 mod-env-cdn-setup.md「打 launcher 包」）
+launcher-2.3.8.zip   # 真实 XXMI 启动器离线包（~54MB，见 mod-env-cdn-setup.md「打 launcher 包」）
 ```
 
 起一个本地 HTTP 服务：
@@ -67,7 +67,7 @@ python -m http.server 8899 --directory C:\jasm-mock-cdn
 目标：确认从干净 launcher 包装出的启动器**不依赖 MSI 注册表项**也能独立跑起来。
 
 1. 把 `D:\XXMI` 改名为 `D:\XXMI.bak`（保留现场，可回滚）
-2. 上传 `launcher-2.2.1.zip` + 更新版 `version.json` 到 COS `modenv/`
+2. 上传 `launcher-2.3.8.zip` + 更新版 `version.json` 到 COS `modenv/`
 3. JASM 里点「一键配置 Mod 环境」→ 预检应显示 **xxmi / launcher / wwmi 三个包** → 开始配置
 4. 配置完成后双击 `D:\XXMI\Resources\Bin\XXMI Launcher.exe`
    - GUI 能打开 → 注册表不是硬依赖 ✓
@@ -75,6 +75,14 @@ python -m http.server 8899 --directory C:\jasm-mock-cdn
 5. GUI 里点 WWMI → 选择游戏目录（`D:\Wuthering Waves\Wuthering Waves Game`）→ 点启动 → 确认注入生效
 6. 验证幂等：再次点「一键配置」→ launcher 显示「已是最新」；更新 version.json 版本号 → 显示「可更新」
 7. 验证保留配置：改过 GUI 里的设置后升级 launcher 包 → `XXMI Launcher Config.json` 不被覆盖
+8. **布局确认（启动器 2.3.8 起）**：进游戏前看 `D:\XXMI\WWMI\` —— 应出现 `d3d11.dll` 与
+   `d3dcompiler_47.dll`（启动器从 `Resources\Packages\XXMI\` 部署下来的注入器），
+   `D:\XXMI\` 根目录那 4 个文件则是 JASM 自己写的旧布局副本
+   - 启动器 GUI 上的 XXMI DLL 版本（2.3.8 起改为读 MI 文件夹里的 DLL）应与 JASM 下拉框里的
+     当前版本一致；显示成 `X.X.X` 说明它不认这个 DLL（第三方 / 非 live 签名）
+   - ⚠️ 这条目前只在本机观察过一次，**没有在游戏里验过「Mod 生效」**。JASM 仍照旧往 XXMI
+     根目录写一份框架副本（`BaseFilesOk` 要求两处都有），没有因此报错；若确认根目录那份已无人读，
+     再单独开一轮把它去掉（改代码 + 实机验证），别混在发版里做
 
 ## 9. Phase 3：启动命令自动接通（启动游戏即带 mod）
 
@@ -235,6 +243,13 @@ Get-ChildItem Build\out\xxmi-versions\*.zip | ForEach-Object {
 > ⚠️ XXMI 的框架在磁盘上有**两份**：`D:\XXMI\`（游戏实际加载的）和
 > `D:\XXMI\Resources\Packages\XXMI\`（**启动器读版本号的那份**，多一个 `Manifest.json`）。
 > JASM 两处都写；手工实测时也必须两处都换，只换根目录则启动器显示的版本不会变。
+
+> ℹ️ **2026-10-03 观察（启动器升到 2.3.8 时）**：全新装的 2.3.8 里 `D:\XXMI\` 根目录**没有**那
+> 4 个文件；`Resources\Packages\XXMI\` 仍是完整的 4 件；而注入器 DLL（`d3d11.dll` +
+> `d3dcompiler_47.dll`，**没有** `3dmloader.dll`）被启动器部署进了 **MI 文件夹**
+> `D:\XXMI\WWMI\`。也就是说「游戏实际加载的那份」很可能已经变成 MI 文件夹，根目录那份是历史布局。
+> JASM 目前两处都写，因此没有出错；但这条**尚未在游戏里验证**，下次做版本回退实测时顺带确认
+> （步骤见 §8 第 8 条）。
 
 **判定当前装的是哪个版本**（比 `.modenv.json` 更可信 —— 它可能被手改）：
 
