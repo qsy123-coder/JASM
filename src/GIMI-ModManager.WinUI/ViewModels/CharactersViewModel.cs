@@ -1138,7 +1138,9 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
 
     /// <summary>
     /// 解压失败按<b>原因</b>给不同的话：用户看到的「装不上」得能自解释（要么自助解决，要么知道下一步干嘛）。
-    /// 密码那两种原因正常到不了这里 —— 密码服务会一直问到成功或用户取消。
+    /// 其中密码那条是<b>内置常量试完失败</b>的结果 —— 没有「问到成功为止」的循环了，
+    /// 所以这里必须自己给出路（自己解压好再拖文件夹），不能只说一句「密码不对」。
+    /// <c>NeedsPassword</c> 到不了这里：拖拽这条路永远会带上密码。
     /// </summary>
     private void ShowExtractionFailureNotification(ArchiveExtractionFailureReason reason)
     {
@@ -1148,6 +1150,10 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
                 "ModDrop_NotArchiveTitle", "ModDrop_NotArchiveBody",
                 "This is not a mod archive JASM can read",
                 "JASM reads zip / rar / 7z files and WinRAR self-extracting exe files. You can also unpack it yourself and drop the folder onto the character's card."),
+            ArchiveExtractionFailureReason.WrongPassword => (
+                "ModDrop_WrongPasswordTitle", "ModDrop_WrongPasswordBody",
+                "This package uses a different password",
+                "Its password is not the one JASM has built in. Unpack it yourself (double-click the package; ask whoever shared it for the password), then drop the folder onto the character's card."),
             ArchiveExtractionFailureReason.Corrupt => (
                 "ModDrop_CorruptTitle", "ModDrop_CorruptBody",
                 "The archive could not be read",
