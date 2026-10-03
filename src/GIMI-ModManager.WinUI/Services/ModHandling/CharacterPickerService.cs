@@ -18,7 +18,8 @@ namespace GIMI_ModManager.WinUI.Services.ModHandling;
 /// </para>
 ///
 /// <para>
-/// 与 <see cref="ArchivePasswordService"/> 一样是<b>代码搭的</b>对话框，理由相同。
+/// <b>代码搭的</b>对话框，不是 XAML 定义的 ContentDialog：这里一共几行控件，
+/// 为它新建 xaml + xaml.cs + ViewModel 三个文件不划算，也省掉 uid 本地化那一套坑。
 /// 候选列表只有名字没有头像：头像要从游戏数据里解析资源 URI，为这一处再走一遍那条链路不划算，
 /// 而列表里显示的正是角色的<b>显示名</b>（中文），认人足够。
 /// </para>
