@@ -28,7 +28,7 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 |---|---|
 | `xxmi-<版本>.zip` | XXMI 注入器框架包，**4 个文件平铺在根**：`3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` / `Manifest.json`。JASM 会把这 4 个文件同时写入 XXMI 根目录和 `Resources\Packages\XXMI\`（后者是启动器读版本号的地方），缺任一个都判「需修复」 |
 | `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」） |
-| `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）包，见下节「打 launcher 包」 |
+| `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）离线包，由官方 Portable 包打出，见下节「打 launcher 包」 |
 | `version.json` | 版本清单，见下节 |
 | `xxmi-versions.json` | **可选**。可选 XXMI 版本目录，让用户在向导里选版本 / 回退，见「生成 xxmi-versions.json」 |
 
@@ -54,40 +54,66 @@ wwmi-1.0.0.zip
 
 ### 打 launcher 包
 
-> ⚠️ **不要直接分发 `XXMI-Launcher-Installer-Online-v2.2.1.msi`**：它是**联网引导器**，只含
+> ⚠️ **不要直接分发官方 MSI**（`XXMI-Launcher-Installer-Online-vX.Y.Z.msi`）：它是**联网引导器**，只含
 > `XXMILauncher.exe`，Resources/Themes/Locale 首次运行才从境外下载——正是国内用户翻墙问题的来源。
-> 必须从一台**已安装好的 `D:\XXMI`** 打包完整离线包。
 
-XXMI Launcher 是个 PyInstaller 打包的 Python/tkinter 应用，`XXMI Launcher.exe`（60MB）+ `Bin\` 运行时
-（~50MB）不能裁剪。但可以排除大量垃圾，最终 zip 约 **55MB**：
+改用**官方 Portable 包**（`XXMI-Launcher-Portable-vX.Y.Z.zip`，与 MSI 同页发布，自带
+`Locale\` / `Resources\Bin\` / `Themes\`，解压即离线可跑）打成 JASM 的 `launcher-<版本>.zip`：
 
-| 打进去（必须） | 排除（垃圾/危险） |
-|---|---|
-| `Resources\Bin\`（除日志） | `Resources\Packages\Launcher\TMP\`（旧版安装器，~90MB 垃圾） |
-| `Resources\Packages\XXMI\` + `Launcher\Manifest.json` | `Resources\Security\`（⚠️ 含 XXMI 签名**私钥** `private_key.der`，绝不能外发） |
-| `Themes\`、`Locale\`、`Backups\` | `Resources\Bin\ReShade.log*`（轮转日志） |
-| 一份**干净默认** `XXMI Launcher Config.json` | 实机 `WWMI\`（JASM 的 wwmi 包已装）、根目录 3 个 DLL（JASM 的 xxmi 包已装）、`.modenv.json`、日志、`.lnk`、`Config.json` 里的机器专属字段 |
+```bash
+# 先在一台机器上跑一次新版启动器，让它把配置写到 XXMI 根目录（脚本要拿这份来清洗）
+python Build/PackXxmiLauncher.py --update-manifest Build/out/xxmi-versions/version.json
+```
 
-> ⚠️ **目录结构必须保持 `Resources\Bin` 用的就是原始多级结构，别用会"压平"的通配拷贝**。实测踩过两个坑：
-> - `Locale\` 必须是 **`Locale\Strings\CN\…`** 结构（启动器 2.2.1 迁移后的结构），不能是旧版 `Locale\CN\…`——
->   否则启动器崩：`Failed to load locale: [WinError 3] '…\Locale\Strings\CN'`
-> - `Themes\` 必须保留 **`Themes\Default\…`** 顶层——否则崩：`FileNotFoundError: …\Themes\Default\MainWindow\LauncherFrame\background-image-xxmi.webp`
->
-> 打包用 `robocopy "…\Themes" <stage>\Themes /E`（不要 `Copy-Item …\Themes\*`），打包后抽查这两个关键文件是否存在。
+脚本做的事：**原样**取 Portable 的内容 → 注入清洗过的 `XXMI Launcher Config.json`
+（根目录 + `Backups\` 各一份）→ 打包前断言。默认从
+`D:\BaiduNetdiskDownload\MC-MOD整合包\XXMI软件本体更新包（持续更新）` 取版本号最高的 Portable 包
+（`--source` 可覆盖），产物落在 `Build/out/xxmi-versions/`。改桶时 `--base-url` 与
+`appsettings.json` 的 `ModEnv:ManifestUrl` 一起改。
 
-干净 Config.json 要点（JASM 更新时会保留用户已编辑的该文件）：
-- `Launcher.auto_update=false`（避免启动器去 GitHub 自更新）
-- `Launcher.locale="CN"`、`log_level="INFO"`
-- `Importers.WWMI.Importer.importer_folder="WWMI/"`（相对路径，指向 JASM 装的 wwmi 包）、`game_folder=""`、`shortcut_deployed=false`
-  - JASM 一键配置时会**自动填入**这两项为绝对路径（`importer_folder="D:/XXMI/WWMI"` 正斜杠、`game_folder="D:\Wuthering Waves\Wuthering Waves Game"`），
-    用户无需在 GUI 里手选；仅当字段已是非空绝对路径时保留用户值（`importer_folder` 为相对路径如 `WWMI/` 也会被替换成绝对路径）
-- ⚠️ **配置文件必须无 UTF-8 BOM**：launcher 的 Python `json.loads` 遇到 BOM 会抛
-  `Unexpected UTF-8 BOM` → 首次启动弹「错误 加载配置失败」（有「加载默认/加载备份」按钮）。
-  JASM 一键配置时会**强制以无 BOM 写回**，但打包这份干净 config 时别用默认带 BOM 的编辑器保存
-  （PowerShell `Set-Content`、某些记事本会加 BOM；用 VS Code 右下角选「UTF-8」而非「UTF-8 with BOM」）
-- 删除 `Security.user_signature`（机器专属）
+> ℹ️ 「XXMI软件本体更新包」= 启动器本体（本脚本用）；「XXMI更新包」= 注入器框架版本包
+> （`PackXxmiVersions.py` 用）。两个目录别搞混。
+
+清洗规则（`PackXxmiLauncher.sanitize_config`，动的都是随机器/随部署变的字段）：
+
+| 字段 | 改成 | 为什么 |
+|---|---|---|
+| `Launcher.auto_update` | `false` | 不让启动器去 GitHub 自更新（国内连不上） |
+| `Launcher.locale` / `log_level` | `"CN"` / `"INFO"` | |
+| `Security.user_signature` | `""` | 机器专属签名 |
+| `Importers.<ID>.Importer.importer_folder` | `"<ID>/"` | 相对路径；JASM 一键配置时替换成绝对路径 |
+| `Importers.<ID>.Importer.game_folder` | `""` | JASM 一键配置时按实际游戏目录回填 |
+| `Importers.<ID>.Importer.shortcut_deployed` / `launch_count` / `deployed_migoto_signatures` / `*_warned` | 复位 | 部署态，机器专属 |
+| `Packages.packages.<包>.update_check_time` / `skipped_version` / `*_release_notes` | 复位 | 上次检查的残留 |
+| `Packages.packages.<包>.latest_version` / `deployed_version` | **保留** | 与 JASM 当下实装一致，启动器才不会反复提示「更新」；日后实装版本变了，`AlignStaleLauncherVersions` 会把**更旧**的缓存对齐过来 |
+
+> `importer_folder` 保持相对路径 `WWMI/` 是有意的：JASM 一键配置会把「空或非绝对路径」替换成绝对路径
+> （`importer_folder="D:/XXMI/WWMI"` 正斜杠、`game_folder="D:\Wuthering Waves\Wuthering Waves Game"`），
+> 用户无需在 GUI 里手选；已经是非空绝对路径的字段则保留用户值。
+
+⚠️ **配置文件必须无 UTF-8 BOM**：launcher 的 Python `json.loads` 遇到 BOM 会抛
+`Unexpected UTF-8 BOM` → 首次启动弹「错误 加载配置失败」（有「加载默认/加载备份」按钮）。
+脚本按 4 空格缩进 + CRLF + 无 BOM 写回；手工改这份配置时别用会加 BOM 的编辑器
+（PowerShell `Set-Content`、某些记事本会加；VS Code 右下角选「UTF-8」而非「UTF-8 with BOM」）。
+
+⚠️ **目录层级必须原样保留，别用会「压平」的通配拷贝**。实测踩过两个坑：
+
+- `Locale\` 必须是 **`Locale\Strings\CN\…`** 结构（2.2.1 起迁成这个结构），不能是旧版 `Locale\CN\…`——
+  否则启动器崩：`Failed to load locale: [WinError 3] '…\Locale\Strings\CN'`
+- `Themes\` 必须保留 **`Themes\Default\…`** 顶层——否则崩：`FileNotFoundError: …\Themes\Default\MainWindow\LauncherFrame\background-image-xxmi.webp`
+
+从 Portable 包原样取内容天然满足这两条，脚本也会断言这两个关键文件确实在。
+
+**绝不外发**：`Security\`（含 XXMI 签名**私钥** `private_key.der`）、
+`Resources\Packages\Launcher\TMP\`（~90MB 旧版联网引导器）、`Resources\Bin\*.log`。
+官方 Portable 包本来就不含这些，脚本照样逐条断言——`private_key` 一出现就删包退出。
 
 JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不配就跳过（纯 JASM 注入器玩法）。
+
+> ℹ️ Portable 包**不含** `Resources\Packages\XXMI`（注入器框架），也**不含** `Packages\Launcher\Manifest.json`
+> （旧版启动器用它记自己的版本；2.3.x 改记在 `XXMI Launcher Config.json` 的 `Packages.packages.Launcher` 里）。
+> 框架由 `xxmi` 基础包提供，JASM 安装顺序是「基础包 → 启动器 → 游戏包」，所以启动器装上去时它已经在位。
+> **别再把框架打进启动器包** —— 那会在包里多一份版本可能过期的副本。
 
 ## 三、生成 version.json
 
@@ -114,10 +140,10 @@ JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不�
       "CompatibleGameVersions": ["2.4.0", "2.5.0"]
     },
     "launcher": {
-      "Version": "2.2.1",
-      "DownloadUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/launcher-2.2.1.zip",
+      "Version": "2.3.8",
+      "DownloadUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/launcher-2.3.8.zip",
       "Sha256": "……",
-      "SizeBytes": 57286625,
+      "SizeBytes": 53768403,
       "GameVersion": null,
       "CompatibleGameVersions": []
     }
