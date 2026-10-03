@@ -75,14 +75,16 @@ python -m http.server 8899 --directory C:\jasm-mock-cdn
 5. GUI 里点 WWMI → 选择游戏目录（`D:\Wuthering Waves\Wuthering Waves Game`）→ 点启动 → 确认注入生效
 6. 验证幂等：再次点「一键配置」→ launcher 显示「已是最新」；更新 version.json 版本号 → 显示「可更新」
 7. 验证保留配置：改过 GUI 里的设置后升级 launcher 包 → `XXMI Launcher Config.json` 不被覆盖
-8. **布局确认（启动器 2.3.8 起）**：进游戏前看 `D:\XXMI\WWMI\` —— 应出现 `d3d11.dll` 与
-   `d3dcompiler_47.dll`（启动器从 `Resources\Packages\XXMI\` 部署下来的注入器），
-   `D:\XXMI\` 根目录那 4 个文件则是 JASM 自己写的旧布局副本
-   - 启动器 GUI 上的 XXMI DLL 版本（2.3.8 起改为读 MI 文件夹里的 DLL）应与 JASM 下拉框里的
-     当前版本一致；显示成 `X.X.X` 说明它不认这个 DLL（第三方 / 非 live 签名）
-   - ⚠️ 这条目前只在本机观察过一次，**没有在游戏里验过「Mod 生效」**。JASM 仍照旧往 XXMI
-     根目录写一份框架副本（`BaseFilesOk` 要求两处都有），没有因此报错；若确认根目录那份已无人读，
-     再单独开一轮把它去掉（改代码 + 实机验证），别混在发版里做
+8. **注入器落点确认（启动器 2.3.8 起）**：配置完成后 `D:\XXMI\WWMI\d3d11.dll` 必须与
+   `D:\XXMI\Resources\Packages\XXMI\d3d11.dll` **逐字节相同** —— 收尾的
+   `DeployFrameworkIntoMiFolder` 负责这件事，且必须排在 `wwmi` 游戏包之后（那个包自带一份旧的
+   `d3d11.dll`，装的时候会盖住 MI 文件夹那份）
+   - 启动器 GUI 上的 XXMI DLL 版本（2.3.8 起读 MI 文件夹里的 DLL）应与 JASM 下拉框的当前版本一致；
+     字体显示成 `X.X.X` + 弹「无法识别 XXMI DLL」就是这份没对齐（第三方 / 非 live 签名也会显示 `X.X.X`，
+     所以要看 `WWMI\d3d11.dll` 的哈希是不是等于 `Resources\Packages\XXMI\d3d11.dll`）
+   - 坏现场复现（修复前）：`WWMI\d3d11.dll` 为 1.0.5、`Resources\Packages\XXMI\` 为 1.2.0 →
+     预检应报「MI 文件夹里的 XXMI 注入器与 JASM 安装的框架版本不一致」，基础包判「需修复」，
+     点一次「开始配置」即自愈
 
 ## 9. Phase 3：启动命令自动接通（启动游戏即带 mod）
 
@@ -240,16 +242,26 @@ Get-ChildItem Build\out\xxmi-versions\*.zip | ForEach-Object {
 目标：回答「v0.9.2 / v1.0.5 / v1.1.6 / v1.1.7 这 4 个核心包，各自跟**当前** wwmi 游戏包能否搭配工作」。
 结论直接决定 catalog 里该列哪些版本。
 
-> ⚠️ XXMI 的框架在磁盘上有**两份**：`D:\XXMI\`（游戏实际加载的）和
-> `D:\XXMI\Resources\Packages\XXMI\`（**启动器读版本号的那份**，多一个 `Manifest.json`）。
-> JASM 两处都写；手工实测时也必须两处都换，只换根目录则启动器显示的版本不会变。
+> ⚠️ XXMI 的框架在磁盘上有**三处**，各司其职（JASM 都写）：
+>
+> | 位置 | 谁在用 | 内容 |
+> |---|---|---|
+> | `<XXMI 根目录>\` | **无人**（历史布局；启动器 2.3.x 起不再读它） | 4 个文件：`3dmloader.dll`/`d3d11.dll`/`d3dcompiler_47.dll`/`Manifest.json` |
+> | `<XXMI 根目录>\Resources\Packages\XXMI\` | 启动器眼里的「已安装包」；**所有部署都从它派生** | 同样 4 个文件（含 `Manifest.json`） |
+> | **`<XXMI 根目录>\<MI 文件夹>\`**（鸣潮 = `WWMI\`） | **游戏真正加载的注入器**；启动器 2.3.x 起还拿它显示版本号 | 只有 `d3d11.dll` + `d3dcompiler_47.dll` |
+>
+> 手工换版本时**三处都要换**：只换前两处的话，游戏加载的仍是 MI 文件夹里那份旧 DLL。
+> JASM 侧由 `ModEnvSetupFacade.DeployFrameworkIntoMiFolder` 在一键配置**收尾**负责第三处
+> （必须排在 `wwmi` 游戏包之后 —— 那个包自带一份旧 `d3d11.dll`）。
 
-> ℹ️ **2026-10-03 观察（启动器升到 2.3.8 时）**：全新装的 2.3.8 里 `D:\XXMI\` 根目录**没有**那
-> 4 个文件；`Resources\Packages\XXMI\` 仍是完整的 4 件；而注入器 DLL（`d3d11.dll` +
-> `d3dcompiler_47.dll`，**没有** `3dmloader.dll`）被启动器部署进了 **MI 文件夹**
-> `D:\XXMI\WWMI\`。也就是说「游戏实际加载的那份」很可能已经变成 MI 文件夹，根目录那份是历史布局。
-> JASM 目前两处都写，因此没有出错；但这条**尚未在游戏里验证**，下次做版本回退实测时顺带确认
-> （步骤见 §8 第 8 条）。
+> ℹ️ **2026-10-03 修正（启动器升到 2.3.8 时）**：本节原先写「两份」，并把 XXMI 根目录当成
+> 「游戏实际加载的」—— **那是错的**。当天实测：全新装的 2.3.8 里 `D:\XXMI\` 根目录**没有**那 4 个
+> 文件；`Resources\Packages\XXMI\` 仍是完整 4 件；注入器 DLL（`d3d11.dll` + `d3dcompiler_47.dll`，
+> **没有** `3dmloader.dll`）被启动器部署进了 **MI 文件夹** `D:\XXMI\WWMI\`。
+> 由此暴露一个真 bug：JASM 的 `wwmi-1.0.0.zip` 自带一份 **1.0.5** 的 `d3d11.dll`，而安装顺序是
+> 「基础包 → 启动器 → **wwmi**」，最后一步正好把 MI 文件夹里的 1.2.0 盖成 1.0.5 —— 启动器随即报
+> 「无法识别 XXMI DLL」、版本显示 `X.X.X`（2.3.8 才改成读 MI 文件夹，所以之前看不出来）。
+> 已按上表修复；XXMI 根目录那份**暂留**（实测无人读，但去掉要单独一轮验证）。
 
 **判定当前装的是哪个版本**（比 `.modenv.json` 更可信 —— 它可能被手改）：
 
@@ -282,7 +294,8 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
 逐一实测（每个版本重复一遍）：
 
 1. 备份现场：把 `D:\XXMI\` 与 `D:\XXMI\Resources\Packages\XXMI\` 下的 4 个文件各复制到别处
-2. 从 `xxmi-<版本>.zip` 解出 4 个文件，**同时覆盖上面两处**
+2. 从 `xxmi-<版本>.zip` 解出 4 个文件，**三处都覆盖**（MI 文件夹那处只要 `d3d11.dll` +
+   `d3dcompiler_47.dll`，见本节开头的表；手工换完记得**别**再跑一次一键配置，否则会被 JASM 铺回去）
 3. 双击 `D:\XXMI\Resources\Bin\XXMI Launcher.exe` → GUI 能打开
 4. 启动器界面上的版本号 == 你刚换的版本（读法见上）
 5. GUI 里选 WWMI → 启动游戏 → **确认注入生效**
@@ -300,7 +313,8 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
 
 > 本轮逐版本只确认了「进游戏 + Mod 生效」这一条 —— 那正是选版本时要回答的问题。
 > 空着的两列没有逐版本单独记录：启动器能否打开与版本号显示属于 §15 的运行链路，
-> 修好两处同版本后不再随版本变化。
+> 修好同版本后不再随版本变化（2.3.8 起启动器读的是 MI 文件夹那份，
+> `DeployFrameworkIntoMiFolder` 保证它与包副本逐字节一致）。
 
 > **2026-10-03 新增 1.2.0（⚠️ 尚未跑本节实测）**：上游 2026-09-29 的构建，已进
 > `xxmi-versions.json` 与 `version.json`。当时它只存在于实机的 `Resources\Packages\XXMI\`
@@ -309,7 +323,7 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
 > 下面这张 4 行矩阵**没有**加 1.2.0 —— 补测后再填，别把没测过的版本标成 ✅。
 
 **只有结论为 ✅ 的版本才写进 `xxmi-versions.json`**；不可用的版本直接不列，
-避免用户选了之后照样用不了。测完把 4 个文件还原成本来的版本（两处都要）。
+避免用户选了之后照样用不了。测完把 4 个文件还原成本来的版本（三处都要，见本节开头的表）。
 
 ### 14.3 版本下拉与默认行为（需代码改动后测）
 
@@ -338,26 +352,27 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
 1. 当前装 v1.1.7 → 下拉选 v0.9.2 → 安装
 2. 备份目录（`%LOCALAPPDATA%\JASM\ModEnvBackups\`）应出现含 `1.1.7` 与时间戳的备份档，
    内含当时那 4 个文件（含 `Manifest.json`）
-3. 回退完成后 **两处**（`D:\XXMI\` 与 `Resources\Packages\XXMI\`）4 个文件都在，
+3. 回退完成后 **三处**（`D:\XXMI\`、`Resources\Packages\XXMI\`、`WWMI\`）都跟上：
+   前两处 4 个文件都在，`WWMI\d3d11.dll` 与 `Resources\Packages\XXMI\d3d11.dll` 逐字节相同，
    且 dll 哈希等于 14.2 表里 **0.9.2** 那一行
 4. 打开 XXMI 启动器 → **界面上的版本号跟着变成 0.9.2**（本功能的核心验收点）
 5. `D:\XXMI\.modenv.json` 的 `InstalledVersions["xxmi"]` 更新为 `0.9.2`
 6. **`WWMI\` 子目录与用户 Mod 不受影响**（回退只动那 4 个文件）
 7. `XXMI Launcher Config.json` 不被覆盖（沿用 launcher 包的 `preserveExistingFiles` 行为）
-8. 备份档出现在 UI 中，点「恢复此备份」→ 两处版本变回 1.1.7
+8. 备份档出现在 UI 中，点「恢复此备份」→ **三处**版本都变回 1.1.7
 9. 磁盘空间不足 / 备份目录不可写 → **中止切换并报错**，不得在不留后路的情况下覆盖
 10. 游戏或 XXMI Launcher 正在运行时切换 → 给出提示（沿用现有强杀 Launcher 进程的逻辑）
 11. 取消切换 → 现场保持原样，`.part` 可续传
 12. 旧布局自愈：删掉 `D:\XXMI\Manifest.json`（模拟修复前装的）→ 预检查判「需修复」，
-    点「开始配置」后两处补齐，启动器版本与 JASM 记录一致
+    点「开始配置」后三处补齐，启动器版本与 JASM 记录一致
 13. 旧备份档（不含 `Manifest.json`，由修复前的 JASM 生成）→ 恢复不报失败，
     日志出现「该备份不含 Manifest.json…再点一次开始配置即可对齐」的提示
 14. 版本被外部改动：手工改乱 `Resources\Packages\XXMI\Manifest.json` 的 `version` →
     预检查出现「XXMI 启动器读到的是 vX，与 JASM 记录的 vY 不一致」的提示，且基础包判成**需修复**
-    （这是有意的：点「开始配置」必须真的把两处统一，而不是跳过）
+    （这是有意的：点「开始配置」必须真的把三处统一，而不是跳过）
 15. 被官方更新覆盖：点官方启动器自己的「更新」按钮（从 GitHub 拉包，国内通常需要梯子）→
     之后按上一条检查：JASM 能识破并覆盖回自己管理的版本。
-    注意 JASM **不会**自动覆盖，只在用户点「开始配置」时统一两处
+    注意 JASM **不会**自动覆盖，只在用户点「开始配置」时统一三处
 
 ### 14.6 回归
 
