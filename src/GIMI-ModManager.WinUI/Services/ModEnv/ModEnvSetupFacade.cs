@@ -208,7 +208,7 @@ public class ModEnvSetupFacade
                     ManifestVersion = (effectiveBasePkg ?? basePkg).Version,
                     InstalledVersion = installed.GetValueOrDefault(_options.Value.BasePackageId),
                     Action = EvaluateAction(installed, _options.Value.BasePackageId, effectiveBasePkg ?? basePkg,
-                        BasePackageConsistent(rootFolder, installed))
+                        BasePackageConsistent(rootFolder, miFolder, installed))
                 });
             }
 
@@ -261,6 +261,16 @@ public class ModEnvSetupFacade
                     $"XXMI 启动器读到的是 v{launcherBase}，与 JASM 记录的 v{recordedBase} 不一致"
                     + $"（通常是点过官方启动器自己的更新按钮）；点「开始配置」会把两处统一成下拉框所选版本。");
             }
+        }
+
+        // The MI folder's injector is the one the game loads. A game package that shipped its own older
+        // d3d11.dll leaves it behind the framework JASM deployed, which the launcher reports as
+        // 「无法识别 XXMI DLL」 — say why the base package reads "需修复" instead of leaving it unexplained.
+        // Outside the manifest branch on purpose: this is a local-disk fact that holds even offline.
+        if (Directory.Exists(rootFolder) && !MiFolderFrameworkMatches(rootFolder, miFolder))
+        {
+            issues.Add("MI 文件夹里的 XXMI 注入器与 JASM 安装的框架版本不一致"
+                       + "（通常是游戏包自带的旧 d3d11.dll 盖掉了框架）；点「开始配置」会用所选版本覆盖它。");
         }
 
         return new ModEnvPreCheck
@@ -323,11 +333,12 @@ public class ModEnvSetupFacade
             var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
             var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
 
-            // Base XXMI framework -> both copies the XXMI layout keeps: the XXMI root (what the game loads)
-            // and Resources\Packages\XXMI (what the launcher reads its displayed version from).
+            // Base XXMI framework -> both copies the XXMI layout keeps for the package: the XXMI root and
+            // Resources\Packages\XXMI. What the game actually injects is the MI folder's copy, which
+            // DeployFrameworkIntoMiFolder puts in place at the end of the run.
             var baseAction =
                 EvaluateAction(installed, _options.Value.BasePackageId, basePkg,
-                    BasePackageConsistent(rootFolder, installed));
+                    BasePackageConsistent(rootFolder, miFolder, installed));
             if (baseAction != ModEnvPackageAction.UpToDate)
             {
                 // Snapshot before overwriting. This throws on failure by design — continuing would destroy
@@ -395,6 +406,10 @@ public class ModEnvSetupFacade
 
             // Ensure the Mods folder exists — some game packages may omit the (empty) dir from the zip.
             Directory.CreateDirectory(modsFolder);
+
+            // Last, and deliberately after the per-game package above: that package just wrote its own copy
+            // of the injector into this folder, so put the framework version JASM deployed back in front of it.
+            DeployFrameworkIntoMiFolder(rootFolder, miFolder, progress, issues);
 
             // Pre-fill the launcher GUI's game path + WWMi path so a fresh install opens with them set, and
             // align its stale cached versions so it stops offering a downgrade.
@@ -480,11 +495,18 @@ public class ModEnvSetupFacade
             // Undoable restore: keep what is on disk right now before replacing it.
             await BackupBaseFilesAsync(rootFolder, installed, progress, ct);
 
+            var miFolder = Path.Combine(rootFolder, gameInfo.ModEnv.SubDirName);
+            var issues = new List<string>();
+
             progress?.Report($"正在恢复备份 {backup.DisplayName}...");
             // Both copies, exactly like an install: restoring only the root would leave the launcher
             // displaying the version the user just rolled back from.
             await _installer.CopyToTargetAsync(backup.Folder, rootFolder, progress, ct);
             await _installer.CopyToTargetAsync(backup.Folder, XxmiPackageDir(rootFolder), progress, ct);
+
+            // Same reason as in SetupAsync: the MI folder's injector is what the game loads, so a rollback
+            // that stopped at the two copies above would not actually change the injector in use.
+            DeployFrameworkIntoMiFolder(rootFolder, miFolder, progress, issues);
 
             // Snapshots taken before the manifest became part of the package hold only the DLLs, so the
             // launcher's copy keeps whatever manifest it had. Say so rather than let the user find the
@@ -506,8 +528,6 @@ public class ModEnvSetupFacade
 
             await _installer.WriteMarkerAsync(rootFolder, installed, ct);
 
-            var miFolder = Path.Combine(rootFolder, gameInfo.ModEnv.SubDirName);
-            var issues = new List<string>();
             if (!BaseFilesOk(rootFolder))
                 issues.Add("恢复后校验未通过：XXMI 基础包文件不完整，请重新配置 Mod 环境。");
 
@@ -592,11 +612,20 @@ public class ModEnvSetupFacade
     private const string XxmiManifestFileName = "Manifest.json";
 
     /// <summary>
-    /// The framework copy the XXMI Launcher reads: a sibling of the per-game packages under
-    /// <c>Resources\Packages\</c>. The launcher never looks at the DLLs sitting at the XXMI root.
+    /// The framework copy under <c>Resources\Packages\</c> — a sibling of the per-game packages, and the
+    /// copy the XXMI Launcher keeps as the installed package. The launcher never looks at the DLLs sitting
+    /// at the XXMI root.
     /// </summary>
     private static string XxmiPackageDir(string rootFolder) =>
         Path.Combine(rootFolder, "Resources", "Packages", "XXMI");
+
+    /// <summary>The framework files the XXMI Launcher deploys from the package into the MI folder.</summary>
+    /// <remarks>
+    /// Exactly these two — <c>3dmloader.dll</c> and <c>Manifest.json</c> stay behind in the package copy.
+    /// This is the injector that ends up in front of the game, and since launcher 2.3.x it is also the copy
+    /// the launcher reads its displayed version from (older launchers read the package's manifest).
+    /// </remarks>
+    private static readonly string[] MiFolderFrameworkFiles = { "d3d11.dll", "d3dcompiler_47.dll" };
 
     /// <summary>
     /// True when the base package is fully deployed to both places the XXMI layout keeps it in.
@@ -616,9 +645,16 @@ public class ModEnvSetupFacade
     /// would keep saying "已是最新" while the launcher runs a version JASM never installed, and the setup
     /// run would skip the base package, leaving the two copies split.
     /// </remarks>
-    private bool BasePackageConsistent(string rootFolder, IReadOnlyDictionary<string, string> installed)
+    private bool BasePackageConsistent(string rootFolder, string miFolder,
+        IReadOnlyDictionary<string, string> installed)
     {
         if (!BaseFilesOk(rootFolder)) return false;
+
+        // The MI folder's injector is the one the game loads, so it has to be part of "consistent" rather
+        // than a plain existence check elsewhere: a game package built from a live XXMI folder ships its own
+        // older d3d11.dll, installs last, and silently wins over the framework JASM just deployed — the
+        // launcher then reports 「无法识别 XXMI DLL」 and the game runs an injector JASM never chose.
+        if (!MiFolderFrameworkMatches(rootFolder, miFolder)) return false;
 
         var recorded = installed.GetValueOrDefault(_options.Value.BasePackageId);
         if (string.IsNullOrWhiteSpace(recorded)) return true; // nothing recorded to compare against
@@ -626,6 +662,92 @@ public class ModEnvSetupFacade
         // An unreadable manifest is not evidence of drift — only a readable, differing version is.
         var visible = ReadLauncherVisibleXxmiVersion(rootFolder);
         return visible is null || string.Equals(visible, recorded, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// True when the MI folder's injector DLLs are byte-identical to the installed package's copy.
+    /// </summary>
+    /// <remarks>
+    /// Compared by content, not by existence: the failure this guards against has the right file names in
+    /// the right place and only the version wrong.
+    /// </remarks>
+    private bool MiFolderFrameworkMatches(string rootFolder, string miFolder)
+    {
+        try
+        {
+            var packageDir = XxmiPackageDir(rootFolder);
+            return MiFolderFrameworkFiles.All(name =>
+            {
+                var source = Path.Combine(packageDir, name);
+                var deployed = Path.Combine(miFolder, name);
+                return File.Exists(source) && File.Exists(deployed) && FilesAreIdentical(source, deployed);
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug(ex, "Failed to compare the MI folder's framework files under {Mi}", miFolder);
+            return false;
+        }
+    }
+
+    /// <summary>Byte comparison of two files, with a length short-circuit for the common mismatch.</summary>
+    private static bool FilesAreIdentical(string left, string right)
+    {
+        if (new FileInfo(left).Length != new FileInfo(right).Length) return false;
+        return File.ReadAllBytes(left).AsSpan().SequenceEqual(File.ReadAllBytes(right));
+    }
+
+    /// <summary>
+    /// Copies the framework's injector DLLs from the installed package into the MI folder, where the XXMI
+    /// Launcher picks them up for the game.
+    /// </summary>
+    /// <remarks>
+    /// Runs unconditionally at the end of a setup run rather than being gated on the base package needing
+    /// an install: the per-game package is installed last, and a game package built from a live XXMI folder
+    /// carries its own older <c>d3d11.dll</c> — so the runs where the base package is already "已是最新"
+    /// are exactly the runs that would otherwise leave this copy stale.
+    /// Only writes what differs, so a repeat run stays silent. Non-fatal: failures become issues.
+    /// </remarks>
+    private void DeployFrameworkIntoMiFolder(string rootFolder, string miFolder, IProgress<string>? progress,
+        List<string> issues)
+    {
+        try
+        {
+            var packageDir = XxmiPackageDir(rootFolder);
+            var deployed = new List<string>();
+
+            foreach (var name in MiFolderFrameworkFiles)
+            {
+                var source = Path.Combine(packageDir, name);
+                if (!File.Exists(source))
+                {
+                    _logger.Warning("MI folder deploy: framework file {File} missing under {Package}", name, packageDir);
+                    issues.Add($"未找到 XXMI 框架文件 {name}，未能部署到 MI 文件夹。");
+                    continue;
+                }
+
+                var target = Path.Combine(miFolder, name);
+                if (File.Exists(target) && FilesAreIdentical(source, target))
+                    continue;
+
+                Directory.CreateDirectory(miFolder);
+                File.Copy(source, target, overwrite: true);
+                deployed.Add(name);
+            }
+
+            if (deployed.Count > 0)
+            {
+                _logger.Information("Deployed the XXMI framework into MI folder {Mi}: {Files}", miFolder,
+                    string.Join(", ", deployed));
+                progress?.Report(
+                    $"已把 XXMI 注入器部署到 MI 文件夹（{string.Join("、", deployed)}）——游戏加载的就是这份。");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to deploy the XXMI framework into MI folder {Mi}", miFolder);
+            issues.Add("未能把 XXMI 注入器部署到 MI 文件夹，启动器可能提示「无法识别 XXMI DLL」。");
+        }
     }
 
     private bool BaseFilesOk(string rootFolder)
@@ -644,12 +766,15 @@ public class ModEnvSetupFacade
     }
 
     /// <summary>
-    /// Version recorded in the framework copy the launcher displays, or null when it is missing/unreadable.
+    /// Version recorded in the package copy of the framework, or null when it is missing/unreadable.
     /// </summary>
     /// <remarks>
     /// JASM owns this copy too, so the two versions must agree; they diverge when something else (the
     /// official updater) touches it. Surfacing the mismatch in the pre-check turns "回退后版本号没变" from a
     /// puzzling symptom into a stated cause.
+    /// Launcher 2.3.x moved the version it *displays* to the MI folder's DLL
+    /// (see <see cref="MiFolderFrameworkMatches"/>); this check is kept because the package copy is still
+    /// the source every deployment is derived from.
     /// </remarks>
     private string? ReadLauncherVisibleXxmiVersion(string rootFolder)
     {
