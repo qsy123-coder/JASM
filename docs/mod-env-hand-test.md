@@ -191,9 +191,23 @@ python Build/PackXxmiVersions.py
 
 | 产物 | 说明 |
 |---|---|
-| `xxmi-0.9.2.zip` / `xxmi-1.0.5.zip` / `xxmi-1.1.6.zip` / `xxmi-1.1.7.zip` | 每版本一包，约 3.2 MB，zip 内**平铺且仅有** 3 个 dll + `Manifest.json` |
+| `xxmi-0.9.2.zip` / `xxmi-1.0.5.zip` / `xxmi-1.1.6.zip` / `xxmi-1.1.7.zip` / `xxmi-1.2.0.zip` | 每版本一包，约 3.2 MB，zip 内**平铺且仅有** 3 个 dll + `Manifest.json` |
 | `xxmi-versions.json` | 版本清单，含 DownloadUrl / Sha256 / SizeBytes / ReleasedAt |
 | `xxmi-version-hashes.json` | 逐文件哈希表，14.2 核对「当前装的是哪个版本」用 |
+
+> ℹ️ **`xxmi-1.2.0.zip` 是怎么来的**（2026-10-03）：源目录当时只到 1.1.7，所以它是从实机
+> `D:\XXMI\Resources\Packages\XXMI\` 那 4 个文件重建后**增量并入**清单的——没有重跑脚本加。
+> 原因：脚本按 `--source` 重打**全部**版本的 zip，而已发布的包哈希已写死在 catalog 里分发给用户，
+> 重打只要字节有差异，用户端就会卡在 SHA256 校验失败。
+>
+> 事后已把重建的包补成 `<源目录>\XXMI v1.2.0更新包\Packages\XXMI\`，并**实测重跑
+> `PackXxmiVersions.py` 产出 5 个 zip、sha256 与线上逐个一致**，所以现在重跑是安全的。
+> 注意那个目录里有一份「重建说明-不是完整更新包.txt」：它只有 `Packages\XXMI` 那 4 个文件，
+> 缺 `Security\` 与其它 `Packages\`，**不能**拿去覆盖安装。
+>
+> ⚠️ 但重跑生成的 `xxmi-versions.json` 里 `Notes` 恒为空 —— 直接传上去会丢掉全部备注
+> （含 1.2.0 那条「尚未实机验证」）。**重跑后要重新填 Notes，或就在
+> `Build/out/xxmi-versions/` 现成那份上改**，别把脚本刚产出的裸清单直接上传。
 
 > `Manifest.json` **必须**跟着 dll 一起发：XXMI 启动器显示的版本号来自它，少了它就会出现
 > 「dll 已换成旧版、启动器版本号却没变」。它带的是**公开**的 `signatures`（验签数据），不是私钥。
@@ -245,6 +259,7 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
 | 1.0.5 | `DB62EA065744EA07E04FB60B26D53BE185026E16A66E557A0553F7AF079E2A72` | `02E5F1DCF926F6A1C00517307213265B1671797E9DE1E49CEDF731A95447A403` |
 | 1.1.6 | `427F6B1082121F96AD83696AFAF40EB2F5799FC29C960BEC917D403B5EB8753A` | `7BA9CC0BFC1E26F613E7F00BA0720CFDCDDF08EBEAD4C8A29B19EB98424CEB6A` |
 | 1.1.7 | `44965EE51786DB44FB4252671F356426CA7D879E6F7E8436B27D68E13237B0CF` | `6C962958DD14C79786A88D4358C8EAE24026352D31B4D564DBB2DC57E85A2FFC` |
+| 1.2.0 | `3567F4A28465018396608397C4C3986D17EFD49AF718922431DA29F348FC7F66` | `6887077679D81F841FCAAEEEF4757B440371472E5202401978956AAD2B677C19` |
 
 > 参考：本机 `D:\XXMI` 根目录为 **1.0.5**，而 `Resources\Packages\XXMI\Manifest.json` 曾停在
 > **1.1.7** —— 修复前 JASM 只写根目录，启动器便一直显示旧版本号。修复后两处会同版本。
@@ -271,6 +286,12 @@ Get-FileHash D:\XXMI\3dmloader.dll,D:\XXMI\d3d11.dll,`
 > 本轮逐版本只确认了「进游戏 + Mod 生效」这一条 —— 那正是选版本时要回答的问题。
 > 空着的两列没有逐版本单独记录：启动器能否打开与版本号显示属于 §15 的运行链路，
 > 修好两处同版本后不再随版本变化。
+
+> **2026-10-03 新增 1.2.0（⚠️ 尚未跑本节实测）**：上游 2026-09-29 的构建，已进
+> `xxmi-versions.json` 与 `version.json`。当时它只存在于实机的 `Resources\Packages\XXMI\`
+> （根目录仍是 1.1.7），**没有在游戏里验过能不能加载 Mod**，所以 catalog 的 `Notes` 如实写着
+> 「JASM 侧尚未实机验证」。上面那张哈希对照表已补 1.2.0 一行，供事后核对；
+> 下面这张 4 行矩阵**没有**加 1.2.0 —— 补测后再填，别把没测过的版本标成 ✅。
 
 **只有结论为 ✅ 的版本才写进 `xxmi-versions.json`**；不可用的版本直接不列，
 避免用户选了之后照样用不了。测完把 4 个文件还原成本来的版本（两处都要）。
