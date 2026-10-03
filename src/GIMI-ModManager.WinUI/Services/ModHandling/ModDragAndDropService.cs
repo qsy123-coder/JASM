@@ -16,7 +16,6 @@ public class ModDragAndDropService
     private readonly ILogger _logger;
     private readonly ModInstallerService _modInstallerService;
     private readonly IWindowManagerService _windowManagerService;
-    private readonly ArchivePasswordService _archivePasswordService;
 
 
     private readonly Notifications.NotificationManager _notificationManager;
@@ -24,13 +23,11 @@ public class ModDragAndDropService
     public event EventHandler<DragAndDropFinishedArgs>? DragAndDropFinished;
 
     public ModDragAndDropService(ILogger logger, Notifications.NotificationManager notificationManager,
-        ModInstallerService modInstallerService, IWindowManagerService windowManagerService,
-        ArchivePasswordService archivePasswordService)
+        ModInstallerService modInstallerService, IWindowManagerService windowManagerService)
     {
         _notificationManager = notificationManager;
         _modInstallerService = modInstallerService;
         _windowManagerService = windowManagerService;
-        _archivePasswordService = archivePasswordService;
         _logger = logger.ForContext<ModDragAndDropService>();
     }
 
@@ -64,10 +61,7 @@ public class ModDragAndDropService
         if (storageItem is StorageFile)
         {
             var scanner = new DragAndDropScanner();
-            var extractResult = await ExtractWithCleanupAsync(scanner, storageItem.Path);
-
-            if (extractResult is null) // 用户放弃输密码（临时目录已在里面收拾过）
-                return null;
+            var extractResult = ExtractWithCleanup(scanner, storageItem.Path);
 
             installMonitor = await StartInstallationAsync(extractResult, modList);
 
@@ -167,10 +161,7 @@ public class ModDragAndDropService
         }
 
         var scanner = new DragAndDropScanner();
-        var scanResult = await ExtractWithCleanupAsync(scanner, file.Path);
-
-        if (scanResult is null) // 用户放弃输密码（临时目录已在里面收拾过）
-            return null;
+        var scanResult = ExtractWithCleanup(scanner, file.Path);
 
         ICharacterModList? modList;
         try
@@ -239,33 +230,34 @@ public class ModDragAndDropService
     }
 
     /// <summary>
-    /// 解压（含密码：用记住的那条试，不行就问用户），<b>失败或用户放弃时把临时目录收拾掉</b>。
-    /// 返回 <c>null</c> = 用户放弃输密码。
+    /// 解压（加密包直接套内置的 <see cref="ModArchivePassword.Default"/>，<b>不再问用户</b>），
+    /// <b>失败时把临时目录收拾掉</b>。
     ///
     /// <para>
     /// 卡片路径与检测区路径共用这一份：清理这件事不能让哪条路忘了写 ——
     /// 忘一条，用户的 <c>%TEMP%\JASM_TMP</c> 就会攒下一堆解压出来的 Mod。
-    /// 密码只在内存里过一道，不进日志、不进异常、不进通知。
+    /// 密码只在内存里过一道，不进日志、不进异常、不进通知（取命令行那条日志由
+    /// <c>DragAndDropScanner.RedactCommand</c> 把 <c>-p</c> 打码）。
+    /// </para>
+    ///
+    /// <para>
+    /// 没有「问到成功为止」的循环了：密码不对就抛
+    /// <see cref="GIMI_ModManager.Core.Helpers.ArchiveExtractionException"/>（<c>WrongPassword</c>），
+    /// 由调用方按 reason 给用户「自己解压好再拖文件夹」的出路（见
+    /// <c>CharactersViewModel.ShowExtractionFailureNotification</c>）。
     /// </para>
     /// </summary>
-    private async Task<DragAndDropScanResult?> ExtractWithCleanupAsync(DragAndDropScanner scanner, string path)
+    private DragAndDropScanResult ExtractWithCleanup(DragAndDropScanner scanner, string path)
     {
-        DragAndDropScanResult? scanResult;
         try
         {
-            scanResult = await _archivePasswordService.ExtractAsync(
-                password => scanner.ScanAndGetContents(path, password));
+            return scanner.ScanAndGetContents(path, ModArchivePassword.Default);
         }
         catch
         {
             scanner.CleanupWorkFolder(); // 解压失败：半截内容也别留在 %TEMP%
             throw;
         }
-
-        if (scanResult is null)
-            scanner.CleanupWorkFolder(); // 用户放弃输密码
-
-        return scanResult;
     }
 
     /// <summary>
