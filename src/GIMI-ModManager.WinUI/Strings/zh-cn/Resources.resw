@@ -2437,36 +2437,6 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModEnv_TestLaunch.Content" xml:space="preserve">
     <value>测试启动</value>
   </data>
-  <data name="ArchivePassword_NeedsTitle" xml:space="preserve">
-    <value>需要密码</value>
-  </data>
-  <data name="ArchivePassword_WrongTitle" xml:space="preserve">
-    <value>密码不正确</value>
-  </data>
-  <data name="ArchivePassword_NeedsHint" xml:space="preserve">
-    <value>这个压缩包是加密的，请输入密码。</value>
-  </data>
-  <data name="ArchivePassword_WrongHint" xml:space="preserve">
-    <value>上次用的密码不对，请重新输入。</value>
-  </data>
-  <data name="ArchivePassword_ClearedHint" xml:space="preserve">
-    <value>已清除记住的密码，请输入。</value>
-  </data>
-  <data name="ArchivePassword_Placeholder" xml:space="preserve">
-    <value>密码</value>
-  </data>
-  <data name="ArchivePassword_Note" xml:space="preserve">
-    <value>密码只保存在本机设置里，下次会自动使用。</value>
-  </data>
-  <data name="ArchivePassword_ConfirmBtn" xml:space="preserve">
-    <value>确定</value>
-  </data>
-  <data name="ArchivePassword_CancelBtn" xml:space="preserve">
-    <value>取消</value>
-  </data>
-  <data name="ArchivePassword_ClearBtn" xml:space="preserve">
-    <value>清除已记住的密码</value>
-  </data>
   <data name="CharacterPicker_Title" xml:space="preserve">
     <value>这是哪个角色的 Mod？</value>
   </data>
@@ -2490,6 +2460,12 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   </data>
   <data name="ModDrop_NotArchiveBody" xml:space="preserve">
     <value>JASM 只认 zip / rar / 7z 和 WinRAR 自解压 exe。也可以自己解压好，把文件夹拖到对应角色的卡片上。</value>
+  </data>
+  <data name="ModDrop_WrongPasswordTitle" xml:space="preserve">
+    <value>这个包用的不是内置密码</value>
+  </data>
+  <data name="ModDrop_WrongPasswordBody" xml:space="preserve">
+    <value>它的密码和 JASM 内置的那条不一样。请自己解压好（双击那个包，密码问发给你的人），再把解压出来的文件夹拖到对应角色的卡片上。</value>
   </data>
   <data name="ModDrop_CorruptTitle" xml:space="preserve">
     <value>这个包读不出来</value>
