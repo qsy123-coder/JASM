@@ -350,11 +350,22 @@ public class ModDragAndDropService
         }
         finally
         {
-            // 解压出来的临时目录用完就清 —— 装的时候是搬/复制进角色目录，这份原件不该留在 %TEMP%
+            // 解压出来的临时目录用完就清 —— 装的时候是搬/复制进角色目录，这份原件不该留在临时目录里
             try
             {
                 if (contentRoot.Exists)
                     contentRoot.Delete(true);
+
+                // 搬走之后剩下的那层空包装（<工作根>\<guid>）也收掉：不然每装一次就在目标盘上
+                // 留一个空目录。只在它确实空、且确实是咱们自己的工作目录时才删。
+                var workRoot = contentRoot.Parent;
+                if (workRoot?.Exists == true &&
+                    string.Equals(workRoot.Parent?.Name, DragAndDropScanner.WorkFolderName,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !workRoot.EnumerateFileSystemInfos().Any())
+                {
+                    workRoot.Delete();
+                }
             }
             catch (Exception e)
             {
