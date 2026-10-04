@@ -21,7 +21,15 @@ namespace GIMI_ModManager.WinUI.Services.ModHandling;
 public enum ModInstallStage
 {
     Extracting,
-    Installing
+    Installing,
+
+    /// <summary>
+    /// 这一单没装成（认不出角色、解压失败、落盘失败都算）。
+    ///
+    /// 批量拖拽时浮窗靠它记账 —— 单看返回值分不出成败：静默安装那条路把异常吞在自己的通知里、
+    /// 一律返回 null。
+    /// </summary>
+    Failed
 }
 
 public class ModDragAndDropService
@@ -276,7 +284,7 @@ public class ModDragAndDropService
         stageProgress?.Report(ModInstallStage.Installing);
 
         if (installSilently)
-            return await InstallSilentlyAsync(contentRoot, modList).ConfigureAwait(false);
+            return await InstallSilentlyAsync(contentRoot, modList, stageProgress).ConfigureAwait(false);
 
         return await _modInstallerService.StartModInstallationAsync(contentRoot.Parent ?? extractedRoot, modList,
             setup: options => options.ModRootFolder = contentRoot).ConfigureAwait(false);
@@ -310,7 +318,8 @@ public class ModDragAndDropService
     /// 也不是拖拽该有的手感。落盘那一手与向导点「添加模组」完全相同
     /// （<c>ModInstallerService.InstallFolderSilentlyAsync</c>），所以目录名、启用行为都跟着那条路走。
     /// </summary>
-    private async Task<InstallMonitor?> InstallSilentlyAsync(DirectoryInfo contentRoot, ICharacterModList modList)
+    private async Task<InstallMonitor?> InstallSilentlyAsync(DirectoryInfo contentRoot, ICharacterModList modList,
+        IProgress<ModInstallStage>? stageProgress = null)
     {
         var characterName = modList.Character.DisplayName;
 
@@ -346,6 +355,9 @@ public class ModDragAndDropService
             _logger.Error(e, "静默安装失败: {ModRoot}", contentRoot.FullName);
             _notificationManager.ShowNotification("安装失败",
                 $"「{contentRoot.Name}」装到 {characterName} 失败：{e.Message}", TimeSpan.FromSeconds(10));
+
+            // 把失败也报出去：异常在这层就被吞了、返回值一律 null，批量装那边只靠这个分得出成败
+            stageProgress?.Report(ModInstallStage.Failed);
             return null;
         }
         finally
