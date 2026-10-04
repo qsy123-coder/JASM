@@ -7,7 +7,8 @@ using Serilog;
 namespace GIMI_ModManager.WinUI.Services.ModEnv;
 
 /// <summary>
-/// Fetches the selectable-version catalogue (<c>xxmi-versions.json</c>) from the CDN.
+/// Fetches a selectable-version catalogue (<c>xxmi-versions.json</c>, <c>launcher-versions.json</c>, …)
+/// from the CDN. One service serves every catalogue: they share a schema and a degradation policy.
 /// </summary>
 /// <remarks>
 /// Deliberately NOT cached. The file is tiny (~1 KB) and the picker is opened rarely, so re-fetching on
@@ -36,16 +37,28 @@ public class ModEnvVersionCatalogService
     }
 
     /// <summary>
-    /// Returns the selectable versions, newest first. Never throws and never returns null: being
-    /// unreachable or malformed is an expected state, not an error — the wizard silently degrades to
-    /// "latest only", which is exactly how JASM behaved before version selection existed.
+    /// Returns the selectable injector-framework versions (the <c>xxmi-versions.json</c> catalogue),
+    /// newest first. See <see cref="GetVersionsAsync(string, CancellationToken)"/> for the contract.
     /// </summary>
-    public async Task<IReadOnlyList<ModEnvCatalogVersion>> GetVersionsAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<ModEnvCatalogVersion>> GetVersionsAsync(CancellationToken ct = default)
+        => GetVersionsAsync(_options.Value.VersionCatalogUrl, ct);
+
+    /// <summary>
+    /// Returns the versions listed by the catalogue at <paramref name="url"/>, newest first. Never throws
+    /// and never returns null: being unreachable or malformed is an expected state, not an error — the
+    /// wizard silently degrades to "latest only", which is exactly how JASM behaved before version
+    /// selection existed.
+    /// </summary>
+    /// <remarks>
+    /// Takes a URL rather than a package kind so one set of normalization/degradation rules serves every
+    /// catalogue without this service having to know which URL belongs to which package — that mapping
+    /// stays in <see cref="ModEnvSetupOptions"/> and the callers that read it.
+    /// </remarks>
+    public async Task<IReadOnlyList<ModEnvCatalogVersion>> GetVersionsAsync(string url, CancellationToken ct = default)
     {
-        var url = _options.Value.VersionCatalogUrl;
         if (string.IsNullOrWhiteSpace(url))
         {
-            _logger.Information("ModEnv VersionCatalogUrl is not configured; version picker degrades to latest only");
+            _logger.Information("ModEnv version catalogue URL is not configured; version picker degrades to latest only");
             return Array.Empty<ModEnvCatalogVersion>();
         }
 
