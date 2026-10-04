@@ -415,10 +415,10 @@ public sealed partial class ModMarketPage : Page
     /// 模糊背景的解码宽度。
     ///
     /// 市场里的预览图实测中位数是 750×1268 那种竖屏(宽高比 0.56),卡片图片区宽 304 ——
-    /// 取 32 就是约 10 倍放大,双线性插值出来正好是一片「看得出是这张图、但完全糊掉」的延伸,
-    /// 铺在两侧那 13% 的窄边里。取 24 会更糊(接近纯色块),取 64 就还能认出细节、不像模糊了。
+    /// 取 16 是约 19 倍放大:糊到只剩色块与明暗走向(实机反馈「还是不够模糊」,32 那档还看得出细节)。
+    /// 想更糊就再往下调(8 就基本是纯色块了),想看清一点就往上调。
     /// </summary>
-    private const int BackdropDecodeWidth = 32;
+    private const int BackdropDecodeWidth = 16;
 
     /// <summary>图片加载成功：隐藏卡片加载圈</summary>
     private void CardImage_Opened(object sender, RoutedEventArgs e)
