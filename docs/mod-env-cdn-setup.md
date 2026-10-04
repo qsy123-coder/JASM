@@ -70,8 +70,29 @@ python Build/PackXxmiLauncher.py --update-manifest Build/out/xxmi-versions/versi
 
 > ⚠️ **每个版本都要用它自己跑出来的配置**（`--source` 对应哪个版本，`--config` 就用那个版本
 > 生成的），不要几个版本共用一份。配置里有 `Launcher.config_version` 记着**配置 schema 的版本**
-> （实测跑 2.3.8 得到的是 `"2.3.8"`），旧版启动器读到新 schema 会怎样没有实测过。让启动器自己
-> 生成再交给脚本清洗，就绕开了这个问题——脚本清掉的都是随机器/随部署变的字段，不会动 schema 相关的东西。
+> （实测：2.3.8 那份是 `"2.3.8"`、2.4.1 那份是 `"2.4.1"`、2.2.1 那份是 `"2.2.1"`），旧版启动器
+> 读到新 schema 会怎样没有实测过。让启动器自己生成再交给脚本清洗，就绕开了这个问题——脚本清掉的
+> 都是随机器/随部署变的字段，不会动 schema 相关的东西。
+
+**怎么把那份配置跑出来**（2026-10-04 实测的步骤，别省步骤 3）：
+
+1. 把该版本的 Portable **解压到一个一次性目录**（它自包含，不会碰你 `D:\XXMI` 的实机安装——
+   实测跑完实机那份配置的 mtime 没变）
+2. 双击 `Resources\Bin\XXMI Launcher.exe`（**要过 UAC**：它带 `requireAdministrator` 清单）
+3. ⚠️ **等窗口出来，然后点 × 关掉它** —— 配置是**退出时**才写最终版的。运行中它 2 秒就会写出
+   一份残缺的（`Packages.packages` 是空的，实测 27 KB），关掉之后才是完整的（32 KB、9 个包条目）。
+   别拿运行中那份去打，那样发出去的启动器配置里没有 `Packages` 数据。
+4. 配置落在解压目录的**根**（`XXMI Launcher Config.json`），指给 `--config`
+5. 那个一次性目录用完删掉
+
+> ℹ️ 首启时它自己的 `Launcher.auto_update` 是 `true`，而你的代理可能是通的 —— 理论上它有机会把自己
+> 更新成新版。**打完之后比对一下解压目录里 `XXMI Launcher.exe` 的 sha256 有没有变**，变了说明
+> 这份快照不是你要的那个版本，重来。
+>
+> ℹ️ 跑出来的配置里 `Packages.packages.Launcher.latest_version` 是**当时的最新版**（例如 2.2.1
+> 那份会写 `latest=2.4.1 / deployed=2.2.1`）。脚本按既有规则**保留**它，于是启动器会提示「可更新」——
+> 这正是客户端 `AlignStaleLauncherVersions` 针对启动器自身那个包键**双向对齐**要处理的场景
+> （见下方清洗规则表后面的说明）。
 
 脚本做的事：**原样**取 Portable 的内容 → 注入清洗过的 `XXMI Launcher Config.json`
 （根目录 + `Backups\` 各一份）→ 打包前断言。默认从
