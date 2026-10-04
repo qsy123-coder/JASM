@@ -28,9 +28,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// <summary>Selectable base-package versions, newest first. A single entry when the catalogue is down.</summary>
     public ObservableCollection<ModEnvCatalogVersion> Versions { get; } = new();
 
-    /// <summary>Selectable launcher versions, newest first. A single entry when its catalogue is down.</summary>
-    public ObservableCollection<ModEnvCatalogVersion> LauncherVersions { get; } = new();
-
     /// <summary>Selectable game-package versions, newest first. A single entry when its catalogue is down.</summary>
     public ObservableCollection<ModEnvCatalogVersion> WwmiVersions { get; } = new();
 
@@ -66,10 +63,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private string _versionCaption = string.Empty;
     [ObservableProperty] private bool _hasVersionCaption;
     [ObservableProperty] private bool _hasXxmiVersions;
-    [ObservableProperty] private ModEnvCatalogVersion? _selectedLauncherVersion;
-    [ObservableProperty] private string _launcherVersionCaption = string.Empty;
-    [ObservableProperty] private bool _hasLauncherVersionCaption;
-    [ObservableProperty] private bool _hasLauncherVersions;
     [ObservableProperty] private ModEnvCatalogVersion? _selectedWwmiVersion;
     [ObservableProperty] private string _wwmiVersionCaption = string.Empty;
     [ObservableProperty] private bool _hasWwmiVersionCaption;
@@ -89,9 +82,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// <summary>Version currently installed at the XXMI root, kept for the picker hint.</summary>
     private string? _installedXxmiVersion;
 
-    /// <summary>Launcher version currently on disk, kept for the launcher picker hint.</summary>
-    private string? _installedLauncherVersion;
-
     /// <summary>Game-package version currently on disk, kept for the game-package picker hint.</summary>
     private string? _installedWwmiVersion;
 
@@ -102,8 +92,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     partial void OnIsRestoringChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
 
     partial void OnSelectedVersionChanged(ModEnvCatalogVersion? value) => UpdateVersionCaption();
-
-    partial void OnSelectedLauncherVersionChanged(ModEnvCatalogVersion? value) => UpdateLauncherVersionCaption();
 
     partial void OnSelectedWwmiVersionChanged(ModEnvCatalogVersion? value) => UpdateWwmiVersionCaption();
 
@@ -267,7 +255,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
             Packages.Add(package);
 
         ApplyVersions(pre, resyncVersion);
-        ApplyLauncherVersions(pre, resyncVersion);
         ApplyWwmiVersions(pre, resyncVersion);
         RefreshBackups();
     }
@@ -302,63 +289,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
                           ?? Versions.FirstOrDefault();
 
         UpdateVersionCaption();
-    }
-
-    /// <summary>
-    /// Launcher counterpart of <see cref="ApplyVersions"/>: same preselect rule (whatever is on disk, then
-    /// the manifest's own version, then the newest offered) and the same "keep the user's pick while it is
-    /// still offered" behaviour on later refreshes.
-    /// </summary>
-    private void ApplyLauncherVersions(ModEnvPreCheck pre, bool resyncVersion = false)
-    {
-        var previousSelection = resyncVersion ? null : SelectedLauncherVersion?.Version;
-
-        LauncherVersions.Clear();
-        foreach (var version in pre.LauncherVersions)
-            LauncherVersions.Add(version);
-
-        HasLauncherVersions = LauncherVersions.Count > 0;
-
-        _installedLauncherVersion = pre.InstalledLauncherVersion;
-
-        var target = previousSelection ?? pre.InstalledLauncherVersion;
-        SelectedLauncherVersion =
-            LauncherVersions.FirstOrDefault(v => string.Equals(v.Version, target, StringComparison.Ordinal))
-            ?? LauncherVersions.FirstOrDefault(v =>
-                string.Equals(v.Version, pre.DefaultLauncherVersion, StringComparison.Ordinal))
-            ?? LauncherVersions.FirstOrDefault();
-
-        UpdateLauncherVersionCaption();
-    }
-
-    /// <summary>
-    /// Rebuilds the caption under the launcher picker: what is on disk, what picking the current selection
-    /// would do, and any maintainer note — joined into the single line the dialog shows.
-    /// </summary>
-    /// <remarks>
-    /// Like the framework's caption this is computed locally instead of by re-running the pre-check, which
-    /// would resolve the game drive on every arrow-key press. It deliberately says nothing about a backup:
-    /// the launcher is not snapshotted before a switch (that would be ~52 MB per version), because every
-    /// offered version lives on the CDN — switching back is just another pick.
-    /// </remarks>
-    private void UpdateLauncherVersionCaption()
-    {
-        var target = SelectedLauncherVersion?.Version;
-        string? hint = null;
-        if (!string.IsNullOrWhiteSpace(target) && !string.IsNullOrWhiteSpace(_installedLauncherVersion))
-        {
-            var installed = _installedLauncherVersion;
-            hint = ModEnvVersion.Compare(installed, target) switch
-            {
-                0 => $"已安装该版本（v{installed}），无需重复安装",
-                < 0 => $"将从 v{installed} 更新到 v{target}",
-                _ => $"将从 v{installed} 切换到 v{target}"
-            };
-        }
-
-        LauncherVersionCaption = JoinCaption(
-            InstalledCaption(_installedLauncherVersion), hint, SelectedLauncherVersion?.Notes);
-        HasLauncherVersionCaption = LauncherVersionCaption.Length > 0;
     }
 
     /// <summary>
@@ -479,7 +409,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         GameInstallDir = GameInstallDir,
         CustomRootFolder = CustomRootFolder,
         SelectedXxmiVersion = SelectedVersion?.Version,
-        SelectedLauncherVersion = SelectedLauncherVersion?.Version,
         SelectedWwmiVersion = SelectedWwmiVersion?.Version
     };
 
