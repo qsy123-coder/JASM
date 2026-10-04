@@ -37,6 +37,48 @@ public static class GameBananaMediaUrls
     }
 
     /// <summary>
+    /// 取**第一张**预览图的缩略图地址（卡片只显示第一张）。
+    ///
+    /// 逐张试而不是只看第一张：第一张可能缺字段 / 非本图床，而 <see cref="GetPreviewImages"/>
+    /// 会跳过后继续找下一张 —— 两边得给出「同一张图」，否则卡片会突然空着。
+    /// </summary>
+    public static Uri? GetPreviewThumbnail(ApiImagesRoot? previewMedia)
+    {
+        if (previewMedia is null)
+            return null;
+
+        foreach (var image in previewMedia.Images)
+        {
+            if (TryCreateThumbnailUrl(image) is { } url)
+                return url;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 卡片封面用的**缩略图**地址：优先 GameBanana 自带的 530px 变体，缺变体时才退回原图。
+    ///
+    /// 与 <see cref="TryCreateImageUrl(ApiImageUrl)"/> 分成两个方法是有意的：详情抽屉的画廊要原图，
+    /// 只有列表卡片该用缩略图。实测同一张图原图 804 KB / 3.1 s、530 变体 55 KB / 0.37 s ——
+    /// 一页 15 张卡就是 12 MB 和 0.8 MB 的差别。
+    /// </summary>
+    public static Uri? TryCreateThumbnailUrl(ApiImageUrl image)
+    {
+        if (string.IsNullOrWhiteSpace(image.BaseUrl))
+            return null;
+
+        // 变体文件与原图同目录（实测），拼法与校验都跟原图那条一样。
+        if (!string.IsNullOrWhiteSpace(image.File530) &&
+            TryCreateImageUrl($"{image.BaseUrl}/{image.File530}") is { } thumbnail)
+        {
+            return thumbnail;
+        }
+
+        return TryCreateImageUrl(image);
+    }
+
+    /// <summary>
     /// 拼不出合法地址（缺字段 / 非 https / 非本图床）就返回 null，**绝不抛异常**。
     /// </summary>
     public static Uri? TryCreateImageUrl(ApiImageUrl image)
