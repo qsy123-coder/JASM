@@ -63,10 +63,6 @@ public class ModInstallerService(
         ArgumentNullException.ThrowIfNull(modFolder);
         ArgumentNullException.ThrowIfNull(modList);
 
-        // 先把整包搬进角色目录、再认预览图：认出来的路径要落在**最终位置**上，
-        // 搬完再认才对得上（先认后搬的话这个 Uri 会在搬家后指空，保存设置时直接抛）。
-        modFolder = MoveIntoCharacterFolder(modFolder, modList);
-
         var options = new AddModOptions { NewModFolderName = modFolder.Name };
 
         // 预览图要和向导那条路一样自动认出来（`preview.png` / `0.png` 这些约定名）。
@@ -87,7 +83,24 @@ public class ModInstallerService(
 
         using var installation = ModInstallation.Start(modFolder, modList);
 
-        var skinMod = await installation.AddModAsync(options).ConfigureAwait(false);
+        // 解压出来的东西本来就摊在**目标那块盘上**（见 DragAndDropScanner.ResolveWorkRoot），
+        // 所以最后这一手交给 AddMod 去**改名**搬进角色目录（同卷改名 = 瞬间），
+        // 而不是把整个包再复制一遍 —— 那趟复制跟解压本身一样贵（实测 2.7GB 的包要 9s）。
+        //
+        // 提前放掉文件句柄：Windows 不允许 rename 一个内部还有打开句柄的目录，
+        // 而静默这条路的源是我们自己解压出来的临时目录、没人会去动它，句柄不必攥到 Dispose。
+        // 跨卷时 MoveTo 自己会退化成复制 + 删源，与原先「拷进去再把临时目录删掉」等价。
+        installation.ReleaseLockedFiles();
+
+        var skinMod = await installation.AddModAsync(options, move: true).ConfigureAwait(false);
+
+        // 装完把设置**从盘上重读一遍**。
+        //
+        // 为什么必须重读：认出来的封面路径是**绝对**路径（落在解压的临时目录里），而上面那一手
+        // 把整个目录（连同封面）改名搬到了角色目录 —— 内存里那份 ImagePath 于是指着「已经不在那儿」
+        // 的旧位置。表现是「刚装完的 Mod 没有缩略图，重启 JASM 才出现」（列表里那一条拿的是内存里
+        // 这份设置，浮窗与画廊都一样）。盘上存的是**相对**路径，重读一次就重新落到新位置上。
+        await skinMod.Settings.ReadSettingsAsync().ConfigureAwait(false);
 
         // 只**启用**新装的这个，不去动用户原有的启用组合：静默通道不该顺手改别的东西。
         // （向导那条路会「只启用它」，那是用户当着面勾的，不是这里该替他做的决定。）
@@ -108,41 +121,6 @@ public class ModInstallerService(
         }
 
         return skinMod;
-    }
-
-    /// <summary>
-    /// 把解压出来的那个目录**改名**搬进角色的 Mod 目录，返回它现在在哪。
-    ///
-    /// <para>
-    /// 静默拖拽那条路解压出来的东西本来就摊在目标那块盘上（见
-    /// <see cref="GIMI_ModManager.Core.Services.DragAndDropScanner.ResolveWorkRoot"/>），
-    /// 于是这一手是同卷改名、瞬间完成 —— 省掉的就是原先那趟「把整个包再从 C: 复制到 D:」
-    /// （实测跟解压本身一样贵）。跨卷时 <c>Mod.MoveTo</c> 自己会退化成复制+删源，
-    /// 与原来的「拷进角色目录、再把临时目录删掉」等价，只是少一趟收尾删除。
-    /// </para>
-    ///
-    /// <para>
-    /// 目标里已经有了同名文件夹就**不搬**：改名会撞名抛一个难懂的错，而后面的
-    /// <c>AddModAsync</c> / <c>AddMod</c> 本来就会给出「已存在同名 Mod」这句人话。
-    /// </para>
-    /// </summary>
-    private static DirectoryInfo MoveIntoCharacterFolder(DirectoryInfo modFolder, ICharacterModList modList)
-    {
-        try
-        {
-            var destination = Path.Combine(modList.AbsModsFolderPath, modFolder.Name);
-            if (Directory.Exists(destination))
-                return modFolder;
-
-            modFolder.MoveTo(destination);
-            return new DirectoryInfo(destination);
-        }
-        catch (Exception e)
-        {
-            // 搬不动（跨卷失败 / 目标被占）不算错：后面的 AddMod 会照旧把它拷进去
-            Serilog.Log.Warning(e, "静默安装：预搬进角色目录失败，退回复制 {Folder}", modFolder.FullName);
-            return modFolder;
-        }
     }
 
     private async Task<InstallMonitor> InternalStartAsync(DirectoryInfo modFolder, ICharacterModList modList,
@@ -440,7 +418,13 @@ public sealed class ModInstallation : IDisposable
         return _skinManagerService.AddMod(skinMod, _destinationModList);
     }
 
-    public async Task<ISkinMod> AddModAsync(AddModOptions? options = null)
+    /// <param name="options">装完要写进设置的那些东西（名字、图、作者…）。</param>
+    /// <param name="move">
+    /// true = 把 Mod 文件夹**搬**进目标目录（同卷时是改名、瞬间），而不是复制一份。
+    /// 静默拖拽那条路用得上（源是我们自己解压出来的临时目录，搬走就行）；
+    /// 向导那条路留 false —— 它的源是用户自己选的文件夹，装完还得留在原地。
+    /// </param>
+    public async Task<ISkinMod> AddModAsync(AddModOptions? options = null, bool move = false)
     {
         if (AnyDuplicateName() is not null)
             throw new InvalidOperationException("There is already a mod with the same name");
@@ -448,7 +432,7 @@ public sealed class ModInstallation : IDisposable
         ReleaseLockedFiles();
         var skinMod = await CreateSkinModWithOptionsAsync(options);
 
-        return _skinManagerService.AddMod(skinMod, _destinationModList);
+        return _skinManagerService.AddMod(skinMod, _destinationModList, move);
     }
 
     private async Task<ISkinMod> CreateSkinModWithOptionsAsync(AddModOptions? options = null)
@@ -502,7 +486,17 @@ public sealed class ModInstallation : IDisposable
         }
     }
 
-    private void ReleaseLockedFiles()
+    /// <summary>
+    /// 放掉那些文件句柄。
+    ///
+    /// <para>
+    /// <b>向导那条路不用手动调</b>（<see cref="Dispose"/> 里会放）。会公开出来是给静默拖拽那条路用：
+    /// 它最后要把整个目录**改名**搬进角色目录，而 Windows 不允许 rename 一个内部还有打开句柄的目录 ——
+    /// 句柄不放掉，改名就会以「文件被占用」失败。那条路的源是我们自己解压出来的临时目录、
+    /// 没人会去动它，所以提前放手是安全的。
+    /// </para>
+    /// </summary>
+    public void ReleaseLockedFiles()
     {
         foreach (var fileStream in _lockedFiles.ToArray())
         {
