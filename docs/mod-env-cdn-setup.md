@@ -31,6 +31,7 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 | `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）离线包，由官方 Portable 包打出，见下节「打 launcher 包」 |
 | `version.json` | 版本清单，见下节 |
 | `xxmi-versions.json` | **可选**。可选 XXMI 版本目录，让用户在向导里选版本 / 回退，见「生成 xxmi-versions.json」 |
+| `launcher-versions.json` | **可选**。可选 **XXMI 启动器本体**版本目录，让用户选启动器版本，见「生成 launcher-versions.json」 |
 
 WWMi 包结构示意（干净基础包）：
 
@@ -61,9 +62,15 @@ wwmi-1.0.0.zip
 `Locale\` / `Resources\Bin\` / `Themes\`，解压即离线可跑）打成 JASM 的 `launcher-<版本>.zip`：
 
 ```bash
-# 先在一台机器上跑一次新版启动器，让它把配置写到 XXMI 根目录（脚本要拿这份来清洗）
-python Build/PackXxmiLauncher.py --update-manifest Build/out/xxmi-versions/version.json
+# 先在一台机器上跑一次**这个版本**的启动器，让它把配置写到 XXMI 根目录（脚本要拿这份来清洗）
+python Build/PackXxmiLauncher.py --update-manifest Build/out/xxmi-versions/version.json \
+    --update-catalog Build/out/xxmi-versions/launcher-versions.json
 ```
+
+> ⚠️ **每个版本都要用它自己跑出来的配置**（`--source` 对应哪个版本，`--config` 就用那个版本
+> 生成的），不要几个版本共用一份。配置里有 `Launcher.config_version` 记着**配置 schema 的版本**
+> （实测跑 2.3.8 得到的是 `"2.3.8"`），旧版启动器读到新 schema 会怎样没有实测过。让启动器自己
+> 生成再交给脚本清洗，就绕开了这个问题——脚本清掉的都是随机器/随部署变的字段，不会动 schema 相关的东西。
 
 脚本做的事：**原样**取 Portable 的内容 → 注入清洗过的 `XXMI Launcher Config.json`
 （根目录 + `Backups\` 各一份）→ 打包前断言。默认从
@@ -85,7 +92,19 @@ python Build/PackXxmiLauncher.py --update-manifest Build/out/xxmi-versions/versi
 | `Importers.<ID>.Importer.game_folder` | `""` | JASM 一键配置时按实际游戏目录回填 |
 | `Importers.<ID>.Importer.shortcut_deployed` / `launch_count` / `deployed_migoto_signatures` / `*_warned` | 复位 | 部署态，机器专属 |
 | `Packages.packages.<包>.update_check_time` / `skipped_version` / `*_release_notes` | 复位 | 上次检查的残留 |
-| `Packages.packages.<包>.latest_version` / `deployed_version` | **保留** | 与 JASM 当下实装一致，启动器才不会反复提示「更新」；日后实装版本变了，`AlignStaleLauncherVersions` 会把**更旧**的缓存对齐过来 |
+| `Packages.packages.<包>.latest_version` / `deployed_version` | **保留** | 见下方说明 |
+
+> `latest_version` / `deployed_version` 保留的理由是「打包机上官方装的版本与 JASM 当下实装的一致，
+> 启动器就不会反复提示更新」。**但这个前提并不可靠**：实测本机 2.3.8 那份配置里
+> `Launcher.latest_version` 是 `2.3.9`（启动器自己查过一次上游），比包版本还新。所以真正兜底的是
+> JASM 收尾时的对齐（`ModEnvSetupFacade.AlignStaleLauncherVersions`），规则是：
+>
+> - **启动器自身**那个包键**双向**对齐 —— 从新版退回旧版时缓存会比实装新，留着它等于让启动器永远提示
+>   升级到一个（可能已经下不到的）新版；JASM 才是启动器版本的唯一来源，启动器自己的自更新在配置里
+>   已被关掉（`Launcher.auto_update=false`），那条提示没有任何可行动路径。
+> - 其余包（`XXMI` / `WWMI`）保持**单向**：缓存比实装新时不动，那是真的可更新。
+>
+> 改这条规则会改 zip 的哈希（配置变了）—— 已上线的包重打就必须重传并同步两份清单的哈希。
 
 > `importer_folder` 保持相对路径 `WWMI/` 是有意的：JASM 一键配置会把「空或非绝对路径」替换成绝对路径
 > （`importer_folder="D:/XXMI/WWMI"` 正斜杠、`game_folder="D:\Wuthering Waves\Wuthering Waves Game"`），
@@ -237,6 +256,54 @@ python Build/PackXxmiVersions.py --base-url https://<你的桶域名>/modenv/
   **只把实测可用的版本放进目录**——目录里放了坏版本，用户回退过去照样是坏的。
 - 不必把全部历史版本都放上去，近期几个够用：每多一个版本，就多一份要验证、要托管的资产。
 
+### 生成 launcher-versions.json（可选：让用户选启动器版本）
+
+与上一节同一个套路，只是对象换成**启动器本体**（`launcher` 包）。启动器与注入器框架是两套独立编号、
+各自发布，所以各用一份目录，不共用文件。不传（或取不到）时启动器下拉整块不显示，行为与加这个功能
+之前完全一致 —— 仍然只装 `version.json` 里那一个版本。
+
+```bash
+# 对每个要放进目录的版本各跑一次：--source 指该版本的 Portable，
+# --config 必须是**该版本自己**生成的配置（见「打 launcher 包」那节的警告）
+python Build/PackXxmiLauncher.py \
+    --source "D:/.../XXMI-Launcher-Portable-v2.2.1.zip" \
+    --config "D:/tmp/2.2.1/XXMI Launcher Config.json" \
+    --out Build/out/xxmi-versions \
+    --update-catalog Build/out/xxmi-versions/launcher-versions.json
+```
+
+产物 `<out>/launcher-versions.json` 与 `xxmi-versions.json` **schema 完全一致**（JASM 用同一个解析器）：
+
+```json
+{
+  "CatalogVersion": 1,
+  "Versions": [
+    {
+      "Version": "2.4.1",
+      "DownloadUrl": "https://<桶域名>/modenv/launcher-2.4.1.zip",
+      "Sha256": "……",
+      "SizeBytes": 53948965,
+      "ReleasedAt": "2026-10-03",
+      "Notes": ""
+    }
+  ]
+}
+```
+
+要点（与 `xxmi-versions.json` 相同的那几条不再重复）：
+
+- `--update-catalog` 是**增量**合并：同名版本只覆盖 url、哈希、体积、发布日期这四项，**手写的 `Notes` 保留**。
+  别每次都从零生成 —— 隔几周再打包时源目录里往往只剩最新那一版，从零生成会把旧版本记录整段抹掉，
+  而「把坏掉的版本退回去」正是这份目录存在的理由。
+- `ReleasedAt` 取**包内启动器 exe 的时间戳**，不是源 zip 的 mtime、也不是打包当天。
+- ⚠️ **传的顺序**：先把各 `launcher-<版本>.zip` 传上去，**最后**传 `launcher-versions.json`。
+  目录引用的 zip 得先在线上，否则用户选中那一刻才开始 404。
+- ⚠️ **上游会删旧 release，目录里的版本要自己留档**。XXMI Launcher 的 2.3.x release 已被官方删除
+  （`api.github.com/repos/SpectrumQT/XXMI-Launcher/releases/tags/v2.3.9` 直接 404，只有 tag 还在），
+  而 CDN 上那份是当时打的。别指望日后还能从 GitHub 重新下到同一个版本 —— 源 zip 与 CDN 各留一份。
+- 下拉的默认选中项是**磁盘上已装的那个版本**（不是最新版），所以老用户打开向导看到的仍是自己那份，
+  「不动下拉框」= 不重装。想让**新装**用户默认拿到哪一版，改 `version.json` 的 `launcher` 条目。
+
 ## 四、拿到访问地址，填进 JASM
 
 1. 控制台 → 存储桶 → **域名管理** → 「默认域名」一栏，形如
@@ -252,11 +319,15 @@ python Build/PackXxmiVersions.py --base-url https://<你的桶域名>/modenv/
 "ModEnv": {
   "ManifestUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/version.json",
   "VersionCatalogUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/xxmi-versions.json",
-  "BasePackageId": "xxmi"
+  "LauncherVersionCatalogUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/launcher-versions.json",
+  "BasePackageId": "xxmi",
+  "LauncherPackageId": "launcher"
 }
 ```
 
-`VersionCatalogUrl` **留空就关掉版本选择**（下拉框与备份区都不显示），此时向导行为与加这个功能之前一致。
+`VersionCatalogUrl` **留空就关掉框架版本选择**（框架下拉 + 备份区都不显示），此时向导行为与加这个功能
+之前一致；`LauncherVersionCatalogUrl` 同理，留空则**启动器版本下拉**不显示（框架那个不受影响，两个
+下拉各自独立显隐）。
 备份默认保留最近 5 份（`ModEnv:KeepBackupCount`），存放在
 `%LOCALAPPDATA%\JASM\ModEnvBackups\xxmi-<版本>-<时间戳>\`，只是基础包那几个 DLL（几 MB），随时可删。
 
