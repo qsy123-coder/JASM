@@ -74,9 +74,10 @@
                              (Composition 那套得引 Win2D),这是零依赖的等价做法。
                              Source 与主图一起在滚到视口时设,见页面 code-behind;它不挂 ImageOpened —— 24px
                              解码几乎瞬间完成,挂上去会把加载圈提前收掉。 -->
-                        <Image x:Name="CardImageBackdrop" Stretch="UniformToFill" Opacity="0.55" />
-                        <!-- 层2: 压暗一层,让模糊背景退到主图后面 -->
-                        <Grid Background="#59000000" />
+                        <Image x:Name="CardImageBackdrop" Stretch="UniformToFill" />
+                        <!-- 层2: 只压一点点(20%),让模糊背景比主图略沉、但**必须看得出来是图** ——
+                             之前压了 35% 又叠 55% 透明,最终亮度只剩三成多,深色截图看上去就是一条纯色 ✗ -->
+                        <Grid Background="#33000000" />
                         <!-- 层3: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
                         <ProgressRing x:Name="CardLoadingRing" IsActive="False"
                                       Visibility="Collapsed"
