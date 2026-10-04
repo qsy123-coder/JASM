@@ -40,6 +40,23 @@ public class CharacterNameMatcherTests
     }
 
     [Theory]
+    // 社区写法与数据里的名字对不上的那几档（都抄自开发者机器上的真实包名）
+    [InlineData("心-暗夜雌狐 by KatTheDev.exe", "Xinyuehu")] // 单字缩写「心」，靠切词切出独立词 + 无长度守卫的整词命中
+    [InlineData("清霄-绯花令-水幕(0)by辉映星辰允如光.exe", "Qingxiao")] // 清宵的同音错写
+    [InlineData("（极致画质）青霄改岸宝.zip", "Qingxiao")] // 再一种错写，且不在开头
+    [InlineData("청초 산화모드 이식본.zip", "Qingxiao")] // 韩文写法
+    [InlineData("嘉贝莉娜-惰天师 by Caverabbit（456切换）.exe", "Galbrena")] // 数据写「丽」，社区写「莉」
+    [InlineData("女主-油亮黑丝（5切换）.exe", "Rover")] // 女主角的缩写
+    [InlineData("女漂-小恶魔v3.5fix og 狩野樱.exe", "Rover")]
+    public void CommunitySpellingsResolveToTheirCharacter(string fileName, string expectedInternalName)
+    {
+        var ranked = CharacterNameMatcher.Rank(Roster(), new[] { fileName }, PseudoCharacters);
+
+        Assert.Equal(expectedInternalName, TopOf(ranked), ignoreCase: true);
+        Assert.True(CharacterNameMatcher.IsConfident(ranked));
+    }
+
+    [Theory]
     [InlineData("RabbitFX反虚化+发光前置v74（内附使用说明）.exe")]
     [InlineData("科考卡车-爱 琳 莫 nsfw痛车（内附使用说明）.exe")] // 单字词「爱」「琳」「莫」不许命中「莫宁」「琳奈」
     [InlineData("洛瑟菈-兔女郎v1.1（4~90【，切换）Invalid.exe")]
@@ -224,11 +241,14 @@ public class CharacterNameMatcherTests
     {
         MakeCharacter("Aemeath", "爱弥斯", "aemeath", "爱弥斯"),
         MakeCharacter("Chisa", "千咲", "chisa", "千咲"),
-        MakeCharacter("Qingxiao", "清宵", "qingxiao"), // 中文名只在 DisplayName 上
+        MakeCharacter("Qingxiao", "清宵", "qingxiao", "清霄", "青霄", "청초"), // 中文名在 DisplayName 上；同音错写与韩文写法补在 Keys 里
         MakeCharacter("Mornye", "莫宁", "mornye"),
         MakeCharacter("Camellya", "椿", "camellya"),
         MakeCharacter("YangyangXuanling", "泱泱・玄翎", "yangyangxuanling", "yangyang", "xuanling", "玄翎"),
         MakeCharacter("Sanhua", "散华", "sanhua"),
+        MakeCharacter("Xinyuehu", "心月狐", "xinyuehu", "心", "hsin"), // 旧数据的内部名是 Hsin、显示名「心」
+        MakeCharacter("Galbrena", "嘉贝丽娜", "Galbrena", "嘉贝莉娜"),
+        MakeCharacter("Rover", "漂泊者", "rover", "女主", "女漂", "女漂泊者", "男漂"),
         // 伪角色：Keys 是通用词，中文名是「武器」这种两字词
         MakeCharacter("Others", "其他角色", "others", "unknown"),
         MakeCharacter("Weapons", "武器", "weapon", "claymore", "sword", "polearm", "catalyst", "bow")
