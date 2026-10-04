@@ -20,16 +20,6 @@ public class ModEnvSetupOptions
     public string VersionCatalogUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// URL of the selectable-version catalogue for the XXMI Launcher (GUI) itself, e.g.
-    /// <c>launcher-versions.json</c> — same schema as <see cref="VersionCatalogUrl"/>, different file.
-    /// The launcher is a separate package from the injector framework with its own version numbering
-    /// (2.2.1 / 2.3.8 / 2.4.1…), so it needs its own catalogue; sharing one file would tie two unrelated
-    /// release cadences together. When unset or unreachable the launcher picker degrades to just the
-    /// manifest's own launcher version — i.e. the pre-version-selection behaviour.
-    /// </summary>
-    public string LauncherVersionCatalogUrl { get; set; } = string.Empty;
-
-    /// <summary>
     /// URL of the selectable-version catalogue for the per-game package (<c>wwmi-versions.json</c> for
     /// Wuthering Waves) — same schema as the other two catalogues, different file. The game package
     /// versions with the game it targets, independently of the injector and the launcher, so it needs
@@ -51,6 +41,11 @@ public class ModEnvSetupOptions
     /// Optional id of the XXMI Launcher (GUI) package inside the manifest. When set (and present in the
     /// manifest), the setup pipeline also installs/updates the launcher into the XXMI root.
     /// </summary>
+    /// <remarks>
+    /// There is deliberately no launcher <em>version</em> catalogue to go with this: unlike the injector
+    /// framework and the game package, the launcher is pinned to whatever the manifest names. Its versions
+    /// are not independently useful to a user the way the other two are.
+    /// </remarks>
     public string? LauncherPackageId { get; set; }
 
     /// <summary>
