@@ -3,6 +3,7 @@ using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities.Mods.Contract;
+using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.Entities.Mods.SkinMod;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
@@ -45,6 +46,68 @@ public class ModInstallerService(
             await dispatcherQueue.EnqueueAsync(() => InternalStartAsync(modFolder, modList, inGameSkin, modOptions));
 
         return monitor;
+    }
+
+    /// <summary>
+    /// 把一个**已经解压好的目录**整个装进这个角色的列表，**不打开向导窗**。
+    ///
+    /// 落盘那一手与向导点「添加模组」完全同一条（<see cref="ModInstallation.AddModAsync"/> →
+    /// <c>SkinManagerService.AddMod</c>：把目录搬进角色的 Mod 目录并登记），差别只有三点：
+    /// 不建窗口、不问用户要名字（用目录名）、装完把它启用。
+    ///
+    /// 给「把包拖到游戏内浮窗上」那条路用 —— 浮窗那块地方没有向导的容身之处，
+    /// 为一次拖拽弹一个窗也不是拖拽该有的手感。
+    /// </summary>
+    public async Task<ISkinMod> InstallFolderSilentlyAsync(DirectoryInfo modFolder, ICharacterModList modList)
+    {
+        ArgumentNullException.ThrowIfNull(modFolder);
+        ArgumentNullException.ThrowIfNull(modList);
+
+        var options = new AddModOptions { NewModFolderName = modFolder.Name };
+
+        // 预览图要和向导那条路一样自动认出来（`preview.png` / `0.png` 这些约定名）。
+        // 不设的话缩略图就退回占位图 —— 实机反馈：「preview 图片都有的，缩略图却不显示」。
+        try
+        {
+            // 顶层找不到就**往下找一层**：整包装之后 mod 根是外层（exe 名那一层），而 preview.png
+            // 常跟真正的内容一起压在子目录里 —— 而 DetectModPreviewImages 只看顶层（不递归）。
+            var detected = SkinModHelpers.DetectModPreviewImages(modFolder.FullName).FirstOrDefault()
+                           ?? modFolder.EnumerateDirectories()
+                               .SelectMany(sub => SkinModHelpers.DetectModPreviewImages(sub.FullName))
+                               .FirstOrDefault();
+
+            if (detected is not null)
+                options.ModImage = detected;
+        }
+        catch (Exception e)
+        {
+            // 认不出预览图不影响装：缩略图退占位图即可
+            Serilog.Log.Warning(e, "静默安装：自动识别预览图失败 {Folder}", modFolder.FullName);
+        }
+
+        using var installation = ModInstallation.Start(modFolder, modList);
+
+        var skinMod = await installation.AddModAsync(options).ConfigureAwait(false);
+
+        // 只**启用**新装的这个，不去动用户原有的启用组合：静默通道不该顺手改别的东西。
+        // （向导那条路会「只启用它」，那是用户当着面勾的，不是这里该替他做的决定。）
+        //
+        // 只有带 DISABLED_ 前缀的才需要这一步：新装进来的通常没有前缀，也就是**已经启用**了，
+        // 那种情况再调 EnableMod 会抛「Cannot enable a enabled mod」—— 那不是失败，是已经到位。
+        if (ModFolderHelpers.FolderHasDisabledPrefix(skinMod.Name))
+        {
+            try
+            {
+                modList.EnableMod(skinMod.Id);
+            }
+            catch (Exception e)
+            {
+                // 装是装上了，只是没启用 —— 让用户自己去勾一下就行，不该因此把整次安装判失败
+                Serilog.Log.Warning(e, "静默安装后启用 Mod 失败: {Mod}", skinMod.Name);
+            }
+        }
+
+        return skinMod;
     }
 
     private async Task<InstallMonitor> InternalStartAsync(DirectoryInfo modFolder, ICharacterModList modList,
