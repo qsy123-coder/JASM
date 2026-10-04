@@ -170,6 +170,31 @@ public sealed class ModStoreService(
     ///
     /// 图标也来自这次请求：搜索记录带的子分类图标就是这个角色的图（见 <c>GameBananaSubCategoryIcons</c>）。
     /// </remarks>
+    /// <summary>
+    /// 把上次落盘的摘要灌进内存缓存：这一轮 <see cref="GetCharacterSummaryAsync"/> 会直接命中，
+    /// **一个请求都不发**（落盘与读取由 <c>ModStoreViewModel</c> 负责，服务层不认识设置文件）。
+    ///
+    /// 只补**还没有的**键 —— 内存里的比盘上的新（同一会话里刚问过），不能反过来被盘上的盖掉。
+    /// </summary>
+    public void SeedCharacterSummaries(IEnumerable<(string Name, int? Count, Uri? IconUrl)> seeds)
+    {
+        foreach (var (name, count, iconUrl) in seeds)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            _characterSummaries.TryAdd(name.Trim(), new GbSearchSummary(count, iconUrl));
+        }
+    }
+
+    /// <summary>
+    /// 导出这一轮的摘要快照，供页面落盘。
+    ///
+    /// 返回**副本**：调用方会把它序列化到别的线程上，不能把内部那个并发字典直接交出去。
+    /// </summary>
+    public IReadOnlyDictionary<string, GbSearchSummary?> SnapshotCharacterSummaries() =>
+        new Dictionary<string, GbSearchSummary?>(_characterSummaries, StringComparer.OrdinalIgnoreCase);
+
     public async Task<GbSearchSummary?> GetCharacterSummaryAsync(string gbName,
         CancellationToken cancellationToken = default)
     {
