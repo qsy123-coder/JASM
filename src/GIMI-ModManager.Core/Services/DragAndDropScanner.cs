@@ -27,7 +27,8 @@ namespace GIMI_ModManager.Core.Services;
 
 public sealed class DragAndDropScanner
 {
-    private const string WorkFolderName = "JASM_TMP";
+    /// <summary>工作根那一层的名字（<c>D:\JASM_TMP</c> / <c>%TEMP%\JASM_TMP</c>）。调用方清收尾时也要认这个名字。</summary>
+    public const string WorkFolderName = "JASM_TMP";
 
     private readonly ILogger _logger = Log.ForContext<DragAndDropScanner>();
     private readonly string _tmpFolder;
