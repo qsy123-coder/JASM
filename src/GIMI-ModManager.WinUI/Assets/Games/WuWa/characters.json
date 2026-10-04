@@ -1,8 +1,6 @@
 [
   {
-    "Keys": [
-      "rover"
-    ],
+    "Keys": ["rover", "女主", "女漂", "女漂泊者", "男漂"],
     "ReleaseDate": "2024-05-23T00:00:00",
     "Image": "rover.png",
     "Rarity": 5,
