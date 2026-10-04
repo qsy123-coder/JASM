@@ -2473,6 +2473,9 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModEnv_XxmiVersion.Text" xml:space="preserve">
     <value>XXMI 版本</value>
   </data>
+  <data name="ModEnv_LauncherVersion.Text" xml:space="preserve">
+    <value>XXMI 启动器版本</value>
+  </data>
   <data name="ModEnv_ManualGameDir.Text" xml:space="preserve">
     <value>未自动检测到鸣潮安装位置，请手动选择游戏目录。</value>
   </data>
