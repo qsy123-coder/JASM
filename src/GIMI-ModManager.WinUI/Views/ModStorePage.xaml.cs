@@ -20,6 +20,12 @@ public sealed partial class ModStorePage : Page
     /// <summary>已加卡但尚未设图片源的卡片；滚到视口附近才设置 Source，离屏的进度圈折叠、不空转。</summary>
     private readonly List<PendingCard> _pendingImages = [];
 
+    /// <summary>已经到货、还没造成卡片的条目（一页十几条攒成一批，见 <see cref="ScheduleCardBuild"/>）。</summary>
+    private readonly List<ModStoreItem> _pendingAdds = [];
+
+    /// <summary>队列里是否已经排了一个「造卡片」的回调，避免重复排。</summary>
+    private bool _cardBuildScheduled;
+
     public ModStorePage()
     {
         ViewModel = App.GetService<ModStoreViewModel>();
@@ -54,38 +60,67 @@ public sealed partial class ModStorePage : Page
 
     private void OnModsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Reset:
+            case NotifyCollectionChangedAction.Remove:
+                _pendingAdds.Clear();
+                _pendingImages.Clear();
+                ModCardsPanel.Children.Clear();
+                if (e.Action == NotifyCollectionChangedAction.Reset) break;
+                foreach (var mod in ViewModel.Mods) _pendingAdds.Add((ModStoreItem)mod);
+                break;
+            case NotifyCollectionChangedAction.Add:
+                foreach (var item in e.NewItems!) _pendingAdds.Add((ModStoreItem)item);
+                break;
+        }
+
+        ScheduleCardBuild();
+    }
+
+    /// <summary>
+    /// 排一个「把攒下的条目造成卡片」的回调，已经排过就不再排。
+    ///
+    /// 为什么攒批：翻一页是 <c>Mods.Clear()</c> 之后**逐条** Add（<c>ModStoreViewModel.LoadAsync</c>），
+    /// 一次十几条。以前每条各排一个回调、每个回调里都 <c>UpdateLayout()</c> 一次 —— 而
+    /// <c>UpdateLayout</c> 会让 <c>WrapGridPanel</c> 对着**当前全部子项**重跑一遍测量与排布，
+    /// 一页下来就是 O(N²)。而 Add 事件全发生在同一次消息处理里、dispatcher 回调要等这一轮结束才跑，
+    /// 所以攒起来天然就是「一页一批」：只建一次卡、只做一次布局。
+    /// </summary>
+    private void ScheduleCardBuild()
+    {
+        if (_cardBuildScheduled) return;
+        _cardBuildScheduled = true;
         DispatcherQueue.TryEnqueue(() =>
         {
-            switch (e.Action)
-            {
-                case NotifyCollectionChangedAction.Reset:
-                case NotifyCollectionChangedAction.Remove:
-                    _pendingImages.Clear();
-                    ModCardsPanel.Children.Clear();
-                    if (e.Action == NotifyCollectionChangedAction.Reset) break;
-                    foreach (var mod in ViewModel.Mods) AddCard((ModStoreItem)mod);
-                    break;
-                case NotifyCollectionChangedAction.Add:
-                    foreach (var item in e.NewItems!) AddCard((ModStoreItem)item);
-                    break;
-            }
-
-            // 让 ScrollViewer 立刻看到新的内容高度
-            ModCardsPanel.InvalidateMeasure();
-            ModCardsPanel.UpdateLayout();
-
-            // 懒加载:先处理当前视口,再排一帧兜底(首次布局完成后 ViewportHeight 才可读)
-            LazyLoadVisibleImages();
-            DispatcherQueue.TryEnqueue(() => LazyLoadVisibleImages());
-
-            // 内容不足一屏时自动续下一页,否则用户没有东西可滚、也就永远触发不了加载更多
-            if (CardScrollViewer.ScrollableHeight <= 0
-                && ViewModel.HasMorePages && !ViewModel.IsLoading
-                && ModCardsPanel.Children.Count > 0)
-            {
-                _ = ViewModel.LoadMoreCommand.ExecuteAsync(null);
-            }
+            _cardBuildScheduled = false;
+            BuildPendingCards();
         });
+    }
+
+    private void BuildPendingCards()
+    {
+        if (_pendingAdds.Count > 0)
+        {
+            foreach (var mod in _pendingAdds) AddCard(mod);
+            _pendingAdds.Clear();
+        }
+
+        // 让 ScrollViewer 立刻看到新的内容高度
+        ModCardsPanel.InvalidateMeasure();
+        ModCardsPanel.UpdateLayout();
+
+        // 懒加载:先处理当前视口,再排一帧兜底(首次布局完成后 ViewportHeight 才可读)
+        LazyLoadVisibleImages();
+        DispatcherQueue.TryEnqueue(() => LazyLoadVisibleImages());
+
+        // 内容不足一屏时自动续下一页,否则用户没有东西可滚、也就永远触发不了加载更多
+        if (CardScrollViewer.ScrollableHeight <= 0
+            && ViewModel.HasMorePages && !ViewModel.IsLoading
+            && ModCardsPanel.Children.Count > 0)
+        {
+            _ = ViewModel.LoadMoreCommand.ExecuteAsync(null);
+        }
     }
 
     private void AddCard(ModStoreItem mod)
@@ -147,6 +182,9 @@ public sealed partial class ModStorePage : Page
 
     /// <summary>写回尺寸时差值低于这个数就当没变 —— 免得自己再触发一场布局,来回没完。</summary>
     private const double MetricEpsilon = 0.01;
+
+    /// <summary>头像解码宽度。显示尺寸是设计值 25(再随卡片缩放),取 96 是给高分屏留的余量。</summary>
+    private const int AvatarDecodeWidth = 96;
 
     /// <summary>
     /// 把一张卡片的「设计值」整体乘上缩放系数 s 写回去。
@@ -381,7 +419,14 @@ public sealed partial class ModStorePage : Page
             }
 
             if (e.AvatarBrush is not null && e.AvatarUrl is not null)
-                e.AvatarBrush.ImageSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(e.AvatarUrl);
+            {
+                // 头像只显示 25 设计 px(还要再被 CardScaler 缩),按 96 解码足够 ——
+                // 头像原图往往两三百像素宽,一屏十几张一起按原尺寸解码是白花的。
+                e.AvatarBrush.ImageSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(e.AvatarUrl)
+                {
+                    DecodePixelWidth = AvatarDecodeWidth
+                };
+            }
 
             _pendingImages.RemoveAt(i);
         }
