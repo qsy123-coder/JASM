@@ -27,21 +27,66 @@ namespace GIMI_ModManager.Core.Services;
 
 public sealed class DragAndDropScanner
 {
-    private readonly ILogger _logger = Log.ForContext<DragAndDropScanner>();
-    private readonly string _tmpFolder = Path.Combine(Path.GetTempPath(), "JASM_TMP");
+    private const string WorkFolderName = "JASM_TMP";
 
-    /// <summary>本次扫描独占的临时目录（<c>%TEMP%\JASM_TMP\&lt;guid&gt;</c>）。失败/取消时由调用方删掉。</summary>
-    private readonly string _workFolderRoot = Path.Combine(Path.GetTempPath(), "JASM_TMP", Guid.NewGuid().ToString("N"));
+    private readonly ILogger _logger = Log.ForContext<DragAndDropScanner>();
+    private readonly string _tmpFolder;
+
+    /// <summary>本次扫描独占的临时目录（<c>&lt;工作根&gt;\&lt;guid&gt;</c>）。失败/取消时由调用方删掉。</summary>
+    private readonly string _workFolderRoot;
 
     // Extracts files to this folder（初值就是 _workFolderRoot，ScanAndGetContents 会再往下拼一层源文件名）
     private string _workFolder;
 
     private ExtractTool _extractTool;
 
-    public DragAndDropScanner()
+    /// <param name="targetFolderHint">
+    /// 这一单最终要落到哪儿（角色的 Mod 目录、或根目录都行）—— 只用它**判断在哪块盘上解压**，
+    /// 见 <see cref="ResolveWorkRoot"/>。给不出来就退回 <c>%TEMP%</c>。
+    /// </param>
+    public DragAndDropScanner(string? targetFolderHint = null)
     {
         _extractTool = GetExtractTool();
+        _tmpFolder = ResolveWorkRoot(targetFolderHint);
+        _workFolderRoot = Path.Combine(_tmpFolder, Guid.NewGuid().ToString("N"));
         _workFolder = _workFolderRoot;
+    }
+
+    /// <summary>
+    /// 解压摊到哪块盘上：优先**目标所在的那块卷**（<c>D:\JASM_TMP</c>），给不出提示或卷根写不了
+    /// 就退回 <c>%TEMP%\JASM_TMP</c>。
+    ///
+    /// <para>
+    /// 为什么值得绕这一下：装的时候要把整个包搬进角色的 Mod 目录，而**同卷搬 = 改名**（瞬间）、
+    /// 跨卷搬 = 把整个包再复制一遍。实测一个包「解压 10s + 复制 9s」—— 那一趟复制跟解压一样贵，
+    /// 它唯一的作用就是把数据从 C: 挪到 D:。摊在目标盘上，这一步就退化成改名，等于省掉一半。
+    /// </para>
+    ///
+    /// <para>
+    /// 卷根不可写（权限 / 只读盘）时退回 %TEMP%：那条路只是慢，不会坏。
+    /// </para>
+    /// </summary>
+    public static string ResolveWorkRoot(string? targetFolderHint)
+    {
+        if (!string.IsNullOrWhiteSpace(targetFolderHint))
+        {
+            try
+            {
+                var volumeRoot = Path.GetPathRoot(Path.GetFullPath(targetFolderHint));
+                if (!string.IsNullOrWhiteSpace(volumeRoot))
+                {
+                    var candidate = Path.Combine(volumeRoot, WorkFolderName);
+                    Directory.CreateDirectory(candidate);
+                    return candidate;
+                }
+            }
+            catch (Exception)
+            {
+                // 卷根不可写（权限/只读）—— 退回 %TEMP%，那条路只是慢
+            }
+        }
+
+        return Path.Combine(Path.GetTempPath(), WorkFolderName);
     }
 
     /// <summary>
