@@ -662,9 +662,7 @@
     "DisplayName": "Iuno"
   },
   {
-    "Keys": [
-      "Galbrena"
-    ],
+    "Keys": ["Galbrena", "嘉贝莉娜"],
     "ReleaseDate": "2025-10-09T00:00:00",
     "Image": "Galbrena.png",
     "Rarity": 5,
@@ -924,9 +922,7 @@
     "DisplayName": "Suisui"
   },
   {
-    "Keys": [
-      "qingxiao"
-    ],
+    "Keys": ["qingxiao", "清霄", "青霄", "청초"],
     "ReleaseDate": "2026-08-20T00:00:00",
     "Image": "Qingxiao.webp",
     "Rarity": 5,
@@ -958,9 +954,7 @@
     "DisplayName": "Jingran"
   },
   {
-    "Keys": [
-      "xinyuehu"
-    ],
+    "Keys": ["xinyuehu", "心", "hsin", "心月狐"],
     "ReleaseDate": "2026-09-11T00:00:00",
     "Image": "Xinyuehu.webp",
     "Rarity": 5,
