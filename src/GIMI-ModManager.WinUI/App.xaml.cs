@@ -222,11 +222,10 @@ public partial class App : Application
                         QueueLimit = 20,
                         TokenLimit = 5,
                         AutoReplenishment = true,
-#if DEBUG
-                        TokensPerPeriod = 1,
-#else
+
+                        // Debug 与 Release 同为 5 个 / 秒。以前 Debug 是 1 —— 本地一跑商店，侧栏那五十多个
+                        // 角色计数就得排五十多秒，测出来的「慢」有一大半是这个开关造成的假象。
                         TokensPerPeriod = 5,
-#endif
                         ReplenishmentPeriod = TimeSpan.FromSeconds(1)
                     });
 
