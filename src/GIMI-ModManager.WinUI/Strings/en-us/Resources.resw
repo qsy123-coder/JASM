@@ -572,6 +572,9 @@
   <data name="ModEnv_XxmiVersion.Text" xml:space="preserve">
     <value>XXMI version</value>
   </data>
+  <data name="ModEnv_LauncherVersion.Text" xml:space="preserve">
+    <value>XXMI Launcher version</value>
+  </data>
   <data name="ModEnv_ManualGameDir.Text" xml:space="preserve">
     <value>Wuthering Waves could not be located automatically. Please select the game folder manually.</value>
   </data>
