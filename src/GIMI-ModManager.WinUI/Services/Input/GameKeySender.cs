@@ -166,6 +166,19 @@ public sealed class GameKeySender : IGameKeySender
             // 真正送键那一刻的前台窗口：切前台没生效（或被别的窗口抢走）时，这行是唯一的线索
             var foregroundWindow = PInvoke.GetForegroundWindow();
 
+            // 前台不是游戏就**别发**：键只会打进浮窗自己，游戏毫无反应，而界面照样显示「刷新中→好了」
+            //（实机症状：勾选后有加载动画，游戏里没变化）。如实报失败，让用户再点一下 ——
+            // 这比「假装成功地发给了一个错的窗口」强。前台锁偶尔切不动是老问题，见类注释约束 1。
+            if (foregroundWindow != gameWindow)
+            {
+                _logger.Warning(
+                    "[GameKeySender] 送键前前台不是游戏窗口（当前 0x{Foreground:X}），这次按键没有发送",
+                    FormatWindow(foregroundWindow));
+
+                return GameKeySendResult.WithDetail(GameKeySendStatus.SendInputFailed,
+                    "游戏窗口没能切到前台，这次按键没有发送");
+            }
+
             var keyCount = modifierKeyCodes.Count + 1;
             var inserted = SendChord(virtualKey, modifierKeyCodes, keyUp: false);
             try
@@ -272,6 +285,9 @@ public sealed class GameKeySender : IGameKeySender
 
         return outcome.Result switch
         {
+            // ⚠️ 这里**不能**拿 foregroundAfterSend 判成败：浮窗有个自愈——光标压在它身上时会把前台
+            // 抢回去，而这一句是在助手送完键**之后**读的，正常刷新也会读成「前台=浮窗」。
+            // 真正该看的是「交办前」那个读数（foregroundBefore），它只进日志、不参与判定。
             ElevatedKeySendResult.Sent => GameKeySendResult.Sent,
             ElevatedKeySendResult.Unavailable =>
                 GameKeySendResult.WithDetail(GameKeySendStatus.NeedsElevation, outcome.Message),
