@@ -53,6 +53,13 @@ public record ModEnvSetupRequest
     /// injector framework version independently, so the two selections never share a field.
     /// </summary>
     public string? SelectedLauncherVersion { get; init; }
+
+    /// <summary>
+    /// Per-game package version picked in its own dropdown, or null to use the manifest's game package.
+    /// Same null-means-unchanged contract again — the game package tracks the game client, not the
+    /// injector or the launcher, so it too gets its own field.
+    /// </summary>
+    public string? SelectedWwmiVersion { get; init; }
 }
 
 public record ModEnvPackagePreCheck
@@ -122,6 +129,15 @@ public record ModEnvPreCheck
 
     /// <summary>Launcher version currently on disk (per the marker), if one is recorded.</summary>
     public string? InstalledLauncherVersion { get; init; }
+
+    /// <summary>Selectable game-package versions, newest first. Empty when its catalogue is unavailable.</summary>
+    public List<ModEnvCatalogVersion> WwmiVersions { get; init; } = new();
+
+    /// <summary>The manifest's own game-package version — the picker's fallback for a fresh install.</summary>
+    public string? DefaultWwmiVersion { get; init; }
+
+    /// <summary>Game-package version currently on disk (per the marker), if one is recorded.</summary>
+    public string? InstalledWwmiVersion { get; init; }
 }
 
 public record ModEnvSetupResult
@@ -190,18 +206,22 @@ public class ModEnvSetupFacade
         var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
 
         // Fetched together: the catalogues and the manifest are independent of each other, and failing to
-        // load one must not take the others down — each degrades on its own. The launcher has its own
-        // catalogue because it is a separate package that releases on its own schedule.
+        // load one must not take the others down — each degrades on its own. Each package family has its
+        // own catalogue because they version independently of one another: the injector framework, the
+        // launcher, and the per-game package.
         var manifestTask = _manifestService.GetManifestAsync(ct);
         var catalogTask = _catalogService.GetVersionsAsync(ct);
         var launcherCatalogTask = _catalogService.GetVersionsAsync(_options.Value.LauncherVersionCatalogUrl, ct);
-        await Task.WhenAll(manifestTask, catalogTask, launcherCatalogTask);
+        var gameCatalogTask = _catalogService.GetVersionsAsync(_options.Value.WwmiVersionCatalogUrl, ct);
+        await Task.WhenAll(manifestTask, catalogTask, launcherCatalogTask, gameCatalogTask);
         var manifest = await manifestTask;
         var catalogVersions = await catalogTask;
         var launcherCatalogVersions = await launcherCatalogTask;
+        var gameCatalogVersions = await gameCatalogTask;
 
         ModEnvPackage? basePkg = null;
         ModEnvPackage? launcherPkg = null;
+        ModEnvPackage? gamePkg = null;
         var launcherPkgId = _options.Value.LauncherPackageId;
         if (manifest is null)
         {
@@ -210,7 +230,7 @@ public class ModEnvSetupFacade
         else
         {
             basePkg = manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId);
-            var gamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
+            gamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
 
             // The pre-check has to describe the version the user picked, not the manifest default, or the
             // status badges would talk about a package the setup run is not actually going to install.
@@ -235,15 +255,25 @@ public class ModEnvSetupFacade
 
             if (gamePkg is not null)
             {
-                var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
-                packages.Add(new ModEnvPackagePreCheck
+                var effectiveGamePkg =
+                    ResolveBasePackage(gamePkg, request.SelectedWwmiVersion, gameCatalogVersions);
+                if (effectiveGamePkg is null)
                 {
-                    PackageId = modEnv.PackageId,
-                    PackageName = "WWMi 鸣潮游戏包",
-                    ManifestVersion = gamePkg.Version,
-                    InstalledVersion = installed.GetValueOrDefault(modEnv.PackageId),
-                    Action = EvaluateAction(installed, modEnv.PackageId, gamePkg, filesOk && modsOk)
-                });
+                    // Same two causes as the other packages: a stale picker entry, or the manifest lost it.
+                    issues.Add($"所选 WWMi 版本 {request.SelectedWwmiVersion} 不在当前版本清单中，请重新选择");
+                }
+                else
+                {
+                    var (filesOk, modsOk) = _installer.CheckGamePackageFiles(miFolder);
+                    packages.Add(new ModEnvPackagePreCheck
+                    {
+                        PackageId = modEnv.PackageId,
+                        PackageName = "WWMi 鸣潮游戏包",
+                        ManifestVersion = effectiveGamePkg.Version,
+                        InstalledVersion = installed.GetValueOrDefault(modEnv.PackageId),
+                        Action = EvaluateAction(installed, modEnv.PackageId, effectiveGamePkg, filesOk && modsOk)
+                    });
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(launcherPkgId))
@@ -321,7 +351,10 @@ public class ModEnvSetupFacade
             InstalledXxmiVersion = installed.GetValueOrDefault(_options.Value.BasePackageId),
             LauncherVersions = BuildVersionList(launcherCatalogVersions, launcherPkg),
             DefaultLauncherVersion = launcherPkg?.Version,
-            InstalledLauncherVersion = installedLauncherVersion
+            InstalledLauncherVersion = installedLauncherVersion,
+            WwmiVersions = BuildVersionList(gameCatalogVersions, gamePkg),
+            DefaultWwmiVersion = gamePkg?.Version,
+            InstalledWwmiVersion = installed.GetValueOrDefault(modEnv.PackageId)
         };
     }
 
@@ -351,15 +384,26 @@ public class ModEnvSetupFacade
             if (manifest is null)
                 return Fail("无法获取 Mod 环境版本清单，请检查网络后重试");
 
-            var gamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
-            if (gamePkg is null)
+            // The manifest's own game package doubles as the compatibility baseline (see the version
+            // warning at the end of this method), so keep it around after resolving the picked version.
+            var manifestGamePkg = manifest.Packages.GetValueOrDefault(modEnv.PackageId);
+            if (manifestGamePkg is null)
                 return Fail("版本清单缺少必要的安装包");
 
-            // Resolve the base package the user actually picked. With the dropdown untouched this is the
-            // manifest's own base version, so the flow stays exactly what it was before version selection.
+            // Resolve the packages the user actually picked. With the dropdowns untouched these are the
+            // manifest's own versions, so the flow stays exactly what it was before version selection.
             var catalogVersions = await _catalogService.GetVersionsAsync(ct);
             var launcherCatalogVersions =
                 await _catalogService.GetVersionsAsync(_options.Value.LauncherVersionCatalogUrl, ct);
+            var gameCatalogVersions =
+                await _catalogService.GetVersionsAsync(_options.Value.WwmiVersionCatalogUrl, ct);
+            var gamePkg = ResolveBasePackage(manifestGamePkg, request.SelectedWwmiVersion, gameCatalogVersions);
+            if (gamePkg is null)
+            {
+                return Fail(string.IsNullOrWhiteSpace(request.SelectedWwmiVersion)
+                    ? "版本清单缺少必要的安装包"
+                    : $"所选 WWMi 版本 {request.SelectedWwmiVersion} 不在当前版本清单中，请重新选择");
+            }
             var basePkg = ResolveBasePackage(
                 manifest.Packages.GetValueOrDefault(_options.Value.BasePackageId),
                 request.SelectedXxmiVersion, catalogVersions);
@@ -443,8 +487,15 @@ public class ModEnvSetupFacade
             var gameAction = EvaluateAction(installed, modEnv.PackageId, gamePkg, filesOk && modsOk);
             if (gameAction != ModEnvPackageAction.UpToDate)
             {
-                progress?.Report($"安装/更新 WWMi 鸣潮游戏包 ({gamePkg.Version})...");
-                await _installer.InstallPackageAsync(gamePkg, rootFolder, modEnv.SubDirName, progress, ct);
+                progress?.Report(gameAction == ModEnvPackageAction.Rollback
+                    ? $"切换 WWMi 鸣潮游戏包到 {gamePkg.Version}..."
+                    : $"安装/更新 WWMi 鸣潮游戏包 ({gamePkg.Version})...");
+                // d3dx_user.ini is 3DMigoto's *user* file (keybinds and toggles live there); the copy in
+                // the package only seeds a fresh install. Without this the package's copy would overwrite
+                // the user's setup on every version switch. d3dx.ini is NOT preserved on purpose — that
+                // one is the package's own config, and a new version is expected to bring its own.
+                await _installer.InstallPackageAsync(gamePkg, rootFolder, modEnv.SubDirName, progress, ct,
+                    preserveExistingFiles: new[] { WwmiUserIniFileName });
             }
             else
             {
@@ -489,11 +540,14 @@ public class ModEnvSetupFacade
                 installed[launcherPkgId] = launcherPkg.Version;
             await _installer.WriteMarkerAsync(rootFolder, installed, ct);
 
-            // Version compatibility warning (non-blocking).
+            // Version compatibility warning (non-blocking). The compatibility data lives on the manifest
+            // entry; a catalogue entry usually carries none, so fall back to the manifest's when the
+            // picked version has nothing to say — otherwise every pick would report "不兼容".
             var gameVersion = request.GameInstallDir is { Length: > 0 } dir ? _detector.GetGameVersion(dir) : null;
-            if (!string.IsNullOrWhiteSpace(gameVersion) && !IsCompatible(gameVersion, gamePkg))
+            var compatPkg = string.IsNullOrWhiteSpace(gamePkg.GameVersion) ? manifestGamePkg : gamePkg;
+            if (!string.IsNullOrWhiteSpace(gameVersion) && !IsCompatible(gameVersion, compatPkg))
                 issues.Add(
-                    $"检测到游戏版本 {gameVersion}，与当前 WWMi 包（{gamePkg.Version}，适配 {gamePkg.GameVersion ?? "未知"}）可能不兼容，游戏内可能出现异常。");
+                    $"检测到游戏版本 {gameVersion}，与当前 WWMi 包（{gamePkg.Version}，适配 {compatPkg.GameVersion ?? "未知"}）可能不兼容，游戏内可能出现异常。");
 
             return new ModEnvSetupResult
             {
@@ -927,6 +981,14 @@ public class ModEnvSetupFacade
 
     /// <summary>Launcher config file that carries user-edited settings; preserved across package updates.</summary>
     private const string LauncherConfigFileName = "XXMI Launcher Config.json";
+
+    /// <summary>
+    /// 3DMigoto's <em>user</em> file for the game package: keybinds and per-mod toggles live here, which
+    /// is exactly why 3DMigoto keeps them out of <c>d3dx.ini</c> (the package's own config, which a new
+    /// version is expected to replace). Preserved across installs so switching game-package versions —
+    /// or repairing — never wipes the user's setup; the package's copy only seeds a fresh install.
+    /// </summary>
+    private const string WwmiUserIniFileName = "d3dx_user.ini";
 
     /// <summary>True when the XXMI Launcher GUI executable is present at the root.</summary>
     private static bool LauncherFilesOk(string rootFolder)
