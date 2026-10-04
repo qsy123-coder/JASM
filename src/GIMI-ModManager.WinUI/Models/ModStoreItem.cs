@@ -100,7 +100,7 @@ public sealed partial class ModStoreItem : ObservableObject
             ViewsCount = mod.ViewCount,
             CommentsCount = mod.CommentCount,
             IsAdult = mod.IsAdult,
-            PreviewImageUrl = mod.PreviewImages.Count > 0 ? mod.PreviewImages[0].ToString() : null,
+            PreviewImageUrl = mod.ThumbnailUrl?.ToString(),
             ModPageUrl = mod.ModPageUrl,
             UpdatedAt = mod.DateUpdated ?? mod.DateAdded
         };
