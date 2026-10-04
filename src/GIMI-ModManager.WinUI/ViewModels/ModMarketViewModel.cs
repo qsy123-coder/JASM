@@ -70,8 +70,9 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [ObservableProperty]
     private string _selectedContentFilter = "显示 NSFW";
 
+    /// <summary>默认按「最新」排 —— 市场里的东西更新快，进来先看到刚发的（下拉里仍可切回「默认」）。</summary>
     [ObservableProperty]
-    private string _selectedSortOption = "默认";
+    private string _selectedSortOption = "最新";
 
     public IReadOnlyList<string> CategoryFilterOptions { get; } =
         ["全部分类", "仅Mods", "仅NSFW", "仅非NSFW", "含直链下载"];
