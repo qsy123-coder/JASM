@@ -175,6 +175,11 @@ JASM 已有一套自研的「一键配置 Mod 环境」链路（`Services/ModEnv
 ### Out of Scope（本期不做）
 
 - **不管理 EFMI / WWMI / Launcher 的版本**：四个本地版本包里，EFMI/WWMI 只有签名清单没有实际内容，Launcher 的 msi 四版完全相同 —— 版本差异**只存在于 XXMI 核心 3 个 dll**。本期严格只切换这 3 个文件。
+  - ⚠️ **2026-10-04 更新：Launcher 已单独补上**（见文末「Future Considerations」），但**不是**走这份 PRD 设想的路子。
+    「四个本地包里的 Launcher msi 相同」这个判断只对**框架更新包内嵌的那份**成立；启动器本体有自己独立的发布线
+    （`XXMI-Launcher-Portable-vX.Y.Z.zip`），版本之间差异很大 —— 2.3.x 起它读 MI 文件夹里的 DLL 显示版本号，
+    旧版读的是 `Resources\Packages\XXMI\Manifest.json`。所以它用**另一份目录**（`launcher-versions.json`，
+    与 `xxmi-versions.json` 同 schema）配同一条安装链路，和这 3 个 dll 无关。
 - 不做版本自动降级 / 智能推荐（如"检测到崩溃自动回退"）
 - 不做切换后自动试启动验证
 - 不做多版本并行安装（同一时刻只有一份生效）
@@ -231,7 +236,19 @@ JASM 已有一套自研的「一键配置 Mod 环境」链路（`Services/ModEnv
 ### Future Considerations
 - 切换后自动试启动验证 + 失败自动回滚
 - 接入 XXMI 官方 release 自动同步 catalog
-- Launcher / 游戏包也纳入版本管理
+- ~~Launcher / 游戏包也纳入版本管理~~ —— **Launcher 已完成（2026-10-04）**：
+  - 独立的第二份目录 `launcher-versions.json`，复用同一套 `ModEnvVersionCatalogService` 与
+    `ResolveBasePackage` / `BuildVersionList`；UI 上是向导里与「XXMI 版本」并列的第二个下拉。
+  - 沿袭同一条预选规则（磁盘上已装的版本优先）。**不做**切换前备份：每个版本都在 CDN 上，
+    回退就是再选一次，不值得为它存 ~52 MB/版本的快照。
+  - 一并修掉两条只有能选版本之后才暴露的问题：①`SetupAsync` 收尾从清单重读启动器版本，
+    把用户选的旧版覆盖回 marker（marker 与磁盘不符 → 每次预检都「可回退」→ 反复重装）；
+    ②`AlignStaleLauncherVersions` 只对齐「缓存更旧」的方向，降级后启动器会永远提示升级 ——
+    现在**启动器自身**那个包键改成双向对齐，其余包维持单向。
+    （**为什么不在打包侧把缓存钉到包版本**：那会改 zip 字节，已上线的包必须重传并同步两份清单
+    的哈希；客户端对齐不动 CDN 就能覆盖所有版本。）
+  - 游戏包（wwmi）仍未纳入：它跟游戏客户端版本绑定，不是「用户自救回退」那个场景。
+- 游戏包也纳入版本管理
 
 ---
 
