@@ -1,10 +1,13 @@
 ﻿using Windows.Storage;
 using Windows.Win32;
 using Windows.Win32.Media.Audio;
+using CommunityToolkit.Mvvm.Messaging;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
+using GIMI_ModManager.WinUI.Services.Notifications;
+using GIMI_ModManager.WinUI.ViewModels.Messages;
 using GIMI_ModManager.WinUI.Views;
 using Serilog;
 using static GIMI_ModManager.WinUI.Services.ModHandling.ModDragAndDropService.DragAndDropFinishedArgs;
@@ -19,13 +22,16 @@ public class ModDragAndDropService
 
 
     private readonly Notifications.NotificationManager _notificationManager;
+    private readonly ModNotificationManager _modNotificationManager;
 
     public event EventHandler<DragAndDropFinishedArgs>? DragAndDropFinished;
 
     public ModDragAndDropService(ILogger logger, Notifications.NotificationManager notificationManager,
+        ModNotificationManager modNotificationManager,
         ModInstallerService modInstallerService, IWindowManagerService windowManagerService)
     {
         _notificationManager = notificationManager;
+        _modNotificationManager = modNotificationManager;
         _modInstallerService = modInstallerService;
         _windowManagerService = windowManagerService;
         _logger = logger.ForContext<ModDragAndDropService>();
@@ -63,7 +69,7 @@ public class ModDragAndDropService
             var scanner = new DragAndDropScanner();
             var extractResult = ExtractWithCleanup(scanner, storageItem.Path);
 
-            installMonitor = await StartInstallationAsync(extractResult, modList);
+            installMonitor = await StartInstallationAsync(extractResult, modList, installSilently: false);
 
             return installMonitor;
         }
@@ -146,8 +152,13 @@ public class ModDragAndDropService
     /// 认角色：入参是原文件名与解压结果，返回要装进哪个角色的 mod 列表。
     /// 返回 <c>null</c> = 认不出来 / 用户没选（调用方自己负责给用户说法，这里不再提示）。
     /// </param>
+    /// <param name="installSilently">
+    /// true = 不弹安装向导，直接把解压出来那一整个文件夹装进目标角色（装完启用）。
+    /// 游戏内浮窗那条拖拽路用的就是它 —— 详见 <see cref="InstallSilentlyAsync"/>。
+    /// </param>
     public async Task<InstallMonitor?> AddDroppedPackageAsync(IStorageItem storageItem,
-        Func<string, DragAndDropScanResult, Task<ICharacterModList?>> resolveModList)
+        Func<string, DragAndDropScanResult, Task<ICharacterModList?>> resolveModList,
+        bool installSilently = false)
     {
         if (storageItem is not StorageFile file)
         {
@@ -180,13 +191,13 @@ public class ModDragAndDropService
             return null;
         }
 
-        if (TryActivateExistingInstallWindow(modList))
+        if (installSilently == false && TryActivateExistingInstallWindow(modList))
         {
             scanner.CleanupWorkFolder(); // 那个角色的安装窗已经开着，这次的包用不上
             return null;
         }
 
-        return await StartInstallationAsync(scanResult, modList);
+        return await StartInstallationAsync(scanResult, modList, installSilently);
     }
 
     /// <summary>
@@ -213,20 +224,114 @@ public class ModDragAndDropService
     /// 父目录同时让选中项露在树的第一层，用户一眼能看到选中了哪个文件夹。
     /// </para>
     /// </summary>
-    private Task<InstallMonitor> StartInstallationAsync(DragAndDropScanResult scanResult,
-        ICharacterModList modList)
+    private async Task<InstallMonitor?> StartInstallationAsync(DragAndDropScanResult scanResult,
+        ICharacterModList modList, bool installSilently)
     {
         var extractedRoot = new DirectoryInfo(scanResult.ExtractedFolder.FullPath);
-        var contentRoot = ModPackageRootResolver.ResolveContentRoot(extractedRoot);
 
-        if (!ModPackageRootResolver.LooksLikeSelfContainedModRoot(contentRoot))
-            return _modInstallerService.StartModInstallationAsync(extractedRoot, modList);
+        // 只剥 JASM 自己的 JASM_TMP\<guid> 那一层纯包装，再往下那一层（**就是 exe 的名字**）就是用户
+        // 拖进来的那整个包 —— 不再往里钻。
+        //
+        // 以前这里用 ModPackageRootResolver.ResolveContentRoot 一路剥到「自己带 ini 的那一层」，
+        // 碰上「外层是 exe 名、ini 摆在子目录里」的包就只装进去一个子目录（实测：装出来的文件夹叫
+        // 'Sigrika Ball Full'，而用户要的是 exe 名那一层）。包里那些按键切换逻辑常常摆在外层，
+        // 少装了它的表现就是「装上了但热键没反应」。
+        var contentRoot = ResolveExtractedPackageFolder(extractedRoot);
 
-        _logger.Information("The package is a single mod root ('{ModRoot}'), installing it as a whole",
-            contentRoot.Name);
+        // 剥完包装层的那一层，就是**用户拖进来的那个包**（目录名通常就是 exe 名）—— 整个当 Mod 装。
+        //
+        // 以前这里还门一道「根自己带 ini 才整包装」，其余交给向导的启发式去猜；猜出来的多是包里
+        // 某个子目录，于是用户只装到一块碎片，而按键切换那些逻辑还留在他没装进去的那一层
+        // （实机反馈：「拖进去的文件夹应该是整个才对」）。向导的目录树仍然摆着，真要只装其中一层，
+        // 用户在树里往下选就是了 —— 默认值给整包才是对的。
+        _logger.Information("Installing the whole extracted folder as one mod ('{ModRoot}')", contentRoot.Name);
 
-        return _modInstallerService.StartModInstallationAsync(contentRoot.Parent ?? extractedRoot, modList,
-            setup: options => options.ModRootFolder = contentRoot);
+        if (installSilently)
+            return await InstallSilentlyAsync(contentRoot, modList).ConfigureAwait(false);
+
+        return await _modInstallerService.StartModInstallationAsync(contentRoot.Parent ?? extractedRoot, modList,
+            setup: options => options.ModRootFolder = contentRoot).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 解压出来的那**一整个包目录**：剥掉 <c>JASM_TMP\&lt;guid&gt;</c> 这层纯包装，返回它下面那一层 ——
+    /// 通常就是 <b>exe 的名字</b>，也就是用户拖进来的那个包本身。
+    ///
+    /// 只有恰好一层子目录时才这么取；没有子目录（散文件）或有多个并列条目时退回入参本身，
+    /// 交给向导那棵树去选（树根是它，选中项露在第一层）。
+    /// </summary>
+    private static DirectoryInfo ResolveExtractedPackageFolder(DirectoryInfo extractedRoot)
+    {
+        try
+        {
+            var subFolders = extractedRoot.GetDirectories();
+            return subFolders.Length == 1 ? subFolders[0] : extractedRoot;
+        }
+        catch (Exception)
+        {
+            // 读不动就别猜：退回包装层本身，后面的流程照样能跑（向导里用户还能自己选）
+            return extractedRoot;
+        }
+    }
+
+    /// <summary>
+    /// 静默装：不建向导窗，直接把这一整个目录当成一个 Mod 装进角色的列表（装完启用）。
+    ///
+    /// 给「把包拖到游戏内浮窗上」用 —— 浮窗那块地方没有向导的容身之处，为一次拖拽弹一个窗
+    /// 也不是拖拽该有的手感。落盘那一手与向导点「添加模组」完全相同
+    /// （<c>ModInstallerService.InstallFolderSilentlyAsync</c>），所以目录名、启用行为都跟着那条路走。
+    /// </summary>
+    private async Task<InstallMonitor?> InstallSilentlyAsync(DirectoryInfo contentRoot, ICharacterModList modList)
+    {
+        var characterName = modList.Character.DisplayName;
+
+        try
+        {
+            var mod = await _modInstallerService.InstallFolderSilentlyAsync(contentRoot, modList)
+                .ConfigureAwait(false);
+
+            _notificationManager.ShowNotification("已安装",
+                $"「{mod.Name}」已装到 {characterName}", TimeSpan.FromSeconds(6));
+
+            // 与向导那条路同一条通知：角色卡片上的「新增」角标靠它；顺带也把浮窗的列表热更新上
+            await _modNotificationManager.AddModNotification(new ModNotification
+            {
+                ModId = mod.Id,
+                CharacterInternalName = modList.Character.InternalName,
+                ModCustomName = mod.Name,
+                ModFolderName = mod.Name,
+                ShowOnOverview = true,
+                AttentionType = AttentionType.Added,
+                Message = $"「{mod.Name}」已安装"
+            }).ConfigureAwait(false);
+
+            // 带上角色：浮窗收到会切到这个角色，用户一眼就看到刚装的东西
+            WeakReferenceMessenger.Default.Send(
+                new ModInstalledMessage(this, modList.Character.InternalName));
+
+            // 没有向导窗，也就没有 InstallMonitor 可给
+            return null;
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "静默安装失败: {ModRoot}", contentRoot.FullName);
+            _notificationManager.ShowNotification("安装失败",
+                $"「{contentRoot.Name}」装到 {characterName} 失败：{e.Message}", TimeSpan.FromSeconds(10));
+            return null;
+        }
+        finally
+        {
+            // 解压出来的临时目录用完就清 —— 装的时候是搬/复制进角色目录，这份原件不该留在 %TEMP%
+            try
+            {
+                if (contentRoot.Exists)
+                    contentRoot.Delete(true);
+            }
+            catch (Exception e)
+            {
+                _logger.Warning(e, "清理解压临时目录失败: {Path}", contentRoot.FullName);
+            }
+        }
     }
 
     /// <summary>
