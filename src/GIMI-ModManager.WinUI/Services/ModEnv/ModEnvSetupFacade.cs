@@ -48,6 +48,13 @@ public record ModEnvSetupRequest
     public string? SelectedXxmiVersion { get; init; }
 
     /// <summary>
+    /// XXMI Launcher (GUI) version picked in its own dropdown, or null to use the manifest's launcher.
+    /// Same null-means-unchanged contract as <see cref="SelectedXxmiVersion"/>: the launcher and the
+    /// injector framework version independently, so the two selections never share a field.
+    /// </summary>
+    public string? SelectedLauncherVersion { get; init; }
+
+    /// <summary>
     /// Per-game package version picked in its own dropdown, or null to use the manifest's game package.
     /// Same null-means-unchanged contract again — the game package tracks the game client, not the
     /// injector or the launcher, so it too gets its own field.
@@ -113,6 +120,15 @@ public record ModEnvPreCheck
 
     /// <summary>Version currently installed at the XXMI root (per the marker), if one is recorded.</summary>
     public string? InstalledXxmiVersion { get; init; }
+
+    /// <summary>Selectable launcher versions, newest first. Empty when its catalogue is unavailable.</summary>
+    public List<ModEnvCatalogVersion> LauncherVersions { get; init; } = new();
+
+    /// <summary>The manifest's own launcher version — the picker's fallback when nothing is installed yet.</summary>
+    public string? DefaultLauncherVersion { get; init; }
+
+    /// <summary>Launcher version currently on disk (per the marker), if one is recorded.</summary>
+    public string? InstalledLauncherVersion { get; init; }
 
     /// <summary>Selectable game-package versions, newest first. Empty when its catalogue is unavailable.</summary>
     public List<ModEnvCatalogVersion> WwmiVersions { get; init; } = new();
@@ -190,15 +206,17 @@ public class ModEnvSetupFacade
         var installed = await _installer.ReadInstalledVersionsAsync(rootFolder, ct);
 
         // Fetched together: the catalogues and the manifest are independent of each other, and failing to
-        // load one must not take the others down — each degrades on its own. The injector framework and the
-        // per-game package each have their own catalogue because they version independently. The launcher
-        // deliberately has none: it is pinned to whatever the manifest says (see the launcher block below).
+        // load one must not take the others down — each degrades on its own. Each package family has its
+        // own catalogue because they version independently of one another: the injector framework, the
+        // launcher, and the per-game package.
         var manifestTask = _manifestService.GetManifestAsync(ct);
         var catalogTask = _catalogService.GetVersionsAsync(ct);
+        var launcherCatalogTask = _catalogService.GetVersionsAsync(_options.Value.LauncherVersionCatalogUrl, ct);
         var gameCatalogTask = _catalogService.GetVersionsAsync(_options.Value.WwmiVersionCatalogUrl, ct);
-        await Task.WhenAll(manifestTask, catalogTask, gameCatalogTask);
+        await Task.WhenAll(manifestTask, catalogTask, launcherCatalogTask, gameCatalogTask);
         var manifest = await manifestTask;
         var catalogVersions = await catalogTask;
+        var launcherCatalogVersions = await launcherCatalogTask;
         var gameCatalogVersions = await gameCatalogTask;
 
         ModEnvPackage? basePkg = null;
@@ -263,9 +281,16 @@ public class ModEnvSetupFacade
                 launcherPkg = manifest.Packages.GetValueOrDefault(launcherPkgId);
 
                 // Same as the base package above: badge the version the user picked, not the manifest default.
-                if (launcherPkg is null)
+                var effectiveLauncherPkg =
+                    ResolveBasePackage(launcherPkg, request.SelectedLauncherVersion, launcherCatalogVersions);
+
+                if (effectiveLauncherPkg is null)
                 {
-                    issues.Add($"版本清单缺少 XXMI 启动器包 ({launcherPkgId})");
+                    // Two causes with two different fixes — a stale picker entry the user must re-pick, or a
+                    // manifest that no longer carries the launcher at all.
+                    issues.Add(string.IsNullOrWhiteSpace(request.SelectedLauncherVersion)
+                        ? $"版本清单缺少 XXMI 启动器包 ({launcherPkgId})"
+                        : $"所选 XXMI 启动器版本 {request.SelectedLauncherVersion} 不在当前版本清单中，请重新选择");
                 }
                 else
                 {
@@ -273,9 +298,9 @@ public class ModEnvSetupFacade
                     {
                         PackageId = launcherPkgId,
                         PackageName = "XXMI 启动器 (GUI)",
-                        ManifestVersion = launcherPkg.Version,
+                        ManifestVersion = effectiveLauncherPkg.Version,
                         InstalledVersion = installed.GetValueOrDefault(launcherPkgId),
-                        Action = EvaluateAction(installed, launcherPkgId, launcherPkg,
+                        Action = EvaluateAction(installed, launcherPkgId, effectiveLauncherPkg,
                             LauncherFilesOk(rootFolder))
                     });
                 }
@@ -308,6 +333,11 @@ public class ModEnvSetupFacade
                        + "（通常是游戏包自带的旧 d3d11.dll 盖掉了框架）；点「开始配置」会用所选版本覆盖它。");
         }
 
+        // The launcher package id is optional and GetValueOrDefault throws on a null key, so guard the lookup.
+        var installedLauncherVersion = string.IsNullOrWhiteSpace(launcherPkgId)
+            ? null
+            : installed.GetValueOrDefault(launcherPkgId);
+
         return new ModEnvPreCheck
         {
             RootFolder = rootFolder,
@@ -319,6 +349,9 @@ public class ModEnvSetupFacade
             XxmiVersions = BuildVersionList(catalogVersions, basePkg),
             DefaultXxmiVersion = basePkg?.Version,
             InstalledXxmiVersion = installed.GetValueOrDefault(_options.Value.BasePackageId),
+            LauncherVersions = BuildVersionList(launcherCatalogVersions, launcherPkg),
+            DefaultLauncherVersion = launcherPkg?.Version,
+            InstalledLauncherVersion = installedLauncherVersion,
             WwmiVersions = BuildVersionList(gameCatalogVersions, gamePkg),
             DefaultWwmiVersion = gamePkg?.Version,
             InstalledWwmiVersion = installed.GetValueOrDefault(modEnv.PackageId)
@@ -360,6 +393,8 @@ public class ModEnvSetupFacade
             // Resolve the packages the user actually picked. With the dropdowns untouched these are the
             // manifest's own versions, so the flow stays exactly what it was before version selection.
             var catalogVersions = await _catalogService.GetVersionsAsync(ct);
+            var launcherCatalogVersions =
+                await _catalogService.GetVersionsAsync(_options.Value.LauncherVersionCatalogUrl, ct);
             var gameCatalogVersions =
                 await _catalogService.GetVersionsAsync(_options.Value.WwmiVersionCatalogUrl, ct);
             var gamePkg = ResolveBasePackage(manifestGamePkg, request.SelectedWwmiVersion, gameCatalogVersions);
@@ -410,20 +445,28 @@ public class ModEnvSetupFacade
             installed[_options.Value.BasePackageId] = basePkg.Version;
             await _installer.WriteMarkerAsync(rootFolder, installed, ct);
 
-            // XXMI Launcher GUI -> into the XXMI root itself. Pinned to the manifest's launcher: it has no
-            // version dropdown of its own (see ModEnvSetupOptions — there is no launcher catalogue URL).
+            // XXMI Launcher GUI -> into the XXMI root itself. Its version resolves exactly like the
+            // framework's: the dropdown's pick, or the manifest's own launcher when it was left untouched.
             var launcherPkgId = _options.Value.LauncherPackageId;
             ModEnvPackage? launcherPkg = null;
             if (!string.IsNullOrWhiteSpace(launcherPkgId))
             {
-                launcherPkg = manifest.Packages.GetValueOrDefault(launcherPkgId);
+                launcherPkg = ResolveBasePackage(
+                    manifest.Packages.GetValueOrDefault(launcherPkgId),
+                    request.SelectedLauncherVersion, launcherCatalogVersions);
                 if (launcherPkg is null)
-                    return Fail("版本清单缺少必要的安装包");
+                {
+                    return Fail(string.IsNullOrWhiteSpace(request.SelectedLauncherVersion)
+                        ? "版本清单缺少必要的安装包"
+                        : $"所选 XXMI 启动器版本 {request.SelectedLauncherVersion} 不在当前版本清单中，请重新选择");
+                }
 
                 var launcherAction = EvaluateAction(installed, launcherPkgId, launcherPkg, LauncherFilesOk(rootFolder));
                 if (launcherAction != ModEnvPackageAction.UpToDate)
                 {
-                    progress?.Report($"安装/更新 XXMI 启动器 (GUI) ({launcherPkg.Version})...");
+                    progress?.Report(launcherAction == ModEnvPackageAction.Rollback
+                        ? $"切换 XXMI 启动器 (GUI) 到 {launcherPkg.Version}..."
+                        : $"安装/更新 XXMI 启动器 (GUI) ({launcherPkg.Version})...");
                     await _installer.InstallPackageAsync(launcherPkg, rootFolder, null, progress, ct,
                         preserveExistingFiles: new[] { LauncherConfigFileName });
                 }
