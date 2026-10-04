@@ -50,8 +50,10 @@
              由 code-behind 的 CardScaler 按槽位宽整体等比缩放(字号/内边距/行高一起走),
              这样任何窗口宽度下卡片比例都和商店一致。改这里的尺寸不用动代码,缩放会自己跟上。
 
-             与商店**唯一**的差别在图片的填充方式:市场里绝大多数预览图是竖屏的,商店那份用的
-             UniformToFill 会把竖图裁成横条 —— 这里用 Uniform,整张图都看得见(两侧留底色条)。 -->
+             与商店的差别只有**图片区**这一处:市场里绝大多数预览图是竖屏的,商店那份的封面区是
+             横向的(304×195,还用 UniformToFill 裁切),竖图放进去只剩窄窄一条、两边全是底色。
+             这里把图片区做成**竖屏 3:4**(设计值 304 宽 × 405 高,正好旧版市场卡片那个比例),
+             填充仍用 Uniform —— 竖图几乎铺满,更长的 9:16 也只会留很窄的两条边。 -->
         <DataTemplate x:Key="ModCardTemplate">
             <Border Margin="13,25,13,25" Background="White" CornerRadius="12"
                     BorderBrush="#E8EBED" BorderThickness="1">
@@ -61,8 +63,9 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!-- 行0: 图片区(195 = 商店那份参考图的封面高度,由 CardScaler 随整卡缩放) -->
-                    <Grid x:Name="ThumbHost" Grid.Row="0" Height="195">
+                    <!-- 行0: 图片区。405 是「卡片内宽 304 × 4/3」——竖屏 3:4,由 CardScaler 随整卡等比缩放,
+                         所以任何窗口宽度下这个比例都不变。 -->
+                    <Grid x:Name="ThumbHost" Grid.Row="0" Height="405">
                         <!-- 层0: 无图片时的纯色占位背景;Uniform 那两条侧边也露出这层 -->
                         <Grid Background="#2A2A2A" />
                         <!-- 层1: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
