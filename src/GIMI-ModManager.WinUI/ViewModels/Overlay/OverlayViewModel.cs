@@ -1,16 +1,21 @@
 using System.Collections.ObjectModel;
+using Windows.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
+using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
+using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels;
+using GIMI_ModManager.WinUI.ViewModels.Messages;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.ViewModels.Overlay;
@@ -22,7 +27,8 @@ namespace GIMI_ModManager.WinUI.ViewModels.Overlay;
 /// 所以内部刻意不写 <c>ConfigureAwait(false)</c>：属性直接绑到界面，续体留在 UI 线程最省事。
 /// 唯一搬去后台的是动盘那一步（文件夹改名），它不影响这段约定。
 /// </summary>
-internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient<ModChangedMessage>
+internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient<ModChangedMessage>,
+    IRecipient<ModInstalledMessage>
 {
     /// <summary>下拉右侧模式控件里的序号。取值与 <c>Segmented</c> 里两个 <c>SegmentedItem</c> 的先后一致。</summary>
     private const int SingleSelectModeIndex = 0;
@@ -30,7 +36,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     private const int MultiSelectModeIndex = 1;
 
     private readonly ISkinManagerService _skinManagerService;
+    private readonly IGameService _gameService;
     private readonly ILocalSettingsService _localSettingsService;
+    private readonly ModDragAndDropService _dragAndDropService;
     private readonly ILogger _logger;
 
     /// <summary>当前选中角色的全部 Mod（未过滤）。搜一个词不该重新去读盘，所以过滤只在这个快照上做。</summary>
@@ -92,13 +100,124 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </summary>
     [ObservableProperty] private OverlayModItemViewModel? _selectedMod;
 
-    public OverlayViewModel(ISkinManagerService skinManagerService, OverlayRefreshCoordinator refreshCoordinator,
-        ILocalSettingsService localSettingsService, ILogger logger)
+    public OverlayViewModel(ISkinManagerService skinManagerService, IGameService gameService,
+        OverlayRefreshCoordinator refreshCoordinator, ILocalSettingsService localSettingsService,
+        ModDragAndDropService dragAndDropService, ILogger logger)
     {
         _skinManagerService = skinManagerService;
+        _gameService = gameService;
         RefreshCoordinator = refreshCoordinator;
         _localSettingsService = localSettingsService;
+        _dragAndDropService = dragAndDropService;
         _logger = logger.ForContext<OverlayViewModel>();
+    }
+
+    /// <summary>
+    /// 把拖进浮窗的包装到**当前选中的角色**上，与主窗口卡片那条拖拽路走同一个服务。
+    ///
+    /// 复用而不是另写一套：整包装、向导、失败通知、以及装完的热更新都在那条路上，
+    /// 浮窗这边唯一多知道的一件事是「装给谁」—— 它本来就只对着一个角色。
+    /// </summary>
+    public async Task DropModPackageAsync(IReadOnlyList<IStorageItem> storageItems)
+    {
+        if (storageItems.Count == 0)
+            return;
+
+        // 兜底角色 = 浮窗当前选中的那个。**可以没有**：角色列表只列「已经有 Mod 的角色」，
+        // 一个 Mod 都没有时列表是空的 —— 而那正是最需要靠拖拽装进第一个 Mod 的场景。
+        var fallbackModList = SelectedCharacter is { } selected ? ResolveModList(selected.Character) : null;
+
+        try
+        {
+            // 单个文件 = 包（自解压 exe / zip）：**静默装**，不弹安装向导。
+            // 浮窗上没有向导的容身之处，拖一下弹一个窗也不是拖拽该有的手感。
+            if (storageItems is [StorageFile file])
+            {
+                await _dragAndDropService.AddDroppedPackageAsync(file,
+                    (fileName, scanResult) => Task.FromResult(
+                        ResolveTargetModList(fileName, scanResult, fallbackModList)),
+                    installSilently: true);
+            }
+            else
+            {
+                // 文件夹没法静默判断「哪一层才是 Mod」，别猜：指条明路比装错了强
+                ErrorMessage = "浮窗只接包（自解压 exe / zip）。文件夹请拖到主窗口的角色卡片上。";
+            }
+        }
+        catch (Exception e)
+        {
+            // 拖拽那条路自己会弹通知说明失败原因；浮窗上只留一句，告诉用户去哪儿看详情
+            _logger.Warning(e, "[浮窗] 拖入的包安装失败");
+            ErrorMessage = "安装失败，详情见主窗口的通知。";
+        }
+    }
+
+    /// <summary>
+    /// 装给谁：先**认包**（与主窗口那条拖拽路同一套判据），认不出来退回<b>浮窗当前选中的角色</b>
+    /// （<paramref name="fallback"/>），两个都没有就没法装。
+    /// </summary>
+    /// <remarks>
+    /// 认角色这一步必须在**解压之后**做，所以它发生在拖拽落下之后的回调里，而不是 DragOver 里 ——
+    /// 也就意味着拖拽经过时不能拿「有没有选中角色」去拒绝（见 <c>OverlayWindow.RootGrid_OnDragOver</c>）。
+    /// </remarks>
+    private ICharacterModList? ResolveTargetModList(string fileName, DragAndDropScanResult scanResult,
+        ICharacterModList? fallback)
+    {
+        if (ResolveDroppedCharacter(fileName, scanResult) is { } detected)
+            return detected;
+
+        if (fallback is not null)
+            return fallback;
+
+        // 回调是从解压后那条异步链上下来的，未必在 UI 线程 —— ErrorMessage 直接绑在界面上，得挪回去
+        App.MainWindow.DispatcherQueue.TryEnqueue(() =>
+            ErrorMessage = "认不出这是哪个角色的 Mod。先在浮窗里选个角色，或把包拖到主窗口的角色卡片上。");
+
+        return null;
+    }
+
+    /// <summary>
+    /// 从「被拖入的文件名 + 解压结构」认角色；**认不准就返回 <c>null</c>**。
+    ///
+    /// 判据与主窗口那条拖拽路完全同一套（同 <see cref="CharacterNameMatcher"/>、同样的线索与伪角色排除），
+    /// 唯一不同的是**认得不准时不弹选择框**：浮窗上没有问「是哪个角色」的地方，它的定位就是不打岔。
+    /// 认不出来时调用方退回「当前选中的角色」—— 你正看着谁就装给谁，总比弹个框强。
+    /// </summary>
+    private ICharacterModList? ResolveDroppedCharacter(string fileName, DragAndDropScanResult scanResult)
+    {
+        var ranked = CharacterNameMatcher.Rank(
+            _gameService.GetAllModdableObjectsAsCategory<ICharacter>(),
+            CluesForCharacterMatch(fileName, scanResult),
+            [
+                _gameService.OtherCharacterInternalName,
+                _gameService.GlidersCharacterInternalName,
+                _gameService.WeaponsCharacterInternalName
+            ]);
+
+        if (!CharacterNameMatcher.IsConfident(ranked))
+        {
+            _logger.Information("[浮窗] 拖入的包 '{FileName}' 认不出角色（{Count} 个候选），改装给当前选中的角色",
+                fileName, ranked.Count);
+            return null;
+        }
+
+        _logger.Information("[浮窗] 拖入的包 '{FileName}' 认出角色 {Character}", fileName, ranked[0].InternalName);
+
+        return _skinManagerService.CharacterModLists
+            .FirstOrDefault(list => list.Character.InternalNameEquals(ranked[0].Character));
+    }
+
+    /// <summary>
+    /// 认角色用的线索：原文件名 + 包内顶层目录名。
+    /// <b>与 <c>CharactersViewModel.CluesForCharacterMatch</c> 是同一套判据</b> ——
+    /// 那边还连着「认不出就弹选择框」的流程，暂时没合并；判据要改请两处一起改。
+    /// </summary>
+    private static IEnumerable<string> CluesForCharacterMatch(string fileName, DragAndDropScanResult scanResult)
+    {
+        yield return fileName;
+
+        foreach (var directory in Directory.EnumerateDirectories(scanResult.ExtractedFolder.FullPath))
+            yield return Path.GetFileName(directory);
     }
 
     /// <summary>
@@ -113,6 +232,30 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         // 而本方法一定在窗口显示之前跑完，所以在这一步赋值是够的。
         ModeIndex = Settings.MultiSelectMode ? MultiSelectModeIndex : SingleSelectModeIndex;
 
+        RefreshCharacters();
+    }
+
+    /// <summary>
+    /// 按**当前**的 Mod 列表重建角色列表（顺带修好空态与选中）。浮窗**每次被唤出**时都会调一次
+    /// （见 <c>OverlayWindowService.ShowOverlay</c>）。
+    ///
+    /// 为什么不能只在启动时建一次：这里建的是「那一刻的快照」，而 mod 扫描
+    /// （<c>SkinManagerService.ScanForModsAsync</c>）是启动流程里另一条分支。快照若早于它完成，
+    /// 列表会**永久**空着 —— 空态那条分支连订阅都不建、热键唤出以前也不重建，用户只能重启 JASM
+    /// 才能恢复。浮窗本来就是随时按热键唤出的，每次唤出重新对一遍才是对的。
+    /// </summary>
+    public void RefreshCharacters(string? preferCharacterInternalName = null)
+    {
+        // 订阅主窗口发出的变化（画廊、预设、随机化、以及装完 Mod 的通知）—— 两个界面不该各显示一套状态。
+        // 放在**空态判断之前**：列表空着的时候更要收得到「刚装了 Mod」这条消息，否则空态就是个死局。
+        IsActive = true;
+
+        // 重建会 Clear 集合，ComboBox 跟着把 SelectedCharacter 置回 null —— 先把「原来选的是谁」记下来。
+        // 装了新 Mod 的那种刷新，优先选**刚装的那个角色**（见 Receive 的说明）。
+        var previous = preferCharacterInternalName
+                       ?? SelectedCharacter?.Character.InternalName
+                       ?? Settings.LastSelectedCharacter;
+
         BuildCharacterList();
 
         if (Characters.Count == 0)
@@ -122,13 +265,24 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             return;
         }
 
+        // 之前可能是空态，这次拿到数据了 —— 空态标记要一起清掉，否则那段提示会一直盖在上面
+        EmptyMessage = null;
+        IsListEmpty = false;
+
         // 上次那个角色可能已经被删掉/改名了（换了游戏、清了 Mod 文件夹），退化成第一个而不是报错
         SelectedCharacter =
-            Characters.FirstOrDefault(c => c.Character.InternalNameEquals(Settings.LastSelectedCharacter))
+            Characters.FirstOrDefault(c => c.Character.InternalNameEquals(previous))
             ?? Characters[0];
 
-        // 订阅主窗口发出的变化（画廊、预设、随机化都会发），这样两个界面不会各显示一套状态
-        IsActive = true;
+        // 但上面这句会被**下一轮**的消息盖掉：角色下拉的 SelectedItem 是 TwoWay，集合被 Clear 之后
+        // ComboBox 会把 null 写回 SelectedCharacter，而那个回写发生在本方法返回之后。
+        // 实机症状：浮窗里明明列着角色，拖拽时却判「没选中角色」→ 光标显示禁用、拖不进去。
+        // 所以下一轮再确认一次：那时 ComboBox 已经处理完集合变化。
+        App.MainWindow.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (SelectedCharacter is null && Characters.Count > 0)
+                SelectedCharacter = Characters[0];
+        });
     }
 
     /// <summary>把浮窗被拖到的位置记下来。窗口在拖动结束与关闭时各调一次。</summary>
@@ -417,6 +571,18 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         item.IsEnabled = message.SkinEntry.IsEnabled;
     }
+
+    /// <summary>
+    /// 刚装好一个 Mod：立刻把列表对一遍，并**切到刚装的那个角色**。
+    ///
+    /// 只重建不切换的话，用户拖给 A 角色的 Mod 装完，浮窗还停在 B 角色上 —— 看上去像「没装上」
+    /// （实机反馈：「应该跳转到对应角色下」）。
+    ///
+    /// 消息可能来自任何线程（安装收尾那几个 Task.Run 的续体），而本类的集合直接绑在界面上 ——
+    /// 必须回 UI 线程再动。
+    /// </summary>
+    public void Receive(ModInstalledMessage message) =>
+        App.MainWindow.DispatcherQueue.TryEnqueue(() => RefreshCharacters(message.CharacterInternalName));
 
     /// <summary>
     /// 拿当前的角色 Mod 列表。每次现取而不是把 <c>ICharacterModList</c> 缓存在字段里：
