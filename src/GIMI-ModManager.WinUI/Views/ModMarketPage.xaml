@@ -84,8 +84,11 @@
                                       Width="28" Height="28"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                       Foreground="#0078D4" />
-                        <!-- 层4: 整张预览图完整显示(Source 由代码在滚到视口时设置) -->
+                        <!-- 层4: 整张预览图完整显示(Source 由代码在滚到视口时设置)。
+                             **四周留 12 的内缩**:主图完整可见,而它四周(含四个角)露出来的就是那层模糊背景 ——
+                             不留这一圈的话,图片比图片区更「宽」的那两侧以外全被主图盖住,四个角看上去就是底色。 -->
                         <Image x:Name="CardImage"
+                               Margin="12"
                                Stretch="Uniform"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
