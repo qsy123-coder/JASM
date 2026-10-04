@@ -67,14 +67,10 @@ public class ModInstallerService(
 
         // 预览图要和向导那条路一样自动认出来（`preview.png` / `0.png` 这些约定名）。
         // 不设的话缩略图就退回占位图 —— 实机反馈：「preview 图片都有的，缩略图却不显示」。
+        // 认图策略（根目录 → 往下探一层）与启动时的兜底共用一份实现，别在这里另写一套。
         try
         {
-            // 顶层找不到就**往下找一层**：整包装之后 mod 根是外层（exe 名那一层），而 preview.png
-            // 常跟真正的内容一起压在子目录里 —— 而 DetectModPreviewImages 只看顶层（不递归）。
-            var detected = SkinModHelpers.DetectModPreviewImages(modFolder.FullName).FirstOrDefault()
-                           ?? modFolder.EnumerateDirectories()
-                               .SelectMany(sub => SkinModHelpers.DetectModPreviewImages(sub.FullName))
-                               .FirstOrDefault();
+            var detected = SkinModHelpers.DetectModPreviewImageIncludingSubfolders(modFolder.FullName);
 
             if (detected is not null)
                 options.ModImage = detected;
