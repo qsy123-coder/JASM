@@ -734,4 +734,54 @@ public class ModStoreBrowseTests
 
         Assert.Null(GameBananaSubCategoryIcons.TryPick(blankIcon, "Jinhsi"));
     }
+
+    // ---- 卡片封面用的是缩略图，画廊用的是原图 --------------------------------
+
+    /// <summary>
+    /// 卡片封面走 <c>_sFile530</c> 变体，详情画廊仍走 <c>_sFile</c> 原图 —— 两边都要锁住。
+    ///
+    /// 变体那条实测同一张图 55 KB / 0.37 s，原图 804 KB / 3.1 s，一页十五张就是 0.8 MB 与 12 MB 的差别；
+    /// 反过来，哪天顺手把 <see cref="ModStoreMod.PreviewImages"/> 也换成变体，详情抽屉的大图就糊了。
+    /// </summary>
+    [Fact]
+    public void CardThumbnail_UsesTheSmallVariantWhileGalleryKeepsTheOriginal()
+    {
+        var mod = SubfeedPage().Items[0];
+
+        Assert.Equal(
+            "https://images.gamebanana.com/img/ss/mods/530-90_6a871d1a3de14.jpg",
+            mod.ThumbnailUrl?.ToString());
+        Assert.Equal(
+            "https://images.gamebanana.com/img/ss/mods/6a871d1a3de14.jpg",
+            mod.PreviewImages[0].ToString());
+    }
+
+    /// <summary>缺 530 变体时退回原图，不能让卡片干脆没图。</summary>
+    [Fact]
+    public void CardThumbnail_FallsBackToTheOriginal()
+    {
+        var withoutVariant = new ApiImageUrl
+        {
+            BaseUrl = "https://images.gamebanana.com/img/ss/mods",
+            ImageId = "abc.jpg"
+        };
+
+        Assert.Equal(
+            "https://images.gamebanana.com/img/ss/mods/abc.jpg",
+            GameBananaMediaUrls.TryCreateThumbnailUrl(withoutVariant)?.ToString());
+    }
+
+    /// <summary>变体与原图都不在本图床（或非 https）时给 null，跟原图那条一个口径。</summary>
+    [Fact]
+    public void CardThumbnail_RejectsForeignHosts()
+    {
+        var foreignHost = new ApiImageUrl
+        {
+            BaseUrl = "https://evil.example.com/img/ss/mods",
+            ImageId = "abc.jpg",
+            File530 = "530-abc.jpg"
+        };
+
+        Assert.Null(GameBananaMediaUrls.TryCreateThumbnailUrl(foreignHost));
+    }
 }
