@@ -521,3 +521,60 @@ JASM 在 `ModEnvSetupFacade.EnsureLauncherConfigPathsAsync` 里顺带对齐：**
 **跑这张表的前置**：游戏先按「一键配置」配好（`d3dx.ini` 能解析出目标窗口）；刷新走的送键链路
 在游戏提权时会请助手代发，助手不可用或拒发时状态行直接写原因，不会静默失败。
 
+## 19. XXMI 启动器本体版本选择
+
+对应向导里的「XXMI 启动器版本」下拉 —— 与 §14 的框架版本下拉**并列且各自独立**。
+
+**前置**：CDN 上有 `launcher-versions.json` 及它引用的各 `launcher-<版本>.zip`
+（生成方式见 `mod-env-cdn-setup.md` 的「生成 launcher-versions.json」）。
+
+> ⚠️ 每个 `launcher-<版本>.zip` 必须用**该版本自己跑出来的** `XXMI Launcher Config.json` 打的
+> （配置里 `Launcher.config_version` 是 schema 版本）。跨版本混用没实测过 —— 19.2 那张表就是在补这一课。
+
+### 19.1 基本行为
+
+1. 打开「一键配置 / 修复 Mod 环境」→ 出现「XXMI 启动器版本」下拉，位置在「XXMI 版本」下面
+2. **默认选中磁盘上已装的那个版本**，下方显示「当前版本：vX.Y.Z」；不碰下拉直接走完流程
+   → 启动器包判「已是最新」跳过，效果与改动前一致（零实质行为变更）
+3. 下拉项按版本号**降序**，数量与 `launcher-versions.json` 一致，每项显示 `vX.Y.Z（发布日期）`
+4. `version.json` 里的 launcher 版本若不在目录里 → 目录中**合成**出一条（与框架同规则），下拽永不为空
+5. 选中项 == 已装版本 → 提示「已安装该版本（vX），无需重复安装」
+
+### 19.2 版本切换矩阵（每个版本都过一遍）
+
+对 **2.2.1 / 2.3.8 / 2.4.1** 各跑一次「装上去 → 再从别的版本切过来」：
+
+| # | 验收项 |
+|---|---|
+| 1 | `Resources\Bin\XXMI Launcher.exe` 在，双击能起来（不是「加载配置失败」那种起来） |
+| 2 | 启动器**自己**显示的版本号与该版本一致 |
+| 3 | `Resources\Packages\XXMI\Manifest.json` 的 `version` 仍是**框架**版本 —— 注入器版本不跟着启动器走 |
+| 4 | 「启动游戏」命令可用，游戏能进、Mod 生效 |
+| 5 | `XXMI Launcher Config.json` **保留用户改动**（先改个 `Launcher.log_level` 再切版本，改动还在） |
+| 6 | 该配置**无 UTF-8 BOM**（切完查头三个字节，不应是 `EF BB BF`） |
+| 7 | `.modenv.json` 的 `InstalledVersions["launcher"]` == 所选版本 |
+
+> 第 7 条是这次修掉的一个 bug：以前收尾会再从 `version.json` 读一次启动器版本覆盖回 marker，
+> 于是选了旧版之后 marker 记的却是新版 → 下次预检显示「可回退」→ 每跑一次就重装一次。
+> 看到这种来回抖动，就是那条回归了。
+
+### 19.3 降级后启动器不再提示更新（§15 的对称用例）
+
+1. 装 2.4.1（或 2.3.8）→ 下拉切回 **2.2.1** → 开始配置
+2. 跑完打开启动器：**不该**出现「将包更新到最新版本：Launcher …」之类的提示；
+   `XXMI Launcher Config.json` 里 `Packages.packages.Launcher.latest_version` 应已等于 `2.2.1`
+3. 对照组（确认没把别的包一起改坏）：`Packages.packages.XXMI` 的缓存**不该**被从「更新」方向改写 ——
+   只有启动器自身那个包键是双向对齐的，其余包维持原来的单向语义
+
+> 背景：启动器自更新在配置里被关掉（`Launcher.auto_update=false`），缓存又只在连得上 GitHub 时才刷新，
+> 所以降级后那条「可更新」提示没有任何可行动路径；何况它指向的 2.3.x release 上游已经删了。
+
+### 19.4 容错与回归
+
+1. `launcher-versions.json` 404 / 坏 JSON → **启动器下拉整块不显示**，框架下拉照常，安装流程不受影响
+2. `ModEnv:LauncherVersionCatalogUrl` 留空 → 同上
+3. 目录里有、但对应的 zip 已被下线时选中它 → 下载失败并报错，启动器版本的 marker **不被改写**
+   （不会记成一个根本没装上的版本）
+4. 回归：§14.3–§14.6 照跑 —— 两个下拉各自独立，改框架的选择不该影响启动器的选择，反之亦然
+5. 回归：§15 整张表照跑（对齐规则改过，启动器自身那条现在是双向的）
+
