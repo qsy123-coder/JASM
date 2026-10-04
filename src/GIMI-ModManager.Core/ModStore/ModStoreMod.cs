@@ -28,6 +28,7 @@ public sealed class ModStoreMod
         AuthorAvatarUrl = GameBananaMediaUrls.TryCreateImageUrl(record.Author?.AvatarImageUrl);
         ModPageUrl = TryCreateModPageUrl(record.ProfileUrl);
         PreviewImages = GameBananaMediaUrls.GetPreviewImages(record.PreviewMedia);
+        ThumbnailUrl = GameBananaMediaUrls.GetPreviewThumbnail(record.PreviewMedia);
         Category = ModStoreCategory.FromApi(record.RootCategory);
         Character = NullIfBlank(record.SubCategory?.Name);
         Version = NullIfBlank(record.Version);
@@ -93,6 +94,14 @@ public sealed class ModStoreMod
     public Uri? ModPageUrl { get; }
 
     public IReadOnlyList<Uri> PreviewImages { get; }
+
+    /// <summary>
+    /// 卡片封面用的缩略图（<see cref="PreviewImages"/> 第一张的 530px 变体，取不到变体时就是原图）。
+    ///
+    /// 列表一次要拉十几张图，这里用原图的话一页就是十几 MB（实测单张原图 800 KB 起）——
+    /// 详情抽屉仍然用 <see cref="PreviewImages"/> 的原图，别把它也换成缩略图。
+    /// </summary>
+    public Uri? ThumbnailUrl { get; }
 
     public ModStoreCategory? Category { get; }
 
