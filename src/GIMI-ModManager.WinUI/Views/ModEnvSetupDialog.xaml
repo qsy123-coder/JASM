@@ -127,11 +127,40 @@
                         Visibility="{x:Bind ViewModel.HasVersionCaption, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </StackPanel>
 
-                <!--  XXMI Launcher (GUI) deliberately has no version picker here: it is pinned to whatever
-                      version.json names. See ModEnvSetupOptions.LauncherPackageId.  -->
+                <!--  XXMI Launcher (GUI) version picker: the launcher is a separate package from the injector
+                      framework and releases on its own schedule, so it gets its own dropdown rather than
+                      sharing the one above.  -->
+                <StackPanel
+                    Spacing="4"
+                    Visibility="{x:Bind ViewModel.HasLauncherVersions, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="XXMI 启动器版本"
+                            l:Uids.Uid="ModEnv_LauncherVersion" />
+                        <ComboBox
+                            Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                            ItemTemplate="{StaticResource ModEnvVersionItemTemplate}"
+                            ItemsSource="{x:Bind ViewModel.LauncherVersions, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedLauncherVersion, Mode=TwoWay}" />
+                    </Grid>
+                    <TextBlock
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.LauncherVersionCaption, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords"
+                        Visibility="{x:Bind ViewModel.HasLauncherVersionCaption, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </StackPanel>
 
-                <!--  Game-package (WWMi) version picker: independent of the injector framework, since the game
-                      package follows the game client. Switching it leaves Mods\ and d3dx_user.ini alone.  -->
+                <!--  Game-package (WWMi) version picker: a third independent version line, since the game
+                      package follows the game client rather than the injector or the launcher. Switching it
+                      leaves Mods\ and d3dx_user.ini alone.  -->
                 <StackPanel
                     Spacing="4"
                     Visibility="{x:Bind ViewModel.HasWwmiVersions, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
