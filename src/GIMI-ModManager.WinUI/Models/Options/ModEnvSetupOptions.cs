@@ -19,6 +19,16 @@ public class ModEnvSetupOptions
     /// </summary>
     public string VersionCatalogUrl { get; set; } = string.Empty;
 
+    /// <summary>
+    /// URL of the selectable-version catalogue for the XXMI Launcher (GUI) itself, e.g.
+    /// <c>launcher-versions.json</c> — same schema as <see cref="VersionCatalogUrl"/>, different file.
+    /// The launcher is a separate package from the injector framework with its own version numbering
+    /// (2.2.1 / 2.3.8 / 2.4.1…), so it needs its own catalogue; sharing one file would tie two unrelated
+    /// release cadences together. When unset or unreachable the launcher picker degrades to just the
+    /// manifest's own launcher version — i.e. the pre-version-selection behaviour.
+    /// </summary>
+    public string LauncherVersionCatalogUrl { get; set; } = string.Empty;
+
     /// <summary>Id of the shared Mod injector base package inside the manifest.</summary>
     public string BasePackageId { get; set; } = "xxmi";
 
