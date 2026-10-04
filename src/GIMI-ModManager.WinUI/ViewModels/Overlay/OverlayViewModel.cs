@@ -183,8 +183,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
                 });
 
                 await _dragAndDropService.AddDroppedPackageAsync(file,
-                    (fileName, scanResult) => Task.FromResult(
-                        ResolveTargetModList(fileName, scanResult, fallbackModList)),
+                    (fileName, scanResult) => ResolveTargetModListAsync(fileName, scanResult),
                     installSilently: true,
                     stageProgress: stage,
                     // 解压摊到 Mod 根目录所在那块盘上 —— 装的时候才是「改名」而不是「再复制一遍」
@@ -238,27 +237,58 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     }
 
     /// <summary>
-    /// 装给谁：先**认包**（与主窗口那条拖拽路同一套判据），认不出来退回<b>浮窗当前选中的角色</b>
-    /// （<paramref name="fallback"/>），两个都没有就没法装。
+    /// 装给谁：先**认包**（与主窗口那条拖拽路同一套判据）；**认不出来就装到「其它角色」分类**。
+    ///
+    /// 认不出来时不再退回「浮窗当前选中的角色」—— 那条判据只有「用户正看着谁」这一条依据，
+    /// 实测把「女主-油亮黑丝」「女漂-小恶魔」「心-暗夜雌狐」这些认不出的包塞进了爱弥斯、弗洛洛
+    /// 之类毫不相干的角色目录里。认不出时的正确去向是「其它角色」：用户在那儿一眼找得到，
+    /// 也不会污染别的角色的 Mod 列表。
     /// </summary>
     /// <remarks>
     /// 认角色这一步必须在**解压之后**做，所以它发生在拖拽落下之后的回调里，而不是 DragOver 里 ——
     /// 也就意味着拖拽经过时不能拿「有没有选中角色」去拒绝（见 <c>OverlayWindow.RootGrid_OnDragOver</c>）。
     /// </remarks>
-    private ICharacterModList? ResolveTargetModList(string fileName, DragAndDropScanResult scanResult,
-        ICharacterModList? fallback)
+    private async Task<ICharacterModList?> ResolveTargetModListAsync(string fileName,
+        DragAndDropScanResult scanResult)
     {
         if (ResolveDroppedCharacter(fileName, scanResult) is { } detected)
             return detected;
 
-        if (fallback is not null)
-            return fallback;
+        if (await ResolveOthersModListAsync().ConfigureAwait(false) is { } others)
+        {
+            _logger.Information("[浮窗] 拖入的包 '{FileName}' 认不出角色，装到「其它角色」分类", fileName);
+            return others;
+        }
 
-        // 回调是从解压后那条异步链上下来的，未必在 UI 线程 —— ErrorMessage 直接绑在界面上，得挪回去
+        // 连「其它角色」都拿不到（理论上不会）—— 只留一句话，别把包悄悄丢了
         App.MainWindow.DispatcherQueue.TryEnqueue(() =>
-            ErrorMessage = "认不出这是哪个角色的 Mod。先在浮窗里选个角色，或把包拖到主窗口的角色卡片上。");
+            ErrorMessage = "认不出这是哪个角色的 Mod，也没法落到「其它角色」分类。请把包拖到主窗口的角色卡片上。");
 
         return null;
+    }
+
+    /// <summary>
+    /// 「其它角色」分类的 Mod 列表；**这个分类还没有列表就现建一个**。
+    ///
+    /// 浮窗的角色列表只列「已经有 Mod 的分类」，而认不出的包常常正是第一个落到「其它角色」里的东西 ——
+    /// 不现建的话这条路第一次就断在这儿。
+    /// </summary>
+    private async Task<ICharacterModList?> ResolveOthersModListAsync()
+    {
+        var internalName = _gameService.OtherCharacterInternalName;
+
+        if (_skinManagerService.GetCharacterModListOrDefault(internalName) is { } existing)
+            return existing;
+
+        var others = _gameService.GetAllModdableObjectsAsCategory<ICharacter>()
+            .FirstOrDefault(character => character.InternalNameEquals(internalName));
+
+        if (others is null)
+            return null;
+
+        await _skinManagerService.EnableModListAsync(others).ConfigureAwait(false);
+
+        return _skinManagerService.GetCharacterModListOrDefault(internalName);
     }
 
     /// <summary>
