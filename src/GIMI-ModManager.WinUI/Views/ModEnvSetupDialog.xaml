@@ -160,6 +160,48 @@
                         Visibility="{x:Bind ViewModel.HasLauncherVersionNotes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </StackPanel>
 
+                <!--  Game-package (WWMi) version picker: a third independent version line, since the game
+                      package follows the game client rather than the injector or the launcher. Switching it
+                      leaves Mods\ and d3dx_user.ini alone.  -->
+                <StackPanel
+                    Spacing="4"
+                    Visibility="{x:Bind ViewModel.HasWwmiVersions, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="WWMi 游戏包版本"
+                            l:Uids.Uid="ModEnv_WwmiVersion" />
+                        <ComboBox
+                            Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                            ItemsSource="{x:Bind ViewModel.WwmiVersions, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedWwmiVersion, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.InstalledWwmiVersionText, Mode=OneWay}" />
+                    <TextBlock
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.WwmiSelectionHint, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords"
+                        Visibility="{x:Bind ViewModel.HasWwmiSelectionHint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBlock
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.WwmiVersionNotes, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords"
+                        Visibility="{x:Bind ViewModel.HasWwmiVersionNotes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </StackPanel>
+
                 <!--  Manual game directory fallback  -->
                 <StackPanel
                     Spacing="8"
