@@ -28,6 +28,14 @@ public class ModEnvCatalogVersion : ModEnvPackage
     public string? Notes { get; set; }
 
     /// <summary>
+    /// True for the version the maintainer considers the safe default — the picker shows a 「稳定版」
+    /// badge on it. Hand-maintained in the catalogue rather than derived: "newest" and "known good" are
+    /// different things, and the whole point of the picker is that the newest is not always the one to
+    /// hand a user. The packers preserve it across re-runs (they only rewrite the file-derived fields).
+    /// </summary>
+    public bool Stable { get; set; }
+
+    /// <summary>
     /// Label for the version dropdown: "v1.1.7（2026-09-13）". The release date is what actually lets a
     /// user tell two "latest" builds apart when they are unsure which one their mods were working with,
     /// so it is shown whenever the catalogue provides it.
