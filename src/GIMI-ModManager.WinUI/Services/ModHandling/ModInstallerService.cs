@@ -63,6 +63,10 @@ public class ModInstallerService(
         ArgumentNullException.ThrowIfNull(modFolder);
         ArgumentNullException.ThrowIfNull(modList);
 
+        // 先把整包搬进角色目录、再认预览图：认出来的路径要落在**最终位置**上，
+        // 搬完再认才对得上（先认后搬的话这个 Uri 会在搬家后指空，保存设置时直接抛）。
+        modFolder = MoveIntoCharacterFolder(modFolder, modList);
+
         var options = new AddModOptions { NewModFolderName = modFolder.Name };
 
         // 预览图要和向导那条路一样自动认出来（`preview.png` / `0.png` 这些约定名）。
@@ -104,6 +108,41 @@ public class ModInstallerService(
         }
 
         return skinMod;
+    }
+
+    /// <summary>
+    /// 把解压出来的那个目录**改名**搬进角色的 Mod 目录，返回它现在在哪。
+    ///
+    /// <para>
+    /// 静默拖拽那条路解压出来的东西本来就摊在目标那块盘上（见
+    /// <see cref="GIMI_ModManager.Core.Services.DragAndDropScanner.ResolveWorkRoot"/>），
+    /// 于是这一手是同卷改名、瞬间完成 —— 省掉的就是原先那趟「把整个包再从 C: 复制到 D:」
+    /// （实测跟解压本身一样贵）。跨卷时 <c>Mod.MoveTo</c> 自己会退化成复制+删源，
+    /// 与原来的「拷进角色目录、再把临时目录删掉」等价，只是少一趟收尾删除。
+    /// </para>
+    ///
+    /// <para>
+    /// 目标里已经有了同名文件夹就**不搬**：改名会撞名抛一个难懂的错，而后面的
+    /// <c>AddModAsync</c> / <c>AddMod</c> 本来就会给出「已存在同名 Mod」这句人话。
+    /// </para>
+    /// </summary>
+    private static DirectoryInfo MoveIntoCharacterFolder(DirectoryInfo modFolder, ICharacterModList modList)
+    {
+        try
+        {
+            var destination = Path.Combine(modList.AbsModsFolderPath, modFolder.Name);
+            if (Directory.Exists(destination))
+                return modFolder;
+
+            modFolder.MoveTo(destination);
+            return new DirectoryInfo(destination);
+        }
+        catch (Exception e)
+        {
+            // 搬不动（跨卷失败 / 目标被占）不算错：后面的 AddMod 会照旧把它拷进去
+            Serilog.Log.Warning(e, "静默安装：预搬进角色目录失败，退回复制 {Folder}", modFolder.FullName);
+            return modFolder;
+        }
     }
 
     private async Task<InstallMonitor> InternalStartAsync(DirectoryInfo modFolder, ICharacterModList modList,
