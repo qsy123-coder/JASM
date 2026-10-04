@@ -14,6 +14,16 @@ using static GIMI_ModManager.WinUI.Services.ModHandling.ModDragAndDropService.Dr
 
 namespace GIMI_ModManager.WinUI.Services.ModHandling;
 
+/// <summary>
+/// 拖拽安装走到哪一步了。浮窗拿它决定显示「正在解压…」还是「正在安装…」——
+/// 实测这两段各占差不多一半时间，只说「在装」等于让用户干等十几秒不知道还要多久。
+/// </summary>
+public enum ModInstallStage
+{
+    Extracting,
+    Installing
+}
+
 public class ModDragAndDropService
 {
     private readonly ILogger _logger;
@@ -66,10 +76,13 @@ public class ModDragAndDropService
         InstallMonitor? installMonitor;
         if (storageItem is StorageFile)
         {
-            var scanner = new DragAndDropScanner();
-            var extractResult = ExtractWithCleanup(scanner, storageItem.Path);
+            // 与浮窗那条路同一套：解压摊在目标那块盘上（同卷时装=改名）、并搬去后台线程
+            var scanner = new DragAndDropScanner(modList.AbsModsFolderPath);
+            var extractResult = await Task.Run(() => ExtractWithCleanup(scanner, storageItem.Path))
+                .ConfigureAwait(false);
 
-            installMonitor = await StartInstallationAsync(extractResult, modList, installSilently: false);
+            installMonitor = await StartInstallationAsync(extractResult, modList, installSilently: false)
+                .ConfigureAwait(false);
 
             return installMonitor;
         }
@@ -156,9 +169,19 @@ public class ModDragAndDropService
     /// true = 不弹安装向导，直接把解压出来那一整个文件夹装进目标角色（装完启用）。
     /// 游戏内浮窗那条拖拽路用的就是它 —— 详见 <see cref="InstallSilentlyAsync"/>。
     /// </param>
+    /// <param name="stageProgress">
+    /// 装到哪一步了（解压中 / 安装中）。回调**在调用方的线程上下文里**触发（<c>Progress&lt;T&gt;</c>
+    /// 会自己回 UI 线程），浮窗拿它显示进度动画。
+    /// </param>
+    /// <param name="targetFolderHint">
+    /// 这单最终落在哪块盘上（角色的 Mod 目录、或整个 Mod 根目录都行）—— 解压会摊到那块盘上，
+    /// 装的时候就能靠改名而不是复制。见 <see cref="DragAndDropScanner.ResolveWorkRoot"/>。
+    /// </param>
     public async Task<InstallMonitor?> AddDroppedPackageAsync(IStorageItem storageItem,
         Func<string, DragAndDropScanResult, Task<ICharacterModList?>> resolveModList,
-        bool installSilently = false)
+        bool installSilently = false,
+        IProgress<ModInstallStage>? stageProgress = null,
+        string? targetFolderHint = null)
     {
         if (storageItem is not StorageFile file)
         {
@@ -171,8 +194,12 @@ public class ModDragAndDropService
             return null;
         }
 
-        var scanner = new DragAndDropScanner();
-        var scanResult = ExtractWithCleanup(scanner, file.Path);
+        var scanner = new DragAndDropScanner(targetFolderHint);
+
+        // 解压是纯 IO，也是整条路上最贵的一段（实测大包 10s+）——**搬去后台线程**。
+        // 留在 UI 线程上就是浮窗连同主窗口一起冻住十几秒：窗口不重绘、进度动画也不会动。
+        stageProgress?.Report(ModInstallStage.Extracting);
+        var scanResult = await Task.Run(() => ExtractWithCleanup(scanner, file.Path)).ConfigureAwait(false);
 
         ICharacterModList? modList;
         try
@@ -197,7 +224,7 @@ public class ModDragAndDropService
             return null;
         }
 
-        return await StartInstallationAsync(scanResult, modList, installSilently);
+        return await StartInstallationAsync(scanResult, modList, installSilently, stageProgress);
     }
 
     /// <summary>
@@ -225,7 +252,7 @@ public class ModDragAndDropService
     /// </para>
     /// </summary>
     private async Task<InstallMonitor?> StartInstallationAsync(DragAndDropScanResult scanResult,
-        ICharacterModList modList, bool installSilently)
+        ICharacterModList modList, bool installSilently, IProgress<ModInstallStage>? stageProgress = null)
     {
         var extractedRoot = new DirectoryInfo(scanResult.ExtractedFolder.FullPath);
 
@@ -245,6 +272,8 @@ public class ModDragAndDropService
         // （实机反馈：「拖进去的文件夹应该是整个才对」）。向导的目录树仍然摆着，真要只装其中一层，
         // 用户在树里往下选就是了 —— 默认值给整包才是对的。
         _logger.Information("Installing the whole extracted folder as one mod ('{ModRoot}')", contentRoot.Name);
+
+        stageProgress?.Report(ModInstallStage.Installing);
 
         if (installSilently)
             return await InstallSilentlyAsync(contentRoot, modList).ConfigureAwait(false);
