@@ -180,6 +180,10 @@ JASM 已有一套自研的「一键配置 Mod 环境」链路（`Services/ModEnv
     （`XXMI-Launcher-Portable-vX.Y.Z.zip`），版本之间差异很大 —— 2.3.x 起它读 MI 文件夹里的 DLL 显示版本号，
     旧版读的是 `Resources\Packages\XXMI\Manifest.json`。所以它用**另一份目录**（`launcher-versions.json`，
     与 `xxmi-versions.json` 同 schema）配同一条安装链路，和这 3 个 dll 无关。
+  - ⚠️ **同日：游戏包（WWMi）也已补上**（第三份目录 `wwmi-versions.json`）。原文「EFMI/WWMI 只有签名清单
+    没有实际内容」说的是**框架更新包内嵌**的那份；游戏包有自己独立的官方发布线
+    （`SpectrumQT/WWMI-Package` 的 `WWMI-PACKAGE-vX.Y.Z.zip`），内容是 `Core\` / `d3dx.ini` 等实打实的文件。
+    详细取舍见文末「Future Considerations」。
 - 不做版本自动降级 / 智能推荐（如"检测到崩溃自动回退"）
 - 不做切换后自动试启动验证
 - 不做多版本并行安装（同一时刻只有一份生效）
@@ -247,8 +251,20 @@ JASM 已有一套自研的「一键配置 Mod 环境」链路（`Services/ModEnv
     现在**启动器自身**那个包键改成双向对齐，其余包维持单向。
     （**为什么不在打包侧把缓存钉到包版本**：那会改 zip 字节，已上线的包必须重传并同步两份清单
     的哈希；客户端对齐不动 CDN 就能覆盖所有版本。）
-  - 游戏包（wwmi）仍未纳入：它跟游戏客户端版本绑定，不是「用户自救回退」那个场景。
-- 游戏包也纳入版本管理
+  - 游戏包（wwmi）**也已完成（2026-10-04）**：
+    - 第三份目录 `wwmi-versions.json`，同样复用那套服务与两个工具方法；UI 上是第三个下拉。
+      三者版本节奏互不相干：框架看注入器、启动器看启动器、游戏包看游戏客户端。
+    - 这个包特有的两处：①安装时把 `d3dx_user.ini` 列进 `preserveExistingFiles` —— 它是 3DMigoto 的
+      **用户**文件（按键/开关），以前没传这个参数，换版本会把用户的设置整个盖掉；`d3dx.ini` 刻意
+      不保留，那是包自己的配置。②兼容性判断改用清单里那份兜底 —— `GameVersion` 记在清单条目上，
+      目录条目通常不带，直接用会恒判「不兼容」。
+    - **同样不做**切换前备份：`Mods\` 与 `d3dx_user.ini` 本来就不在切换范围内，
+      而包本身在 CDN 上，回退就是再选一次。
+    - 已知取舍：从新版降级时，新版多出来的 `Core\` 文件会**留在磁盘上**（安装器只覆盖不删除）。
+      它们不被旧版 `d3dx.ini` 引用，实测无影响；不做破坏性清理的理由见 `Build/PackWwmi.py` 与
+      `mod-env-hand-test.md` §20.3。
+  - 打包侧：`wwmi-<版本>.zip` 由 `Build/PackWwmi.py` 从官方 `WWMI-PACKAGE` 包打出
+    （官方内容原样 + 从实机补 DLL 与 `d3dx_user.ini`），并对 `Mods\` / `ShaderCache\` 做一票否决式断言。
 
 ---
 
