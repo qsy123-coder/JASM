@@ -118,4 +118,12 @@ public sealed class ApiImageUrl
 {
     [JsonPropertyName("_sFile")] public string? ImageId { get; init; }
     [JsonPropertyName("_sBaseUrl")] public string? BaseUrl { get; init; }
+
+    /// <summary>
+    /// 同一张图的 530px 宽变体（与原图同目录，文件名形如 <c>530-90_&lt;id&gt;.jpg</c>）。
+    ///
+    /// 只有**缩略图**该用它：实测同一张图原图 804 KB / 3.1 s、530 变体 55 KB / 0.37 s，
+    /// 而卡片封面在屏幕上最多两三百物理像素宽。详情抽屉的画廊要原图，那条走 <c>_sFile</c>。
+    /// </summary>
+    [JsonPropertyName("_sFile530")] public string? File530 { get; init; }
 }
