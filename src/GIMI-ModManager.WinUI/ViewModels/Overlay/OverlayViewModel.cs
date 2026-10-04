@@ -154,10 +154,28 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         if (storageItems.Count == 0)
             return;
 
-        // 一次只装一个：两次拖拽会抢同一个临时目录，而第二次拖进来的时候用户多半只是急了 ——
-        // 与其并行装出两个半成品，不如让第一单跑完（进度行一直在那儿，他知道还在装）。
+        // 一次只跑一批：两批会抢同一个临时目录，而第二批拖进来的时候用户多半只是急了 ——
+        // 与其并行装出两个半成品，不如让这一批跑完（进度行一直在那儿，他知道还在装）。
         if (IsInstalling)
             return;
+
+        // 这一批只接**文件**（自解压 exe / zip 那些包）。文件夹没法静默判断「哪一层才是 Mod」，
+        // 别猜：混着拖进来就整单不收 —— 装一半再报错比一开始就说清楚更糟。
+        var files = new List<StorageFile>();
+        var folderCount = 0;
+        foreach (var item in storageItems)
+        {
+            if (item is StorageFile file)
+                files.Add(file);
+            else
+                folderCount++;
+        }
+
+        if (files.Count == 0 || folderCount > 0)
+        {
+            ErrorMessage = "浮窗只接包（自解压 exe / zip）。文件夹请拖到主窗口的角色卡片上。";
+            return;
+        }
 
         // 兜底角色 = 浮窗当前选中的那个。**可以没有**：角色列表只列「已经有 Mod 的角色」，
         // 一个 Mod 都没有时列表是空的 —— 而那正是最需要靠拖拽装进第一个 Mod 的场景。
@@ -166,48 +184,75 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         var epoch = ++_installStatusEpoch;
         ShowInstallSuccess = false;
         IsInstalling = true;
-        InstallStatusText = "准备中…";
+        InstallStatusText = files.Count > 1 ? $"准备安装 {files.Count} 个包…" : "准备中…";
 
+        var failed = 0;
+
+        // 逐个装、**串行**：解压临时目录、安装通知、列表热更新这几处都假定「同一时刻只有一单在跑」。
+        // 一个包失败不影响后面的 —— 批量拖十几个的时候，最糟的结果是有一个坏包把整批带停。
         try
         {
-            // 单个文件 = 包（自解压 exe / zip）：**静默装**，不弹安装向导。
-            // 浮窗上没有向导的容身之处，拖一下弹一个窗也不是拖拽该有的手感。
-            if (storageItems is [StorageFile file])
+            for (var i = 0; i < files.Count; i++)
             {
+                var file = files[i];
+                var counter = files.Count > 1 ? $"（{i + 1}/{files.Count}）" : string.Empty;
+
                 // 进度回调走 Progress<T>：它会把回调派回**构造它的那个线程**（UI），
                 // 于是这里可以直接写绑定到界面的属性，不必自己 Enqueue。
-                var stage = new Progress<ModInstallStage>(value => InstallStatusText = value switch
+                // 拖拽那条路把失败吞在自己的通知里、只通过 stageProgress 报一声 Failed —— 在这里记账。
+                var stage = new Progress<ModInstallStage>(value =>
                 {
-                    ModInstallStage.Extracting => $"正在解压 {file.Name}…",
-                    _ => "正在安装…"
+                    if (value == ModInstallStage.Failed)
+                    {
+                        failed++;
+                        InstallStatusText = $"「{file.Name}」失败，继续下一个…";
+                        return;
+                    }
+
+                    InstallStatusText = value == ModInstallStage.Extracting
+                        ? $"正在解压 {file.Name}{counter}…"
+                        : $"正在安装{counter}…";
                 });
 
-                await _dragAndDropService.AddDroppedPackageAsync(file,
-                    (fileName, scanResult) => ResolveTargetModListAsync(fileName, scanResult),
-                    installSilently: true,
-                    stageProgress: stage,
-                    // 解压摊到 Mod 根目录所在那块盘上 —— 装的时候才是「改名」而不是「再复制一遍」
-                    targetFolderHint: fallbackModList?.AbsModsFolderPath ?? _skinManagerService.ActiveModsFolderPath);
+                try
+                {
+                    await _dragAndDropService.AddDroppedPackageAsync(file,
+                        (fileName, scanResult) => ResolveTargetModListAsync(fileName, scanResult),
+                        installSilently: true,
+                        stageProgress: stage,
+                        // 解压摊到 Mod 根目录所在那块盘上 —— 装的时候才是「改名」而不是「再复制一遍」
+                        targetFolderHint: fallbackModList?.AbsModsFolderPath ?? _skinManagerService.ActiveModsFolderPath);
+                }
+                catch (Exception e)
+                {
+                    // 同一单里更早的失败（认角色、解压）会从这里冒出来；通知那条路由拖拽服务负责
+                    failed++;
+                    _logger.Warning(e, "[浮窗] 批量安装中这一单失败: {File}", file.Name);
+                }
             }
-            else
-            {
-                // 文件夹没法静默判断「哪一层才是 Mod」，别猜：指条明路比装错了强
-                ErrorMessage = "浮窗只接包（自解压 exe / zip）。文件夹请拖到主窗口的角色卡片上。";
-            }
-        }
-        catch (Exception e)
-        {
-            // 拖拽那条路自己会弹通知说明失败原因；浮窗上只留一句，告诉用户去哪儿看详情
-            _logger.Warning(e, "[浮窗] 拖入的包安装失败");
-            ErrorMessage = "安装失败，详情见主窗口的通知。";
         }
         finally
         {
-            // 成功那句话由「刚装好一个 Mod」那条消息来写（见 Receive）；这里只收掉转圈。
-            // 失败的话进度行直接收掉 —— 说明去哪儿看失败原因的通知已经在上面留过了。
             IsInstalling = false;
-            if (!ShowInstallSuccess)
+
+            // 成功的收尾语由「刚装好一个 Mod」那条消息去写（见 Receive）。这里只在**批量**时装完给一句汇总：
+            // 单个包的成败主窗口的通知已经说得很清楚了，批量才需要「一共几个、成了几个」。
+            if (files.Count > 1)
+            {
+                var ok = files.Count - failed;
+                InstallStatusText = failed == 0
+                    ? $"已安装 {ok} 个"
+                    : $"装好 {ok} 个，{failed} 个失败（详见主窗口通知）";
+
+                if (failed == 0)
+                    ShowInstallSuccess = true;
+
+                ErrorMessage = failed > 0 ? "有包没装上，详情见主窗口的通知。" : null;
+            }
+            else if (!ShowInstallSuccess)
+            {
                 InstallStatusText = null;
+            }
 
             _ = ClearInstallStatusLaterAsync(epoch);
         }
