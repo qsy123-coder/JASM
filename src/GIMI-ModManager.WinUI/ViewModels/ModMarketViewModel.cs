@@ -196,7 +196,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     }
 
     /// <summary>
-    /// 打开 Mod 网站（<c>wave-mod.top</c>）—— 市场里这些包的发布站。
+    /// 打开「每日更新」页（<c>wave-mod.top/updates</c>）—— 市场里这些包的新增/更新列表。
     ///
     /// 用系统默认浏览器打开（<c>Launcher</c>），不是页内 WebView：那里是要下载东西的站点，
     /// 走浏览器的下载/登录/防病毒那一整套更顺，页内嵌一个浏览器反而处处受限。
@@ -211,12 +211,12 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
         }
         catch (Exception e)
         {
-            _logger.Warning(e, "打开 Mod 网站失败: {Url}", ModWebsiteUrl);
+            _logger.Warning(e, "打开每日更新页失败: {Url}", ModWebsiteUrl);
         }
     }
 
-    /// <summary>Mod 网站地址。集中放这儿，改域名只动一行。</summary>
-    private const string ModWebsiteUrl = "https://www.wave-mod.top/mods";
+    /// <summary>「每日更新」页地址。集中放这儿，改域名/路径只动一行。</summary>
+    private const string ModWebsiteUrl = "https://www.wave-mod.top/updates";
 
     // ─── Data Loading ──────────────────────────────────────────
 
