@@ -16,6 +16,31 @@
           里那些没显式写颜色的文字（角色名、Mod 名、下拉项）取的是主题默认前景色。跟随浅色主题时它们是黑的，
           压在近黑的底上就是「字都看不清」。钉死 Dark 之后这些默认前景才会是浅色。  -->
     <Page RequestedTheme="Dark">
+        <Page.Resources>
+            <!--  拖拽安装那行进度区的进场动画：淡入 + 从下方 8 像素滑上来。
+                  只做「进来」这一次 —— 拖一下之后立刻有东西滑出来，是「收到了、正在办」的最短表达。
+
+                  用 RenderTransform 而不是 UIElement.Translation：前者是老写法、兼容性没得挑，
+                  动的只是这一行自己，不会牵动布局。  -->
+            <Storyboard x:Name="InstallStatusInStoryboard">
+                <DoubleAnimation
+                    Storyboard.TargetName="InstallStatusRow"
+                    Storyboard.TargetProperty="Opacity"
+                    Duration="0:0:0.18"
+                    From="0"
+                    To="1" />
+                <DoubleAnimation
+                    Storyboard.TargetName="InstallStatusRow"
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                    Duration="0:0:0.22"
+                    From="8"
+                    To="0">
+                    <DoubleAnimation.EasingFunction>
+                        <CubicEase EasingMode="EaseOut" />
+                    </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+            </Storyboard>
+        </Page.Resources>
         <!--  背景刻意不透明（不是 Mica/亚克力）：浮窗压在游戏画面上，半透明会让文字糊进背景里读不清。
               描边也是为可读性服务的：亮色游戏画面里，没有描边的深色块边界会糊成一片。
 
@@ -163,6 +188,47 @@
             <!--  状态区：刷新那边的成败（协调器）与勾选失败（ViewModel）各占一行，
                   都为空时这两行自己塌掉，不占地方。  -->
             <StackPanel Grid.Row="4" Margin="12,0,12,6" Spacing="2">
+                <!--  拖拽安装的进度行：转圈（解压 / 落盘）→ 换成绿勾（装好了）。
+                      与下面那些状态行同一套排法（图标对齐顶部、文字用 * 列拿真实剩余宽度），
+                      只是这一行由 ViewModel 直接控制显隐与文案。  -->
+                <Grid
+                    x:Name="InstallStatusRow"
+                    ColumnSpacing="6"
+                    Visibility="{x:Bind ViewModel.ShowInstallStatus, Mode=OneWay}">
+                    <Grid.RenderTransform>
+                        <TranslateTransform />
+                    </Grid.RenderTransform>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!--  转圈与绿勾互斥地占同一格：装完那一下就是「转圈变对勾」，不必再做一次过渡。  -->
+                    <ProgressRing
+                        Grid.Column="0"
+                        Width="14"
+                        Height="14"
+                        Margin="0,1,0,0"
+                        VerticalAlignment="Top"
+                        IsActive="{x:Bind ViewModel.IsInstalling, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsInstalling, Mode=OneWay}" />
+                    <FontIcon
+                        Grid.Column="0"
+                        Margin="0,1,0,0"
+                        VerticalAlignment="Top"
+                        FontSize="12"
+                        Foreground="#FF6CCB5F"
+                        Glyph="&#xE73E;"
+                        Visibility="{x:Bind ViewModel.ShowInstallSuccess, Mode=OneWay}" />
+
+                    <TextBlock
+                        Grid.Column="1"
+                        FontSize="11"
+                        Foreground="#E6FFFFFF"
+                        Text="{x:Bind ViewModel.InstallStatusText, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="Wrap" />
+                </Grid>
                 <!--  图标 + 文字用 Grid 而不是横向 StackPanel：StackPanel 给子元素的可用宽度是"无限"，
                       于是文字的 TextWrapping="Wrap" 永远等不到该换行的宽度 —— 实测长文案（"提权助手没在运行…"）
                       就这样被窗口右边缘硬生生切掉。Grid 的 * 列才会把真实剩余宽度交给 TextBlock。  -->
