@@ -572,6 +572,9 @@
   <data name="ModEnv_XxmiVersion.Text" xml:space="preserve">
     <value>XXMI version</value>
   </data>
+  <data name="ModEnv_LauncherVersion.Text" xml:space="preserve">
+    <value>XXMI Launcher version</value>
+  </data>
   <data name="ModEnv_WwmiVersion.Text" xml:space="preserve">
     <value>WWMi game package version</value>
   </data>
