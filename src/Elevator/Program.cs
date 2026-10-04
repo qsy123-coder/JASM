@@ -177,6 +177,12 @@ internal class Program
     [DllImport("User32.dll")]
     static extern IntPtr GetForegroundWindow();
 
+    /// <summary>零位移鼠标微动用（见 <see cref="NudgeForegroundLock"/>）。</summary>
+    [DllImport("user32.dll")]
+    static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+
+    const uint MOUSEEVENTF_MOVE = 0x0001;
+
     [DllImport("User32.dll")]
     static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
@@ -415,10 +421,27 @@ internal class Program
                 }
             }
 
+            // 前台锁只认「最近收到输入的那个进程」。**光是等是等不到的** —— 那一轮轮询只会白等：
+            // 注入一次零位移的鼠标微动，本进程就成了「最近收到输入」的那个，前台切换权随之放行，
+            // 下面这句 SetForegroundWindow 才可能真的生效。
+            // （症状就是「时不时刷新没反应」：助手抢不到前台 → 按护栏拒发，游戏里毫无变化。）
+            NudgeForegroundLock();
+            _ = SetForegroundWindow(targetWindow);
+
             Thread.Sleep(ForegroundCheckIntervalMs);
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 零位移的鼠标微动：不为移动光标，只为把「最近收到输入」这个身份拿到自己手里
+    /// （Windows 前台锁只对那个进程放行）。位移恒为 0，游戏不会看到光标移动；也**不碰 Alt** ——
+    /// 那一下会切出游戏菜单。与主程序 <c>ForegroundWindowActivator</c> 的解锁手法同源。
+    /// </summary>
+    static void NudgeForegroundLock()
+    {
+        mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, UIntPtr.Zero);
     }
 
     /// <summary>按下 F10（3DMigoto 的重载键）。新老两条路径共用这一份，发键机制本身没变。</summary>
