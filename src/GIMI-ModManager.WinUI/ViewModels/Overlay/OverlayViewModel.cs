@@ -100,6 +100,37 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </summary>
     [ObservableProperty] private OverlayModItemViewModel? _selectedMod;
 
+    /// <summary>
+    /// 正在装一个拖进来的包（解压 → 落盘）。界面据此显示进度动画。
+    ///
+    /// 为什么要有个标志位：实测大包一次要十几秒（解压一半、复制落盘一半），而这段时间浮窗
+    /// 什么都不显示 —— 用户只会以为拖进去没反应。动画本身也是给这段"什么都没发生"的时间兜底。
+    /// </summary>
+    [ObservableProperty] private bool _isInstalling;
+
+    /// <summary>进度行那行字：「正在解压 X…」/「正在安装…」/「已安装：X」。</summary>
+    [ObservableProperty] private string? _installStatusText;
+
+    /// <summary>刚装好（绿勾）。与 <see cref="IsInstalling"/> 互斥：转圈变对勾就是这个信号。</summary>
+    [ObservableProperty] private bool _showInstallSuccess;
+
+    /// <summary>
+    /// 整行进度区的显隐：转圈中、或刚装好（绿勾）时都在，其余时候整行塌掉不占地方。
+    /// 单独给一个布尔是给界面用的 —— <c>x:Bind</c> 绑不了「或」，两个状态各自要不要显示
+    /// 又已经分别绑在转圈和绿勾上了。
+    /// </summary>
+    public bool ShowInstallStatus => IsInstalling || ShowInstallSuccess;
+
+    partial void OnIsInstallingChanged(bool value) => OnPropertyChanged(nameof(ShowInstallStatus));
+
+    partial void OnShowInstallSuccessChanged(bool value) => OnPropertyChanged(nameof(ShowInstallStatus));
+
+    /// <summary>
+    /// 状态行的「代际」。装完那句话要停留几秒再消失，而期间用户可能又拖进来一个 ——
+    /// 递增它，过期的那个延时清理就认得出自己已经不作数了（否则会把新装的进度行抹掉）。
+    /// </summary>
+    private int _installStatusEpoch;
+
     public OverlayViewModel(ISkinManagerService skinManagerService, IGameService gameService,
         OverlayRefreshCoordinator refreshCoordinator, ILocalSettingsService localSettingsService,
         ModDragAndDropService dragAndDropService, ILogger logger)
@@ -123,9 +154,19 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         if (storageItems.Count == 0)
             return;
 
+        // 一次只装一个：两次拖拽会抢同一个临时目录，而第二次拖进来的时候用户多半只是急了 ——
+        // 与其并行装出两个半成品，不如让第一单跑完（进度行一直在那儿，他知道还在装）。
+        if (IsInstalling)
+            return;
+
         // 兜底角色 = 浮窗当前选中的那个。**可以没有**：角色列表只列「已经有 Mod 的角色」，
         // 一个 Mod 都没有时列表是空的 —— 而那正是最需要靠拖拽装进第一个 Mod 的场景。
         var fallbackModList = SelectedCharacter is { } selected ? ResolveModList(selected.Character) : null;
+
+        var epoch = ++_installStatusEpoch;
+        ShowInstallSuccess = false;
+        IsInstalling = true;
+        InstallStatusText = "准备中…";
 
         try
         {
@@ -133,10 +174,21 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             // 浮窗上没有向导的容身之处，拖一下弹一个窗也不是拖拽该有的手感。
             if (storageItems is [StorageFile file])
             {
+                // 进度回调走 Progress<T>：它会把回调派回**构造它的那个线程**（UI），
+                // 于是这里可以直接写绑定到界面的属性，不必自己 Enqueue。
+                var stage = new Progress<ModInstallStage>(value => InstallStatusText = value switch
+                {
+                    ModInstallStage.Extracting => $"正在解压 {file.Name}…",
+                    _ => "正在安装…"
+                });
+
                 await _dragAndDropService.AddDroppedPackageAsync(file,
                     (fileName, scanResult) => Task.FromResult(
                         ResolveTargetModList(fileName, scanResult, fallbackModList)),
-                    installSilently: true);
+                    installSilently: true,
+                    stageProgress: stage,
+                    // 解压摊到 Mod 根目录所在那块盘上 —— 装的时候才是「改名」而不是「再复制一遍」
+                    targetFolderHint: fallbackModList?.AbsModsFolderPath ?? _skinManagerService.ActiveModsFolderPath);
             }
             else
             {
@@ -150,6 +202,39 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             _logger.Warning(e, "[浮窗] 拖入的包安装失败");
             ErrorMessage = "安装失败，详情见主窗口的通知。";
         }
+        finally
+        {
+            // 成功那句话由「刚装好一个 Mod」那条消息来写（见 Receive）；这里只收掉转圈。
+            // 失败的话进度行直接收掉 —— 说明去哪儿看失败原因的通知已经在上面留过了。
+            IsInstalling = false;
+            if (!ShowInstallSuccess)
+                InstallStatusText = null;
+
+            _ = ClearInstallStatusLaterAsync(epoch);
+        }
+    }
+
+    /// <summary>
+    /// 过几秒把「已安装」那句收掉。带的 <paramref name="epoch"/> 用来判断这次延时还作不作数：
+    /// 期间又拖进来一个（或浮窗重建了）就别去动新那一条。
+    /// </summary>
+    private async Task ClearInstallStatusLaterAsync(int epoch)
+    {
+        try
+        {
+            // 不用 ConfigureAwait(false)：续体要回 UI 线程才能动绑定到界面的属性
+            await Task.Delay(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (epoch != _installStatusEpoch)
+            return;
+
+        ShowInstallSuccess = false;
+        InstallStatusText = null;
     }
 
     /// <summary>
@@ -582,7 +667,19 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// 必须回 UI 线程再动。
     /// </summary>
     public void Receive(ModInstalledMessage message) =>
-        App.MainWindow.DispatcherQueue.TryEnqueue(() => RefreshCharacters(message.CharacterInternalName));
+        App.MainWindow.DispatcherQueue.TryEnqueue(() =>
+        {
+            // 拖拽安装收尾的那一下：进度行从转圈换成绿勾。
+            // 只认拖拽服务发来的 —— 安装向导装完也会发这条消息（浮窗的列表照样要跟着更新），
+            // 但那次用户没在浮窗上拖过东西，突然冒一句「已安装」反而莫名其妙。
+            if (ReferenceEquals(message.Sender, _dragAndDropService))
+            {
+                ShowInstallSuccess = true;
+                InstallStatusText = "已安装";
+            }
+
+            RefreshCharacters(message.CharacterInternalName);
+        });
 
     /// <summary>
     /// 拿当前的角色 Mod 列表。每次现取而不是把 <c>ICharacterModList</c> 缓存在字段里：
