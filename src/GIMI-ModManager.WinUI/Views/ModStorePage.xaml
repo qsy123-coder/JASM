@@ -59,19 +59,24 @@
         <!-- 卡片版式:横屏 —— 图片在上、白色信息块在下,一行 6 个(列数由 WrapGridPanel.Columns 定,宽度均分)。
              信息块按 GameBanana 自家页面的卡片排:标题两行 + 作者行(头像 + 名字 + 右侧相对时间) + 统计三项。
              商店比那段版式多一层信息:图片左上角那块角色标签。
-             图片高度**不写死**:卡片宽度随窗口变,高度由代码按 9:16 算(见 ModStorePage.xaml.cs 的
-             ApplyThumbHeight)——写死会在宽窗口下变成一条细长条。 -->
+
+             ⚠️ 这里面所有数字都是**照参考图逐像素量出来的设计值**(参考图 = GameBanana 卡片网格截图,
+             卡片外框 304×360、列距 330、行距 411、封面高 195、信息块高 161,单位就是截图里的 px)。
+             卡片宽度是容器均分出来的、会随窗口变,所以这些值不能直接用 —— 整张卡由 code-behind 的
+             CardScaler 按 s = 槽位宽 / 330 等比缩放(字号、内边距、外边距、圆角、头像、图标一起走),
+             这样任何窗口宽度下卡片比例都和参考图一致。改这里的尺寸不用动代码,缩放会自己跟上。
+             卡片外边距写的是**间距的一半**(相邻两张各摊一半):横向 13+13=26、纵向 25+25=50。 -->
         <DataTemplate x:Key="ModStoreCardTemplate">
-            <Border Margin="6" Background="White" CornerRadius="8"
-                    BorderBrush="#E3E6EA" BorderThickness="1">
+            <Border Margin="13,25,13,25" Background="White" CornerRadius="12"
+                    BorderBrush="#E8EBED" BorderThickness="1">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!-- 行0: 图片区。高度运行时按宽度算,所以这里只给一个下限(布局前的第一帧) -->
-                    <Grid x:Name="ThumbHost" Grid.Row="0" MinHeight="96">
+                    <!-- 行0: 图片区。195 是参考图的封面高度,由 CardScaler 随整卡等比缩放 -->
+                    <Grid x:Name="ThumbHost" Grid.Row="0" Height="195">
                         <!-- 层0: 无图片时的纯色占位背景 -->
                         <Grid Background="#2A2A2A" />
                         <!-- 层1: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
@@ -88,39 +93,56 @@
                                ImageOpened="CardImage_Opened" ImageFailed="CardImage_Failed" />
                         <!-- 层3: 角色标签(左上)。不是每条记录都有角色(UI 类 mod 就没有),没有就不显示。 -->
                         <Border HorizontalAlignment="Left" VerticalAlignment="Top"
-                                Margin="6" Padding="6,2" Background="#99000000"
-                                CornerRadius="6"
+                                Margin="12" Padding="8,3" Background="#99000000"
+                                CornerRadius="8"
                                 Visibility="{Binding HasCharacter, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <TextBlock Foreground="White" FontSize="10" FontWeight="SemiBold"
+                            <TextBlock Foreground="White" FontSize="14" FontWeight="SemiBold"
                                        Text="{Binding Character}" TextTrimming="CharacterEllipsis" />
                         </Border>
                         <!-- 层4: 右上角标(竖着排:NSFW 在上、已安装在下面一格)。
                              NSFW 这类条目默认隐藏模式下根本不会进列表,只有内容筛选切到「显示 NSFW」后才看得到。
                              已安装来自本地安装记录(不是 GameBanana 的记录),装完不刷新列表也会亮 —— 见 ModStoreItem.IsInstalled。 -->
                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top"
-                                    Margin="6" Spacing="4">
-                            <Border HorizontalAlignment="Right" Padding="6,2" Background="#FF4D4F"
-                                    CornerRadius="6"
+                                    Margin="12" Spacing="4">
+                            <Border HorizontalAlignment="Right" Padding="8,3" Background="#E93A45"
+                                    CornerRadius="8"
                                     Visibility="{Binding IsAdult, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Foreground="White" FontSize="10"
+                                <TextBlock Foreground="White" FontSize="15"
                                            FontWeight="SemiBold" Text="NSFW" />
                             </Border>
-                            <Border HorizontalAlignment="Right" Padding="6,2" Background="#FF107C10"
-                                    CornerRadius="6"
+                            <Border HorizontalAlignment="Right" Padding="8,3" Background="#FF107C10"
+                                    CornerRadius="8"
                                     Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Foreground="White" FontSize="10" FontWeight="SemiBold"
+                                <TextBlock Foreground="White" FontSize="15" FontWeight="SemiBold"
                                            l:Uids.Uid="ModStore_Card_Installed" Text="已安装" />
                             </Border>
                         </StackPanel>
                     </Grid>
 
-                    <!-- 行1: 信息块。标题给两行的高度下限而不是固定高:一行标题的卡片也占据同样的高度,
-                         同一行卡片的内容才不会上下错开(卡片本身还会被容器拉齐到下边缘)。 -->
-                    <StackPanel Grid.Row="1" Padding="10,8,10,10" Spacing="6">
-                        <TextBlock Foreground="#1F2328" FontWeight="SemiBold" FontSize="13"
-                                   MinHeight="34" MaxLines="2" Text="{Binding Title}"
+                    <!-- 行1: 信息块 —— 五段**定高行**(标题 54 / 空档 18 / 作者行 25 / 空档 9 / 统计行 24),
+                         加内边距 17+14 正好 161,与参考图逐段对齐:标题首行墨迹顶 25、头像顶 88、
+                         统计图标墨迹顶 127、块底 161。标题给两行高度,一行标题的卡片也占同样高度 ——
+                         参考图里所有卡片等高,同一行的下边缘才齐。
+
+                         为什么用 Grid 定高行而不是 StackPanel 自己撑:实测 TextBlock 量出来的高度会比设计值
+                         多出一层字体行距(FontSize 20 时约 +9),StackPanel 会照单全收把整块顶高,
+                         套定高容器也压不住(DesiredSize 依旧按内容算);Grid 的定高行则完全不受子元素影响。
+                         LineHeight 也写死,免得标题里的中文字回退到别的字体、把行高顶起来(参考图行距就是 27)。 -->
+                    <Grid Grid.Row="1" Padding="17,17,17,14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="54" />
+                            <RowDefinition Height="18" />
+                            <RowDefinition Height="25" />
+                            <RowDefinition Height="9" />
+                            <RowDefinition Height="24" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Foreground="#1B1B1B" FontWeight="SemiBold" FontSize="20"
+                                   LineHeight="27" LineStackingStrategy="BlockLineHeight"
+                                   MaxLines="2" Text="{Binding Title}"
                                    TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                        <Grid ColumnSpacing="6">
+
+                        <Grid Grid.Row="2" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -129,7 +151,7 @@
                             <!-- 作者头像:底色圆打底,真头像盖在上面(取不到头像 / 图加载失败就露出底色圆,
                                  所以这里不需要任何可见性切换 —— 清掉笔刷即可,见 LazyLoadVisibleImages)。
                                  作者没设过头像时 GameBanana 给的是默认头像,不是空值。 -->
-                            <Grid Width="20" Height="20" VerticalAlignment="Center">
+                            <Grid Width="25" Height="25" VerticalAlignment="Center">
                                 <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" />
                                 <!-- 名字挂在 Ellipse 上(笔刷是 Brush 不是 FrameworkElement,x:Name 认不到它) -->
                                 <Ellipse x:Name="AuthorAvatar">
@@ -138,28 +160,37 @@
                                     </Ellipse.Fill>
                                 </Ellipse>
                             </Grid>
-                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12"
-                                       Foreground="#5A6169" Text="{Binding AuthorName}"
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="17"
+                                       Foreground="#606061" Text="{Binding AuthorName}"
                                        TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
-                                       Foreground="#8A9099" Text="{Binding RelativeTime}" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="16"
+                                       Foreground="#8C8C8D" Text="{Binding RelativeTime}" />
                         </Grid>
-                        <!-- 统计三项:点赞 / 浏览 / 评论(顺序与 GameBanana 自家卡片一致) -->
-                        <StackPanel Orientation="Horizontal" Spacing="14">
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#6B7280" Glyph="&#xEB52;" />
-                                <TextBlock FontSize="11" Foreground="#6B7280" Text="{Binding LikesCount}" />
+
+                        <!-- 统计三项:点赞 / 浏览 / 评论(顺序与 GameBanana 自家卡片一致)。
+                             依参考图:图标是蓝的、数字才是灰的;图标比数字大一圈,两者都居中放。 -->
+                        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="18">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <!-- EB51 是空心心形(EB52 是实心的,和参考图不符) -->
+                                <FontIcon FontSize="20" Foreground="#3264A7" Glyph="&#xEB51;"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="16" Foreground="#808081" VerticalAlignment="Center"
+                                           Text="{Binding LikesCount}" />
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#6B7280" Glyph="&#xE890;" />
-                                <TextBlock FontSize="11" Foreground="#6B7280" Text="{Binding ViewsCount}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontSize="20" Foreground="#3264A7" Glyph="&#xE890;"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="16" Foreground="#808081" VerticalAlignment="Center"
+                                           Text="{Binding ViewsCount}" />
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#6B7280" Glyph="&#xE8F2;" />
-                                <TextBlock FontSize="11" Foreground="#6B7280" Text="{Binding CommentsCount}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontSize="20" Foreground="#3264A7" Glyph="&#xE8F2;"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="16" Foreground="#808081" VerticalAlignment="Center"
+                                           Text="{Binding CommentsCount}" />
                             </StackPanel>
                         </StackPanel>
-                    </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -259,11 +290,12 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <!-- 固定 6 列(横屏卡片一行 6 个),宽度均分;窗口窄到每列不足 150 时自动降列,
-                             免得卡片被压成碎片 -->
+                        <!-- 固定 6 列(横屏卡片一行 6 个),宽度均分;窗口窄到每列不足 180 时自动降列。
+                             180 这个下限比旧值(150)高:卡片版式现在是整卡等比缩放的,列再窄下去字号会跟着
+                             缩到看不清 —— 宁可少一列,让卡片大一点。180 能保住 1280/1366 窗口仍是 6 列。 -->
                         <local:WrapGridPanel x:Name="ModCardsPanel" Grid.Row="0"
                                              VerticalAlignment="Top"
-                                             Columns="6" MinItemWidth="150" />
+                                             Columns="6" MinItemWidth="180" />
                         <!-- 滚动加载更多:内容流末尾,Collapsed 时不占位 -->
                         <StackPanel Grid.Row="1" HorizontalAlignment="Center"
                                     Margin="0,8,0,16"
