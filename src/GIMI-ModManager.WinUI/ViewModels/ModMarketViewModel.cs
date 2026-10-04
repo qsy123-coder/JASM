@@ -195,6 +195,29 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
         SelectedMod = null;
     }
 
+    /// <summary>
+    /// 打开 Mod 网站（<c>wave-mod.top</c>）—— 市场里这些包的发布站。
+    ///
+    /// 用系统默认浏览器打开（<c>Launcher</c>），不是页内 WebView：那里是要下载东西的站点，
+    /// 走浏览器的下载/登录/防病毒那一整套更顺，页内嵌一个浏览器反而处处受限。
+    /// 打不开（没有默认浏览器 / 系统拒绝）也不弹框 —— 这是次要入口，不值得打断用户。
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenWebsite()
+    {
+        try
+        {
+            await Windows.System.Launcher.LaunchUriAsync(new Uri(ModWebsiteUrl));
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "打开 Mod 网站失败: {Url}", ModWebsiteUrl);
+        }
+    }
+
+    /// <summary>Mod 网站地址。集中放这儿，改域名只动一行。</summary>
+    private const string ModWebsiteUrl = "https://www.wave-mod.top/mods";
+
     // ─── Data Loading ──────────────────────────────────────────
 
     private async Task ReloadModsAsync()
