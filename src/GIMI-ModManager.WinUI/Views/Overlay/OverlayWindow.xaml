@@ -17,9 +17,16 @@
           压在近黑的底上就是「字都看不清」。钉死 Dark 之后这些默认前景才会是浅色。  -->
     <Page RequestedTheme="Dark">
         <!--  背景刻意不透明（不是 Mica/亚克力）：浮窗压在游戏画面上，半透明会让文字糊进背景里读不清。
-              描边也是为可读性服务的：亮色游戏画面里，没有描边的深色块边界会糊成一片。  -->
+              描边也是为可读性服务的：亮色游戏画面里，没有描边的深色块边界会糊成一片。
+
+              AllowDrop/拖拽那两个事件：把包直接拖到浮窗上就能装 —— 装给**当前选中的角色**
+              （浮窗本来就只对着一个角色）。判定与动作在 OverlayWindow.xaml.cs 与
+              OverlayViewModel.DropModPackageAsync。  -->
         <Grid
             x:Name="RootGrid"
+            AllowDrop="True"
+            DragOver="RootGrid_OnDragOver"
+            Drop="RootGrid_OnDrop"
             Background="#FF101016"
             BorderBrush="#40FFFFFF"
             BorderThickness="1">
