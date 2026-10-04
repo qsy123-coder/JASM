@@ -403,38 +403,13 @@ public sealed class SkinManagerService : ISkinManagerService
         modList.InstantiateCharacterFolder();
 
         using var disableWatcher = modList.DisableWatcher();
-
-        // 已经在目标目录里就什么都别做：静默拖拽那条路是「先把整包改名搬进来、再登记」
-        // （见 ModInstallerService.InstallFolderSilentlyAsync），此时再搬一次就是「自己搬到自己」
-        // —— 会撞名，而且那几个文件在 ModInstallation 手里还开着句柄、目录根本改不了名。
-        // 向导 / 商店那条路传进来的都是 %TEMP% 里的目录，进不了这个分支，行为一点没变。
-        if (!IsAlreadyInModFolder(mod, modList))
-        {
-            if (move)
-                mod.MoveTo(modList.AbsModsFolderPath);
-            else
-                mod = mod.CopyTo(modList.AbsModsFolderPath);
-        }
+        if (move)
+            mod.MoveTo(modList.AbsModsFolderPath);
+        else
+            mod = mod.CopyTo(modList.AbsModsFolderPath);
 
         modList.TrackMod(mod);
         return mod;
-    }
-
-    /// <summary>这个 Mod 的文件夹是不是已经在目标角色的 Mod 目录**里面**了。</summary>
-    private static bool IsAlreadyInModFolder(ISkinMod mod, ICharacterModList modList)
-    {
-        try
-        {
-            return string.Equals(
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(mod.OnlyPath)),
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(modList.AbsModsFolderPath)),
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception)
-        {
-            // 路径给不出来（理论上不会）就当不在里面，走原有的搬/拷那条路
-            return false;
-        }
     }
 
     public void ExportMods(ICollection<ICharacterModList> characterModLists, string exportPath,
