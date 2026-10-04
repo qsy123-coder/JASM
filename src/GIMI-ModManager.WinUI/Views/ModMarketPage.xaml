@@ -234,6 +234,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <TextBox x:Name="SearchBox" Grid.Column="0"
@@ -262,7 +263,14 @@
                           ItemsSource="{x:Bind ViewModel.SortOptions}"
                           SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}" />
 
-                <Button Grid.Column="4" Width="36" Height="36" VerticalAlignment="Center"
+                <!--  Mod 网站（wave-mod.top）—— 市场里这些包的发布站。工具栏上一个纯文字按钮就够了:
+                      图标会让人以为是站内功能，而它是往外跳的。  -->
+                <Button Grid.Column="4" Height="36" VerticalAlignment="Center" Margin="0,0,8,0"
+                        Content="mod网站"
+                        CornerRadius="6"
+                        Command="{x:Bind ViewModel.OpenWebsiteCommand}" />
+
+                <Button Grid.Column="5" Width="36" Height="36" VerticalAlignment="Center"
                         ToolTipService.ToolTip="下载管理" l:Uids.Uid="ModMarket_DownloadManager"
                         Background="Transparent" BorderThickness="0" CornerRadius="6"
                         Command="{x:Bind ViewModel.OpenDownloadManagerCommand}">
