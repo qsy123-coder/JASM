@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
+using Windows.Storage;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
@@ -46,10 +48,16 @@ namespace GIMI_ModManager.WinUI.Views.Overlay;
 /// </summary>
 public sealed partial class OverlayWindow : WindowEx
 {
-    /// <summary>浮窗尺寸。**DIP**（<see cref="WindowEx.Width"/> 的语义），由 WinUIEx 按 DPI 换成物理像素。</summary>
-    private const int OverlayWidth = 470;
+    /// <summary>
+    /// 浮窗尺寸。**DIP**（<see cref="WindowEx.Width"/> 的语义），由 WinUIEx 按 DPI 换成物理像素
+    /// （这台机 150%，所以 340×320 逻辑 = 510×480 物理）。
+    ///
+    /// 嫌大/嫌小就改这两个数：内部是「标题条 + 角色下拉 + 搜索 + 模式行 + 列表(*)+ 底栏」，
+    /// 只有列表那一行是 <c>*</c>，所以整体变矮只是列表变短，不会把别的挤掉。
+    /// </summary>
+    private const int OverlayWidth = 380;
 
-    private const int OverlayHeight = 440;
+    private const int OverlayHeight = 360;
 
     /// <summary>置顶自愈的间隔。1 秒是原型的取值：既够快（用户几乎来不及看到它被盖住），也不至于每秒都去动窗口。</summary>
     private static readonly TimeSpan TopMostCheckInterval = TimeSpan.FromSeconds(1);
@@ -85,6 +93,12 @@ public sealed partial class OverlayWindow : WindowEx
 
     /// <summary>是否已经做过"首次显示"的那套收尾（摆位置 + 确认置顶）。见 <see cref="ShowOverlay"/>。</summary>
     private bool _hasShownOnce;
+
+    /// <summary>上一次 DragOver 的判定，用来把诊断日志压成「只在变化时打一行」。</summary>
+    private bool _lastDropAccepted;
+
+    /// <summary>上一次 DragOver 里有没有文件，同上。</summary>
+    private bool _lastDropHadItems;
 
     /// <summary>
     /// 唤出那一刻的前台窗口（游戏在跑时就是游戏），隐藏时按原样还回去。
@@ -176,6 +190,9 @@ public sealed partial class OverlayWindow : WindowEx
         Width = OverlayWidth;
         Height = OverlayHeight;
 
+        // 内容（角色下拉、Mod 列表）是后来才填满的，填满那一刻窗口会被撑大 —— 见 ReassertSize
+        RootGrid.SizeChanged += (_, _) => ReassertSize();
+
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.SetBorderAndTitleBar(false, false);
@@ -196,6 +213,22 @@ public sealed partial class OverlayWindow : WindowEx
 
     /// <summary>把热键名填进标题栏右侧。由 <c>OverlayWindowService</c> 在注册完热键后调用。</summary>
     public void SetHotkeyHint(string text) => HotkeyHintText.Text = text;
+
+    /// <summary>
+    /// 把窗口尺寸**再按一遍**那两个常量。
+    ///
+    /// 为什么需要：实机反馈「浮窗本来很小，用着用着突然变大」。构造时设一次的 <c>Width</c>/<c>Height</c>
+    /// 挡不住内容后来把窗口撑开（角色下拉与 Mod 列表是后来才填上的，填上之后内容的 DesiredSize 变大）。
+    /// 内容尺寸一变就校一次；只在校不动的时候才动窗口，免得「调窗口 → 内容变 → 再调」转圈。
+    /// </summary>
+    internal void ReassertSize()
+    {
+        if (Math.Abs(Width - OverlayWidth) > 0.5)
+            Width = OverlayWidth;
+
+        if (Math.Abs(Height - OverlayHeight) > 0.5)
+            Height = OverlayHeight;
+    }
 
     /// <summary>
     /// 键盘把选中行挪走时，把新选中的那一行滚进视野。
@@ -220,6 +253,9 @@ public sealed partial class OverlayWindow : WindowEx
     public void ShowOverlay()
     {
         EnsureTopMost("唤出时");
+
+        // 每次唤出都把尺寸按回常量：内容填满那一下会把窗口撑大（见 ReassertSize）
+        ReassertSize();
 
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
 
@@ -606,5 +642,58 @@ public sealed partial class OverlayWindow : WindowEx
 
         RememberPosition();
         _logger.Debug("浮窗已关闭");
+    }
+
+    // ── 把包拖到浮窗上直接装（装给当前选中的角色） ──────────────────────────
+
+    /// <summary>
+    /// 拖着包经过浮窗时表态接不接。
+    ///
+    /// <b>没选中角色就不接</b>：浮窗只对着一个角色，不知道装给谁的时候放行的后果是
+    /// 「拖进去没反应」，比直接显示禁止光标更难懂。
+    /// </summary>
+    private void RootGrid_OnDragOver(object sender, DragEventArgs e)
+    {
+        var hasItems = e.DataView.Contains(StandardDataFormats.StorageItems);
+
+        // **有文件就接**：装给谁要等落下、解压之后才认（认包名 / 包内目录，见
+        // OverlayViewModel.ResolveTargetModList）。这里不能拿「有没有选中角色」去拒绝 ——
+        // 浮窗的角色列表只列**已经有 Mod 的角色**，一个 Mod 都没有时它是空的，
+        // 而「拖第一个 Mod 进来」恰恰就是那个场景（实机症状：光标显示禁用、怎么拖都装不了）。
+        if (hasItems != _lastDropHadItems)
+        {
+            _lastDropHadItems = hasItems;
+            _logger.Information("[浮窗] 拖拽经过：含文件={HasItems} 选中角色={Character} 角色数={Count}",
+                hasItems, ViewModel.SelectedCharacter?.DisplayName ?? "<无>", ViewModel.Characters.Count);
+        }
+
+        if (!hasItems)
+            return;
+
+        e.AcceptedOperation = DataPackageOperation.Copy;
+
+        // 光标旁就写一句「自动识别角色」：装给谁要等落下后认包才知道，这里给具体角色名反而是骗人的
+        if (e.DragUIOverride is { } hint)
+        {
+            hint.IsCaptionVisible = true;
+            hint.Caption = "自动识别角色";
+        }
+
+        e.Handled = true;
+    }
+
+    private async void RootGrid_OnDrop(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
+            return;
+
+        // 先标 Handled 再 await：拖拽事件照样会上报给窗口，而窗口那层没有 AllowDrop
+        e.Handled = true;
+
+        var storageItems = await e.DataView.GetStorageItemsAsync();
+        _logger.Information("[浮窗] 收到拖入：{Count} 项，选中角色={Character}", storageItems.Count,
+            ViewModel.SelectedCharacter?.DisplayName ?? "<无>");
+
+        await ViewModel.DropModPackageAsync(storageItems);
     }
 }
