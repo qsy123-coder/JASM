@@ -7,6 +7,7 @@ using Windows.Win32;
 using Windows.Win32.Media.Audio;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
@@ -23,6 +24,7 @@ using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
+using GIMI_ModManager.WinUI.ViewModels.Messages;
 using Microsoft.UI.Dispatching;
 using Serilog;
 using Constants = GIMI_ModManager.Core.Helpers.Constants;
@@ -352,6 +354,11 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
                 AttentionType = AttentionType.Added,
                 Message = _localizer.GetLocalizedStringOrDefault("ModInstallerVM_ModSuccessfullyAdded", defaultValue: "Mod was successfully added")
             }));
+
+        // 通知游戏内浮窗：刚装好的 Mod 要立刻出现在它的列表里，并且**切到这个角色**。
+        // 走 Messenger 而不是让浮窗去轮询/监听文件 —— 浮窗的列表是快照，只有被明确告知才知道该重建。
+        WeakReferenceMessenger.Default.Send(
+            new ModInstalledMessage(this, _characterModList.Character.InternalName));
     }
 
 
