@@ -66,21 +66,30 @@
                     <!-- 行0: 图片区。405 是「卡片内宽 304 × 4/3」——竖屏 3:4,由 CardScaler 随整卡等比缩放,
                          所以任何窗口宽度下这个比例都不变。 -->
                     <Grid x:Name="ThumbHost" Grid.Row="0" Height="405">
-                        <!-- 层0: 无图片时的纯色占位背景;Uniform 那两条侧边也露出这层 -->
+                        <!-- 层0: 无图片时的纯色占位背景 -->
                         <Grid Background="#2A2A2A" />
-                        <!-- 层1: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
+                        <!-- 层1: 模糊背景 —— **同一张预览图**铺满,把主图两边的窄边填成图的延伸,而不是两条纯色。
+                             做法是把同一张图按极低分辨率解码(DecodePixelWidth=24)再拉到 304 宽:双线性插值
+                             出来的就是一片柔和色块,视觉上等同模糊。WinUI 3 的 XAML 没有给任意元素用的模糊效果
+                             (Composition 那套得引 Win2D),这是零依赖的等价做法。
+                             Source 与主图一起在滚到视口时设,见页面 code-behind;它不挂 ImageOpened —— 24px
+                             解码几乎瞬间完成,挂上去会把加载圈提前收掉。 -->
+                        <Image x:Name="CardImageBackdrop" Stretch="UniformToFill" Opacity="0.55" />
+                        <!-- 层2: 压暗一层,让模糊背景退到主图后面 -->
+                        <Grid Background="#59000000" />
+                        <!-- 层3: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
                         <ProgressRing x:Name="CardLoadingRing" IsActive="False"
                                       Visibility="Collapsed"
                                       Width="28" Height="28"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                       Foreground="#0078D4" />
-                        <!-- 层2: 整张预览图完整显示(Source 由代码在滚到视口时设置) -->
+                        <!-- 层4: 整张预览图完整显示(Source 由代码在滚到视口时设置) -->
                         <Image x:Name="CardImage"
                                Stretch="Uniform"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                ImageOpened="CardImage_Opened" ImageFailed="CardImage_Failed" />
-                        <!-- 层3: NSFW 角标(右上,同商店样式) -->
+                        <!-- 层5: NSFW 角标(右上,同商店样式) -->
                         <Border HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Margin="12" Padding="8,3" Background="#E93A45"
                                 CornerRadius="8"
