@@ -504,7 +504,9 @@ public sealed class ApiGameBananaClient(
         retry:
         try
         {
-            await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+            // 这里原本有一次**无条件**的 Task.Delay(200)。实测那是纯损耗：真正的限速是下面那条令牌桶
+            // 管线（见 App.xaml.cs 的 AddResiliencePipeline），而这个客户端一次要跑几十个请求的场景
+            // （商店侧栏补角色计数）平白多付十几秒。
 
             if (IgnorePollyLimiterScope.IsIgnored)
             {
