@@ -263,10 +263,10 @@
                           ItemsSource="{x:Bind ViewModel.SortOptions}"
                           SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}" />
 
-                <!--  Mod 网站（wave-mod.top）—— 市场里这些包的发布站。工具栏上一个纯文字按钮就够了:
-                      图标会让人以为是站内功能，而它是往外跳的。  -->
+                <!--  「每日更新」页（wave-mod.top/updates）—— 市场里这些包的新增/更新列表。
+                      工具栏上一个纯文字按钮就够了:图标会让人以为是站内功能，而它是往外跳的。  -->
                 <Button Grid.Column="4" Height="36" VerticalAlignment="Center" Margin="0,0,8,0"
-                        Content="mod网站"
+                        Content="每日更新"
                         CornerRadius="6"
                         Command="{x:Bind ViewModel.OpenWebsiteCommand}" />
 
