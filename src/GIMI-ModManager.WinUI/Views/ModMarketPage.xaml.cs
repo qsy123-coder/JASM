@@ -128,6 +128,7 @@ public sealed partial class ModMarketPage : Page
             {
                 Card = card,
                 Thumb = thumb,
+                Backdrop = FindByName<Image>(card, "CardImageBackdrop"),
                 // 按名字在**逻辑树**里找(此刻卡片还没进可视树,VisualTreeHelper 认不到)
                 Ring = FindByName<ProgressRing>(card, "CardLoadingRing"),
                 Url = mod.PreviewImageUrl
@@ -385,6 +386,14 @@ public sealed partial class ModMarketPage : Page
                 e.Ring.IsActive = true;
             }
             e.Thumb.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(e.Url));
+
+            // 模糊背景:同一张图、极低分辨率(拉到卡片宽就是一片柔和色块),填住主图两边的窄边
+            if (e.Backdrop is not null)
+                e.Backdrop.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(e.Url))
+                {
+                    DecodePixelWidth = BackdropDecodeWidth
+                };
+
             _pendingImages.RemoveAt(i);
         }
     }
@@ -394,9 +403,16 @@ public sealed partial class ModMarketPage : Page
     {
         public FrameworkElement Card = null!;
         public Image? Thumb;
+
+        /// <summary>主图后面那层模糊背景(同一张图、极低分辨率),用来填住 Uniform 留下的窄边。</summary>
+        public Image? Backdrop;
+
         public ProgressRing? Ring;
         public string? Url;
     }
+
+    /// <summary>模糊背景的解码宽度。小到只留个大概色块(拉到卡片宽就成一片柔和背景)。</summary>
+    private const int BackdropDecodeWidth = 24;
 
     /// <summary>图片加载成功：隐藏卡片加载圈</summary>
     private void CardImage_Opened(object sender, RoutedEventArgs e)
