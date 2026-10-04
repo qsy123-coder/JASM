@@ -105,9 +105,9 @@ public sealed partial class ModStorePage : Page
         var ring = FindByName<ProgressRing>(card, "CardLoadingRing");
         var avatarBrush = FindByName<Ellipse>(card, "AuthorAvatar")?.Fill as ImageBrush;
 
-        // 缩略图区的高度按卡片宽度算:横屏卡片的宽度是容器均分出来的,写死高度会在宽窗口下变成细长条。
-        if (FindByName<Grid>(card, "ThumbHost") is { } thumbHost)
-            ApplyThumbHeight(card, thumbHost);
+        // 模板里的尺寸是照参考图写的设计值,而卡片宽度是容器均分来的、会随窗口变 —— 整卡按 s 等比缩放。
+        if (CardScaler.Collect(card) is { } scaler)
+            card.SizeChanged += (_, e) => scaler.Apply(e.NewSize.Width);
 
         var avatarUrl = mod.AuthorAvatarUrl;
         if (avatarBrush is not null && avatarUrl is not null)
@@ -140,56 +140,209 @@ public sealed partial class ModStorePage : Page
         ModCardsPanel.Children.Add(card);
     }
 
-    // 横屏卡片的图片区比例(16:9)。上下限兜住极端窗口:太扁看不出内容,太高会把信息块挤出去。
-    private const double ThumbAspectRatio = 9d / 16d;
-    private const double MinThumbHeight = 96;
-    private const double MaxThumbHeight = 220;
+    // ── 卡片版式:设计值(照参考图实测,见 ModStorePage.xaml 的模板注释)与整卡等比缩放 ──
+
+    /// <summary>设计稿的列距 = 卡片外框 304 + 左右间距 26。槽位宽除以它就是缩放系数 s。</summary>
+    private const double DesignPitchWidth = 330;
+
+    /// <summary>写回尺寸时差值低于这个数就当没变 —— 免得自己再触发一场布局,来回没完。</summary>
+    private const double MetricEpsilon = 0.01;
 
     /// <summary>
-    /// 图片区高度 = 卡片实际宽度 × 9/16。
+    /// 把一张卡片的「设计值」整体乘上缩放系数 s 写回去。
     ///
-    /// 宽度是容器均分出来的(一行 6 个),所以只能在布局之后量;卡片挂上 <c>SizeChanged</c>,
-    /// 首帧落地与之后每次窗口缩放都会走到这里。写入前比对一下,免得设同值引发又一次布局。
+    /// 模板里的尺寸是照参考图逐像素量出来的设计值(卡片外框 304 宽那一套),而卡片实际宽度是
+    /// <c>WrapGridPanel</c> 均分槽位得来的、会随窗口变,所以字号 / 内边距 / 外边距 /
+    /// 圆角 / 头像 / 图标要**一起**缩放 —— 只缩封面高度的话,卡片比例会随窗口漂移,就不是「照参考图」了。
+    ///
+    /// 设计值只在 <see cref="Collect"/> 时读一次当基准,之后每次写「基准 × s」:
+    /// 拿当前值去乘会一次比一次小。
     /// </summary>
-    private static void ApplyThumbHeight(FrameworkElement card, FrameworkElement thumbHost)
+    private sealed class CardScaler
     {
-        card.SizeChanged += (_, e) =>
+        private readonly Border _root;
+        private readonly List<Metric> _metrics;
+
+        /// <summary>
+        /// 上一次写进去的左右外边距之和。
+        ///
+        /// 缩放系数要用「槽位宽」算,而 <c>SizeChanged</c> 给的宽度是 <c>ActualWidth</c> —— **不含 Margin**;
+        /// 卡片外边距本身又在缩放集合里,拿实宽直接算就会和「写回后实宽又变了」互相追。
+        /// 用上一次写进去的值把槽位宽反推回来(槽位宽 = 实宽 + 左右外边距),等式一次就成立,不再迭代。
+        /// </summary>
+        private double _appliedMarginH;
+
+        private CardScaler(Border root, List<Metric> metrics)
         {
-            var height = Math.Clamp(e.NewSize.Width * ThumbAspectRatio, MinThumbHeight, MaxThumbHeight);
-            if (Math.Abs(thumbHost.Height - height) > 0.5)
-                thumbHost.Height = height;
-        };
+            _root = root;
+            _metrics = metrics;
+            _appliedMarginH = root.Margin.Left + root.Margin.Right; // 首帧还没写过,就是 XAML 里的设计值
+        }
+
+        /// <summary>收集一张卡片的设计值。卡片根不是 Border(模板被改过)时返回 null,调用方跳过。</summary>
+        public static CardScaler? Collect(FrameworkElement card)
+        {
+            if (card is not Border root) return null;
+
+            var metrics = new List<Metric>();
+            Walk(card, metrics);
+            return new CardScaler(root, metrics);
+        }
+
+        /// <summary>按卡片实宽重写整张卡。</summary>
+        public void Apply(double cardWidth)
+        {
+            var scale = (cardWidth + _appliedMarginH) / DesignPitchWidth;
+            foreach (var metric in _metrics)
+                metric.Apply(scale);
+
+            _appliedMarginH = _root.Margin.Left + _root.Margin.Right;
+        }
+
+        /// <summary>
+        /// 沿**逻辑树**走一遍卡片,把要跟着缩放的尺寸登记下来。
+        ///
+        /// 只收「尺寸类」属性(字号 / 间距 / 内外边距 / 宽高 / 圆角);边框粗细、字重、MaxLines、颜色
+        /// 一律不缩放 —— 边框要一直是发丝级的 1px,行数上限也不是尺寸。
+        /// </summary>
+        private static void Walk(DependencyObject node, List<Metric> metrics)
+        {
+            if (node is FrameworkElement element)
+            {
+                Track(metrics, () => element.Width, v => element.Width = v);
+                Track(metrics, () => element.Height, v => element.Height = v);
+                Track(metrics, () => element.MinWidth, v => element.MinWidth = v);
+                Track(metrics, () => element.MinHeight, v => element.MinHeight = v);
+                TrackThickness(metrics, () => element.Margin, v => element.Margin = v);
+            }
+
+            switch (node)
+            {
+                case TextBlock text:
+                    Track(metrics, () => text.FontSize, v => text.FontSize = v);
+                    // 写死的行高也要跟着缩:不然字号缩了、行高还留在设计值上,两行就撑破了预定高度。
+                    Track(metrics, () => text.LineHeight, v => text.LineHeight = v);
+                    break;
+                case FontIcon icon:
+                    Track(metrics, () => icon.FontSize, v => icon.FontSize = v);
+                    break;
+                case StackPanel panel:
+                    Track(metrics, () => panel.Spacing, v => panel.Spacing = v);
+                    TrackThickness(metrics, () => panel.Padding, v => panel.Padding = v);
+                    break;
+                case Grid grid:
+                    Track(metrics, () => grid.RowSpacing, v => grid.RowSpacing = v);
+                    Track(metrics, () => grid.ColumnSpacing, v => grid.ColumnSpacing = v);
+                    TrackThickness(metrics, () => grid.Padding, v => grid.Padding = v);
+                    // 定高行也要跟着缩 —— RowDefinition 不是 FrameworkElement,遍历认不到它,得单独登记
+                    foreach (var row in grid.RowDefinitions)
+                        TrackRowHeight(metrics, row);
+                    break;
+                case Border border:
+                    TrackThickness(metrics, () => border.Padding, v => border.Padding = v);
+                    TrackCornerRadius(metrics, border);
+                    break;
+            }
+
+            foreach (var child in LogicalChildren(node))
+                Walk(child, metrics);
+        }
+
+        /// <summary>登记一个标量设计值(字号 / 间距 / 宽高)。没显式设过(NaN)或非正的不登记。</summary>
+        private static void Track(List<Metric> metrics, Func<double> read, Action<double> write)
+        {
+            var design = read();
+            if (double.IsNaN(design) || design <= 0) return;
+
+            metrics.Add(new Metric(s =>
+            {
+                var value = design * s;
+                if (Math.Abs(read() - value) > MetricEpsilon) write(value);
+            }));
+        }
+
+        /// <summary>登记一个 Thickness(内 / 外边距):四个分量一起乘 s。</summary>
+        private static void TrackThickness(List<Metric> metrics, Func<Thickness> read, Action<Thickness> write)
+        {
+            var design = read();
+            if (design is { Left: 0, Top: 0, Right: 0, Bottom: 0 }) return;
+
+            metrics.Add(new Metric(s =>
+            {
+                var scaled = new Thickness(design.Left * s, design.Top * s, design.Right * s, design.Bottom * s);
+                if (Math.Abs(read().Left - scaled.Left) > MetricEpsilon) write(scaled);
+            }));
+        }
+
+        /// <summary>登记一个 Grid 的定高行。Auto / Star 行不登记(它们本来就该由内容或剩余空间定)。</summary>
+        private static void TrackRowHeight(List<Metric> metrics, RowDefinition row)
+        {
+            var design = row.Height;
+            if (!design.IsAbsolute || design.Value <= 0) return;
+
+            metrics.Add(new Metric(s =>
+            {
+                var value = design.Value * s;
+                if (Math.Abs(row.Height.Value - value) > MetricEpsilon) row.Height = new GridLength(value);
+            }));
+        }
+
+        /// <summary>登记一个 CornerRadius:四个角一起乘 s。</summary>
+        private static void TrackCornerRadius(List<Metric> metrics, Border border)
+        {
+            var design = border.CornerRadius;
+            if (design is { TopLeft: 0, TopRight: 0, BottomRight: 0, BottomLeft: 0 }) return;
+
+            metrics.Add(new Metric(s =>
+            {
+                var scaled = new CornerRadius(
+                    design.TopLeft * s, design.TopRight * s, design.BottomRight * s, design.BottomLeft * s);
+                if (Math.Abs(border.CornerRadius.TopLeft - scaled.TopLeft) > MetricEpsilon)
+                    border.CornerRadius = scaled;
+            }));
+        }
+    }
+
+    /// <summary>一条登记项:一个设计值 + 一个「按缩放系数 s 重写自己」的动作(动作自带差值守卫)。</summary>
+    private sealed class Metric(Action<double> applyByScale)
+    {
+        public void Apply(double scale) => applyByScale(scale);
     }
 
     /// <summary>
-    /// 在**逻辑树**里按名字找模板里的元素(那些 x:Name)。
+    /// 逻辑树里的直接子元素 —— 只认 <c>Panel.Children</c> / <c>Border.Child</c> /
+    /// <c>ContentControl.Content</c> 三类容器,卡片模板用到的就是这三类。
     ///
-    /// 为什么不用 <c>VisualTreeHelper</c>:卡片是 <c>LoadContent()</c> 刚实例化出来的,还没进可视树,
+    /// 为什么不走 <c>VisualTreeHelper</c>:卡片是 <c>LoadContent()</c> 刚实例化出来的,还没进可视树,
     /// 那一刻可视化树是空的 —— 以前按「根 Border 的 Grid 里第一个 Image」找缩略图就是这么写的,
-    /// 换成横屏版式后会静默返回 null(缩略图全不加载)。逻辑树(Panel.Children / Border.Child /
-    /// ContentControl.Content)在解析时就建好了,不依赖布局。
+    /// 换成横屏版式后会静默返回 null(缩略图全不加载)。逻辑树在解析时就建好了,不依赖布局。
     /// </summary>
+    private static IEnumerable<DependencyObject> LogicalChildren(DependencyObject node)
+    {
+        switch (node)
+        {
+            case Panel panel:
+                foreach (var child in panel.Children)
+                    yield return child;
+                break;
+            case Border { Child: { } borderChild }:
+                yield return borderChild;
+                break;
+            case ContentControl { Content: DependencyObject content }:
+                yield return content;
+                break;
+        }
+    }
+
+    /// <summary>在**逻辑树**里按名字找模板里的元素(那些 x:Name),理由见 <see cref="LogicalChildren"/>。</summary>
     private static T? FindByName<T>(DependencyObject root, string name) where T : FrameworkElement
     {
         if (root is T hit && hit.Name == name)
             return hit;
 
-        if (root is Panel panel)
-        {
-            foreach (var child in panel.Children)
-                if (FindByName<T>(child, name) is { } found)
-                    return found;
-        }
-        else if (root is Border { Child: { } borderChild })
-        {
-            if (FindByName<T>(borderChild, name) is { } fromBorder)
-                return fromBorder;
-        }
-        else if (root is ContentControl { Content: DependencyObject content })
-        {
-            if (FindByName<T>(content, name) is { } fromContent)
-                return fromContent;
-        }
+        foreach (var child in LogicalChildren(root))
+            if (FindByName<T>(child, name) is { } found)
+                return found;
 
         return null;
     }
