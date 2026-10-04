@@ -92,7 +92,10 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
-                <NavigationViewItem helpers:NavigationHelper.NavigateTo="GIMI_ModManager.WinUI.ViewModels.ModStoreViewModel" Content="Mod Store" l:Uids.Uid="Shell_ModStore">
+                <!--  Mod 商店（GameBanana）**暂时不上架，入口先藏起来**：页面、ViewModel、服务、
+                      解析器、测试全都原样留着，页内功能也是完整的 —— 只是不给入口。
+                      要重新上架：把下面这行 Visibility 去掉（或改成 Visible）即可，别的都不用动。  -->
+                <NavigationViewItem Visibility="Collapsed" helpers:NavigationHelper.NavigateTo="GIMI_ModManager.WinUI.ViewModels.ModStoreViewModel" Content="Mod Store" l:Uids.Uid="Shell_ModStore">
                     <NavigationViewItem.Icon>
                         <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE719;" />
                     </NavigationViewItem.Icon>
