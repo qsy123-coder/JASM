@@ -118,6 +118,48 @@
                         Visibility="{x:Bind ViewModel.HasVersionNotes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </StackPanel>
 
+                <!--  XXMI Launcher (GUI) version picker: the launcher is a separate package from the injector
+                      framework and releases on its own schedule, so it gets its own dropdown rather than
+                      sharing the one above.  -->
+                <StackPanel
+                    Spacing="4"
+                    Visibility="{x:Bind ViewModel.HasLauncherVersions, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="XXMI 启动器版本"
+                            l:Uids.Uid="ModEnv_LauncherVersion" />
+                        <ComboBox
+                            Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                            ItemsSource="{x:Bind ViewModel.LauncherVersions, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedLauncherVersion, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.InstalledLauncherVersionText, Mode=OneWay}" />
+                    <TextBlock
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.LauncherSelectionHint, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords"
+                        Visibility="{x:Bind ViewModel.HasLauncherSelectionHint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBlock
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.LauncherVersionNotes, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords"
+                        Visibility="{x:Bind ViewModel.HasLauncherVersionNotes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </StackPanel>
+
                 <!--  Manual game directory fallback  -->
                 <StackPanel
                     Spacing="8"
