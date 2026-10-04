@@ -61,16 +61,23 @@ JASM 的「一键配置 Mod 环境」会往 XXMI 根目录装一份**离线**的
 ----
     python Build/PackXxmiLauncher.py
 
-    # 指定源包 / 配置 / 输出目录，并顺手把 version.json 的 launcher 条目改掉
+    # 指定源包 / 配置 / 输出目录，顺手把 version.json 的 launcher 条目改掉，
+    # 并把这一版增量并入 launcher-versions.json（客户端的启动器版本下拉读它）
     python Build/PackXxmiLauncher.py \\
         --source "D:/.../XXMI-Launcher-Portable-v2.3.8.zip" \\
         --config "D:/XXMI/XXMI Launcher Config.json" \\
         --out Build/out/xxmi-versions \\
-        --update-manifest Build/out/xxmi-versions/version.json
+        --update-manifest Build/out/xxmi-versions/version.json \\
+        --update-catalog Build/out/xxmi-versions/launcher-versions.json
+
+    ⚠️ 每个版本都要用它**自己跑出来的**配置（--config），不要几个版本共用一份。
+    配置里的 `Launcher.config_version` 记的是配置 schema 版本（实测跑 2.3.8 得到
+    "2.3.8"），跨版本互认没有实测过；让启动器自己生成就绕开了这个问题。
 
 产物
 ----
-    <out>/launcher-<版本>.zip    直接传 CDN 的启动器离线包
+    <out>/launcher-<版本>.zip     直接传 CDN 的启动器离线包
+    <out>/launcher-versions.json  可选版本目录，**增量**并入（见 update_catalog）
 """
 
 from __future__ import annotations
@@ -105,6 +112,10 @@ LOCALE_FILE_PATTERN = re.compile(r"^Locale/Strings/CN/CN_(\d+\.\d+\.\d+)\.toml$"
 CONFIG_NAME = "XXMI Launcher Config.json"
 BACKUP_DIR = "Backups"
 LAUNCHER_EXE = "Resources/Bin/XXMI Launcher.exe"
+
+# 可选版本目录，schema 与 PackXxmiVersions.py 产出的 xxmi-versions.json 完全一致：
+# {"CatalogVersion": 1, "Versions": [{Version, DownloadUrl, Sha256, SizeBytes, ReleasedAt, Notes}]}
+CATALOG_NAME = "launcher-versions.json"
 
 # 与 PackXxmiVersions.py 一致：最大压缩。注意必须显式传给 writestr —— 传 ZipInfo 时
 # zipfile 不读 ZipFile 的 compresslevel，会退回 zlib 默认级别（包会大出约 0.2MB）。
@@ -369,6 +380,59 @@ def update_manifest(manifest_path: Path, version: str, download_url: str, sha256
     )
 
 
+def release_date_of(source: Path) -> str:
+    """取源包内启动器 exe 的时间戳作为发布日期，格式 `YYYY-MM-DD`。
+
+    用包内条目而不是源 zip 自己的 mtime：重下一次同一个包 mtime 就变了，而目录里的
+    日期只用来在版本下拉里区分两个同级构建，不该跟着下载时间走。zip 的 date_time 已经是
+    一个本地时间元组，直接拼即可 —— 绕一圈 datetime 只会多出一个对展示没意义的时区换算
+    （对比 PackXxmiVersions.py：那边只能拿文件 mtime，所以走了 datetime）。
+    """
+    year, month, day = config_entry_stamp(source)[:3]
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def update_catalog(catalog_path: Path, version: str, download_url: str, sha256: str, size_bytes: int,
+                   released_at: str) -> None:
+    """把这一版增量并入 launcher-versions.json，其余条目原样保留。
+
+    增量（而不是从零生成）是硬要求：隔几周再打包时，源目录里往往只剩最新那一版，
+    从零生成会把更早的版本记录整段抹掉 —— 客户端只看最新版，所以不会立刻出事，
+    直到有人想把某个坏掉的版本退回去，而那正是这份目录存在的理由。
+
+    `Notes` 是维护者手写的（例如「2.2.1 是最后一个从 Resources\\Packages\\XXMI 读版本的」），
+    重跑必须保住：同名版本只覆盖由文件本身决定的那四项（url / 哈希 / 体积 / 发布日期）。
+    """
+    if catalog_path.is_file():
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8-sig"))
+    else:
+        catalog = {"CatalogVersion": 1, "Versions": []}
+
+    versions = catalog.setdefault("Versions", [])
+    entry = {
+        "Version": version,
+        "DownloadUrl": download_url,
+        "Sha256": sha256,
+        "SizeBytes": size_bytes,
+        "ReleasedAt": released_at,
+    }
+
+    existing = next((item for item in versions if item.get("Version") == version), None)
+    if existing is None:
+        entry["Notes"] = ""
+        versions.append(entry)
+    else:
+        existing.update(entry)
+
+    # 与 PackXxmiVersions.py 一致：降序，客户端按原样展示。
+    versions.sort(key=lambda item: version_sort_key(item["Version"]), reverse=True)
+
+    catalog_path.write_text(
+        json.dumps(catalog, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="把官方 XXMI Launcher Portable 包打成 JASM 分发的启动器离线包")
     parser.add_argument("--source", default=None,
@@ -377,6 +441,8 @@ def main() -> int:
     parser.add_argument("--out", default=DEFAULT_OUT, help="产物输出目录")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="CDN 上 modenv/ 目录的 URL 前缀")
     parser.add_argument("--update-manifest", default=None, help="顺手改写这份 version.json 的 launcher 条目")
+    parser.add_argument("--update-catalog", default=None,
+                        help=f"增量并入这份 {CATALOG_NAME}（客户端的启动器版本下拉读它）")
     args = parser.parse_args()
 
     source = locate_source(args.source)
@@ -422,9 +488,15 @@ def main() -> int:
         update_manifest(manifest_path, version, download_url, digest, size_bytes)
         print(f"  ✓ 已更新 {manifest_path} 的 Packages.launcher -> {version}")
 
+    if args.update_catalog:
+        catalog_path = Path(args.update_catalog)
+        update_catalog(catalog_path, version, download_url, digest, size_bytes, release_date_of(source))
+        print(f"  ✓ 已把 launcher {version} 并入 {catalog_path}")
+
     print()
     print("下一步：把该 zip 上传到 CDN（与 appsettings.json 的 ModEnv:ManifestUrl 同桶同前缀），")
-    print(f"        再把改好的 version.json 一并传上去。别只传 zip 不传清单 —— 用户端会卡在 SHA256 校验失败。")
+    print("        再把改好的 version.json 一并传上去。别只传 zip 不传清单 —— 用户端会卡在 SHA256 校验失败。")
+    print("        目录类清单（launcher-versions.json）要**最后**传：它引用的 zip 得先能在线上取到。")
     print(f"    {download_url}")
     return 0
 

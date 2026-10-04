@@ -18,6 +18,26 @@
     <!-- WinUI 默认 ContentDialogMaxWidth=548，会压掉 Width=640 导致右侧按钮被裁切，这里局部提高上限 -->
     <ContentDialog.Resources>
         <x:Double x:Key="ContentDialogMaxWidth">720</x:Double>
+
+        <!--  三个版本下拉共用的条目版式：版本号 + 可选的「稳定版」徽章。
+              徽章只在目录里该项标了 Stable 时出现 —— 最新版未必是发给用户的那版，这个标记就是干这个的。  -->
+        <DataTemplate x:Key="ModEnvVersionItemTemplate">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding DisplayName}" />
+                <Border
+                    VerticalAlignment="Center"
+                    Padding="6,1"
+                    CornerRadius="4"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    Visibility="{Binding Stable, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                        Text="稳定版"
+                        l:Uids.Uid="ModEnv_StableBadge" />
+                </Border>
+            </StackPanel>
+        </DataTemplate>
     </ContentDialog.Resources>
 
     <!-- 内容滚动、按钮行固定在底部：对话框内容较长（预检查卡片 + 版本选择 + 日志 + 备份区）时，
@@ -96,26 +116,48 @@
                             Grid.Column="1"
                             HorizontalAlignment="Stretch"
                             IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                            ItemTemplate="{StaticResource ModEnvVersionItemTemplate}"
                             ItemsSource="{x:Bind ViewModel.Versions, Mode=OneWay}"
-                            SelectedItem="{x:Bind ViewModel.SelectedVersion, Mode=TwoWay}">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding DisplayName}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
+                            SelectedItem="{x:Bind ViewModel.SelectedVersion, Mode=TwoWay}" />
                     </Grid>
-                    <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.InstalledVersionText, Mode=OneWay}" />
                     <TextBlock
                         Style="{ThemeResource CaptionTextBlockStyle}"
-                        Text="{x:Bind ViewModel.SelectionHint, Mode=OneWay}"
+                        Text="{x:Bind ViewModel.VersionCaption, Mode=OneWay}"
                         TextWrapping="WrapWholeWords"
-                        Visibility="{x:Bind ViewModel.HasSelectionHint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        Visibility="{x:Bind ViewModel.HasVersionCaption, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </StackPanel>
+
+                <!--  XXMI Launcher (GUI) deliberately has no version picker here: it is pinned to whatever
+                      version.json names. See ModEnvSetupOptions.LauncherPackageId.  -->
+
+                <!--  Game-package (WWMi) version picker: independent of the injector framework, since the game
+                      package follows the game client. Switching it leaves Mods\ and d3dx_user.ini alone.  -->
+                <StackPanel
+                    Spacing="4"
+                    Visibility="{x:Bind ViewModel.HasWwmiVersions, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource BodyTextBlockStyle}"
+                            Text="WWMi 游戏包版本"
+                            l:Uids.Uid="ModEnv_WwmiVersion" />
+                        <ComboBox
+                            Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            IsEnabled="{x:Bind ViewModel.CanPickVersion, Mode=OneWay}"
+                            ItemTemplate="{StaticResource ModEnvVersionItemTemplate}"
+                            ItemsSource="{x:Bind ViewModel.WwmiVersions, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedWwmiVersion, Mode=TwoWay}" />
+                    </Grid>
                     <TextBlock
                         Style="{ThemeResource CaptionTextBlockStyle}"
-                        Text="{x:Bind ViewModel.VersionNotes, Mode=OneWay}"
+                        Text="{x:Bind ViewModel.WwmiVersionCaption, Mode=OneWay}"
                         TextWrapping="WrapWholeWords"
-                        Visibility="{x:Bind ViewModel.HasVersionNotes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        Visibility="{x:Bind ViewModel.HasWwmiVersionCaption, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </StackPanel>
 
                 <!--  Manual game directory fallback  -->

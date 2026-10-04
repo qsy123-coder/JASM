@@ -22,13 +22,14 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     private readonly CommandHandlerService _commandHandlerService;
     private readonly ILogger _logger;
 
-    private const string NotInstalledVersionText = "未检测到已安装版本";
-
     public ObservableCollection<ModEnvPackagePreCheck> Packages { get; } = new();
     public ObservableCollection<string> LogLines { get; } = new();
 
     /// <summary>Selectable base-package versions, newest first. A single entry when the catalogue is down.</summary>
     public ObservableCollection<ModEnvCatalogVersion> Versions { get; } = new();
+
+    /// <summary>Selectable game-package versions, newest first. A single entry when its catalogue is down.</summary>
+    public ObservableCollection<ModEnvCatalogVersion> WwmiVersions { get; } = new();
 
     /// <summary>Snapshots taken before earlier version switches, newest first.</summary>
     public ObservableCollection<ModEnvBackupInfo> Backups { get; } = new();
@@ -59,12 +60,13 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private bool _isTestingLaunch;
     [ObservableProperty] private ModEnvCatalogVersion? _selectedVersion;
     [ObservableProperty] private ModEnvBackupInfo? _selectedBackup;
-    [ObservableProperty] private string _installedVersionText = NotInstalledVersionText;
-    [ObservableProperty] private string _selectionHint = string.Empty;
-    [ObservableProperty] private bool _hasSelectionHint;
-    [ObservableProperty] private string _versionNotes = string.Empty;
-    [ObservableProperty] private bool _hasVersionNotes;
+    [ObservableProperty] private string _versionCaption = string.Empty;
+    [ObservableProperty] private bool _hasVersionCaption;
     [ObservableProperty] private bool _hasXxmiVersions;
+    [ObservableProperty] private ModEnvCatalogVersion? _selectedWwmiVersion;
+    [ObservableProperty] private string _wwmiVersionCaption = string.Empty;
+    [ObservableProperty] private bool _hasWwmiVersionCaption;
+    [ObservableProperty] private bool _hasWwmiVersions;
     [ObservableProperty] private bool _hasBackups;
     [ObservableProperty] private bool _isRestoring;
 
@@ -80,13 +82,18 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// <summary>Version currently installed at the XXMI root, kept for the picker hint.</summary>
     private string? _installedXxmiVersion;
 
+    /// <summary>Game-package version currently on disk, kept for the game-package picker hint.</summary>
+    private string? _installedWwmiVersion;
+
     partial void OnCustomRootFolderChanged(string? value) => OnPropertyChanged(nameof(HasCustomRootFolder));
 
     partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
 
     partial void OnIsRestoringChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
 
-    partial void OnSelectedVersionChanged(ModEnvCatalogVersion? value) => UpdateSelectionHint();
+    partial void OnSelectedVersionChanged(ModEnvCatalogVersion? value) => UpdateVersionCaption();
+
+    partial void OnSelectedWwmiVersionChanged(ModEnvCatalogVersion? value) => UpdateWwmiVersionCaption();
 
     /// <summary>Result of the last completed setup run (null until one completes).</summary>
     public ModEnvSetupResult? Result { get; private set; }
@@ -234,7 +241,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         }
     }
 
-    /// <summary>Rebuilds the package list, the version picker and the backup list from a pre-check result.</summary>
+    /// <summary>
+    /// Rebuilds the package list, both version pickers and the backup list from a pre-check result.
+    /// </summary>
     /// <param name="resyncVersion">
     /// Re-point the version picker at whatever is now on disk instead of keeping the user's choice. Set
     /// after a run that changed the installed version behind the picker's back — a backup restore.
@@ -246,6 +255,7 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
             Packages.Add(package);
 
         ApplyVersions(pre, resyncVersion);
+        ApplyWwmiVersions(pre, resyncVersion);
         RefreshBackups();
     }
 
@@ -271,9 +281,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         HasXxmiVersions = Versions.Count > 0;
 
         _installedXxmiVersion = pre.InstalledXxmiVersion;
-        InstalledVersionText = string.IsNullOrWhiteSpace(pre.InstalledXxmiVersion)
-            ? NotInstalledVersionText
-            : $"当前版本：v{pre.InstalledXxmiVersion}";
 
         var target = previousSelection ?? pre.InstalledXxmiVersion;
         SelectedVersion = Versions.FirstOrDefault(v => string.Equals(v.Version, target, StringComparison.Ordinal))
@@ -281,7 +288,61 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
                               string.Equals(v.Version, pre.DefaultXxmiVersion, StringComparison.Ordinal))
                           ?? Versions.FirstOrDefault();
 
-        UpdateSelectionHint();
+        UpdateVersionCaption();
+    }
+
+    /// <summary>
+    /// Game-package counterpart of <see cref="ApplyVersions"/>. Same preselect rule and same
+    /// "keep the user's pick while it is still offered" behaviour on later refreshes.
+    /// </summary>
+    private void ApplyWwmiVersions(ModEnvPreCheck pre, bool resyncVersion = false)
+    {
+        var previousSelection = resyncVersion ? null : SelectedWwmiVersion?.Version;
+
+        WwmiVersions.Clear();
+        foreach (var version in pre.WwmiVersions)
+            WwmiVersions.Add(version);
+
+        HasWwmiVersions = WwmiVersions.Count > 0;
+
+        _installedWwmiVersion = pre.InstalledWwmiVersion;
+
+        var target = previousSelection ?? pre.InstalledWwmiVersion;
+        SelectedWwmiVersion =
+            WwmiVersions.FirstOrDefault(v => string.Equals(v.Version, target, StringComparison.Ordinal))
+            ?? WwmiVersions.FirstOrDefault(v =>
+                string.Equals(v.Version, pre.DefaultWwmiVersion, StringComparison.Ordinal))
+            ?? WwmiVersions.FirstOrDefault();
+
+        UpdateWwmiVersionCaption();
+    }
+
+    /// <summary>
+    /// Rebuilds the caption under the game-package picker, joined into the single line the dialog shows.
+    /// </summary>
+    /// <remarks>
+    /// No backup is promised, like the launcher's caption: the game package is not snapshotted before a
+    /// switch. The user's <c>Mods\</c> and <c>d3dx_user.ini</c> are untouched by a switch by design, and
+    /// every offered version lives on the CDN, so switching back is just another pick.
+    /// </remarks>
+    private void UpdateWwmiVersionCaption()
+    {
+        var target = SelectedWwmiVersion?.Version;
+        string? hint = null;
+        if (!string.IsNullOrWhiteSpace(target) && !string.IsNullOrWhiteSpace(_installedWwmiVersion))
+        {
+            var installed = _installedWwmiVersion;
+            hint = ModEnvVersion.Compare(installed, target) switch
+            {
+                0 => $"已安装该版本（v{installed}），无需重复安装",
+                < 0 => $"将从 v{installed} 更新到 v{target}",
+                _ => $"将从 v{installed} 切换到 v{target}（Mods 与按键设置不受影响）"
+            };
+        }
+
+        WwmiVersionCaption = JoinCaption(
+            InstalledCaption(_installedWwmiVersion), hint, SelectedWwmiVersion?.Notes);
+        HasWwmiVersionCaption = WwmiVersionCaption.Length > 0;
     }
 
     /// <summary>Rebuilds the backup list, preserving the current selection when that snapshot still exists.</summary>
@@ -308,36 +369,47 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// Computed locally rather than by re-running the pre-check: that resolves the game drive, which can
     /// scan every fixed disk, and is far too slow to run on each arrow-key press in the dropdown.
     /// </remarks>
-    private void UpdateSelectionHint()
+    private void UpdateVersionCaption()
     {
-        // Maintainer-written caveats ("v1.1.6 与 2.4 客户端不兼容") travel with the choice, so the warning
-        // lands while the user is picking — not after the version is already on disk.
-        VersionNotes = SelectedVersion?.Notes ?? string.Empty;
-        HasVersionNotes = !string.IsNullOrWhiteSpace(VersionNotes);
-
         var target = SelectedVersion?.Version;
-        if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(_installedXxmiVersion))
+        string? hint = null;
+        if (!string.IsNullOrWhiteSpace(target) && !string.IsNullOrWhiteSpace(_installedXxmiVersion))
         {
-            SelectionHint = string.Empty;
-            HasSelectionHint = false;
-            return;
+            var installed = _installedXxmiVersion;
+            hint = ModEnvVersion.Compare(installed, target) switch
+            {
+                0 => $"已安装该版本（v{installed}），无需重复安装",
+                < 0 => $"将从 v{installed} 更新到 v{target}",
+                _ => $"将从 v{installed} 回退到 v{target}，当前版本会先自动备份"
+            };
         }
 
-        var installed = _installedXxmiVersion;
-        SelectionHint = ModEnvVersion.Compare(installed, target) switch
-        {
-            0 => $"已安装该版本（v{installed}），无需重复安装",
-            < 0 => $"将从 v{installed} 更新到 v{target}",
-            _ => $"将从 v{installed} 回退到 v{target}，当前版本会先自动备份"
-        };
-        HasSelectionHint = true;
+        // Maintainer-written caveats ("v1.1.6 与 2.4 客户端不兼容") travel with the choice, so the warning
+        // lands while the user is picking — not after the version is already on disk.
+        VersionCaption = JoinCaption(InstalledCaption(_installedXxmiVersion), hint, SelectedVersion?.Notes);
+        HasVersionCaption = VersionCaption.Length > 0;
     }
+
+    /// <summary>
+    /// "当前版本：vX.Y.Z" for an installed version, or nothing at all — the absence of the line is itself
+    /// the "nothing installed yet" signal, and a line saying so only adds noise to every picker.
+    /// </summary>
+    private static string? InstalledCaption(string? installedVersion) =>
+        string.IsNullOrWhiteSpace(installedVersion) ? null : $"当前版本：v{installedVersion}";
+
+    /// <summary>
+    /// Joins the non-empty parts of a picker's caption with " · " so one line carries everything the dialog
+    /// wants to say, and a picker with nothing to say collapses instead of leaving a blank row.
+    /// </summary>
+    private static string JoinCaption(params string?[] parts) =>
+        string.Join(" · ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
 
     private ModEnvSetupRequest BuildRequest() => new()
     {
         GameInstallDir = GameInstallDir,
         CustomRootFolder = CustomRootFolder,
-        SelectedXxmiVersion = SelectedVersion?.Version
+        SelectedXxmiVersion = SelectedVersion?.Version,
+        SelectedWwmiVersion = SelectedWwmiVersion?.Version
     };
 
     /// <summary>

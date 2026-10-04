@@ -2473,6 +2473,12 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModEnv_XxmiVersion.Text" xml:space="preserve">
     <value>XXMI 版本</value>
   </data>
+  <data name="ModEnv_WwmiVersion.Text" xml:space="preserve">
+    <value>WWMi 游戏包版本</value>
+  </data>
+  <data name="ModEnv_StableBadge.Text" xml:space="preserve">
+    <value>稳定版</value>
+  </data>
   <data name="ModEnv_ManualGameDir.Text" xml:space="preserve">
     <value>未自动检测到鸣潮安装位置，请手动选择游戏目录。</value>
   </data>

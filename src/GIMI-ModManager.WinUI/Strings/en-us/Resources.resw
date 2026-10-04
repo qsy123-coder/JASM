@@ -572,6 +572,12 @@
   <data name="ModEnv_XxmiVersion.Text" xml:space="preserve">
     <value>XXMI version</value>
   </data>
+  <data name="ModEnv_WwmiVersion.Text" xml:space="preserve">
+    <value>WWMi game package version</value>
+  </data>
+  <data name="ModEnv_StableBadge.Text" xml:space="preserve">
+    <value>Stable</value>
+  </data>
   <data name="ModEnv_ManualGameDir.Text" xml:space="preserve">
     <value>Wuthering Waves could not be located automatically. Please select the game folder manually.</value>
   </data>
