@@ -27,11 +27,12 @@ JASM 的一键配置 Mod 环境功能需要把 **XXMI 基础包**、**WWMi 游�
 | 文件 | 内容要求 |
 |---|---|
 | `xxmi-<版本>.zip` | XXMI 注入器框架包，**4 个文件平铺在根**：`3dmloader.dll` / `d3d11.dll` / `d3dcompiler_47.dll` / `Manifest.json`。JASM 把这 4 个文件写入 XXMI 根目录与 `Resources\Packages\XXMI\`，并在收尾把后两个 dll 部署进 MI 文件夹（`<根>\WWMI\`，**游戏真正加载的那份**），缺任一个都判「需修复」 |
-| `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」）。⚠️ 包里那份 `d3d11.dll` 会被框架部署覆盖成 JASM 管理的 XXMI 版本 —— 它只是为了让校验通过，别指望它生效、也别为「对齐版本」反复重打这个包 |
+| `wwmi-<版本>.zip` | WWMi 鸣潮游戏包。解压后**必须**在包根目录有 `d3d11.dll`、`d3dx.ini` 和 `Mods\` 文件夹（JASM 校验这三个，缺一即判「需修复」）。⚠️ 包里那份 `d3d11.dll` 会被框架部署覆盖成 JASM 管理的 XXMI 版本 —— 它只是为了让校验通过，别指望它生效、也别为「对齐版本」反复重打这个包。打包见「打 wwmi 包」 |
 | `launcher-<版本>.zip` | **可选**。XXMI 启动器（GUI）离线包，由官方 Portable 包打出，见下节「打 launcher 包」 |
 | `version.json` | 版本清单，见下节 |
 | `xxmi-versions.json` | **可选**。可选 XXMI 版本目录，让用户在向导里选版本 / 回退，见「生成 xxmi-versions.json」 |
 | `launcher-versions.json` | **可选**。可选 **XXMI 启动器本体**版本目录，让用户选启动器版本，见「生成 launcher-versions.json」 |
+| `wwmi-versions.json` | **可选**。可选 **WWMi 游戏包**版本目录，让用户选游戏包版本，见「生成 wwmi-versions.json」 |
 
 WWMi 包结构示意（干净基础包）：
 
@@ -134,6 +135,41 @@ JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不�
 > 框架由 `xxmi` 基础包提供，JASM 安装顺序是「基础包 → 启动器 → 游戏包」，所以启动器装上去时它已经在位。
 > **别再把框架打进启动器包** —— 那会在包里多一份版本可能过期的副本。
 
+### 打 wwmi 包
+
+WWMi 包 = 官方 `WWMI-PACKAGE-vX.Y.Z.zip`（[SpectrumQT/WWMI-Package](https://github.com/SpectrumQT/WWMI-Package)）
+的**原样内容** + 从一台配好 Mod 环境的机器上补进四样东西。用 `Build/PackWwmi.py`：
+
+```bash
+python Build/PackWwmi.py --update-manifest Build/out/xxmi-versions/version.json \
+    --update-catalog Build/out/xxmi-versions/wwmi-versions.json
+```
+
+默认扫 `D:\BaiduNetdiskDownload\MC-MOD整合包\WWMI官方包（持续更新）`（把官方 zip 放进去即可），
+一次把目录里的所有版本都打一遍；`--official` 只打指定的那一份。补进去的四样来自 `--extra-dir`
+（默认 `D:\XXMI\WWMI`，也就是一台装好 Mod 环境的机器）。
+
+> ℹ️ 官方包只有约 75 KB：`Core\` + `d3dx.ini` + `Mods\`（空）+ `README.md` + `ShaderFixes\`。
+> 它**不含** DLL —— 按官方那套分工，DLL 是 XXMI 启动器从框架包里部署进去的。
+
+补进去的四项与各自的理由：
+
+| 项 | 为什么 |
+|---|---|
+| `d3d11.dll`、`d3dcompiler_47.dll` | JASM 的 `CheckGamePackageFiles` 要求「装完那一刻」MI 文件夹里就有 `d3d11.dll`。它随后会被收尾的 `DeployFrameworkIntoMiFolder` 覆盖成框架那份，所以**内容是谁的不重要**，但文件必须在 |
+| `d3dx_user.ini` | 3DMigoto 的**用户**文件（按键 / 开关覆写）。它是「新装用户的初始按键表」—— JASM 安装游戏包时把它列进 `preserveExistingFiles`，所以只在全新安装时落盘，之后换版本不会覆盖用户的改动（`d3dx.ini` 则刻意不保留：那是包自己的配置，新版就该带新的） |
+| `ShaderCache\`（空目录） | 运行时缓存目录。**只建空目录**，绝不拷内容进去 |
+
+⚠️ **绝不外发**：`Mods\` 下的任何文件（用户的 mod，实机上常有几百个）、`ShaderCache\` 下的任何文件
+（实机上几千个）。脚本对这两个目录做一票否决式断言 —— 宁可不发包，也不能把用户的东西分发出去。
+
+⚠️ **确定性**：脚本不读实机文件的任何属性（补进去那几份的时间戳统一取官方包内最新条目的、权限位写
+常量），所以「同一份官方包 + 同一份 `--extra-dir` 内容」连跑两次哈希完全一致。反过来说，**动了
+`D:\XXMI` 里那三份文件，重打出来的包哈希就会变** —— 那就得重传，并同步两份清单里的哈希。
+
+> ℹ️ 官方源的旧版本不保证还在（XXMI 家族前阵子删过一批 release，2.3.x 的启动器包就是例子）。
+> **已经打进目录的 zip 要自己留档**（源目录 + CDN 各一份），别指望日后还能从 GitHub 重新下到同一个版本。
+
 ## 三、生成 version.json
 
 在桶的 `modenv/` 下放一个 `version.json`，内容模板：
@@ -151,10 +187,10 @@ JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不�
       "CompatibleGameVersions": []
     },
     "wwmi": {
-      "Version": "1.0.0",
-      "DownloadUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/wwmi-1.0.0.zip",
+      "Version": "1.1.0",
+      "DownloadUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/wwmi-1.1.0.zip",
       "Sha256": "……",
-      "SizeBytes": 52428800,
+      "SizeBytes": 3500335,
       "GameVersion": "2.4.0",
       "CompatibleGameVersions": ["2.4.0", "2.5.0"]
     },
@@ -173,8 +209,8 @@ JASM 的 `ModEnv:LauncherPackageId` 配了 `launcher` 才会装这个包；不�
 生成 `Sha256` 和 `SizeBytes`（PowerShell，在 zip 所在目录执行）：
 
 ```powershell
-Get-FileHash ".\wwmi-1.0.0.zip" -Algorithm SHA256 | Select-Object -ExpandProperty Hash
-(Get-Item ".\wwmi-1.0.0.zip").Length
+Get-FileHash ".\wwmi-1.1.0.zip" -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+(Get-Item ".\wwmi-1.1.0.zip").Length
 ```
 
 要点：
@@ -184,6 +220,9 @@ Get-FileHash ".\wwmi-1.0.0.zip" -Algorithm SHA256 | Select-Object -ExpandPropert
 - `GameVersion`/`CompatibleGameVersions`：填当前鸣潮客户端版本号（如 `2.4.0`）。JASM 检测到游戏版本
   与它不一致时会弹**非阻断警告**（不会中断安装）。
 - 每次出新包：上传新 zip → 更新 `version.json` 里的版本号/url/sha256/size → 用户端再次点按钮即显示「可更新」。
+- `Packages.wwmi` 指向的是**用户默认会拿到的那一版**。新版本想推给所有人就把这条升上去（旧版仍留在
+  `wwmi-versions.json` 里可选）；只想让人自己选就保持不动。`PackWwmi.py --update-manifest` 会自动
+  把本次打的**最高版本**写进来。
 
 ### 生成 xxmi-versions.json（可选：让用户选版本 / 回退）
 
@@ -301,8 +340,32 @@ python Build/PackXxmiLauncher.py \
 - ⚠️ **上游会删旧 release，目录里的版本要自己留档**。XXMI Launcher 的 2.3.x release 已被官方删除
   （`api.github.com/repos/SpectrumQT/XXMI-Launcher/releases/tags/v2.3.9` 直接 404，只有 tag 还在），
   而 CDN 上那份是当时打的。别指望日后还能从 GitHub 重新下到同一个版本 —— 源 zip 与 CDN 各留一份。
-- 下拉的默认选中项是**磁盘上已装的那个版本**（不是最新版），所以老用户打开向导看到的仍是自己那份，
+- 下拉的默认选中项是**磁盘上已装的那个版本**（不是最新版），所以老用户打开向导看到的仍是自己份，
   「不动下拉框」= 不重装。想让**新装**用户默认拿到哪一版，改 `version.json` 的 `launcher` 条目。
+
+### 生成 wwmi-versions.json（可选：让用户选游戏包版本）
+
+第三份目录，对象是**游戏包**（`wwmi`）。三者版本节奏互不相干（框架看注入器、启动器看启动器、
+游戏包看游戏客户端），所以各用一份文件。不传（或取不到）时游戏包下拉整块不显示，行为与加这个
+功能之前完全一致。
+
+```bash
+python Build/PackWwmi.py \
+    --update-manifest Build/out/xxmi-versions/version.json \
+    --update-catalog Build/out/xxmi-versions/wwmi-versions.json
+```
+
+schema 与另两份目录完全相同，要点也一致（增量 upsert、`Notes` 保留、降序、无 BOM；
+zip 先传、目录最后传）。这个包特有的两条：
+
+- `GameVersion` / `CompatibleGameVersions` 这两个**兼容性**字段通常只写在 `version.json` 的
+  wwmi 条目上，目录条目可以是空的 —— JASM 在挑不到时会拿清单里那份兜底，不会误报「不兼容」。
+  真要给某一版单独标兼容范围，手填在目录条目里即可（重跑脚本时它会被保留）。
+- 换游戏包**不碰** `Mods\` 与 `d3dx_user.ini`（前者压根不在包内，后者在 preserve 列表里），
+  所以「回退游戏包会不会丢我的 mod / 按键」的答案是**不会**；`d3dx.ini` 和 `Core\` 则会换成
+  目标版本的。
+  ⚠️ 从新版**降级**时，新版多出来的文件（如 1.1.0 的 `Core/WWMI/API.ini`）会**留在磁盘上**：
+  脚本只覆盖不删除。它们不被旧版的 `d3dx.ini` 引用，实测无影响（见 `mod-env-hand-test.md` §20.3）。
 
 ## 四、拿到访问地址，填进 JASM
 
@@ -320,14 +383,14 @@ python Build/PackXxmiLauncher.py \
   "ManifestUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/version.json",
   "VersionCatalogUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/xxmi-versions.json",
   "LauncherVersionCatalogUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/launcher-versions.json",
+  "WwmiVersionCatalogUrl": "https://jasm-modenv-125xxxxxxx.cos.ap-guangzhou.myqcloud.com/modenv/wwmi-versions.json",
   "BasePackageId": "xxmi",
   "LauncherPackageId": "launcher"
 }
 ```
 
-`VersionCatalogUrl` **留空就关掉框架版本选择**（框架下拉 + 备份区都不显示），此时向导行为与加这个功能
-之前一致；`LauncherVersionCatalogUrl` 同理，留空则**启动器版本下拉**不显示（框架那个不受影响，两个
-下拉各自独立显隐）。
+三个 `*CatalogUrl` 各自独立：**留空就关掉对应的那个下拉**，其余两个不受影响（框架那份还连带关掉
+备份恢复区）。全留空时向导行为与加版本选择之前完全一致。
 备份默认保留最近 5 份（`ModEnv:KeepBackupCount`），存放在
 `%LOCALAPPDATA%\JASM\ModEnvBackups\xxmi-<版本>-<时间戳>\`，只是基础包那几个 DLL（几 MB），随时可删。
 
