@@ -33,6 +33,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// <summary>Selectable launcher versions, newest first. A single entry when its catalogue is down.</summary>
     public ObservableCollection<ModEnvCatalogVersion> LauncherVersions { get; } = new();
 
+    /// <summary>Selectable game-package versions, newest first. A single entry when its catalogue is down.</summary>
+    public ObservableCollection<ModEnvCatalogVersion> WwmiVersions { get; } = new();
+
     /// <summary>Snapshots taken before earlier version switches, newest first.</summary>
     public ObservableCollection<ModEnvBackupInfo> Backups { get; } = new();
 
@@ -75,6 +78,13 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private string _launcherVersionNotes = string.Empty;
     [ObservableProperty] private bool _hasLauncherVersionNotes;
     [ObservableProperty] private bool _hasLauncherVersions;
+    [ObservableProperty] private ModEnvCatalogVersion? _selectedWwmiVersion;
+    [ObservableProperty] private string _installedWwmiVersionText = NotInstalledVersionText;
+    [ObservableProperty] private string _wwmiSelectionHint = string.Empty;
+    [ObservableProperty] private bool _hasWwmiSelectionHint;
+    [ObservableProperty] private string _wwmiVersionNotes = string.Empty;
+    [ObservableProperty] private bool _hasWwmiVersionNotes;
+    [ObservableProperty] private bool _hasWwmiVersions;
     [ObservableProperty] private bool _hasBackups;
     [ObservableProperty] private bool _isRestoring;
 
@@ -93,6 +103,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// <summary>Launcher version currently on disk, kept for the launcher picker hint.</summary>
     private string? _installedLauncherVersion;
 
+    /// <summary>Game-package version currently on disk, kept for the game-package picker hint.</summary>
+    private string? _installedWwmiVersion;
+
     partial void OnCustomRootFolderChanged(string? value) => OnPropertyChanged(nameof(HasCustomRootFolder));
 
     partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
@@ -102,6 +115,8 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     partial void OnSelectedVersionChanged(ModEnvCatalogVersion? value) => UpdateSelectionHint();
 
     partial void OnSelectedLauncherVersionChanged(ModEnvCatalogVersion? value) => UpdateLauncherSelectionHint();
+
+    partial void OnSelectedWwmiVersionChanged(ModEnvCatalogVersion? value) => UpdateWwmiSelectionHint();
 
     /// <summary>Result of the last completed setup run (null until one completes).</summary>
     public ModEnvSetupResult? Result { get; private set; }
@@ -264,6 +279,7 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
 
         ApplyVersions(pre, resyncVersion);
         ApplyLauncherVersions(pre, resyncVersion);
+        ApplyWwmiVersions(pre, resyncVersion);
         RefreshBackups();
     }
 
@@ -366,6 +382,66 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         HasLauncherSelectionHint = true;
     }
 
+    /// <summary>
+    /// Game-package counterpart of <see cref="ApplyVersions"/>. Same preselect rule and same
+    /// "keep the user's pick while it is still offered" behaviour on later refreshes.
+    /// </summary>
+    private void ApplyWwmiVersions(ModEnvPreCheck pre, bool resyncVersion = false)
+    {
+        var previousSelection = resyncVersion ? null : SelectedWwmiVersion?.Version;
+
+        WwmiVersions.Clear();
+        foreach (var version in pre.WwmiVersions)
+            WwmiVersions.Add(version);
+
+        HasWwmiVersions = WwmiVersions.Count > 0;
+
+        _installedWwmiVersion = pre.InstalledWwmiVersion;
+        InstalledWwmiVersionText = string.IsNullOrWhiteSpace(pre.InstalledWwmiVersion)
+            ? NotInstalledVersionText
+            : $"当前版本：v{pre.InstalledWwmiVersion}";
+
+        var target = previousSelection ?? pre.InstalledWwmiVersion;
+        SelectedWwmiVersion =
+            WwmiVersions.FirstOrDefault(v => string.Equals(v.Version, target, StringComparison.Ordinal))
+            ?? WwmiVersions.FirstOrDefault(v =>
+                string.Equals(v.Version, pre.DefaultWwmiVersion, StringComparison.Ordinal))
+            ?? WwmiVersions.FirstOrDefault();
+
+        UpdateWwmiSelectionHint();
+    }
+
+    /// <summary>
+    /// Describes what picking <see cref="SelectedWwmiVersion"/> would do relative to what is installed.
+    /// </summary>
+    /// <remarks>
+    /// No backup is promised, like the launcher's hint: the game package is not snapshotted before a
+    /// switch. The user's <c>Mods\</c> and <c>d3dx_user.ini</c> are untouched by a switch by design, and
+    /// every offered version lives on the CDN, so switching back is just another pick.
+    /// </remarks>
+    private void UpdateWwmiSelectionHint()
+    {
+        WwmiVersionNotes = SelectedWwmiVersion?.Notes ?? string.Empty;
+        HasWwmiVersionNotes = !string.IsNullOrWhiteSpace(WwmiVersionNotes);
+
+        var target = SelectedWwmiVersion?.Version;
+        if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(_installedWwmiVersion))
+        {
+            WwmiSelectionHint = string.Empty;
+            HasWwmiSelectionHint = false;
+            return;
+        }
+
+        var installed = _installedWwmiVersion;
+        WwmiSelectionHint = ModEnvVersion.Compare(installed, target) switch
+        {
+            0 => $"已安装该版本（v{installed}），无需重复安装",
+            < 0 => $"将从 v{installed} 更新到 v{target}",
+            _ => $"将从 v{installed} 切换到 v{target}（Mods 与按键设置不受影响）"
+        };
+        HasWwmiSelectionHint = true;
+    }
+
     /// <summary>Rebuilds the backup list, preserving the current selection when that snapshot still exists.</summary>
     private void RefreshBackups()
     {
@@ -420,7 +496,8 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         GameInstallDir = GameInstallDir,
         CustomRootFolder = CustomRootFolder,
         SelectedXxmiVersion = SelectedVersion?.Version,
-        SelectedLauncherVersion = SelectedLauncherVersion?.Version
+        SelectedLauncherVersion = SelectedLauncherVersion?.Version,
+        SelectedWwmiVersion = SelectedWwmiVersion?.Version
     };
 
     /// <summary>
