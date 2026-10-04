@@ -30,6 +30,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// <summary>Selectable base-package versions, newest first. A single entry when the catalogue is down.</summary>
     public ObservableCollection<ModEnvCatalogVersion> Versions { get; } = new();
 
+    /// <summary>Selectable launcher versions, newest first. A single entry when its catalogue is down.</summary>
+    public ObservableCollection<ModEnvCatalogVersion> LauncherVersions { get; } = new();
+
     /// <summary>Snapshots taken before earlier version switches, newest first.</summary>
     public ObservableCollection<ModEnvBackupInfo> Backups { get; } = new();
 
@@ -65,6 +68,13 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private string _versionNotes = string.Empty;
     [ObservableProperty] private bool _hasVersionNotes;
     [ObservableProperty] private bool _hasXxmiVersions;
+    [ObservableProperty] private ModEnvCatalogVersion? _selectedLauncherVersion;
+    [ObservableProperty] private string _installedLauncherVersionText = NotInstalledVersionText;
+    [ObservableProperty] private string _launcherSelectionHint = string.Empty;
+    [ObservableProperty] private bool _hasLauncherSelectionHint;
+    [ObservableProperty] private string _launcherVersionNotes = string.Empty;
+    [ObservableProperty] private bool _hasLauncherVersionNotes;
+    [ObservableProperty] private bool _hasLauncherVersions;
     [ObservableProperty] private bool _hasBackups;
     [ObservableProperty] private bool _isRestoring;
 
@@ -80,6 +90,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// <summary>Version currently installed at the XXMI root, kept for the picker hint.</summary>
     private string? _installedXxmiVersion;
 
+    /// <summary>Launcher version currently on disk, kept for the launcher picker hint.</summary>
+    private string? _installedLauncherVersion;
+
     partial void OnCustomRootFolderChanged(string? value) => OnPropertyChanged(nameof(HasCustomRootFolder));
 
     partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
@@ -87,6 +100,8 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     partial void OnIsRestoringChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
 
     partial void OnSelectedVersionChanged(ModEnvCatalogVersion? value) => UpdateSelectionHint();
+
+    partial void OnSelectedLauncherVersionChanged(ModEnvCatalogVersion? value) => UpdateLauncherSelectionHint();
 
     /// <summary>Result of the last completed setup run (null until one completes).</summary>
     public ModEnvSetupResult? Result { get; private set; }
@@ -234,7 +249,9 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         }
     }
 
-    /// <summary>Rebuilds the package list, the version picker and the backup list from a pre-check result.</summary>
+    /// <summary>
+    /// Rebuilds the package list, both version pickers and the backup list from a pre-check result.
+    /// </summary>
     /// <param name="resyncVersion">
     /// Re-point the version picker at whatever is now on disk instead of keeping the user's choice. Set
     /// after a run that changed the installed version behind the picker's back — a backup restore.
@@ -246,6 +263,7 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
             Packages.Add(package);
 
         ApplyVersions(pre, resyncVersion);
+        ApplyLauncherVersions(pre, resyncVersion);
         RefreshBackups();
     }
 
@@ -282,6 +300,70 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
                           ?? Versions.FirstOrDefault();
 
         UpdateSelectionHint();
+    }
+
+    /// <summary>
+    /// Launcher counterpart of <see cref="ApplyVersions"/>: same preselect rule (whatever is on disk, then
+    /// the manifest's own version, then the newest offered) and the same "keep the user's pick while it is
+    /// still offered" behaviour on later refreshes.
+    /// </summary>
+    private void ApplyLauncherVersions(ModEnvPreCheck pre, bool resyncVersion = false)
+    {
+        var previousSelection = resyncVersion ? null : SelectedLauncherVersion?.Version;
+
+        LauncherVersions.Clear();
+        foreach (var version in pre.LauncherVersions)
+            LauncherVersions.Add(version);
+
+        HasLauncherVersions = LauncherVersions.Count > 0;
+
+        _installedLauncherVersion = pre.InstalledLauncherVersion;
+        InstalledLauncherVersionText = string.IsNullOrWhiteSpace(pre.InstalledLauncherVersion)
+            ? NotInstalledVersionText
+            : $"当前版本：v{pre.InstalledLauncherVersion}";
+
+        var target = previousSelection ?? pre.InstalledLauncherVersion;
+        SelectedLauncherVersion =
+            LauncherVersions.FirstOrDefault(v => string.Equals(v.Version, target, StringComparison.Ordinal))
+            ?? LauncherVersions.FirstOrDefault(v =>
+                string.Equals(v.Version, pre.DefaultLauncherVersion, StringComparison.Ordinal))
+            ?? LauncherVersions.FirstOrDefault();
+
+        UpdateLauncherSelectionHint();
+    }
+
+    /// <summary>
+    /// Describes what picking <see cref="SelectedLauncherVersion"/> would do relative to what is installed.
+    /// </summary>
+    /// <remarks>
+    /// Like the framework's hint this is computed locally instead of by re-running the pre-check, which would
+    /// resolve the game drive on every arrow-key press. It deliberately says nothing about a backup: the
+    /// launcher is not snapshotted before a switch (that would be ~52 MB per version), because every offered
+    /// version lives on the CDN — switching back is just another pick.
+    /// </remarks>
+    private void UpdateLauncherSelectionHint()
+    {
+        // Same as the framework's: maintainer-written caveats travel with the choice and land while the
+        // user is still picking, not after the version is already on disk.
+        LauncherVersionNotes = SelectedLauncherVersion?.Notes ?? string.Empty;
+        HasLauncherVersionNotes = !string.IsNullOrWhiteSpace(LauncherVersionNotes);
+
+        var target = SelectedLauncherVersion?.Version;
+        if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(_installedLauncherVersion))
+        {
+            LauncherSelectionHint = string.Empty;
+            HasLauncherSelectionHint = false;
+            return;
+        }
+
+        var installed = _installedLauncherVersion;
+        LauncherSelectionHint = ModEnvVersion.Compare(installed, target) switch
+        {
+            0 => $"已安装该版本（v{installed}），无需重复安装",
+            < 0 => $"将从 v{installed} 更新到 v{target}",
+            _ => $"将从 v{installed} 切换到 v{target}"
+        };
+        HasLauncherSelectionHint = true;
     }
 
     /// <summary>Rebuilds the backup list, preserving the current selection when that snapshot still exists.</summary>
@@ -337,7 +419,8 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     {
         GameInstallDir = GameInstallDir,
         CustomRootFolder = CustomRootFolder,
-        SelectedXxmiVersion = SelectedVersion?.Version
+        SelectedXxmiVersion = SelectedVersion?.Version,
+        SelectedLauncherVersion = SelectedLauncherVersion?.Version
     };
 
     /// <summary>
