@@ -70,10 +70,12 @@ public class SkinModSettingsManager
 
             if (modSettings.ImagePath is null)
             {
-                var images = SkinModHelpers.DetectModPreviewImages(_skinMod.FullPath);
-                if (images.Any())
+                // 根目录没有就往下探一层 —— 「整包装」的 mod 封面压在 exe 名那层的子目录里，
+                // 只认根目录的话这类 mod 会一直是占位图。
+                var detectedImage = SkinModHelpers.DetectModPreviewImageIncludingSubfolders(_skinMod.FullPath);
+                if (detectedImage is not null)
                 {
-                    modSettings.ImagePath = images.FirstOrDefault();
+                    modSettings.ImagePath = detectedImage;
                     updateSettings = true;
                 }
             }
@@ -87,7 +89,7 @@ public class SkinModSettingsManager
 
         var newId = Guid.NewGuid();
 
-        var image = SkinModHelpers.DetectModPreviewImages(_skinMod.FullPath).FirstOrDefault();
+        var image = SkinModHelpers.DetectModPreviewImageIncludingSubfolders(_skinMod.FullPath);
 
         var settings = new JsonModSettings()
         {
