@@ -239,6 +239,18 @@ public sealed partial class OverlayWindow : WindowEx
     /// </summary>
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 拖拽安装的进度行刚露面：放一遍进场动画。
+        //
+        // 为什么要在代码里开这一枪而不是绑在 XAML 上：绑定只能把行「显出来」（Visibility），
+        // 而淡入 + 上滑是一次性动画、没有对应的属性可绑 —— Storyboard 得有人在状态翻起来那一刻启动。
+        if (e.PropertyName == nameof(OverlayViewModel.ShowInstallStatus))
+        {
+            if (ViewModel.ShowInstallStatus)
+                InstallStatusInStoryboard.Begin();
+
+            return;
+        }
+
         if (e.PropertyName != nameof(OverlayViewModel.SelectedMod))
             return;
 
