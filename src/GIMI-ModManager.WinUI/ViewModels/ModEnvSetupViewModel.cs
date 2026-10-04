@@ -22,8 +22,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     private readonly CommandHandlerService _commandHandlerService;
     private readonly ILogger _logger;
 
-    private const string NotInstalledVersionText = "未检测到已安装版本";
-
     public ObservableCollection<ModEnvPackagePreCheck> Packages { get; } = new();
     public ObservableCollection<string> LogLines { get; } = new();
 
@@ -65,25 +63,16 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     [ObservableProperty] private bool _isTestingLaunch;
     [ObservableProperty] private ModEnvCatalogVersion? _selectedVersion;
     [ObservableProperty] private ModEnvBackupInfo? _selectedBackup;
-    [ObservableProperty] private string _installedVersionText = NotInstalledVersionText;
-    [ObservableProperty] private string _selectionHint = string.Empty;
-    [ObservableProperty] private bool _hasSelectionHint;
-    [ObservableProperty] private string _versionNotes = string.Empty;
-    [ObservableProperty] private bool _hasVersionNotes;
+    [ObservableProperty] private string _versionCaption = string.Empty;
+    [ObservableProperty] private bool _hasVersionCaption;
     [ObservableProperty] private bool _hasXxmiVersions;
     [ObservableProperty] private ModEnvCatalogVersion? _selectedLauncherVersion;
-    [ObservableProperty] private string _installedLauncherVersionText = NotInstalledVersionText;
-    [ObservableProperty] private string _launcherSelectionHint = string.Empty;
-    [ObservableProperty] private bool _hasLauncherSelectionHint;
-    [ObservableProperty] private string _launcherVersionNotes = string.Empty;
-    [ObservableProperty] private bool _hasLauncherVersionNotes;
+    [ObservableProperty] private string _launcherVersionCaption = string.Empty;
+    [ObservableProperty] private bool _hasLauncherVersionCaption;
     [ObservableProperty] private bool _hasLauncherVersions;
     [ObservableProperty] private ModEnvCatalogVersion? _selectedWwmiVersion;
-    [ObservableProperty] private string _installedWwmiVersionText = NotInstalledVersionText;
-    [ObservableProperty] private string _wwmiSelectionHint = string.Empty;
-    [ObservableProperty] private bool _hasWwmiSelectionHint;
-    [ObservableProperty] private string _wwmiVersionNotes = string.Empty;
-    [ObservableProperty] private bool _hasWwmiVersionNotes;
+    [ObservableProperty] private string _wwmiVersionCaption = string.Empty;
+    [ObservableProperty] private bool _hasWwmiVersionCaption;
     [ObservableProperty] private bool _hasWwmiVersions;
     [ObservableProperty] private bool _hasBackups;
     [ObservableProperty] private bool _isRestoring;
@@ -112,11 +101,11 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
 
     partial void OnIsRestoringChanged(bool value) => OnPropertyChanged(nameof(CanPickVersion));
 
-    partial void OnSelectedVersionChanged(ModEnvCatalogVersion? value) => UpdateSelectionHint();
+    partial void OnSelectedVersionChanged(ModEnvCatalogVersion? value) => UpdateVersionCaption();
 
-    partial void OnSelectedLauncherVersionChanged(ModEnvCatalogVersion? value) => UpdateLauncherSelectionHint();
+    partial void OnSelectedLauncherVersionChanged(ModEnvCatalogVersion? value) => UpdateLauncherVersionCaption();
 
-    partial void OnSelectedWwmiVersionChanged(ModEnvCatalogVersion? value) => UpdateWwmiSelectionHint();
+    partial void OnSelectedWwmiVersionChanged(ModEnvCatalogVersion? value) => UpdateWwmiVersionCaption();
 
     /// <summary>Result of the last completed setup run (null until one completes).</summary>
     public ModEnvSetupResult? Result { get; private set; }
@@ -305,9 +294,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         HasXxmiVersions = Versions.Count > 0;
 
         _installedXxmiVersion = pre.InstalledXxmiVersion;
-        InstalledVersionText = string.IsNullOrWhiteSpace(pre.InstalledXxmiVersion)
-            ? NotInstalledVersionText
-            : $"当前版本：v{pre.InstalledXxmiVersion}";
 
         var target = previousSelection ?? pre.InstalledXxmiVersion;
         SelectedVersion = Versions.FirstOrDefault(v => string.Equals(v.Version, target, StringComparison.Ordinal))
@@ -315,7 +301,7 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
                               string.Equals(v.Version, pre.DefaultXxmiVersion, StringComparison.Ordinal))
                           ?? Versions.FirstOrDefault();
 
-        UpdateSelectionHint();
+        UpdateVersionCaption();
     }
 
     /// <summary>
@@ -334,9 +320,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         HasLauncherVersions = LauncherVersions.Count > 0;
 
         _installedLauncherVersion = pre.InstalledLauncherVersion;
-        InstalledLauncherVersionText = string.IsNullOrWhiteSpace(pre.InstalledLauncherVersion)
-            ? NotInstalledVersionText
-            : $"当前版本：v{pre.InstalledLauncherVersion}";
 
         var target = previousSelection ?? pre.InstalledLauncherVersion;
         SelectedLauncherVersion =
@@ -345,41 +328,37 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
                 string.Equals(v.Version, pre.DefaultLauncherVersion, StringComparison.Ordinal))
             ?? LauncherVersions.FirstOrDefault();
 
-        UpdateLauncherSelectionHint();
+        UpdateLauncherVersionCaption();
     }
 
     /// <summary>
-    /// Describes what picking <see cref="SelectedLauncherVersion"/> would do relative to what is installed.
+    /// Rebuilds the caption under the launcher picker: what is on disk, what picking the current selection
+    /// would do, and any maintainer note — joined into the single line the dialog shows.
     /// </summary>
     /// <remarks>
-    /// Like the framework's hint this is computed locally instead of by re-running the pre-check, which would
-    /// resolve the game drive on every arrow-key press. It deliberately says nothing about a backup: the
-    /// launcher is not snapshotted before a switch (that would be ~52 MB per version), because every offered
-    /// version lives on the CDN — switching back is just another pick.
+    /// Like the framework's caption this is computed locally instead of by re-running the pre-check, which
+    /// would resolve the game drive on every arrow-key press. It deliberately says nothing about a backup:
+    /// the launcher is not snapshotted before a switch (that would be ~52 MB per version), because every
+    /// offered version lives on the CDN — switching back is just another pick.
     /// </remarks>
-    private void UpdateLauncherSelectionHint()
+    private void UpdateLauncherVersionCaption()
     {
-        // Same as the framework's: maintainer-written caveats travel with the choice and land while the
-        // user is still picking, not after the version is already on disk.
-        LauncherVersionNotes = SelectedLauncherVersion?.Notes ?? string.Empty;
-        HasLauncherVersionNotes = !string.IsNullOrWhiteSpace(LauncherVersionNotes);
-
         var target = SelectedLauncherVersion?.Version;
-        if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(_installedLauncherVersion))
+        string? hint = null;
+        if (!string.IsNullOrWhiteSpace(target) && !string.IsNullOrWhiteSpace(_installedLauncherVersion))
         {
-            LauncherSelectionHint = string.Empty;
-            HasLauncherSelectionHint = false;
-            return;
+            var installed = _installedLauncherVersion;
+            hint = ModEnvVersion.Compare(installed, target) switch
+            {
+                0 => $"已安装该版本（v{installed}），无需重复安装",
+                < 0 => $"将从 v{installed} 更新到 v{target}",
+                _ => $"将从 v{installed} 切换到 v{target}"
+            };
         }
 
-        var installed = _installedLauncherVersion;
-        LauncherSelectionHint = ModEnvVersion.Compare(installed, target) switch
-        {
-            0 => $"已安装该版本（v{installed}），无需重复安装",
-            < 0 => $"将从 v{installed} 更新到 v{target}",
-            _ => $"将从 v{installed} 切换到 v{target}"
-        };
-        HasLauncherSelectionHint = true;
+        LauncherVersionCaption = JoinCaption(
+            InstalledCaption(_installedLauncherVersion), hint, SelectedLauncherVersion?.Notes);
+        HasLauncherVersionCaption = LauncherVersionCaption.Length > 0;
     }
 
     /// <summary>
@@ -397,9 +376,6 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
         HasWwmiVersions = WwmiVersions.Count > 0;
 
         _installedWwmiVersion = pre.InstalledWwmiVersion;
-        InstalledWwmiVersionText = string.IsNullOrWhiteSpace(pre.InstalledWwmiVersion)
-            ? NotInstalledVersionText
-            : $"当前版本：v{pre.InstalledWwmiVersion}";
 
         var target = previousSelection ?? pre.InstalledWwmiVersion;
         SelectedWwmiVersion =
@@ -408,38 +384,35 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
                 string.Equals(v.Version, pre.DefaultWwmiVersion, StringComparison.Ordinal))
             ?? WwmiVersions.FirstOrDefault();
 
-        UpdateWwmiSelectionHint();
+        UpdateWwmiVersionCaption();
     }
 
     /// <summary>
-    /// Describes what picking <see cref="SelectedWwmiVersion"/> would do relative to what is installed.
+    /// Rebuilds the caption under the game-package picker, joined into the single line the dialog shows.
     /// </summary>
     /// <remarks>
-    /// No backup is promised, like the launcher's hint: the game package is not snapshotted before a
+    /// No backup is promised, like the launcher's caption: the game package is not snapshotted before a
     /// switch. The user's <c>Mods\</c> and <c>d3dx_user.ini</c> are untouched by a switch by design, and
     /// every offered version lives on the CDN, so switching back is just another pick.
     /// </remarks>
-    private void UpdateWwmiSelectionHint()
+    private void UpdateWwmiVersionCaption()
     {
-        WwmiVersionNotes = SelectedWwmiVersion?.Notes ?? string.Empty;
-        HasWwmiVersionNotes = !string.IsNullOrWhiteSpace(WwmiVersionNotes);
-
         var target = SelectedWwmiVersion?.Version;
-        if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(_installedWwmiVersion))
+        string? hint = null;
+        if (!string.IsNullOrWhiteSpace(target) && !string.IsNullOrWhiteSpace(_installedWwmiVersion))
         {
-            WwmiSelectionHint = string.Empty;
-            HasWwmiSelectionHint = false;
-            return;
+            var installed = _installedWwmiVersion;
+            hint = ModEnvVersion.Compare(installed, target) switch
+            {
+                0 => $"已安装该版本（v{installed}），无需重复安装",
+                < 0 => $"将从 v{installed} 更新到 v{target}",
+                _ => $"将从 v{installed} 切换到 v{target}（Mods 与按键设置不受影响）"
+            };
         }
 
-        var installed = _installedWwmiVersion;
-        WwmiSelectionHint = ModEnvVersion.Compare(installed, target) switch
-        {
-            0 => $"已安装该版本（v{installed}），无需重复安装",
-            < 0 => $"将从 v{installed} 更新到 v{target}",
-            _ => $"将从 v{installed} 切换到 v{target}（Mods 与按键设置不受影响）"
-        };
-        HasWwmiSelectionHint = true;
+        WwmiVersionCaption = JoinCaption(
+            InstalledCaption(_installedWwmiVersion), hint, SelectedWwmiVersion?.Notes);
+        HasWwmiVersionCaption = WwmiVersionCaption.Length > 0;
     }
 
     /// <summary>Rebuilds the backup list, preserving the current selection when that snapshot still exists.</summary>
@@ -466,30 +439,40 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
     /// Computed locally rather than by re-running the pre-check: that resolves the game drive, which can
     /// scan every fixed disk, and is far too slow to run on each arrow-key press in the dropdown.
     /// </remarks>
-    private void UpdateSelectionHint()
+    private void UpdateVersionCaption()
     {
-        // Maintainer-written caveats ("v1.1.6 与 2.4 客户端不兼容") travel with the choice, so the warning
-        // lands while the user is picking — not after the version is already on disk.
-        VersionNotes = SelectedVersion?.Notes ?? string.Empty;
-        HasVersionNotes = !string.IsNullOrWhiteSpace(VersionNotes);
-
         var target = SelectedVersion?.Version;
-        if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(_installedXxmiVersion))
+        string? hint = null;
+        if (!string.IsNullOrWhiteSpace(target) && !string.IsNullOrWhiteSpace(_installedXxmiVersion))
         {
-            SelectionHint = string.Empty;
-            HasSelectionHint = false;
-            return;
+            var installed = _installedXxmiVersion;
+            hint = ModEnvVersion.Compare(installed, target) switch
+            {
+                0 => $"已安装该版本（v{installed}），无需重复安装",
+                < 0 => $"将从 v{installed} 更新到 v{target}",
+                _ => $"将从 v{installed} 回退到 v{target}，当前版本会先自动备份"
+            };
         }
 
-        var installed = _installedXxmiVersion;
-        SelectionHint = ModEnvVersion.Compare(installed, target) switch
-        {
-            0 => $"已安装该版本（v{installed}），无需重复安装",
-            < 0 => $"将从 v{installed} 更新到 v{target}",
-            _ => $"将从 v{installed} 回退到 v{target}，当前版本会先自动备份"
-        };
-        HasSelectionHint = true;
+        // Maintainer-written caveats ("v1.1.6 与 2.4 客户端不兼容") travel with the choice, so the warning
+        // lands while the user is picking — not after the version is already on disk.
+        VersionCaption = JoinCaption(InstalledCaption(_installedXxmiVersion), hint, SelectedVersion?.Notes);
+        HasVersionCaption = VersionCaption.Length > 0;
     }
+
+    /// <summary>
+    /// "当前版本：vX.Y.Z" for an installed version, or nothing at all — the absence of the line is itself
+    /// the "nothing installed yet" signal, and a line saying so only adds noise to every picker.
+    /// </summary>
+    private static string? InstalledCaption(string? installedVersion) =>
+        string.IsNullOrWhiteSpace(installedVersion) ? null : $"当前版本：v{installedVersion}";
+
+    /// <summary>
+    /// Joins the non-empty parts of a picker's caption with " · " so one line carries everything the dialog
+    /// wants to say, and a picker with nothing to say collapses instead of leaving a blank row.
+    /// </summary>
+    private static string JoinCaption(params string?[] parts) =>
+        string.Join(" · ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
 
     private ModEnvSetupRequest BuildRequest() => new()
     {
