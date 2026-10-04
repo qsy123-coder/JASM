@@ -45,26 +45,110 @@
             </Grid>
         </DataTemplate>
 
+        <!-- 卡片版式:与 Mod 商店**逐值同款** —— 图片在上、白色信息块在下,一行 6 个;
+             所有尺寸都是照商店那份参考图量出来的设计值(卡片外框 304×360、封面高 195、信息块高 161),
+             由 code-behind 的 CardScaler 按槽位宽整体等比缩放(字号/内边距/行高一起走),
+             这样任何窗口宽度下卡片比例都和商店一致。改这里的尺寸不用动代码,缩放会自己跟上。
+
+             与商店**唯一**的差别在图片的填充方式:市场里绝大多数预览图是竖屏的,商店那份用的
+             UniformToFill 会把竖图裁成横条 —— 这里用 Uniform,整张图都看得见(两侧留底色条)。 -->
         <DataTemplate x:Key="ModCardTemplate">
-            <Border Width="250" Margin="6" CornerRadius="8"
-                    BorderBrush="#404040" BorderThickness="0.5">
-                <Grid Height="340">
-                    <!-- 层0: 无图片时的纯色占位背景 -->
-                    <Grid Background="#2A2A2A" />
-                    <!-- 层1: 图片加载动画(滚动到视口开始加载时才显示,离屏折叠,不空转) -->
-                    <ProgressRing x:Name="CardLoadingRing" IsActive="False"
-                                  Visibility="Collapsed"
-                                  Width="28" Height="28"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                                  Foreground="#0078D4" />
-                    <!-- 层2: 图片铺满（竖屏固定 250×340,Source 懒加载:滚到视口才在代码里设置） -->
-                    <Image x:Name="CardImage"
-                           Stretch="UniformToFill"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           ImageOpened="CardImage_Opened" ImageFailed="CardImage_Failed" />
-                    <!-- 层2: NSFW 遮罩覆盖整卡 -->
-                    <Border CornerRadius="8"
+            <Border Margin="13,25,13,25" Background="White" CornerRadius="12"
+                    BorderBrush="#E8EBED" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 行0: 图片区(195 = 商店那份参考图的封面高度,由 CardScaler 随整卡缩放) -->
+                    <Grid x:Name="ThumbHost" Grid.Row="0" Height="195">
+                        <!-- 层0: 无图片时的纯色占位背景;Uniform 那两条侧边也露出这层 -->
+                        <Grid Background="#2A2A2A" />
+                        <!-- 层1: 图片加载动画(滚动到视口才开始加载,离屏折叠,不空转) -->
+                        <ProgressRing x:Name="CardLoadingRing" IsActive="False"
+                                      Visibility="Collapsed"
+                                      Width="28" Height="28"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Foreground="#0078D4" />
+                        <!-- 层2: 整张预览图完整显示(Source 由代码在滚到视口时设置) -->
+                        <Image x:Name="CardImage"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               ImageOpened="CardImage_Opened" ImageFailed="CardImage_Failed" />
+                        <!-- 层3: NSFW 角标(右上,同商店样式) -->
+                        <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="12" Padding="8,3" Background="#E93A45"
+                                CornerRadius="8"
+                                Visibility="{Binding Nsfw, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Foreground="White" FontSize="15"
+                                       FontWeight="SemiBold" Text="NSFW" />
+                        </Border>
+                    </Grid>
+
+                    <!-- 行1: 信息块 —— 五段**定高行**(标题 54 / 空档 18 / 作者行 25 / 空档 9 / 统计行 24),
+                         加内边距 17+14 正好 161,与商店逐段对齐。定高是为了「同一行的卡片下边缘齐」:
+                         一行标题的卡片也占两行的高度。 -->
+                    <Grid Grid.Row="1" Padding="17,17,17,14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="54" />
+                            <RowDefinition Height="18" />
+                            <RowDefinition Height="25" />
+                            <RowDefinition Height="9" />
+                            <RowDefinition Height="24" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Foreground="#1B1B1B" FontWeight="SemiBold" FontSize="20"
+                                   LineHeight="27" LineStackingStrategy="BlockLineHeight"
+                                   MaxLines="2" Text="{Binding Title}"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+
+                        <!-- 作者行:版式照商店(头像圆 + 中间一栏 + 右侧相对时间),但中间那栏放**角色名** ——
+                             市场的接口里没有作者名,只有 mod_author_url 这个链接(绑上去会是一串网址)。 -->
+                        <Grid Grid.Row="2" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="25" Height="25" VerticalAlignment="Center">
+                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+                            </Grid>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="17"
+                                       Foreground="#606061" Text="{Binding Character}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="16"
+                                       Foreground="#8C8C8D" Text="{Binding RelativeTime}" />
+                        </Grid>
+
+                        <!-- 统计三项:点赞 / 浏览 / 评论(顺序、图标、配色都与商店一致) -->
+                        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="18">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <!-- EB51 是空心心形(EB52 是实心的) -->
+                                <FontIcon FontSize="20" Foreground="#3264A7" Glyph="&#xEB51;"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="16" Foreground="#808081" VerticalAlignment="Center"
+                                           Text="{Binding LikesCount}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontSize="20" Foreground="#3264A7" Glyph="&#xE890;"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="16" Foreground="#808081" VerticalAlignment="Center"
+                                           Text="{Binding Views}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontSize="20" Foreground="#3264A7" Glyph="&#xE8F2;"
+                                          VerticalAlignment="Center" />
+                                <TextBlock FontSize="16" Foreground="#808081" VerticalAlignment="Center"
+                                           Text="{Binding CommentsCount}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- NSFW 模糊遮罩:市场特有(商店没有这一层),盖住**整张卡**(含下面的信息块,
+                         与旧版行为一致),点一下就地揭开。放在最后 = 盖在最上层。 -->
+                    <Border Grid.RowSpan="2" CornerRadius="12"
                             Visibility="{Binding IsNsfwBlurred, Converter={StaticResource BoolToVisibilityConverter}}"
                             Tapped="NsfwOverlay_Tapped" IsTapEnabled="True">
                         <Grid>
@@ -81,52 +165,6 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
-                    </Border>
-                    <!-- 层3: 底部渐变条 -->
-                    <Border VerticalAlignment="Bottom" Height="80">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="Transparent" Offset="0" />
-                                <GradientStop Color="#B0000000" Offset="1" />
-                            </LinearGradientBrush>
-                        </Border.Background>
-                    </Border>
-                    <!-- 层4: 信息叠在底部 -->
-                    <StackPanel VerticalAlignment="Bottom" Padding="8,0,8,6" Spacing="2">
-                        <TextBlock Foreground="White" FontWeight="SemiBold" FontSize="13"
-                                   MaxLines="2" Text="{Binding Title}"
-                                   TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Border Width="16" Height="16" CornerRadius="8"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}" />
-                            <TextBlock VerticalAlignment="Center" FontSize="11"
-                                       Foreground="#CCCCCC" Text="{Binding Character}"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock VerticalAlignment="Center" FontSize="11"
-                                       Foreground="#AAAAAA" Text="{Binding RelativeTime}" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="14">
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xE890;" />
-                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding Views}" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xEB52;" />
-                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding LikesCount}" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                                <FontIcon FontSize="11" Foreground="#AAAAAA" Glyph="&#xE8F2;" />
-                                <TextBlock FontSize="11" Foreground="#AAAAAA" Text="{Binding CommentsCount}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </StackPanel>
-                    <!-- 层5: NSFW 角标(右上) -->
-                    <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                            Margin="4" Padding="6,2" Background="#FF4D4F"
-                            CornerRadius="6"
-                            Visibility="{Binding Nsfw, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Foreground="White" FontSize="10"
-                                   FontWeight="SemiBold" Text="NSFW" />
                     </Border>
                 </Grid>
             </Border>
@@ -244,8 +282,10 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
+                            <!-- 固定 6 列、宽度均分,与 Mod 商店一致(窗口窄到每列不足 180 时自动降列) -->
                             <local:WrapGridPanel x:Name="ModCardsPanel" Grid.Row="0"
-                                                 VerticalAlignment="Top" />
+                                                 VerticalAlignment="Top"
+                                                 Columns="6" MinItemWidth="180" />
                             <!-- 滚动加载更多指示器:ScrollViewer 内部最底部,作为内容流末尾,Collapsed 时不占位 -->
                             <StackPanel Grid.Row="1" HorizontalAlignment="Center"
                                         Margin="0,8,0,16"
