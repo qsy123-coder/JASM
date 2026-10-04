@@ -1,7 +1,9 @@
 using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Services;
+using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
+using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels.Overlay;
 using GIMI_ModManager.WinUI.Views.Overlay;
@@ -37,9 +39,10 @@ internal sealed class OverlayWindowService : IDisposable
     private OverlayHotkeyRegistrar? _hotkeys;
     private bool _disposed;
 
-    public OverlayWindowService(ISkinManagerService skinManagerService,
+    public OverlayWindowService(ISkinManagerService skinManagerService, IGameService gameService,
         OverlayRefreshCoordinator refreshCoordinator, ILocalSettingsService localSettingsService,
-        SelectedGameService selectedGameService, NotificationManager notificationManager, ILogger logger)
+        ModDragAndDropService dragAndDropService, SelectedGameService selectedGameService,
+        NotificationManager notificationManager, ILogger logger)
     {
         _selectedGameService = selectedGameService;
         _notificationManager = notificationManager;
@@ -47,7 +50,8 @@ internal sealed class OverlayWindowService : IDisposable
 
         // ViewModel 不经过 DI：它是 internal 的、且 DI 的 ActivatorUtilities 只认公开构造函数。
         // 依赖项由本类转交，顺带保证"浮窗与设置页共用同一个刷新协调器"这件事是显式的。
-        _viewModel = new OverlayViewModel(skinManagerService, refreshCoordinator, localSettingsService, logger);
+        _viewModel = new OverlayViewModel(skinManagerService, gameService, refreshCoordinator,
+            localSettingsService, dragAndDropService, logger);
     }
 
     /// <summary>
@@ -145,6 +149,11 @@ internal sealed class OverlayWindowService : IDisposable
         var window = _window;
         if (window is null)
             return;
+
+        // 每次唤出都重新对一遍角色列表：启动那一刻建的那份快照可能早于 mod 扫描完成，而那时它是空的
+        // 且**不会自愈**（空态分支连订阅都不建）。实机症状就是「浮窗里一个角色都没有」——
+        // 详细理由见 OverlayViewModel.RefreshCharacters。
+        _viewModel.RefreshCharacters();
 
         _hotkeys?.RegisterNavigationHotkeys();
         window.SetHotkeyHint(_hotkeys?.Hint ?? string.Empty);
