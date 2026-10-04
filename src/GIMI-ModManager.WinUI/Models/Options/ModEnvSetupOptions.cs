@@ -29,6 +29,15 @@ public class ModEnvSetupOptions
     /// </summary>
     public string LauncherVersionCatalogUrl { get; set; } = string.Empty;
 
+    /// <summary>
+    /// URL of the selectable-version catalogue for the per-game package (<c>wwmi-versions.json</c> for
+    /// Wuthering Waves) — same schema as the other two catalogues, different file. The game package
+    /// versions with the game it targets, independently of the injector and the launcher, so it needs
+    /// its own file too. Empty/unreachable degrades that picker to the manifest's own version, i.e. the
+    /// pre-version-selection behaviour.
+    /// </summary>
+    public string WwmiVersionCatalogUrl { get; set; } = string.Empty;
+
     /// <summary>Id of the shared Mod injector base package inside the manifest.</summary>
     public string BasePackageId { get; set; } = "xxmi";
 
