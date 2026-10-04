@@ -36,9 +36,12 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
 
     /// <summary>
     /// 侧栏计数同时问几个。一个角色一个请求（没有批量端点，实测），五十多个角色全量补计数时
-    /// 别把接口打满、也别让用户等一串串请求。
+    /// 别把接口打满。
+    ///
+    /// 真正卡住吞吐的是 <c>ApiGameBananaClient</c> 那条令牌桶（5 个 / 秒），这里只是别让桶空着等 ——
+    /// 调到跟桶一个量级就够，再高也只是排在桶前面，反而把主列表那一个请求挤到后面。
     /// </summary>
-    private const int CountProbeConcurrency = 2;
+    private const int CountProbeConcurrency = 5;
 
     private const string ShowNsfwOption = "显示 NSFW";
     private const string HideNsfwOption = "隐藏 NSFW";
@@ -194,8 +197,21 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
         // 晚一步用户会先看到一屏成人内容、再被配置好的「隐藏」筛掉。
         await ApplyAdultContentSettingAsync();
 
-        await LoadSidebarAsync();
+        // 侧栏与主列表**并发**跑：侧栏里那次「板块主页」请求以前会把第一张卡挡在后面（这里原本是串行
+        // 两个 await，而后一个要等前一个的网络回来）。两者本来就不互相依赖 —— 侧栏自己恢复上次的选中，
+        // 主列表按当前筛选取数，谁先回来谁先画。
+        var sidebar = LoadSidebarAsync();
+
         await ReloadAsync();
+
+        try
+        {
+            await sidebar;
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户没等侧栏跑完就离开页面了，正常路径（离开时 OnNavigatedFrom 会取消它）。
+        }
     }
 
     public void OnNavigatedFrom()
@@ -476,8 +492,75 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
         }
 
         if (!token.IsCancellationRequested)
+        {
+            // 先把上次落盘的计数/图标灌进服务层缓存：命中就一个请求都不发（见 SeedSidebarCacheAsync）。
+            await SeedSidebarCacheAsync().ConfigureAwait(true);
             _ = FillCountsAsync(token);
+        }
     }
+
+    /// <summary>
+    /// 把上次落盘的侧栏计数/图标灌进服务层缓存。
+    ///
+    /// 新鲜的话这一轮 <see cref="FillCountsAsync"/> 会直接命中缓存、**零请求**就把数字和图标填上；
+    /// 过期（见 <see cref="ModStoreSidebarCache.Ttl"/>）或读不出来时当没有，照旧逐个问接口。
+    /// </summary>
+    private async Task SeedSidebarCacheAsync()
+    {
+        try
+        {
+            var cache = await _localSettingsService
+                .ReadOrCreateSettingAsync<ModStoreSidebarCache>(ModStoreSidebarCache.Key, SettingScope.Game)
+                .ConfigureAwait(true);
+
+            if (!cache.IsFresh(DateTimeOffset.UtcNow))
+                return;
+
+            _storeService.SeedCharacterSummaries(cache.Characters.Select(pair =>
+                (pair.Key, pair.Value?.Count, Icon: TryParseAbsoluteUri(pair.Value?.IconUrl))));
+        }
+        catch (Exception e)
+        {
+            // 读不出来不算事：退化成「照旧一个个问接口」。
+            _logger.Warning(e, "读取商店侧栏缓存失败，本轮将重新取数");
+        }
+    }
+
+    /// <summary>把这一轮的计数/图标落盘，下次进页面（含重启后）就不用再问一遍接口。</summary>
+    /// <remarks>
+    /// 失败只记日志：这纯粹是「下次快一点」，写不进去不该影响任何看得见的东西。
+    /// </remarks>
+    private async Task SaveSidebarCacheAsync()
+    {
+        try
+        {
+            var snapshot = _storeService.SnapshotCharacterSummaries();
+            if (snapshot.Count == 0)
+                return;
+
+            var cache = new ModStoreSidebarCache { FetchedAt = DateTimeOffset.UtcNow };
+            foreach (var (name, summary) in snapshot)
+            {
+                cache.Characters[name] = new ModStoreSidebarCache.CachedSummary
+                {
+                    Count = summary?.ModCount,
+                    IconUrl = summary?.SubCategoryIconUrl?.ToString()
+                };
+            }
+
+            await _localSettingsService
+                .SaveSettingAsync(ModStoreSidebarCache.Key, cache, SettingScope.Game)
+                .ConfigureAwait(true);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "写入商店侧栏缓存失败（只影响下次进页面的速度）");
+        }
+    }
+
+    /// <summary>缓存文件里的地址串转回 Uri；坏数据当没有（缓存是自家写的，但读的是本地文件）。</summary>
+    private static Uri? TryParseAbsoluteUri(string? raw) =>
+        Uri.TryCreate(raw, UriKind.Absolute, out var uri) ? uri : null;
 
     private ModStoreSidebarItem? FindSameFilter(ModStoreSidebarItem? previous)
     {
@@ -573,7 +656,11 @@ public partial class ModStoreViewModel : ObservableRecipient, INavigationAware
                 {
                     throttle.Release();
                 }
-            })).ConfigureAwait(false);
+            })).ConfigureAwait(true);
+
+            // 收尾把结果落盘（下次进页面零请求）。留在 UI 线程上做：设置服务是「读-改-写」同一份
+            // 文件，跟别处的设置写入排在同一队里更稳。
+            await SaveSidebarCacheAsync().ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
