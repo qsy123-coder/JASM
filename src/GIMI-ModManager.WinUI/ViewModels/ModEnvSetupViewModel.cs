@@ -527,8 +527,12 @@ public partial class ModEnvSetupViewModel : ObservableRecipient
                 var message = result.Exception switch
                 {
                     Win32Exception e when e.NativeErrorCode == 1223 => "用户取消了 UAC 提权。",
+                    // 740 = ERROR_ELEVATION_REQUIRED：**这条命令自己要管理员权限**，与 JASM 是不是提权无关。
+                    // 出路是给这条命令单独开「以管理员身份运行」（CommandService 支持），
+                    // 而不是把整个 JASM 提权 —— 后者会让跨完整性级别的拖拽安装被 UIPI 整个掐掉。
                     Win32Exception e when e.NativeErrorCode == 740 =>
-                        "需要管理员权限，请以管理员身份运行 JASM 后重试。",
+                        "这条启动命令需要管理员权限。请编辑这条命令并打开「以管理员身份运行」后重试。"
+                        + "（不要用管理员身份运行 JASM 本身：那会让拖拽安装整个失效。）",
                     _ => result.Exception?.Message ?? result.Notification?.Message ?? "未知错误"
                 };
                 AppendLog("测试启动失败：" + message);
