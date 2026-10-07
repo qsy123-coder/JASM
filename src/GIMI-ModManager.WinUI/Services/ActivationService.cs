@@ -134,6 +134,12 @@ public class ActivationService : IActivationService
 
     private async Task CheckIfAlreadyRunningAsync()
     {
+        // 去提权重启的交接**必须排在单实例检查前面**：新的一份与正在退出的那一份映像路径完全相同、
+        // 命令行也相同，不先认这一手，下面就会把新进程当成「已经有一个 JASM 在跑」而把它挡回去 ——
+        // 用户看到的是「点了重启，什么都没发生」。见 UnelevatedRelaunchProtocol。
+        if (await TryHandOverFromPredecessorAsync())
+            return;
+
         var otherInstance = _lifeCycleService.FindOtherInstance();
 
         if (otherInstance is null) return;
@@ -184,6 +190,44 @@ public class ActivationService : IActivationService
 
         Application.Current.Exit();
         await Task.Delay(-1);
+    }
+
+
+    /// <summary>
+    /// 去提权重启的第二半：认领前任留下的交接凭条，等它退出再继续启动。
+    ///
+    /// <para>
+    /// 认到了就**不再走单实例检查**（它们要处理的是同一件事，凭条这边知道得更准：它带着前任的 pid）。
+    /// 等不到前任退出（超时）时不硬着头皮继续：两份 JASM 共用 <c>%LOCALAPPDATA%\JASM</c>
+    /// （设置、Mod 环境备份、提权助手），同时跑会互相覆盖 —— 那是单实例检查存在的全部意义，
+    /// 不能为了这一次重启把它丢掉。这时把本进程退掉，用户手上还剩原来那个提权的实例，
+    /// 至少不是「两个半成品」。
+    /// </para>
+    /// </summary>
+    private async Task<bool> TryHandOverFromPredecessorAsync()
+    {
+        if (UnelevatedRelaunchMarker.Consume(_logger) is not { } predecessorProcessId)
+            return false;
+
+        _logger.Information("[去提权] 认到交接凭条，等前一份（pid={PredecessorProcessId}）退出再继续启动",
+            predecessorProcessId);
+
+        if (await UnelevatedRelaunchMarker.WaitForExitAsync(predecessorProcessId, _logger))
+        {
+            _logger.Information("[去提权] 交接完成；本进程完整性={Integrity}",
+                UnelevatedLauncher.DescribeIntegrity((uint)Environment.ProcessId));
+            return true;
+        }
+
+        PInvoke.MessageBox(HWND.Null,
+            "以普通权限重启时，上一个 JASM 没有在预期时间内退出，为避免两份 JASM 同时修改同一份数据，"
+            + "本次启动已取消。\n\n请手动关掉 JASM（如果它还开着），再双击图标重新打开。",
+            "JASM",
+            MESSAGEBOX_STYLE.MB_ICONWARNING | MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_SETFOREGROUND);
+
+        Application.Current.Exit();
+        await Task.Delay(-1);
+        return true;
     }
 
 
@@ -424,29 +468,27 @@ public class ActivationService : IActivationService
     }
 
     /// <summary>
-    /// 本进程是否已提权。
-    ///
-    /// 判据与 <c>OverlaySpike</c> 的 Phase 0 诊断同一条：非提权的管理员账户拿到的是"降权令牌"，
-    /// Administrators 组在里面是 deny-only，因此这个检查为 false —— 问的正是
-    /// 「这一份进程有没有提权」，而不是「当前用户是不是管理员」。
-    ///
-    /// 判定只有这一份：启动日志（<see cref="ActivateAsync"/>）与管理员警告弹窗用的必须是同一个结论，
-    /// 两处各自判断就会出现「日志说提权了、弹窗却不弹」这类不报错的偏差。
+    /// 本进程是否以管理员身份运行。判定只有一份，在 <see cref="AppElevation"/> ——
+    /// 启动日志、这个弹窗、主窗口的常驻提示、浮窗的状态行问的必须是同一个结论，
+    /// 四处各自判断就会出现「日志说提权了、横幅却不弹」这类不报错的偏差。
     /// </summary>
-    private static bool IsRunningAsAdministrator()
-    {
-        try
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-        }
-        catch (Exception)
-        {
-            // 判不出来时按"没提权"记：这是诊断，不该因为它自己失败而打断启动
-            return false;
-        }
-    }
+    private static bool IsRunningAsAdministrator() => AppElevation.IsElevated();
 
+    /// <summary>
+    /// 提权时启动弹窗。**它必须是有出路的一条路**，不能只是"不推荐 + 我知道了"。
+    ///
+    /// <para>
+    /// 因为提权真的会毁掉一个功能：跨完整性级别的拖拽被 UIPI 整个掐掉（浮窗与主窗口同时只剩禁止光标、
+    /// 松手没反应、且不报任何错）。用户报「拖动安装显示禁用」时，多半就是在这个弹窗上点了
+    /// 「不再显示此警告」，之后再没有任何地方告诉他原因。所以这里补上：
+    /// ① 拖拽不可用这件事本身；② 怎么解除；③ 一个「以普通权限重新启动」的按钮。
+    /// </para>
+    ///
+    /// <para>
+    /// 「拖拽不可用」那两段只在 <see cref="AppElevation.IsDragDropBlocked"/> 为真时才加：
+    /// 关掉了 UAC 的机器上 explorer 自己也是高完整性、两者同级，拖拽本来是好的，加进去就是假警报。
+    /// </para>
+    /// </summary>
     private async Task AdminWarningPopup()
     {
         if (!IsRunningAsAdministrator()) return;
@@ -461,11 +503,15 @@ public class ActivationService : IActivationService
             Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningText", defaultValue: "You are running JASM as an administrator. This is not recommended.\n" +
                    "JASM was NOT designed to run with administrator privileges.\n" +
                    "Simple bugs, though unlikely, can potentially cause serious damage to your file system.\n\n" +
-                   "Please consider running JASM without administrator privileges.\n\n" +
+                   "Operations that need administrator rights (writing to protected folders, sending keys to a game running as administrator) " +
+                   "are handed to the built-in elevation helper automatically.\n\n" +
                    "Use at your own risk, you have been warned"),
             TextWrapping = TextWrapping.WrapWholeWords
         };
         stackPanel.Children.Add(textWarning);
+
+        if (AppElevation.IsDragDropBlocked())
+            AddDragDropWarning(stackPanel);
 
         var doNotShowAgain = new CheckBox()
         {
@@ -481,17 +527,57 @@ public class ActivationService : IActivationService
         {
             Title = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningTitle", defaultValue: "Running as Administrator Warning"),
             Content = stackPanel,
-            PrimaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningUnderstandBtn", defaultValue: "I understand"),
+
+            // 主按钮 = 出路（一键去提权）。次按钮保留原来的「退出」，Close（右上角的 X / Esc）
+            // 是「继续以管理员身份运行」—— 让"随手关掉弹窗"这个动作落在无害的一边。
+            PrimaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningRestartBtn", defaultValue: "Restart without administrator rights"),
             SecondaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningExitBtn", defaultValue: "Exit"),
+            CloseButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningStayBtn", defaultValue: "Keep running as administrator"),
             DefaultButton = ContentDialogButton.Primary
         };
 
         var result = await _windowManagerService.ShowDialogAsync(dialog);
 
-        if (result == ContentDialogResult.Secondary) Application.Current.Exit();
-
+        // 复选框先落盘：下面 Primary 会把进程关掉，晚一步就永远存不上，
+        // 用户下次启动又被同一个弹窗拦一遍
         if (doNotShowAgain.IsChecked == true)
             await _localSettingsService.SaveSettingAsync(IgnoreAdminWarningKey, true);
+
+        switch (result)
+        {
+            case ContentDialogResult.Primary:
+                await _lifeCycleService.RestartWithoutElevationAsync();
+                break;
+
+            case ContentDialogResult.Secondary:
+                Application.Current.Exit();
+                break;
+        }
+    }
+
+    /// <summary>把「拖拽安装不可用」与解除办法两段加进弹窗。</summary>
+    private void AddDragDropWarning(Panel panel)
+    {
+        panel.Children.Add(new TextBlock
+        {
+            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminDragDropWarning",
+                defaultValue: "Drag and drop does not work while running as an administrator: dropping a mod archive or folder " +
+                              "on JASM only shows a \"no\" cursor and nothing happens when you release it. " +
+                              "This is a Windows restriction (a medium-integrity process cannot drop onto a high-integrity one) " +
+                              "and JASM cannot work around it. Both the main window and the in-game overlay are affected."),
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Margin = new Thickness(0, 12, 0, 0)
+        });
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminDragDropFix",
+                defaultValue: "To get drag and drop back, run JASM without administrator rights: " +
+                              "close JASM, right-click its shortcut (or the exe) → Properties → Compatibility → " +
+                              "uncheck \"Run this program as an administrator\" → OK, then open it again."),
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Margin = new Thickness(0, 8, 0, 0)
+        });
     }
 
     public const string IgnoreNewFolderStructureKey = "IgnoreNewFolderStructureWarning";
