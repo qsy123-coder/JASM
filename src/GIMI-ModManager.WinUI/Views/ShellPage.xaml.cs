@@ -273,9 +273,38 @@ public sealed partial class ShellPage : Page
         if (!AppElevation.IsDragDropBlocked())
             return;
 
-        ElevationNotice.Title = ResourceExtensions.GetLocalized("ShellPage_ElevationNoticeTitle");
-        ElevationNotice.Message = ResourceExtensions.GetLocalized("ShellPage_ElevationNoticeMessage");
+        ElevationNotice.Title = LocalizeOrFallback("ShellPage_ElevationNoticeTitle",
+            "JASM 正以管理员身份运行 —— 拖拽安装不可用");
+
+        ElevationNotice.Message = LocalizeOrFallback("ShellPage_ElevationNoticeMessage",
+            "拖 Mod 进 JASM 只会显示禁止光标、松手没反应：Windows 不允许把文件从中等权限的程序拖进高权限的程序。"
+            + "点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。");
+
         ElevationNotice.IsOpen = true;
+    }
+
+    /// <summary>
+    /// 取本地化文案；取不到就用内联默认。
+    ///
+    /// <para>
+    /// <b>为什么必须有兜底</b>：<see cref="ResourceExtensions.GetLocalized"/> 底下是
+    /// <c>ResourceLoader.GetString</c>，key 缺失时它**会抛**。而这里是在页面的 <c>Loaded</c> 里调的 ——
+    /// 异常会把整个页面初始化打断，表现就是「启动就崩」，而真正的原因只是某条文案没进 PRI。
+    /// 文案缺失是配置问题，不该升级成崩溃；也不该让用户对着一条**内容为空、看着像不存在**的提示条猜
+    /// （那正是这次排查里被误导过的地方：空提示条与「没触发」在肉眼上分不出来）。
+    /// </para>
+    /// </summary>
+    private static string LocalizeOrFallback(string key, string fallback)
+    {
+        try
+        {
+            var text = ResourceExtensions.GetLocalized(key);
+            return string.IsNullOrWhiteSpace(text) ? fallback : text;
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
     }
 
     private async void ElevationNoticeRestart_Click(object sender, RoutedEventArgs e)
