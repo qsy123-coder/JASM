@@ -490,18 +490,24 @@ public sealed partial class ModPaneVM(
 
     #region DragAndDropHandlers
 
-    public bool CanSetImageFromDragDropWeb(Uri? url)
+    public bool CanSetImageFromDragDropWeb(Uri? url) => DescribeImageDropRefusalForWeb(url) is null;
+
+    /// <summary>链接那条路「为什么收不了」；收得下返回 <c>null</c>。理由见 <see cref="DescribeImageDropBusyRefusal"/>。</summary>
+    public string? DescribeImageDropRefusalForWeb(Uri? url)
     {
-        if (!DefaultCanExecute)
-            return false;
+        if (DescribeImageDropBusyRefusal() is { } busy)
+            return busy;
 
         if (url is null || !url.IsAbsoluteUri)
-            return false;
+            return "这一拖里没有可用的链接。";
 
         if (url.Scheme != Uri.UriSchemeHttps && url.Scheme != Uri.UriSchemeHttp)
-            return false;
+            return "封面图只接 http/https 的链接。";
 
-        return Constants.SupportedImageExtensions.Contains(Path.GetExtension(url.AbsolutePath));
+        if (!Constants.SupportedImageExtensions.Contains(Path.GetExtension(url.AbsolutePath)))
+            return "这个链接不是 JASM 认的图片格式。";
+
+        return null;
     }
 
     public async Task SetImageFromDragDropWeb(Uri uri)
@@ -514,19 +520,55 @@ public sealed partial class ModPaneVM(
     }
 
     public bool CanSetImageFromDragDropStorageItem(IReadOnlyList<IStorageItem> storageItems)
+        => DescribeImageDropRefusalForFile(storageItems) is null;
+
+    /// <summary>文件那条路「为什么收不了」；收得下返回 <c>null</c>。</summary>
+    public string? DescribeImageDropRefusalForFile(IReadOnlyList<IStorageItem>? storageItems)
     {
-        if (!DefaultCanExecute)
-            return false;
+        if (DescribeImageDropBusyRefusal() is { } busy)
+            return busy;
 
-        if (storageItems.Count != 1)
-            return false;
+        if (storageItems is null || storageItems.Count == 0)
+            return "这一拖里没有文件。";
 
-        var file = storageItems.First();
+        if (storageItems.Count > 1)
+            return "封面图一次只能拖一张。";
 
-        if (!Uri.TryCreate(file.Path, UriKind.Absolute, out _))
-            return false;
+        var file = storageItems[0];
 
-        return Constants.SupportedImageExtensions.Contains(Path.GetExtension(file.Name));
+        // 虚拟文件（网盘占位、压缩软件窗口里的条目）路径看着像样、内容读不到，
+        // 拖进来会在读取那一步才炸 —— 不如这里就说清楚
+        if (!File.Exists(file.Path))
+            return "这个文件读不到，可能来自网盘的占位文件或压缩软件的临时目录。"
+                   + "请先把图片存到本地文件夹，再从那里拖。";
+
+        if (!Constants.SupportedImageExtensions.Contains(Path.GetExtension(file.Name)))
+            return $"「{file.Name}」不是 JASM 认的图片格式。";
+
+        return null;
+    }
+
+    /// <summary>
+    /// 「现在不让拖」那几种情形的话。返回 <c>null</c> = 没这条限制，继续往下判。
+    ///
+    /// <para>
+    /// <b>为什么要说这句话</b>：XAML 的拖放不接受就是不设 <c>AcceptedOperation</c>，用户那边只剩禁止光标，
+    /// 而松手连 Drop 事件都不会来 —— 界面上没有一个字说明原因。没选中 Mod、只读、正忙、格式不对
+    /// 这四件毫不相干的事，在用户眼里长得一模一样。
+    /// </para>
+    /// </summary>
+    private string? DescribeImageDropBusyRefusal()
+    {
+        if (!IsModLoaded)
+            return "先在左边选中一个 Mod，再往这里拖封面图。";
+
+        if (IsReadOnly)
+            return "这个 Mod 当前是只读的，改不了封面。";
+
+        if (BusySetter.IsHardBusy)
+            return "JASM 正忙（还有安装或移动任务在跑），等它做完再拖。";
+
+        return null;
     }
 
     public async Task SetImageFromDragDropFile(IReadOnlyList<IStorageItem> storageItems)
