@@ -88,6 +88,17 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     [ObservableProperty] private string? _errorMessage;
 
     /// <summary>
+    /// 提权时的那句常驻提示（<c>null</c> = 不提权，那一行自己塌掉）。见 <see cref="AppElevation.IsDragDropBlocked"/>。
+    ///
+    /// <para>
+    /// 浮窗是用户拖拽的主要落点，所以这句话在这里必须是**常驻**的：提权后跨完整性级别的拖拽会被
+    /// UIPI 整个掐掉 —— 连 <c>DragOver</c> 都不会触发，所以任何"拖拽时才弹"的提示都没有机会跑
+    /// （拖拽相关的状态行同样救不了这件事）。用户能看到的只有禁止光标，只能来问"为什么拖不进去"。
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private string? _elevationNotice;
+
+    /// <summary>
     /// 0 = 单选（默认），1 = 多选。界面直接绑 <c>Segmented.SelectedIndex</c>，所以这里用序号而不是布尔 ——
     /// 界面的"第几个"与语义的"哪种模式"只在这一个地方换算，别处一律看 <see cref="IsMultiSelectMode"/>。
     /// </summary>
@@ -397,6 +408,12 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </summary>
     public async Task InitializeAsync()
     {
+        // 提权这件事在进程生命周期里不变，所以置一次就够。
+        // 必须在这里（窗口显示之前）置：拖拽事件压根不会来（UIPI 在 OLE 层就掐掉了，连 DragOver 都没有），
+        // 所以任何"拖拽时才提示"的做法都没机会跑。
+        if (AppElevation.IsDragDropBlocked())
+            ElevationNotice = Helpers.ResourceExtensions.GetLocalized("Overlay_ElevationNotice");
+
         Settings = await _localSettingsService
             .ReadOrCreateSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App);
 
