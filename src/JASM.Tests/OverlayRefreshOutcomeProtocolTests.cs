@@ -22,10 +22,14 @@ public class OverlayRefreshOutcomeProtocolTests
 
         Assert.Contains("管理员", text);
 
-        // 助手是内嵌在主 exe 里、版本跟着主程序走的，所以"更新 JASM"才是能真正改变结果的那一步；
-        // 而"直接以管理员身份运行 JASM"是绕开整条提权通道的第二条路，也得留着。
+        // 助手是内嵌在主 exe 里、版本跟着主程序走的，所以"更新 JASM"才是能真正改变结果的那一步。
         Assert.Contains("更新", text);
-        Assert.Contains("管理员身份运行 JASM", text);
+
+        // 而"把 JASM 自己以管理员身份运行"这条老出路被**刻意去掉**了：它确实送得进按键，
+        // 代价是跨完整性级别的 OLE 拖拽被 UIPI 整个掐掉（浮窗与主窗口同时只剩禁止光标、且不报错）。
+        // 所以这句话里提到管理员身份运行时，只能是劝阻 —— 断言盯着"拖拽安装"这个词，
+        // 它一消失就说明那句提醒被删掉了，用户又会被推回那个坑。
+        Assert.Contains("拖拽安装", text);
     }
 
     [Fact]
