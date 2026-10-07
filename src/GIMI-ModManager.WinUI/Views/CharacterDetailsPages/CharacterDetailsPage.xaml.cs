@@ -3,6 +3,7 @@ using Windows.ApplicationModel.DataTransfer;
 using CommunityToolkit.WinUI.UI.Animations;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Helpers.Xaml;
+using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels;
 using Microsoft.UI;
@@ -227,7 +228,9 @@ public sealed partial class CharacterDetailsPage : Page
             if (e.DataView.Contains(StandardDataFormats.WebLink))
             {
                 var uri = await e.DataView.GetWebLinkAsync();
-                if (ViewModel.CanDragDropModUrl(uri))
+                if (ViewModel.DescribeDragDropUrlRefusal(uri) is { } refusal)
+                    NotifyDragRefused(refusal);
+                else
                     e.AcceptedOperation = DataPackageOperation.Copy;
             }
             else if (e.DataView.Contains(StandardDataFormats.StorageItems))
@@ -235,7 +238,9 @@ public sealed partial class CharacterDetailsPage : Page
                 try
                 {
                     var storageItems = await e.DataView.GetStorageItemsAsync();
-                    if (ViewModel.CanDragDropMod(storageItems))
+                    if (ViewModel.DescribeDragDropRefusal(storageItems) is { } refusal)
+                        NotifyDragRefused(refusal);
+                    else
                         e.AcceptedOperation = DataPackageOperation.Copy;
                 }
                 catch (COMException exception)
@@ -251,6 +256,12 @@ public sealed partial class CharacterDetailsPage : Page
                         Log.Error(exception, "Error while checking if the dragged items are valid.");
                     }
                 }
+            }
+            else
+            {
+                // 既不是链接也不是文件：文字、图片位图这些都落不到这里，说一句比干瞪禁止光标强
+                NotifyDragRefused("这里只接 Mod 包（.zip / .rar / .7z / 自解压 exe）、Mod 文件夹，"
+                                  + "或 GameBanana 的 Mod 链接。");
             }
         }
         finally
@@ -277,6 +288,40 @@ public sealed partial class CharacterDetailsPage : Page
         {
             deferral.Complete();
         }
+    }
+
+    /// <summary>两次「这一拖收不了」提示之间的最短间隔，见 <see cref="NotifyDragRefused"/>。</summary>
+    private const int DragRefusalNoticeMinimumIntervalMs = 3000;
+
+    /// <summary>上一次弹提示的时刻（<see cref="Environment.TickCount64"/>；null = 还没弹过）。</summary>
+    private long? _lastDragRefusalNoticeTicks;
+
+    /// <summary>
+    /// 收不了这一拖时，给用户一句话说清楚为什么。
+    ///
+    /// <para>
+    /// <b>为什么必须给</b>：XAML 的拖放不接受就是不设 <c>AcceptedOperation</c>，用户那边只有禁止光标，
+    /// 而且松手连 Drop 事件都不会来 —— 界面上没有任何东西说明原因。于是「拖了两个包」「拖了个 exe」
+    /// 「JASM 正忙」这三种毫不相干的来路，在用户眼里长得一模一样。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>为什么要节流</b>：<c>DragEnter</c> 在指针每次进入元素时都会来一发（跨子元素边界也算），
+    /// 同一个理由反复弹通知会盖掉用户真正要看的东西。这里按时间节流、不做「一次拖拽只记一次」的记账 ——
+    /// 拖拽事件会在父子元素之间来回冒，Enter/Leave 的配对并不可靠（<c>CharactersPage</c> 里那条
+    /// 「每次 DragOver 都重判」的注释就是为同一件事）。
+    /// </para>
+    /// </summary>
+    private void NotifyDragRefused(string reason)
+    {
+        var now = Environment.TickCount64;
+
+        if (_lastDragRefusalNoticeTicks is { } last && now - last < DragRefusalNoticeMinimumIntervalMs)
+            return;
+
+        _lastDragRefusalNoticeTicks = now;
+
+        App.GetService<NotificationManager>().ShowNotification("拖拽安装没接住", reason, TimeSpan.FromSeconds(8));
     }
 
     private void ViewToggleSwitch_OnToggled(object sender, RoutedEventArgs e)
