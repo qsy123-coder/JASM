@@ -365,8 +365,12 @@ public class ModEnvInstallerService
             _logger.Warning("Target {Target} not writable, requesting elevated copy", targetDir);
             progress?.Report("目标目录需要管理员权限，正在请求提权...");
             var ok = await _elevatorService.CopyDirectoryAsync(sourceDir, targetDir, ct).ConfigureAwait(false);
+            // 别再劝用户「以管理员身份运行 JASM」：那条路能让这次复制过去，代价是跨完整性级别的
+            // OLE 拖拽被 UIPI 整个掐掉（浮窗与主窗口同时只剩禁止光标，且不报任何错）。
+            // 提权助手（Elevator.exe）就是为这种情况准备的，它走不通时该找的是它。
             if (!ok)
-                throw new UnauthorizedAccessException($"写入 {targetDir} 需要管理员权限。请以管理员身份运行 JASM 后重试。");
+                throw new UnauthorizedAccessException(
+                    $"写入 {targetDir} 需要管理员权限，提权助手也没能完成复制。请更新 JASM 后重试。");
         }
     }
 
