@@ -94,11 +94,19 @@ public sealed partial class OverlayWindow : WindowEx
     /// <summary>是否已经做过"首次显示"的那套收尾（摆位置 + 确认置顶）。见 <see cref="ShowOverlay"/>。</summary>
     private bool _hasShownOnce;
 
-    /// <summary>上一次 DragOver 的判定，用来把诊断日志压成「只在变化时打一行」。</summary>
-    private bool _lastDropAccepted;
-
-    /// <summary>上一次 DragOver 里有没有文件，同上。</summary>
-    private bool _lastDropHadItems;
+    /// <summary>
+    /// 本次拖拽是否已经记过一行诊断（见 <see cref="LogDragProbeOnce"/>）。
+    ///
+    /// DragOver 随指针移动触发，逐拍记就是日志洪水，所以每轮拖拽只记**第一拍**；
+    /// 而"一轮拖拽"的边界取「浮窗唤出」与「松手落下」两处把它重新武装
+    /// （<see cref="ShowOverlay"/> / <see cref="RootGrid_OnDrop"/>）。
+    ///
+    /// 这样「唤出浮窗 → 拖一次」必然在日志里留下一行，于是**一行都没有就等于
+    /// 「拖拽事件根本没进到进程」**：JASM 提权时它与 Explorer 的完整性级别不同，
+    /// UIPI 会在 OLE 那层把整件事掐掉，浮窗与主窗口会同时只剩禁止光标、松手没反应、且不报任何错。
+    /// 用户报「拖不进去」时这一行是日志里唯一能一眼分开「事件没到」与「数据里没有文件」的证据。
+    /// </summary>
+    private bool _dragProbeLogged;
 
     /// <summary>
     /// 唤出那一刻的前台窗口（游戏在跑时就是游戏），隐藏时按原样还回去。
@@ -268,6 +276,10 @@ public sealed partial class OverlayWindow : WindowEx
 
         // 每次唤出都把尺寸按回常量：内容填满那一下会把窗口撑大（见 ReassertSize）
         ReassertSize();
+
+        // 拖拽诊断重新武装：唤出之后拖一次就必然会留下一行（见 _dragProbeLogged）。
+        // 不重新武装的话，上一次拖拽留下的"已记过"会让这一轮的失败在日志里彻底静音。
+        _dragProbeLogged = false;
 
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
 
@@ -661,26 +673,25 @@ public sealed partial class OverlayWindow : WindowEx
     /// <summary>
     /// 拖着包经过浮窗时表态接不接。
     ///
-    /// <b>没选中角色就不接</b>：浮窗只对着一个角色，不知道装给谁的时候放行的后果是
-    /// 「拖进去没反应」，比直接显示禁止光标更难懂。
+    /// <b>有文件就接</b>，不看选没选中角色：装给谁要等落下、解压之后才认（见
+    /// <see cref="OverlayViewModel.DropModPackageAsync"/>）。这里不能拿「有没有选中角色」去拒绝 ——
+    /// 浮窗的角色列表只列**已经有 Mod 的角色**，一个 Mod 都没有时它是空的，
+    /// 而「拖第一个 Mod 进来」恰恰就是那个场景（实机症状：光标显示禁用、怎么拖都装不了）。
     /// </summary>
     private void RootGrid_OnDragOver(object sender, DragEventArgs e)
     {
         var hasItems = e.DataView.Contains(StandardDataFormats.StorageItems);
 
-        // **有文件就接**：装给谁要等落下、解压之后才认（认包名 / 包内目录，见
-        // OverlayViewModel.ResolveTargetModList）。这里不能拿「有没有选中角色」去拒绝 ——
-        // 浮窗的角色列表只列**已经有 Mod 的角色**，一个 Mod 都没有时它是空的，
-        // 而「拖第一个 Mod 进来」恰恰就是那个场景（实机症状：光标显示禁用、怎么拖都装不了）。
-        if (hasItems != _lastDropHadItems)
-        {
-            _lastDropHadItems = hasItems;
-            _logger.Information("[浮窗] 拖拽经过：含文件={HasItems} 选中角色={Character} 角色数={Count}",
-                hasItems, ViewModel.SelectedCharacter?.DisplayName ?? "<无>", ViewModel.Characters.Count);
-        }
+        LogDragProbeOnce(hasItems, e);
 
         if (!hasItems)
+        {
+            // 光有禁止光标是不够的：浮窗是游戏内的浮层，用户没有别的地方能被告知「为什么拖不进来」。
+            // 这一句写进已有那条状态行（XAML 里绑 ViewModel.ErrorMessage）；同一条文案重复赋值是幂等的，
+            // DragOver 每次指针移动都来一发也不会把界面刷花（ObservableProperty 自己比过值）。
+            ViewModel.ErrorMessage = OverlayViewModel.NonFileDropMessage;
             return;
+        }
 
         e.AcceptedOperation = DataPackageOperation.Copy;
 
@@ -694,8 +705,56 @@ public sealed partial class OverlayWindow : WindowEx
         e.Handled = true;
     }
 
+    /// <summary>
+    /// 每轮拖拽记一行：**事件到底有没有进到进程、进来时数据对象里装的是什么**。
+    ///
+    /// 「进没进来」与「进来但没有文件」是浮窗拖不进去的两条完全不同的来路，光标却都是禁止图标：
+    /// 前者要查完整性级别（提权/UIPI，见 <see cref="_dragProbeLogged"/>），
+    /// 后者要查拖拽来源（网盘占位文件 / 压缩软件的虚拟文件 / 只拖了个链接 —— 都只给格式清单不给真实文件）。
+    /// 所以拒绝那一路把 <c>AvailableFormats</c> 一并记下来：那时它是唯一能说明"它到底给的是什么"的线索。
+    ///
+    /// 含文件这一路**不读**格式清单：那是个可能阻塞的同步调用（来源进程无响应时会卡住拖拽），
+    /// 不该落在每次拖拽的必经之路上。
+    /// </summary>
+    private void LogDragProbeOnce(bool hasItems, DragEventArgs e)
+    {
+        if (_dragProbeLogged)
+            return;
+
+        _dragProbeLogged = true;
+
+        if (hasItems)
+        {
+            _logger.Information("[浮窗] 拖拽事件已到达：含文件=True，已放行；选中角色={Character} 角色数={Count}",
+                ViewModel.SelectedCharacter?.DisplayName ?? "<无>", ViewModel.Characters.Count);
+            return;
+        }
+
+        string formats;
+        try
+        {
+            formats = string.Join(",", e.DataView.AvailableFormats);
+        }
+        catch (Exception ex)
+        {
+            // 延迟渲染的数据对象读格式清单会抛（来源进程忙 / 已经退出）。这是诊断，不能反过来打断拖拽本身
+            formats = $"<读取失败: {ex.GetType().Name}>";
+        }
+
+        _logger.Warning("[浮窗] 拖拽事件已到达，但数据里没有文件（含文件=False，光标会显示禁止）：可用格式=[{Formats}]",
+            formats);
+    }
+
     private async void RootGrid_OnDrop(object sender, DragEventArgs e)
     {
+        // 这一轮拖拽到此结束，把诊断重新武装，下一次拖拽才会再留下一行（见 _dragProbeLogged）。
+        // 放在最前面：下面"读不出文件就早返回"那条路同样是一轮拖拽的收尾。
+        _dragProbeLogged = false;
+
+        // 真的落下一个包了，DragOver 那会儿写的「这一拖里没有文件」就不再成立
+        // （DropModPackageAsync 随后会按这单的实际情况自己写状态行）
+        ViewModel.ErrorMessage = null;
+
         if (!e.DataView.Contains(StandardDataFormats.StorageItems))
             return;
 
