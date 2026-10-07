@@ -164,6 +164,82 @@ internal static unsafe class WindowProcessQuery
         return text;
     }
 
+    /// <summary>
+    /// 当前会话的桌面 shell（<c>explorer.exe</c>）的进程 id。找不到返回 <c>null</c>。
+    ///
+    /// <para>
+    /// 两处用它，都建立在同一个事实上：**只要 UAC 是开着的，shell 恒为「中」完整性**
+    /// （哪怕当前用户是管理员）。
+    /// </para>
+    /// <list type="number">
+    /// <item>判断「本进程比 shell 高」—— 那才是拖拽会被 UIPI 掐掉的充要条件。
+    /// 不是「是不是管理员」：UAC 关掉的机器上 explorer 自己也是高完整性、两者同级，拖拽本来是好的，
+    /// 拿「是不是管理员」去判就会弹假警报（见 <c>AppElevation.IsDragDropBlocked</c>）；</item>
+    /// <item>以普通权限启动进程时唯一的令牌来源（去提权重启，见 <c>UnelevatedLauncher</c>）。</item>
+    /// </list>
+    ///
+    /// <para>
+    /// 三级兜底不是可选项：<c>GetShellWindow</c> 只在正常时候可靠 —— explorer 崩溃重启的那一瞬间
+    /// 它可能是空，而 Windows 11 上「桌面窗口的宿主」未必是任务栏那个 explorer。
+    /// </para>
+    /// </summary>
+    internal static uint? TryGetShellProcessId()
+    {
+        var desktopWindow = PInvoke.GetShellWindow();
+        if (!desktopWindow.IsNull && IsProcessAlive(GetWindowProcessId(desktopWindow)))
+            return GetWindowProcessId(desktopWindow);
+
+        // 兜底一：任务栏窗口（Shell_TrayWnd）属于 explorer
+        uint trayProcessId = 0;
+        PInvoke.EnumWindows((window, _) =>
+        {
+            if (PInvoke.IsWindowVisible(window) == 0 ||
+                !string.Equals(ReadWindowClassName(window), "Shell_TrayWnd", StringComparison.Ordinal))
+                return new BOOL(1);
+
+            trayProcessId = GetWindowProcessId(window);
+
+            // 返回 0 = 停止枚举：已经找到了
+            return new BOOL(0);
+        }, default);
+
+        if (IsProcessAlive(trayProcessId))
+            return trayProcessId;
+
+        // 兜底二：按进程名找，但**必须与本进程同一个会话**。跨会话拿 token 会失败，
+        // 而枚举出来的第一个 explorer 未必是本会话的（多用户同时登录时就有好几个）
+        var ownSessionId = Process.GetCurrentProcess().SessionId;
+        foreach (var processId in GetProcessIds("explorer"))
+        {
+            try
+            {
+                using var process = Process.GetProcessById((int)processId);
+                if (process.SessionId == ownSessionId)
+                    return processId;
+            }
+            catch (Exception)
+            {
+                // 进程刚好退出了：换下一个。这里不值得记日志 —— 它只是三级兜底里的一跳
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>进程还在不在（<c>OpenProcess</c> 拿得到句柄就算在）。</summary>
+    private static bool IsProcessAlive(uint processId)
+    {
+        if (processId == 0)
+            return false;
+
+        var process = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (process.IsNull)
+            return false;
+
+        PInvoke.CloseHandle(process);
+        return true;
+    }
+
     /// <summary>读窗口类名（游戏渲染窗口通常是 <c>UnrealWindow</c>）。读不到返回 <c>?</c>。</summary>
     private static string ReadWindowClassName(HWND window)
     {
