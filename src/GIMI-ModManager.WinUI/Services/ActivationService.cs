@@ -461,124 +461,22 @@ public class ActivationService : IActivationService
         App.MainWindow.DispatcherQueue.EnqueueAsync(async () =>
         {
             await Task.Delay(2000);
-            await AdminWarningPopup();
-            await Task.Delay(1000);
+
+            // 提权那件事**不再走模态弹窗**：它每次启动都弹，还带一堆按钮和两大段文案 ——
+            // 用户实测抱怨过「一启动这么多按钮和文字太麻烦」。
+            // 信息一点没少，全在主窗口顶部那条常驻提示条里（见 ShellPage）：那条不阻塞启动、
+            // 可以关掉、还自带「以普通权限重新启动」。
             await NewFolderStructurePopup();
         });
     }
 
     /// <summary>
     /// 本进程是否以管理员身份运行。判定只有一份，在 <see cref="AppElevation"/> ——
-    /// 启动日志、这个弹窗、主窗口的常驻提示、浮窗的状态行问的必须是同一个结论，
-    /// 四处各自判断就会出现「日志说提权了、横幅却不弹」这类不报错的偏差。
+    /// 启动日志、主窗口的常驻提示条、浮窗的状态行问的必须是同一个结论，
+    /// 几处各自判断就会出现「日志说提权了、横幅却不弹」这类不报错的偏差。
     /// </summary>
     private static bool IsRunningAsAdministrator() => AppElevation.IsElevated();
 
-    /// <summary>
-    /// 提权时启动弹窗。**它必须是有出路的一条路**，不能只是"不推荐 + 我知道了"。
-    ///
-    /// <para>
-    /// 因为提权真的会毁掉一个功能：跨完整性级别的拖拽被 UIPI 整个掐掉（浮窗与主窗口同时只剩禁止光标、
-    /// 松手没反应、且不报任何错）。用户报「拖动安装显示禁用」时，多半就是在这个弹窗上点了
-    /// 「不再显示此警告」，之后再没有任何地方告诉他原因。所以这里补上：
-    /// ① 拖拽不可用这件事本身；② 怎么解除；③ 一个「以普通权限重新启动」的按钮。
-    /// </para>
-    ///
-    /// <para>
-    /// 「拖拽不可用」那两段只在 <see cref="AppElevation.IsDragDropBlocked"/> 为真时才加：
-    /// 关掉了 UAC 的机器上 explorer 自己也是高完整性、两者同级，拖拽本来是好的，加进去就是假警报。
-    /// </para>
-    /// </summary>
-    private async Task AdminWarningPopup()
-    {
-        if (!IsRunningAsAdministrator()) return;
-
-        var ignoreWarning = await _localSettingsService.ReadSettingAsync<bool>(IgnoreAdminWarningKey);
-
-        if (ignoreWarning) return;
-
-        var stackPanel = new StackPanel();
-        var textWarning = new TextBlock()
-        {
-            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningText", defaultValue: "You are running JASM as an administrator. This is not recommended.\n" +
-                   "JASM was NOT designed to run with administrator privileges.\n" +
-                   "Simple bugs, though unlikely, can potentially cause serious damage to your file system.\n\n" +
-                   "Operations that need administrator rights (writing to protected folders, sending keys to a game running as administrator) " +
-                   "are handed to the built-in elevation helper automatically.\n\n" +
-                   "Use at your own risk, you have been warned"),
-            TextWrapping = TextWrapping.WrapWholeWords
-        };
-        stackPanel.Children.Add(textWarning);
-
-        if (AppElevation.IsDragDropBlocked())
-            AddDragDropWarning(stackPanel);
-
-        var doNotShowAgain = new CheckBox()
-        {
-            IsChecked = false,
-            Content = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningDoNotShowAgain", defaultValue: "Do not show this warning again"),
-            Margin = new Thickness(0, 10, 0, 0)
-        };
-
-        stackPanel.Children.Add(doNotShowAgain);
-
-
-        var dialog = new ContentDialog
-        {
-            Title = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningTitle", defaultValue: "Running as Administrator Warning"),
-            Content = stackPanel,
-
-            // 主按钮 = 出路（一键去提权）。次按钮保留原来的「退出」，Close（右上角的 X / Esc）
-            // 是「继续以管理员身份运行」—— 让"随手关掉弹窗"这个动作落在无害的一边。
-            PrimaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningRestartBtn", defaultValue: "Restart without administrator rights"),
-            SecondaryButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningExitBtn", defaultValue: "Exit"),
-            CloseButtonText = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminWarningStayBtn", defaultValue: "Keep running as administrator"),
-            DefaultButton = ContentDialogButton.Primary
-        };
-
-        var result = await _windowManagerService.ShowDialogAsync(dialog);
-
-        // 复选框先落盘：下面 Primary 会把进程关掉，晚一步就永远存不上，
-        // 用户下次启动又被同一个弹窗拦一遍
-        if (doNotShowAgain.IsChecked == true)
-            await _localSettingsService.SaveSettingAsync(IgnoreAdminWarningKey, true);
-
-        switch (result)
-        {
-            case ContentDialogResult.Primary:
-                await _lifeCycleService.RestartWithoutElevationAsync();
-                break;
-
-            case ContentDialogResult.Secondary:
-                Application.Current.Exit();
-                break;
-        }
-    }
-
-    /// <summary>把「拖拽安装不可用」与解除办法两段加进弹窗。</summary>
-    private void AddDragDropWarning(Panel panel)
-    {
-        panel.Children.Add(new TextBlock
-        {
-            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminDragDropWarning",
-                defaultValue: "Drag and drop does not work while running as an administrator: dropping a mod archive or folder " +
-                              "on JASM only shows a \"no\" cursor and nothing happens when you release it. " +
-                              "This is a Windows restriction (a medium-integrity process cannot drop onto a high-integrity one) " +
-                              "and JASM cannot work around it. Both the main window and the in-game overlay are affected."),
-            TextWrapping = TextWrapping.WrapWholeWords,
-            Margin = new Thickness(0, 12, 0, 0)
-        });
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = _languageLocalizer.GetLocalizedStringOrDefault("ActivationSvc_AdminDragDropFix",
-                defaultValue: "To get drag and drop back, run JASM without administrator rights: " +
-                              "close JASM, right-click its shortcut (or the exe) → Properties → Compatibility → " +
-                              "uncheck \"Run this program as an administrator\" → OK, then open it again."),
-            TextWrapping = TextWrapping.WrapWholeWords,
-            Margin = new Thickness(0, 8, 0, 0)
-        });
-    }
 
     public const string IgnoreNewFolderStructureKey = "IgnoreNewFolderStructureWarning";
 
