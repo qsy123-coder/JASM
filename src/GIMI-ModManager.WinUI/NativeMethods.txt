@@ -33,3 +33,4 @@ GetGUIThreadInfo
 GetClipCursor
 GetAsyncKeyState
 MessageBox
+GetShellWindow
