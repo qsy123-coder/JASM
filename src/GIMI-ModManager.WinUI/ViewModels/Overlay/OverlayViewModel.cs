@@ -35,6 +35,18 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
     private const int MultiSelectModeIndex = 1;
 
+    /// <summary>
+    /// 拖进来的数据对象里根本没有文件时给用户看的那句话（由 <c>OverlayWindow</c> 写进 <see cref="ErrorMessage"/>）。
+    ///
+    /// <para>
+    /// 这一种失败**必须与其它几种分开说**：它连光标都只是禁止图标、松手也不会有 Drop 事件，
+    /// 而能观察到的最具体的事实就是「这个数据对象里没有文件这个格式」——
+    /// 来源只给了虚拟文件清单（从网盘客户端、压缩软件的窗口里直接拖常见这个情况），或只拖了个链接进来。
+    /// </para>
+    /// </summary>
+    public const string NonFileDropMessage =
+        "拖进来的东西里没有文件。从网盘客户端或压缩软件的窗口里直接拖常见这个情况 —— 请先把文件存到文件夹，再从那里拖。";
+
     private readonly ISkinManagerService _skinManagerService;
     private readonly IGameService _gameService;
     private readonly ILocalSettingsService _localSettingsService;
