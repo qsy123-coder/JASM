@@ -92,6 +92,15 @@ public class ActivationService : IActivationService
         _logger.Information("JASM starting up in RELEASE mode...");
 #endif
 
+        // 启动就把"这一份进程到底提没提权"记进日志。
+        //
+        // 提到 Information 的理由：提权会让**跨完整性级别的拖放**在 UIPI 那层被整个掐掉
+        // （Explorer 与它的完整性级别不同），表现是浮窗与主窗口的拖放**同时**只剩禁止光标、
+        // 松手没反应、且不抛任何异常 —— 收用户日志时，这一行是唯一能一眼排除或坐实它的证据。
+        // 原本这个判定只用在启动弹窗上，而用户勾了「不再显示此警告」之后它就彻底无声了。
+        _logger.Information("是否以管理员身份运行：{IsElevated}（提权时拖拽安装不可用）",
+            IsRunningAsAdministrator());
+
         await HandleLaunchArgsAsync();
 
         // Check if there is another instance of JASM running
@@ -414,12 +423,33 @@ public class ActivationService : IActivationService
         });
     }
 
+    /// <summary>
+    /// 本进程是否已提权。
+    ///
+    /// 判据与 <c>OverlaySpike</c> 的 Phase 0 诊断同一条：非提权的管理员账户拿到的是"降权令牌"，
+    /// Administrators 组在里面是 deny-only，因此这个检查为 false —— 问的正是
+    /// 「这一份进程有没有提权」，而不是「当前用户是不是管理员」。
+    ///
+    /// 判定只有这一份：启动日志（<see cref="ActivateAsync"/>）与管理员警告弹窗用的必须是同一个结论，
+    /// 两处各自判断就会出现「日志说提权了、弹窗却不弹」这类不报错的偏差。
+    /// </summary>
+    private static bool IsRunningAsAdministrator()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch (Exception)
+        {
+            // 判不出来时按"没提权"记：这是诊断，不该因为它自己失败而打断启动
+            return false;
+        }
+    }
+
     private async Task AdminWarningPopup()
     {
-        var identity = WindowsIdentity.GetCurrent();
-        var principal = new WindowsPrincipal(identity);
-
-        if (!principal.IsInRole(WindowsBuiltInRole.Administrator)) return;
+        if (!IsRunningAsAdministrator()) return;
 
         var ignoreWarning = await _localSettingsService.ReadSettingAsync<bool>(IgnoreAdminWarningKey);
 
