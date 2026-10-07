@@ -176,11 +176,16 @@ public sealed partial class ModPane : UserControl
                 "游戏当前没有运行，先把游戏开起来再点。",
             GameKeySendStatus.GameWindowNotFound =>
                 "找到游戏进程了，但没有可用的游戏窗口。切回游戏画面后再试一次。",
+            // 这两条**不再劝用户把 JASM 自己以管理员身份运行**。那条老出路确实送得进按键，
+            // 代价却是跨完整性级别的 OLE 拖拽被 UIPI 整个掐掉：浮窗与主窗口会同时只剩禁止光标、
+            // 松手没反应、且不报任何错 —— 拿「拖拽安装全灭」换「按键能送」不划算，
+            // 也不该由一句失败提示替用户做这个决定。助手（Elevator.exe，4.0.0.0）就是为这两种情况准备的。
             GameKeySendStatus.NeedsElevation =>
                 "游戏正以管理员身份运行，JASM 自己和提权助手都没能把按键送进去。"
-                + "请更新 JASM 后重试；或关掉 JASM，用「以管理员身份运行」重新打开再点一次（游戏不用重启）。",
+                + "请更新 JASM 后重试（新版助手专为这种情况准备）；别用管理员身份运行 JASM 本身，那修不了按键，还会让拖拽安装失效。",
             GameKeySendStatus.SendInputFailed =>
-                "按键没能送进游戏。如果游戏是以管理员身份运行的，请也用管理员身份启动 JASM。",
+                "按键没能送进游戏。如果游戏是以管理员身份运行的，请更新 JASM 让提权助手代发；"
+                + "别用管理员身份运行 JASM 本身，那会让拖拽安装失效。",
             _ => "按键没能送进游戏。"
         };
 
@@ -198,27 +203,68 @@ public sealed partial class ModPane : UserControl
         KeySwapContent.Visibility = _isKeySwapExpanded ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>两次「这一拖收不了」提示之间的最短间隔，见 <see cref="NotifyDragRefused"/>。</summary>
+    private const int DragRefusalNoticeMinimumIntervalMs = 3000;
+
+    /// <summary>上一次弹提示的时刻（<see cref="Environment.TickCount64"/>；null = 还没弹过）。</summary>
+    private long? _lastDragRefusalNoticeTicks;
+
+    /// <summary>
+    /// 收不了这一拖时给用户一句话说清楚为什么。
+    ///
+    /// <para>
+    /// 必须给：不接受拖拽就是不设 <c>AcceptedOperation</c>，用户那边只有禁止光标、松手也不会有 Drop，
+    /// 界面上没有一个字说明原因。默认拖到 <c>ModListArea</c> 上（那里也是 Mod 包的落点）时，
+    /// 用户根本分不清「这里不接图」和「JASM 坏了」。
+    /// </para>
+    ///
+    /// 节流按时间而不是「一次拖拽只记一次」的记账：拖拽事件会在父子元素之间来回冒，
+    /// Enter/Leave 的配对并不可靠（<c>CharactersPage</c> 里「每次 DragOver 都重判」那条注释就为同一件事）。
+    /// </summary>
+    private void NotifyDragRefused(string reason)
+    {
+        var now = Environment.TickCount64;
+
+        if (_lastDragRefusalNoticeTicks is { } last && now - last < DragRefusalNoticeMinimumIntervalMs)
+            return;
+
+        _lastDragRefusalNoticeTicks = now;
+
+        App.GetService<NotificationManager>().ShowNotification("封面图没接住", reason, TimeSpan.FromSeconds(6));
+    }
+
     private async void PaneImage_OnDragEnter(object sender, DragEventArgs e)
     {
-        if (ViewModel.IsReadOnly || ViewModel.BusySetter.IsHardBusy)
-            return;
+        // 早退（只读 / 忙）挪进了 ViewModel 的判定里，这里只负责把理由说出来 ——
+        // 原先那两处早退是静默的，用户只看到禁止光标
         var deferral = e.GetDeferral();
-
-        if (e.DataView.Contains(StandardDataFormats.WebLink))
+        try
         {
-            var url = await e.DataView.GetWebLinkAsync();
-            var isValidHttpLink = ViewModel.CanSetImageFromDragDropWeb(url);
-            if (isValidHttpLink)
-                e.AcceptedOperation = DataPackageOperation.Copy;
+            if (e.DataView.Contains(StandardDataFormats.WebLink))
+            {
+                var url = await e.DataView.GetWebLinkAsync();
+                if (ViewModel.DescribeImageDropRefusalForWeb(url) is { } refusal)
+                    NotifyDragRefused(refusal);
+                else
+                    e.AcceptedOperation = DataPackageOperation.Copy;
+            }
+            else if (e.DataView.Contains(StandardDataFormats.StorageItems))
+            {
+                var data = await e.DataView.GetStorageItemsAsync();
+                if (ViewModel.DescribeImageDropRefusalForFile(data) is { } refusal)
+                    NotifyDragRefused(refusal);
+                else
+                    e.AcceptedOperation = DataPackageOperation.Copy;
+            }
+            else
+            {
+                NotifyDragRefused("图片区只接图片文件，或 http/https 的图片链接。");
+            }
         }
-        else if (e.DataView.Contains(StandardDataFormats.StorageItems))
+        finally
         {
-            var data = await e.DataView.GetStorageItemsAsync();
-            if (ViewModel.CanSetImageFromDragDropStorageItem(data))
-                e.AcceptedOperation = DataPackageOperation.Copy;
+            deferral.Complete();
         }
-
-        deferral.Complete();
     }
 
     private async void PaneImage_OnDrop(object sender, DragEventArgs e)
