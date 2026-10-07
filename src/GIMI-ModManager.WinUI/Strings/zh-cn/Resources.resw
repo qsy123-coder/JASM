@@ -1810,36 +1810,21 @@ JASM 并非为以管理员权限运行而设计。
 
 风险自负，已警告过您</value>
   </data>
-  <data name="ActivationSvc_AdminDragDropWarning" xml:space="preserve">
-    <value>以管理员身份运行时，拖拽安装不可用：把 Mod 压缩包或文件夹拖进 JASM，只会看到禁止光标、松手没有任何反应。
-这是 Windows 的限制（不允许把文件从中等权限的程序拖进高权限的程序），JASM 无法绕过。
-主窗口和游戏内的浮窗都是这样。</value>
-  </data>
-  <data name="ActivationSvc_AdminDragDropFix" xml:space="preserve">
-    <value>要让拖拽恢复，以普通权限重新打开 JASM 即可：
-关掉 JASM → 右键它的快捷方式（或 exe）→ 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」→ 确定，再双击打开。</value>
-  </data>
   <data name="ActivationSvc_AdminWarningDoNotShowAgain" xml:space="preserve">
     <value>不再显示此警告</value>
   </data>
   <data name="ActivationSvc_AdminWarningTitle" xml:space="preserve">
     <value>以管理员身份运行警告</value>
   </data>
-  <data name="ActivationSvc_AdminWarningRestartBtn" xml:space="preserve">
-    <value>以普通权限重新启动</value>
-  </data>
   <data name="ActivationSvc_AdminWarningExitBtn" xml:space="preserve">
     <value>退出</value>
   </data>
-  <data name="ActivationSvc_AdminWarningStayBtn" xml:space="preserve">
-    <value>仍然以管理员身份运行</value>
-  </data>
   <data name="ShellPage_ElevationNoticeTitle" xml:space="preserve">
-    <value>JASM 正以管理员身份运行，拖拽安装不可用</value>
+    <value>JASM 正以管理员身份运行 —— 拖拽安装不可用</value>
   </data>
   <data name="ShellPage_ElevationNoticeMessage" xml:space="preserve">
-    <value>把 Mod 压缩包或文件夹拖进 JASM 只会显示禁止光标、松手没有反应 —— 这是 Windows 对跨权限拖拽的限制，不是 JASM 坏了。
-点右边的按钮可以以普通权限重新打开；也可以自己关掉 JASM，再用普通方式双击打开。</value>
+    <value>拖 Mod 进 JASM 只会显示禁止光标、松手没反应：Windows 不允许把文件从中等权限的程序拖进高权限的程序。
+点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。</value>
   </data>
   <data name="ShellPage_ElevationNoticeAction" xml:space="preserve">
     <value>以普通权限重新启动</value>
