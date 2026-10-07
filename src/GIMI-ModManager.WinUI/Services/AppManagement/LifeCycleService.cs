@@ -77,12 +77,66 @@ public class LifeCycleService(
     }
 
     /// <summary>
-    /// This method is used as a fallback if the new restart method fails.
-    /// It will try to restart the app by starting a new process of itself and then exit the current process.
+    /// 以**普通权限**重新启动自己（去提权），成功就关掉当前进程。
+    ///
+    /// <para>
+    /// 什么时候用：本进程是以管理员身份运行时。那种情况下跨完整性级别的拖拽会被 UIPI 整个掐掉
+    /// （浮窗与主窗口同时只剩禁止光标、松手没反应、且不报任何错），而用户通常不知道自己是怎么
+    /// 被提权的 —— 多半是 exe 属性 → 兼容性里勾了「以管理员身份运行此程序」。
+    /// </para>
+    ///
+    /// <para>
+    /// 顺序**必须是「先起新的、再退旧的」**：起不来的话用户手上还有原来那个进程，
+    /// 不至于两个都没了。新旧之间的交接靠一个落盘的凭条（见 <see cref="UnelevatedRelaunchMarker"/>）——
+    /// 两份的映像路径完全相同，没有凭条的话新进程会被单实例检查挡回去。
+    /// </para>
     /// </summary>
-    /// <param name="args"></param>
-    /// <returns></returns>
-    public async Task LegacyRestartAsync(string args = "")
+    /// <returns>新进程是否已经发起（false 时当前进程照常活着，由调用方告诉用户怎么办）。</returns>
+    public async Task<bool> RestartWithoutElevationAsync()
+    {
+        var exePath = TryResolveOwnExePath();
+        if (exePath is null)
+        {
+            _logger.Error("去提权重启：找不到自己的 exe 路径，放弃");
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("LifeCycle_ErrorRestartingTitle", defaultValue: "Error restarting app"),
+                "找不到 JASM 自己的 exe 路径，无法以普通权限重启。请手动关掉 JASM，再双击它的图标重新打开（不要用「以管理员身份运行」）。",
+                TimeSpan.FromSeconds(15));
+            return false;
+        }
+
+        // 凭条要**先写**：写得晚了，新的一份会先跑完单实例检查然后自己退出
+        UnelevatedRelaunchMarker.Write(_logger, Environment.ProcessId);
+
+        var result = UnelevatedLauncher.Launch(exePath, _logger);
+
+        if (!result.Success)
+        {
+            // 绝不静默失败：静默失败的用户只会以为按钮坏了，然后继续对着禁止光标猜
+            _logger.Error("去提权重启失败：{Detail}", result.Detail);
+            _notificationManager.ShowNotification(_localizer.GetLocalizedStringOrDefault("LifeCycle_ErrorRestartingTitle", defaultValue: "Error restarting app"),
+                "以普通权限重启失败。请手动关掉 JASM，再双击它的图标重新打开（不要用「以管理员身份运行」）。"
+                + $"原因：{result.Detail}",
+                TimeSpan.FromSeconds(15));
+            return false;
+        }
+
+        _logger.Information("去提权重启已发起（{Detail}）；本进程即将退出", result.Detail);
+
+        await StartShutdownAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// 本程序自己的 exe 全路径。找不到返回 <c>null</c>。
+    ///
+    /// <para>
+    /// 顺序有讲究：<c>Assembly.GetEntryAssembly().Location</c> 在**单文件版**下是空串
+    /// （程序集是从自解压目录里的元数据加载的，没有独立的磁盘文件），所以那时只能靠
+    /// <see cref="Environment.ProcessPath"/> —— 它给的是用户双击的那个真实 exe。
+    /// 单文件版正是我们的主分发形态，这条阶梯不能少。
+    /// </para>
+    /// </summary>
+    private string? TryResolveOwnExePath()
     {
         var exePath = Assembly.GetEntryAssembly()!.Location;
         exePath = Path.ChangeExtension(exePath, ".exe");
@@ -94,9 +148,22 @@ public class LifeCycleService(
             _logger.Debug("Restarting from process path: {ExePath}", exePath);
         }
 
-        if (exePath.IsNullOrEmpty() || !File.Exists(exePath))
+        return exePath.IsNullOrEmpty() || !File.Exists(exePath) ? null : exePath;
+    }
+
+    /// <summary>
+    /// This method is used as a fallback if the new restart method fails.
+    /// It will try to restart the app by starting a new process of itself and then exit the current process.
+    /// </summary>
+    /// <param name="args"></param>
+    /// <returns></returns>
+    public async Task LegacyRestartAsync(string args = "")
+    {
+        var exePath = TryResolveOwnExePath();
+
+        if (exePath is null)
         {
-            _logger.Error("Unable to find exe path at {ExePath}. Shutting down...", exePath);
+            _logger.Error("Unable to find own exe path. Shutting down...");
             Application.Current.Exit();
             return;
         }
@@ -107,7 +174,12 @@ public class LifeCycleService(
             {
                 FileName = exePath,
                 UseShellExecute = true,
-                Arguments = args
+                Arguments = args,
+
+                // 不带工作目录的话子进程会继承我们的 —— 单文件版下我们的工作目录可能就是
+                // 那个自解压临时目录（会被清理掉）。日志虽然走绝对路径不受影响，
+                // 但让子进程继承一个随时会消失的目录没有任何好处
+                WorkingDirectory = Path.GetDirectoryName(exePath) ?? string.Empty
             });
         }
         catch (Exception e)
