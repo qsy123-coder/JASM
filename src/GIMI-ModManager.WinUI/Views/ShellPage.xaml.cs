@@ -3,6 +3,7 @@ using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Helpers;
+using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.ViewModels;
 using Microsoft.UI.Input;
@@ -45,6 +46,8 @@ public sealed partial class ShellPage : Page
 
         Loaded += (sender, args) =>
         {
+            ShowElevationNoticeIfDragDropIsBlocked();
+
             var bindings = new Binding()
             {
                 Source = ViewModel,
@@ -254,6 +257,31 @@ public sealed partial class ShellPage : Page
 
         AppTitleBarText.Foreground = (SolidColorBrush)Application.Current.Resources[resource];
         App.AppTitlebar = AppTitleBarText as UIElement;
+    }
+
+    /// <summary>
+    /// 提权时亮出那条常驻提示（文案与解除办法在 XAML 与 zh-cn 资源里）。
+    ///
+    /// <para>
+    /// 判据用 <see cref="AppElevation.IsDragDropBlocked"/> 而不是「是不是管理员」：只有「我们比 shell
+    /// 的完整性级别高」才是拖拽真被掐掉的充要条件 —— 关掉 UAC 的机器上 explorer 自己也是高完整性、
+    /// 两者同级，拖拽本来是好的，拿「是不是管理员」去判就会亮一条假警报，把能用的用户也赶去折腾权限。
+    /// </para>
+    /// </summary>
+    private void ShowElevationNoticeIfDragDropIsBlocked()
+    {
+        if (!AppElevation.IsDragDropBlocked())
+            return;
+
+        ElevationNotice.Title = ResourceExtensions.GetLocalized("ShellPage_ElevationNoticeTitle");
+        ElevationNotice.Message = ResourceExtensions.GetLocalized("ShellPage_ElevationNoticeMessage");
+        ElevationNotice.IsOpen = true;
+    }
+
+    private async void ElevationNoticeRestart_Click(object sender, RoutedEventArgs e)
+    {
+        // 失败时 RestartWithoutElevationAsync 自己会弹通知 —— 绝不静默失败
+        await App.GetService<LifeCycleService>().RestartWithoutElevationAsync();
     }
 
     private void NavigationViewControl_DisplayModeChanged(NavigationView sender,
