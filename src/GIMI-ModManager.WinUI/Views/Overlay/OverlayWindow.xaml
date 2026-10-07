@@ -278,6 +278,15 @@
                     Foreground="#FFE8A33D"
                     Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                     TextWrapping="Wrap" />
+
+                <!--  提权时的常驻提示。它必须常驻：UIPI 会在 OLE 层把跨完整性级别的拖拽整个掐掉，
+                      连 DragOver 都不会触发 —— 所以上面那条"拖拽时才写"的状态行在这里永远等不到机会。
+                      用户能看到的只有禁止光标，这句话是浮窗上唯一能告诉他原因的东西。  -->
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#FFE8A33D"
+                    Text="{x:Bind ViewModel.ElevationNotice, Mode=OneWay}"
+                    TextWrapping="Wrap" />
             </StackPanel>
 
             <!--  x:Name 是给代码后置用的：键盘选中换行时要把那一行滚进视野，
