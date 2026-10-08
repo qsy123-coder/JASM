@@ -24,7 +24,10 @@ internal static class DragProbe
     private const int ThrottleMs = 3000;
 
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
-    private static long _lastLogMs = -ThrottleMs;
+
+    // 节流必须**按落点**分开：全局一份的话，窗口根先记一笔就把同一次拖拽在页面那层的记录吞掉，
+    // 于是日志分不清「事件没到页面」和「到了但被吞了」—— 那正是这行日志要回答的唯一问题。
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> LastLogMs = new();
 
     /// <summary>记一笔拖拽事件。绝不抛异常 —— 诊断代码不能反过来把拖拽搞坏。</summary>
     internal static void Log(string where, DragEventArgs e)
@@ -32,10 +35,10 @@ internal static class DragProbe
         try
         {
             var now = Clock.ElapsedMilliseconds;
-            if (now - Interlocked.Read(ref _lastLogMs) < ThrottleMs)
+            if (now - LastLogMs.GetOrAdd(where, -ThrottleMs) < ThrottleMs)
                 return;
 
-            Interlocked.Exchange(ref _lastLogMs, now);
+            LastLogMs[where] = now;
 
             // 带上 formats：源没给 FileDrop（例如从某些窗口里拖出的裸文本）时，
             // 「事件到了但没有文件」和「事件根本没到」是两件事，日志必须能分开。
