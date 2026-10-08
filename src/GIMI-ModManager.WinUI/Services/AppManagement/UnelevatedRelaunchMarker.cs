@@ -55,6 +55,27 @@ internal static class UnelevatedRelaunchMarker
     }
 
     /// <summary>
+    /// 只看一眼凭条在不在，**不消费**。用来判断「本进程是不是上一份重启出来的」——
+    /// 是的话就不能再做一次降级重启，否则一份接一份地重启下去。
+    /// </summary>
+    internal static bool IsPendingHandoff(ILogger logger)
+    {
+        try
+        {
+            if (!File.Exists(MarkerPath))
+                return false;
+
+            return UnelevatedRelaunchProtocol.IsHandoffPending(File.ReadAllText(MarkerPath),
+                File.GetLastWriteTimeUtc(MarkerPath), DateTime.UtcNow, out _);
+        }
+        catch (Exception e)
+        {
+            logger.Warning(e, "[去提权] 看交接凭条失败（{Path}）", MarkerPath);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 消费凭条：新鲜且可解析就返回前任 pid 并**把它删掉**（一次性凭条），
     /// 否则返回 null（过期的顺手清掉，免得下次启动又被它拦一下）。
     /// </summary>
