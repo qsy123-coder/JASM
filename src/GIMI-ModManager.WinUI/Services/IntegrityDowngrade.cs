@@ -1,33 +1,47 @@
 using GIMI_ModManager.WinUI.Services.AppManagement;
-using GIMI_ModManager.WinUI.Services.Input;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Services;
 
 /// <summary>
-/// 启动时若本进程是「高完整性」（管理员身份），就**换一份中完整性的自己**再跑下去。
+/// 启动时若**本进程比 shell（explorer）的完整性级别高**，就换一份与 shell 同级的中完整性自己再跑下去。
 ///
 /// <para>
-/// <b>为什么必须这么做</b>：Windows 只允许把拖拽投递给「完整性级别不高于拖拽来源」的窗口
-/// （UIPI，[官方说明](https://learn.microsoft.com/nl-be/archive/blogs/patricka/q-why-doesnt-drag-and-drop-work-when-my-application-is-running-elevated-a-mandatory-integrity-control-and-uipi)）。
-/// 于是「以管理员身份运行」会把拖拽安装整个掐死：拖 Mod 进主窗口或浮窗只剩禁止光标、松手没反应、
-/// 连 DragOver 都不会来（所以「拖拽时才提示」的做法永远等不到机会）。而真实用户里有一大批机器
-/// （UAC 关闭 / 内置 Administrator 账户）**双击 exe 就是管理员**，他们在设置里找不到任何
-/// 「权限」开关，只看到拖拽不能用。
+/// <b>拖拽要求两边完整性级别「相同」</b>（实测，不是文档说的「来源 ≥ 目标」）：
+/// </para>
+/// <list type="bullet">
+/// <item>中来源 → 高目标：禁止光标、事件根本不到（提权 JASM 收不到资源管理器拖来的文件就是这么来的）；</item>
+/// <item><b>高来源 → 中目标：同样禁止</b>（用提权进程当来源实测过）；</item>
+/// <item>中来源 → 中目标：正常，这一档才是能用的那一档。</item>
+/// </list>
+///
+/// <para>
+/// 于是「让本进程与 shell 同级」就是唯一能保拖拽的办法，而 shell 的级别由机器决定：
+/// </para>
+/// <list type="bullet">
+/// <item><b>shell 是中</b>（普通机器，用户在快捷方式上勾了「以管理员身份运行」）⇒ 我们高 ⇒
+/// 换一份中完整性的自己 ✓；</item>
+/// <item><b>shell 也是高</b>（UAC 关闭 / 内置 Administrator 那种「双击 exe 就是管理员」的机器，
+/// 网吧机常见）⇒ 本来就同级，<b>绝不能换</b> —— 换成中反而把原本能拖的弄成不能拖。</item>
+/// </list>
+///
+/// <para>
+/// <b>为什么是「换一份」而不是「就地把自己令牌改低」</b>：后者实测不管用 —— 进程对象在创建那一刻
+/// 就定了，事后改令牌这个进程照样收不到拖拽（同机对照：提权出生 + 就地降级 → 拖浮窗毫无反应、
+/// 日志里连事件都没有；出生即中完整性 → 拖拽到达并安装成功）。所以只能在启动最前面换一份新的。
 /// </para>
 ///
 /// <para>
-/// <b>为什么是「重启一份」而不是「就地把自己令牌改低」</b>：后者实测<b>不管用</b> ——
-/// 进程对象是在创建那一刻按当时令牌的完整性级别定下来的，事后改令牌，这个进程照样收不到拖拽
-/// （同一台机器上对照过：提权出生 + 就地降级 → 拖浮窗毫无反应、日志里连事件都没有；
-/// 出生即中完整性 → 拖拽到达并安装成功）。所以只能在启动最前面换一份新的。
+/// 新的一份用的是**从自己令牌降级得来的**中完整性令牌（不是借 explorer 的）—— 这样在 UAC 关闭的
+/// 机器上也成立，而且管理员组仍留在令牌里，写受保护目录的 ACL 那条路照走（实测：降级后仍能写
+/// <c>Program Files</c>）。交接靠 <see cref="UnelevatedRelaunchMarker"/> 那张落盘凭条：
+/// 新的一份据此等前任退出，并避开单实例检查。
 /// </para>
 ///
 /// <para>
-/// 新的一份用的是**从自己令牌降级得来的**中完整性令牌（不是借 explorer 的）——
-/// 这样在 UAC 关闭的机器上也成立，而且管理员组仍留在令牌里，写受保护目录的 ACL 那条路照走
-/// （实测：降级后仍能写 <c>Program Files</c>）。交接靠 <see cref="UnelevatedRelaunchMarker"/>
-/// 那张落盘凭条：新的一份据此等前任退出，并避开单实例检查。
+/// ⚠️ 还有一个判据覆盖不到的角落：**我们比 shell 低**（例如 UAC 关闭的机器上 JASM 被一个中完整性
+/// 的进程拉起来）。那种情况下拖拽同样不可用，但方向反了、没有任何 API 能把完整性级别升上去，
+/// 只能靠用户以管理员身份重开。这种情况很罕见，暂时不做提示。
 /// </para>
 ///
 /// <para>
@@ -37,9 +51,6 @@ namespace GIMI_ModManager.WinUI.Services;
 /// </summary>
 internal static class IntegrityDowngrade
 {
-    /// <summary>「高」完整性级别（提权进程）。</summary>
-    private const uint HighIntegrityRid = 0x3000;
-
     /// <summary>本次启动的处理结果。</summary>
     internal static IntegrityOutcome Outcome { get; private set; } = IntegrityOutcome.NotElevated;
 
@@ -47,7 +58,7 @@ internal static class IntegrityDowngrade
     internal static string? FailureReason { get; private set; }
 
     /// <summary>
-    /// 高完整性时换一份中完整性的自己。非高完整性（绝大多数用户）什么都不做。
+    /// 本进程比 shell 高时，换一份与 shell 同级（中完整性）的自己。其余情况什么都不做。
     /// <b>绝不抛异常</b>：这是启动路径上的第一步，失败只是「拖拽可能不可用」，不该拦住启动。
     /// </summary>
     /// <returns><see cref="IntegrityOutcome.Relaunching"/> = 新的一份已经起来，调用方应当把本进程退掉。</returns>
@@ -55,15 +66,15 @@ internal static class IntegrityDowngrade
     {
         try
         {
-            // 凭条在 = 本进程就是上一份重启出来的：绝不能再降级重启一次（一份接一份没完）
+            // 凭条在 = 本进程就是上一份换出来的：绝不能再换一次（一份接一份没完）
             if (UnelevatedRelaunchMarker.IsPendingHandoff(logger))
                 return Outcome;
 
-            // 刻意用 TryReadIntegrityLevelRid 而不是 IsOwnProcessElevated()：后者读的是 Lazy 缓存，
-            // 在这里读一次就会把「降级前」的 High 永久缓存下来
-            if (WindowProcessQuery.TryReadIntegrityLevelRid((uint)Environment.ProcessId) is not { } rid
-                || rid < HighIntegrityRid)
-                return Outcome = IntegrityOutcome.NotElevated;
+            // 判据用 AppElevation.IsDragDropBlocked()（= 我们比 shell 高）而不是 IsOwnProcessElevated()：
+            // 后者会把「shell 也是高」那种机器（UAC 关闭 / 整机提权）也一起换掉，而那正是不能换的情况。
+            // 顺带也避开 Lazy 缓存：换份之后新进程会重新算一遍。
+            if (!AppElevation.IsDragDropBlocked())
+                return Outcome;
 
             var exePath = Environment.ProcessPath;
             if (string.IsNullOrEmpty(exePath))
@@ -77,7 +88,7 @@ internal static class IntegrityDowngrade
             if (!result.Success)
                 return Fail(result.Detail);
 
-            logger.Information("[降权] 启动时为高完整性（管理员身份），已换一份中完整性的自己：{Detail}",
+            logger.Information("[降权] 本进程比 shell 高（{Detail}），已换一份中完整性的自己",
                 result.Detail);
             return Outcome = IntegrityOutcome.Relaunching;
         }
@@ -92,9 +103,10 @@ internal static class IntegrityDowngrade
     {
         IntegrityOutcome.Relaunching => "已换一份中完整性的自己启动（本进程即将退出）",
         IntegrityOutcome.Failed =>
-            $"启动时为高完整性（管理员身份），换一份中完整性的自己失败：{FailureReason}"
+            "本进程比 shell 高，换一份中完整性的自己失败："
+            + FailureReason
             + " —— 拖拽安装在这份进程里不可用",
-        _ => "中完整性，非管理员启动（拖拽安装可用）"
+        _ => "与 shell 同级（拖拽安装可用）"
     };
 
     /// <summary>把原命令行参数原样转交给新的一份（带参数启动的场景不该在这一次重启里丢掉）。</summary>
@@ -114,12 +126,12 @@ internal static class IntegrityDowngrade
 /// <summary><see cref="IntegrityDowngrade"/> 的启动结果。</summary>
 internal enum IntegrityOutcome
 {
-    /// <summary>本来就是中完整性（绝大多数用户），或者本进程已经是被换出来的那一份：没做任何事。</summary>
+    /// <summary>本来就与 shell 同级（绝大多数用户），或者本进程已经是被换出来的那一份：没做任何事。</summary>
     NotElevated,
 
-    /// <summary>是高完整性，已经起了中完整性的一份 —— 本进程应当立刻退出，把位置让给它。</summary>
+    /// <summary>比 shell 高，已经换了一份中完整性的 —— 本进程应当立刻退出，把位置让给它。</summary>
     Relaunching,
 
-    /// <summary>是高完整性但换不出来 —— 这份进程里拖拽不可用，主窗口那条提示条仍是唯一出路。</summary>
+    /// <summary>比 shell 高但换不出来 —— 这份进程里拖拽不可用，主窗口那条提示条仍是唯一出路。</summary>
     Failed
 }
