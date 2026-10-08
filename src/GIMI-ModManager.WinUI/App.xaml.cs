@@ -97,6 +97,11 @@ public partial class App : Application
 
     public App()
     {
+        // 必须是全进程第一件事：把「以管理员身份启动」降成中完整性，否则 UIPI 会把所有拖拽投递
+        // 掐死（拖 Mod 进主窗口/浮窗只剩禁止光标）。**不能挪到后面** —— AppElevation 那两处是
+        // Lazy 缓存，先读到 High 就会一直缓存 High，降级就白做了（详见 IntegrityDowngrade）。
+        IntegrityDowngrade.LowerToMediumIfElevated();
+
         InitializeComponent();
 
         Host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
