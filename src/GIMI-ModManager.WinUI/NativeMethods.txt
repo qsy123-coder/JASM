@@ -14,6 +14,8 @@ GetForegroundWindow
 OpenProcess
 OpenProcessToken
 GetTokenInformation
+SetTokenInformation
+GetCurrentProcess
 CloseHandle
 QueryFullProcessImageName
 RegisterHotKey
