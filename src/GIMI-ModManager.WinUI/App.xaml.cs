@@ -97,11 +97,6 @@ public partial class App : Application
 
     public App()
     {
-        // 必须是全进程第一件事：把「以管理员身份启动」降成中完整性，否则 UIPI 会把所有拖拽投递
-        // 掐死（拖 Mod 进主窗口/浮窗只剩禁止光标）。**不能挪到后面** —— AppElevation 那两处是
-        // Lazy 缓存，先读到 High 就会一直缓存 High，降级就白做了（详见 IntegrityDowngrade）。
-        IntegrityDowngrade.LowerToMediumIfElevated();
-
         InitializeComponent();
 
         Host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
@@ -465,6 +460,21 @@ public partial class App : Application
 
                 services.AddSingleton<ModRandomizationService>();
             }).Build();
+
+        // 换一份中完整性的自己：以管理员身份跑起来的 JASM 收不到任何拖拽（UIPI 只允许投递给
+        // 不高于来源的进程），详见 IntegrityDowngrade。
+        //
+        // 位置有两处硬要求：
+        //   1. 必须在**任何 AppElevation 读取之前** —— 那两处是 Lazy 缓存，先读到 High 就会一直
+        //      缓存 High，症状是「其实已经是中完整性，主窗口那条提权提示条却照样弹」；
+        //   2. 必须在 Host 建好之后 —— 要走日志说清楚这次换行为什么发生（用户日志是唯一现场）。
+        // 换成功时本进程立刻退出，把位置让给新的一份（凭条让新的那份知道该等谁）。
+        var logger = Host.Services.GetRequiredService<ILogger>().ForContext<App>();
+        if (IntegrityDowngrade.RelaunchAtMediumIfElevated(logger) == IntegrityOutcome.Relaunching)
+        {
+            logger.Information("[降权] 中完整性的那一份已经起来，本进程（高完整性）退出");
+            Environment.Exit(0);
+        }
 
         UnhandledException += App_UnhandledException;
     }
