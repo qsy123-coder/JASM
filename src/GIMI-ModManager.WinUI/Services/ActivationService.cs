@@ -92,14 +92,16 @@ public class ActivationService : IActivationService
         _logger.Information("JASM starting up in RELEASE mode...");
 #endif
 
-        // 启动就把"这一份进程到底提没提权"记进日志。
+        // 启动就把"这一份进程到底是不是提权启动的、以及有没有被降级"记进日志。
         //
         // 提到 Information 的理由：提权会让**跨完整性级别的拖放**在 UIPI 那层被整个掐掉
-        // （Explorer 与它的完整性级别不同），表现是浮窗与主窗口的拖放**同时**只剩禁止光标、
+        // （拖拽只允许投递给不高于来源的进程），表现是浮窗与主窗口的拖放**同时**只剩禁止光标、
         // 松手没反应、且不抛任何异常 —— 收用户日志时，这一行是唯一能一眼排除或坐实它的证据。
-        // 原本这个判定只用在启动弹窗上，而用户勾了「不再显示此警告」之后它就彻底无声了。
-        _logger.Information("是否以管理员身份运行：{IsElevated}（提权时拖拽安装不可用）",
-            IsRunningAsAdministrator());
+        //
+        // ⚠️ 别再写成「IsElevated 是几」的那种问法：降级在 App 构造最前面就做完了（见 IntegrityDowngrade），
+        // 所以 AppElevation.IsElevated() 读到的一定是**降级之后**的状态，只看它会把
+        // 「以管理员启动、已成功降级」误报成「普通权限启动」—— 而这正是用户问题的关键信息。
+        _logger.Information("启动完整性：{Integrity}", IntegrityDowngrade.Describe());
 
         await HandleLaunchArgsAsync();
 
@@ -469,14 +471,6 @@ public class ActivationService : IActivationService
             await NewFolderStructurePopup();
         });
     }
-
-    /// <summary>
-    /// 本进程是否以管理员身份运行。判定只有一份，在 <see cref="AppElevation"/> ——
-    /// 启动日志、主窗口的常驻提示条、浮窗的状态行问的必须是同一个结论，
-    /// 几处各自判断就会出现「日志说提权了、横幅却不弹」这类不报错的偏差。
-    /// </summary>
-    private static bool IsRunningAsAdministrator() => AppElevation.IsElevated();
-
 
     public const string IgnoreNewFolderStructureKey = "IgnoreNewFolderStructureWarning";
 
