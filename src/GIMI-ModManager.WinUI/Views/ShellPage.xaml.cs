@@ -25,6 +25,19 @@ public sealed partial class ShellPage : Page
         ViewModel = viewModel;
         InitializeComponent();
 
+        // 窗口根挂一份拖拽探针：各页面的探针只在事件真的到页面时才说话，而「事件压根没进进程」
+        // （跨完整性级别的拖拽被 UIPI 掐掉就是这样）只有这里看得见 —— 收「拖不进去」的日志时，
+        // 这一行有没有，直接决定该查权限还是该查落点。见 Helpers/DragProbe。
+        // 只记日志、**不设 AcceptedOperation**：光标行为与挂之前一模一样（没落点的地方仍是禁止）。
+        if (Content is UIElement probeRoot)
+        {
+            probeRoot.AllowDrop = true;
+            probeRoot.AddHandler(UIElement.DragEnterEvent,
+                new DragEventHandler((_, e) => DragProbe.Log("窗口根/DragEnter", e)), true);
+            probeRoot.AddHandler(UIElement.DragOverEvent,
+                new DragEventHandler((_, e) => DragProbe.Log("窗口根/DragOver", e)), true);
+        }
+
         ViewModel.NavigationService.Frame = NavigationFrame;
         ViewModel.NavigationViewService.Initialize(NavigationViewControl);
 
