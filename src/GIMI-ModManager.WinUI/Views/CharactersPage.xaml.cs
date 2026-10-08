@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using CommunityToolkit.WinUI;
+using GIMI_ModManager.WinUI.Helpers;
 using GIMI_ModManager.WinUI.Helpers.Xaml;
 using GIMI_ModManager.WinUI.Models;
 using GIMI_ModManager.WinUI.ViewModels;
@@ -159,6 +160,8 @@ public sealed partial class CharactersPage : Page
     /// </summary>
     private void PageRoot_OnDragEnter(object sender, DragEventArgs e)
     {
+        DragProbe.Log("概览页", e);
+
         e.AcceptedOperation = DataPackageOperation.Copy;
         UpdateAutoDetectArea(e);
     }
@@ -169,6 +172,10 @@ public sealed partial class CharactersPage : Page
     /// </summary>
     private void PageRoot_OnDragOver(object sender, DragEventArgs e)
     {
+        // 探针在 DragOver 也挂一份：指针在页面内移动时 DragEnter 不会重发，只有这里能证明
+        // 「拖拽还压在页面上」（内部有 3 秒节流，不会刷屏）
+        DragProbe.Log("概览页/DragOver", e);
+
         e.AcceptedOperation = DataPackageOperation.Copy;
         UpdateAutoDetectArea(e);
     }
@@ -202,7 +209,9 @@ public sealed partial class CharactersPage : Page
         }
 
         var storageItems = await e.DataView.GetStorageItemsAsync();
-        Log.Information("Auto detect drop on the page root: {ItemCount} item(s)", storageItems.Count);
+        // formats 一起记：「这一拖里没有文件」和「事件根本没到」是两回事，日志要能分开
+        Log.Information("Auto detect drop on the page root: {ItemCount} item(s)；formats=[{Formats}]",
+            storageItems.Count, string.Join(",", e.DataView.AvailableFormats));
 
         await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
     }
