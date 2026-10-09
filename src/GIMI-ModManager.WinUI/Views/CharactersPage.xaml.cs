@@ -313,6 +313,26 @@ public sealed partial class CharactersPage : Page, IExternalDropSurface
     string IExternalDropSurface.DropSurfaceName => "概览页";
 
     /// <summary>
+    /// 不写光标旁的说明文字：本页用的是**页面内那层毛玻璃**（见下面两个方法），
+    /// 再在光标旁写一行是重复的。
+    /// </summary>
+    string? IExternalDropSurface.DragCaption => null;
+
+    /// <summary>
+    /// 拖着东西进了本页 —— 亮出毛玻璃提示层（就是原来挂在页面根 <c>DragEnter</c> 上那件事）。
+    ///
+    /// <para>
+    /// 这里**刻意不去分「有没有压在角色卡片上」**：自有落点的坐标在本机上不可靠
+    /// （实测算出来的点总落在导航栏上），分不出来。而认不出卡片时落点本来就会走"自动识别"，
+    /// 所以统一亮「松手自动识别」这句反而与真实行为一致 —— 分不出来就别假装分得出来。
+    /// </para>
+    /// </summary>
+    void IExternalDropSurface.OnExternalDragEnter() => ShowAutoDetectArea();
+
+    /// <summary>拖走了 / 已经放下了 —— 收起毛玻璃。</summary>
+    void IExternalDropSurface.OnExternalDragLeave() => HideAutoDetectArea();
+
+    /// <summary>
     /// 整页都接：本页根 Grid 就是落点（卡片与列表空白处都算，各自走各自的分支），
     /// 这与 XAML 那侧把 <c>AllowDrop</c> 挂在页面根 Grid 上是一致的。
     /// </summary>
