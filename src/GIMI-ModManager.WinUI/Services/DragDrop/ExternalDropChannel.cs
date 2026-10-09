@@ -1,0 +1,427 @@
+using System.Runtime.InteropServices;
+using GIMI_ModManager.WinUI.Services.Input;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Serilog;
+using Windows.Foundation;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+
+namespace GIMI_ModManager.WinUI.Services.DragDrop;
+
+/// <summary>
+/// 拖放投递通道：WinUI 3 收不到外部拖放时（关掉 UAC 的机器）由它顶上。
+///
+/// <para>
+/// <b>为什么需要它</b>：<c>EnableLUA=0</c> 的机器上所有进程都是高完整性，WinUI 3 收不到外部拖放 ——
+/// XAML 的 <c>DragEnter</c>/<c>Drop</c> 根本不触发。**已在真机实测**：那台机器上 JASM 自带的
+/// `[拖拽探针]` 一条都不响，而挂在本通道上的自有落点拿到了完整的 <c>DragEnter</c> → <c>Drop</c>。
+/// </para>
+///
+/// <para>
+/// <b>它做三件事</b>：<br/>
+/// ① 判定本机要不要启用（见 <see cref="IsEnvEnabled"/>）；<br/>
+/// ② 在窗口上注册 <see cref="NativeDropTarget"/>，把 OLE 的**屏幕物理像素坐标**换算成
+///    窗口客户区的 **XAML DIP 坐标**；<br/>
+/// ③ 拿那个坐标在视觉树里命中测试，找出「这一点上愿意接住的页面」（<see cref="IExternalDropSurface"/>），
+///    把文件路径交给它。
+/// </para>
+///
+/// <para>
+/// <b>它不做的两件事</b>（都是刻意的）：<br/>
+/// ① **不自己判定收不收**。收不收、算谁的、装给哪个角色，全由页面按它既有的判据回答 ——
+///    那条逻辑在页面里已经调过很多轮（卡片上落压缩包要改判给自动识别等），
+///    在这条通道里抄第二份就等于埋一个"两条路迟早分家"的雷。<br/>
+/// ② **不碰浮窗那条线**。浮窗的显隐、置顶、前台归属走的是 <c>OverlayWindowStyles</c> /
+///    <c>OverlayHotkeyRegistrar</c>，与本通道无关；这里只多挂一个落点。
+/// </para>
+/// </summary>
+// 类**不标 unsafe**（只有 Attach 需要）：unsafe 上下文里不允许 await，
+// 而下面 HandleDropAsync 是异步的 —— 类级 unsafe 会让那条 await 直接编译不过（CS4004）。
+internal sealed class ExternalDropChannel : IDisposable
+{
+    /// <summary>我们成功注册时得到的注册结果。</summary>
+    private const int SOk = 0;
+
+    /// <summary>
+    /// 强制启用的环境变量名。门禁按设计会挡掉开发机（那边是中完整性、UAC 开着，
+    /// 复现不出缺陷），但"路由对不对"又必须在本机验 —— 留这个口子，
+    /// **默认关着**，只在手工排查/自测时临时设为 1。
+    /// </summary>
+    internal const string ForceEnableVariable = "JASM_FORCE_DROP_CHANNEL";
+
+    private readonly ILogger _logger;
+
+    /// <summary>挂过的窗口。每一条都持有落点对象的强引用，直到 <see cref="Dispose"/>。</summary>
+    private readonly List<Attachment> _attachments = [];
+
+    /// <summary>本机是否启用了这条通道（门禁的结论，只算一次）。</summary>
+    internal bool IsEnabled { get; private set; }
+
+    /// <summary>门禁的结论是否已判定过（<see cref="WindowProcessQuery.OwnIntegrityLevelRid"/> 是惰性的，读一次就够）。</summary>
+    private bool _enabledEvaluated;
+
+    /// <summary>
+    /// 只验通道、不落盘。**仅在环境变量强开时成立**。
+    ///
+    /// <para>
+    /// 为什么需要它：本机（正常机器）上 WinUI 自己的拖放是好的，强开通道会变成同一个文件
+    /// **装两遍** —— 那是拿用户的 Mod 目录做实验，不行。但坐标换算与命中测试偏偏又是整条链路里
+    /// 唯一无法靠推理确认的两处（屏幕像素 → 客户区 → DIP 要是不对，会整体偏到右下角去）。
+    /// 所以强开时只跑这两处并记日志，**真正交给页面的那一步跳过**。
+    /// </para>
+    /// </summary>
+    private bool _dryRun;
+
+    public ExternalDropChannel(ILogger logger) => _logger = logger.ForContext<ExternalDropChannel>();
+
+    /// <summary>
+    /// 门禁：本进程是不是高完整性（= 这台机器 UAC 关着，WinUI 的拖放必然失效）。
+    ///
+    /// <para>
+    /// 为什么用「我们自己是高」而不是「读 EnableLUA」：启动时的降权逻辑（<c>IntegrityDowngrade</c>）
+    /// 只在 shell 是中完整性时才把我们换成中完整性 —— **能一路走到这里是高，本身就等价于
+    /// 「shell 也是高」= UAC 关闭**。这个判据现成、且不必去碰注册表。
+    /// </para>
+    ///
+    /// <para>
+    /// 判据读不到时按**不启用**处理：宁可少救一类机器，也不能让正常机器误进新代码路径。
+    /// </para>
+    /// </summary>
+    private bool IsEnvEnabled()
+    {
+        if (_enabledEvaluated)
+            return IsEnabled;
+
+        _enabledEvaluated = true;
+
+        var forced = Environment.GetEnvironmentVariable(ForceEnableVariable);
+
+        if (!string.IsNullOrEmpty(forced) && forced != "0")
+        {
+            IsEnabled = true;
+            _dryRun = true;
+            _logger.Warning(
+                "[拖放通道] 被环境变量 {Variable}={Value} 强制启用（本进程={OwnIntegrity}）——"
+                + "**只验通道、不落盘**：不调用页面的处理，免得同一个文件被装两遍",
+                ForceEnableVariable, forced, DescribeOwnIntegrity());
+            return IsEnabled;
+        }
+
+        IsEnabled = WindowProcessQuery.IsOwnProcessElevated();
+
+        _logger.Information("[拖放通道] 门禁：本进程={OwnIntegrity} → {Decision}",
+            DescribeOwnIntegrity(), IsEnabled ? "启用（WinUI 拖放在这类机器上收不到，由本通道顶上）" : "不启用（正常机器，走原生 XAML 落点）");
+
+        return IsEnabled;
+    }
+
+    /// <summary>
+    /// 在一个窗口上挂落点。<paramref name="rootProvider"/> 返回该窗口的 XAML 根元素
+    /// （命中测试要从它往下走）—— 用委托是因为窗口内容可能比本调用更晚就绪。
+    /// </summary>
+    internal unsafe void Attach(HWND window, string owner, Func<UIElement?> rootProvider)
+    {
+        if (!IsEnvEnabled())
+        {
+            _logger.Debug("[拖放通道] {Owner} 门禁未通过，不挂载", owner);
+            return;
+        }
+
+        var handle = (nint)window.Value;
+
+        // RegisterDragDrop 的前提是当前线程初始化过 OLE。UI 线程本来就是 STA（WinUI 建的），
+        // 所以这一步多半只是确认；返回值如实记下来，因为"没初始化"是注册失败的常见原因之一。
+        var oleResult = DropTargetInterop.OleInitialize(0);
+
+        // ⚠️ **刻意不调 OleUninitialize**：返回值 S_FALSE 表示"本线程早就初始化过"，
+        // 那是 WinUI 自己初始化来跑拖放的。我们在 Dispose 里减一次引用，
+        // 就可能把 WinUI 还要用的 OLE 拆掉。进程活得比通道久，这点引用留着无害。
+        var attachment = new Attachment(handle);
+
+        _logger.Information(
+            "[拖放通道] 挂载 {Owner}：OleInitialize=0x{OleResult:X8} 本进程={OwnIntegrity} shell={ShellRelation}",
+            owner, oleResult, DescribeOwnIntegrity(), AppElevation.CompareWithShell());
+
+        attachment.Target = new NativeDropTarget(owner, handle, _logger,
+            (x, y) => CanAcceptAt(attachment, rootProvider, x, y),
+            (paths, x, y) => HandleDropAsync(attachment, rootProvider, paths, x, y));
+
+        // 把托管对象换成一个原生 COM 指针交给系统。这一步之后，系统的回调会直接进 NativeDropTarget。
+        attachment.TargetPointer =
+            Marshal.GetComInterfaceForObject(attachment.Target, typeof(DropTargetInterop.IDropTarget));
+
+        var registerResult = DropTargetInterop.RegisterDragDrop(handle, attachment.TargetPointer);
+
+        attachment.Registered = registerResult == SOk;
+
+        _logger.Information(
+            "[拖放通道] {Owner} RegisterDragDrop 结果=0x{Result:X8}（{Meaning}）；落点句柄=0x{Window:X}",
+            owner, registerResult, DescribeRegisterResult(registerResult), handle);
+
+        if (registerResult == DropTargetInterop.DragDropAlreadyRegistered)
+        {
+            // 系统保留先注册的那个。走到这里说明这个窗口已经被别的落点占了，
+            // 我们的注册没生效 —— 后续回调不会进来。如实记下来，别把它当成"通道失效"。
+            _logger.Warning("[拖放通道] {Owner} 该窗口已有落点，本次未接管；后续若没有 DragEnter，属于预期", owner);
+        }
+
+        LogWindowTree(handle, owner);
+
+        // 挂完立刻自测一次坐标换算与命中测试。**不必等用户拖一次**：拿窗口中心当作"落点"，
+        // 走一遍与真实落下完全相同的换算与命中，日志里就能看出 DIP 换算有没有偏。
+        // 这一条在真机上也照样有用 —— 它给出一条不依赖用户操作的证据。
+        RunSelfCheck(attachment, rootProvider);
+
+        _attachments.Add(attachment);
+    }
+
+    /// <summary>
+    /// 用窗口中心当假想落点，跑一遍 <see cref="ResolvePoint"/> + <see cref="ResolveSurface"/>。
+    ///
+    /// <para>
+    /// 验的是整条链路里唯一两处**无法靠推理确认**的地方：<c>ScreenToClient</c> 与
+    /// <c>RasterizationScale</c> 的换算（错了会整体偏到右下角），以及视觉树命中测试能不能
+    /// 找到那个愿意接住的页面。整段包 try：自测绝不该影响启动。
+    /// </para>
+    /// </summary>
+    private unsafe void RunSelfCheck(Attachment attachment, Func<UIElement?> rootProvider)
+    {
+        try
+        {
+            // 先把「窗口根本不可见」这一种单独挑出来说清楚：浮窗是**创建了但藏着**的（要按热键才显形），
+            // 隐藏窗口没有可命中的内容，命中链一定是空的 —— 那是正常现象，不是换算偏了。
+            // 不写这一条的话，日志里那句「命中链=<空>」会被当成故障去查。
+            if (!PInvoke.IsWindowVisible(new HWND((void*)attachment.Window)))
+            {
+                _logger.Information("[拖放通道] 自测：窗口当前不可见（浮窗要唤出后才有内容），跳过命中测试");
+                return;
+            }
+
+            if (!PInvoke.GetWindowRect(new HWND((void*)attachment.Window), out var rect))
+            {
+                _logger.Warning("[拖放通道] 自测：GetWindowRect 失败（错误码={ErrorCode}）", Marshal.GetLastWin32Error());
+                return;
+            }
+
+            var screenX = (rect.left + rect.right) / 2;
+            var screenY = (rect.top + rect.bottom) / 2;
+
+            var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
+            if (root is null)
+            {
+                _logger.Warning("[拖放通道] 自测：拿不到 XAML 根元素，换算链断在这里");
+                return;
+            }
+
+            var surface = ResolveSurface(root, point);
+
+            _logger.Information(
+                "[拖放通道] 自测（窗口中心）：屏幕=({ScreenX},{ScreenY}) → XAML DIP=({X:F1},{Y:F1})；"
+                + "命中链={Chain}；接住的页面={Surface}",
+                screenX, screenY, point.X, point.Y, DescribeHits(root, point),
+                surface?.DropSurfaceName ?? "<无>");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "[拖放通道] 自测失败（不影响通道本身）");
+        }
+    }
+
+    /// <summary>
+    /// 这一点上收不收 —— 换算坐标、命中测试出页面，再由页面按它自己的判据回答。
+    /// 全程跑在 UI 线程（OLE 把回调派到窗口所属线程，也就是 WinUI 的 UI 线程），
+    /// 所以可以直接摸视觉树。
+    /// </summary>
+    private bool CanAcceptAt(Attachment attachment, Func<UIElement?> rootProvider, int screenX, int screenY)
+    {
+        var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
+        if (root is null)
+            return false;
+
+        var surface = ResolveSurface(root, point);
+        return surface is not null && surface.CanAcceptDropAt(point);
+    }
+
+    /// <summary>落下：把路径交给命中测试出来的那个页面，由它走既有的安装流程。</summary>
+    private async Task HandleDropAsync(Attachment attachment, Func<UIElement?> rootProvider,
+        IReadOnlyList<string> paths, int screenX, int screenY)
+    {
+        var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
+        if (root is null)
+        {
+            _logger.Warning("[拖放通道] 落下时拿不到 XAML 根元素，放弃处理（{Count} 个文件）", paths.Count);
+            return;
+        }
+
+        var surface = ResolveSurface(root, point);
+        if (surface is null)
+        {
+            // 落下点不在任何愿意接住的页面上（比如落在导航栏、标题栏）。**这不是错误**：
+            // 用户在那些地方松手本来就该什么都不发生。
+            _logger.Information("[拖放通道] 落下点没有页面接住（位置=({X},{Y})），忽略", point.X, point.Y);
+            return;
+        }
+
+        _logger.Information("[拖放通道] 把 {Count} 个文件交给「{Surface}」（位置=({X},{Y})）",
+            paths.Count, surface.DropSurfaceName, point.X, point.Y);
+
+        if (_dryRun)
+        {
+            // 命中链是自测的重点：坐标换算要有一处不对，这里立刻看得出来 ——
+            // 鼠标压在角色卡片上、链上却没有卡片那一层，就是 DIP 换算偏了。
+            _logger.Warning("[拖放通道] 强开自测：到此为止，不调用页面的处理。命中链={Chain}",
+                DescribeHits(root, point));
+            return;
+        }
+
+        await surface.HandleExternalDropAsync(paths, point);
+    }
+
+    /// <summary>
+    /// 屏幕物理像素 → 该窗口的 XAML DIP 坐标。
+    ///
+    /// <para>
+    /// 两道换算缺一不可：<c>ScreenToClient</c> 去掉窗口在屏幕上的位置（落点给的坐标是屏幕坐标系），
+    /// 再除以 <c>RasterizationScale</c> 把物理像素变成 XAML 的 DIP —— 高分屏上不除这一下，
+    /// 命中测试会整体偏到右下角去（鼠标在左边，判出来却是右边的元素）。
+    /// </para>
+    /// </summary>
+    private (UIElement? Root, Point Point) ResolvePoint(Attachment attachment, Func<UIElement?> rootProvider,
+        int screenX, int screenY)
+    {
+        var root = rootProvider();
+        if (root is null)
+            return (null, default);
+
+        var clientPoint = new DropTargetInterop.PointL { X = screenX, Y = screenY };
+        if (!DropTargetInterop.ScreenToClient(attachment.Window, ref clientPoint))
+        {
+            _logger.Warning("[拖放通道] ScreenToClient 失败（错误码={ErrorCode}）", Marshal.GetLastWin32Error());
+            return (null, default);
+        }
+
+        var scale = root.XamlRoot?.RasterizationScale ?? 1.0;
+        if (scale <= 0)
+            scale = 1.0;
+
+        return (root, new Point(clientPoint.X / scale, clientPoint.Y / scale));
+    }
+
+    /// <summary>
+    /// 某个点上愿意接住拖放的页面：从命中测试得到的元素**往上走**，第一个实现
+    /// <see cref="IExternalDropSurface"/> 的祖先就是它（页面本身就是那个祖先）。
+    ///
+    /// <para>
+    /// 命中测试可能返回多个元素（叠在一起的），所以逐个往上找，**第一个能接的说了算** ——
+    /// 与 XAML 事件从最内层往外冒的顺序一致。
+    /// </para>
+    /// </summary>
+    private static IExternalDropSurface? ResolveSurface(UIElement root, Point point)
+    {
+        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(point, root))
+        {
+            for (DependencyObject? current = hit; current is not null; current = VisualTreeHelper.GetParent(current))
+            {
+                if (current is IExternalDropSurface surface)
+                    return surface;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 遍历并记录整个窗口树，每个窗口标注它有没有 OLE 落点。
+    /// 出问题时这是唯一能一眼看出「落点挂在哪一层、有没有被别人顶掉」的证据。
+    /// </summary>
+    private void LogWindowTree(nint window, string owner)
+    {
+        if (!_logger.IsEnabled(Serilog.Events.LogEventLevel.Debug))
+            return;
+
+        var rows = DropTargetInterop.DescribeWindowTree(window);
+        _logger.Debug("[拖放通道] {Owner} 窗口树共 {Count} 个：\n{Tree}", owner, rows.Count, string.Join("\n", rows));
+    }
+
+    /// <summary>把一个点上的命中元素链说成人话（只用于强开自测）。</summary>
+    private static string DescribeHits(UIElement root, Point point)
+    {
+        try
+        {
+            var hits = VisualTreeHelper.FindElementsInHostCoordinates(point, root);
+            var parts = new List<string>();
+
+            foreach (var hit in hits.Take(6))
+            {
+                var dataContext = (hit as FrameworkElement)?.DataContext?.GetType().Name ?? "-";
+                parts.Add($"{hit.GetType().Name}({dataContext})");
+            }
+
+            return parts.Count == 0 ? "<空>" : string.Join(" > ", parts);
+        }
+        catch (Exception ex)
+        {
+            return $"<命中测试抛异常: {ex.GetType().Name}>";
+        }
+    }
+
+    private static string DescribeOwnIntegrity() => $"0x{WindowProcessQuery.OwnIntegrityLevelRid:X4}";
+
+    private static string DescribeRegisterResult(int result) => result switch
+    {
+        SOk => "注册成功（这个窗口原本没有落点）",
+        DropTargetInterop.DragDropAlreadyRegistered => "窗口已有落点，未接管",
+        unchecked((int)0x80070005) => "E_ACCESSDENIED 权限被拒",
+        unchecked((int)0x800401F0) => "CO_E_NOTINITIALIZED 当前线程没初始化 OLE",
+        _ => "未知"
+    };
+
+    /// <summary>
+    /// 只注销**我们自己成功注册的**落点，然后还掉 COM 引用。
+    /// 绝不 <c>Revoke</c> 别人的 —— 那会把 WinUI 自己的拖放一并废掉。
+    /// </summary>
+    public void Dispose()
+    {
+        foreach (var attachment in _attachments)
+        {
+            if (attachment.Registered && attachment.Window != 0)
+            {
+                var result = DropTargetInterop.RevokeDragDrop(attachment.Window);
+                _logger.Information("[拖放通道] RevokeDragDrop 结果=0x{Result:X8}", result);
+                attachment.Registered = false;
+            }
+
+            if (attachment.TargetPointer != 0)
+            {
+                // GetComInterfaceForObject 给的是我们持有的一次引用，用完必须还 —— 不还会让 CCW 永远活着，
+                // 拖拽时系统仍会回调到一个"名义上已释放"的对象
+                Marshal.Release(attachment.TargetPointer);
+                attachment.TargetPointer = 0;
+            }
+
+            attachment.Target = null;
+        }
+
+        _attachments.Clear();
+    }
+
+    /// <summary>一个窗口上的落点。分开成类是因为字段的生存期要求不同（见各自注释）。</summary>
+    private sealed class Attachment(nint window)
+    {
+        internal nint Window { get; } = window;
+
+        /// <summary>
+        /// 落点实例的**强引用**。必须留着：<c>RegisterDragDrop</c> 之后系统持有的是这对象的
+        /// COM 可调用包装（CCW），底层只有一个原生指针；托管对象一旦被 GC 回收，CCW 跟着失效，
+        /// 之后系统的每次回调都会打在已释放的对象上 —— 那种访问违例从日志里看不出任何前因。
+        /// </summary>
+        internal NativeDropTarget? Target { get; set; }
+
+        /// <summary>交给系统的 <c>IDropTarget*</c>；非 0 时由我们持有一次引用，释放时要还。</summary>
+        internal nint TargetPointer { get; set; }
+
+        /// <summary>是否由我们注册成功（决定 Dispose 时要不要 Revoke）。</summary>
+        internal bool Registered { get; set; }
+    }
+}
