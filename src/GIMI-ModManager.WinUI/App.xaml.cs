@@ -159,11 +159,11 @@ public partial class App : Application
                 // 它要读浮窗唤出键的状态，所以紧挨着 OverlayWindowService 注册（那边是单例）。
                 services.AddTransient<Services.Diagnostics.DragDropSelfCheckService>();
 
-                // 拖放通道探针（Phase 0）：关掉 UAC 的机器上 WinUI 3 收不到外部拖放，
-                // 它只做「尝试注册自有落点 + 记日志」，不改任何现有行为。
+                // 拖放投递通道：关掉 UAC 的机器上 WinUI 3 收不到外部拖放，由它挂自有落点顶上。
+                // 内部有门禁（只在高完整性机器上启用），正常机器不进这条路径。
                 // **必须是单例**：系统回调打进来的那个落点对象由它持有强引用，
                 // 一旦被 GC 回收，后续回调就会落在已释放的对象上（那种访问违例从日志里查不出前因）。
-                services.AddSingleton<Services.DragDrop.DropTargetProbe>();
+                services.AddSingleton<Services.DragDrop.ExternalDropChannel>();
 
                 // 点击按键徽章 → 合成按键发给游戏（见 GameKeySender 的注释：切前台必须在同步段做）
                 services.AddSingleton<IGameKeySender, GameKeySender>();
