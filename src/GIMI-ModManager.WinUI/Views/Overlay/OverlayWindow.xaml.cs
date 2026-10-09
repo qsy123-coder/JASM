@@ -6,6 +6,7 @@ using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
 using GIMI_ModManager.Core.Helpers;
+using GIMI_ModManager.WinUI.Services.DragDrop;
 using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.ViewModels.Overlay;
@@ -13,6 +14,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Serilog;
+using Windows.Foundation;
 using WinUIEx;
 
 namespace GIMI_ModManager.WinUI.Views.Overlay;
@@ -46,7 +48,7 @@ namespace GIMI_ModManager.WinUI.Views.Overlay;
 ///      抢发生在两处：唤出那一拍（<see cref="TakeForeground"/>），以及可见期间前台被游戏抢回去之后
 ///      光标正落在浮窗上的那些拍（<see cref="EnsureForeground"/>）—— 后者的做法与取舍写在那一处。
 /// </summary>
-public sealed partial class OverlayWindow : WindowEx
+public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 {
     /// <summary>
     /// 浮窗尺寸。**DIP**（<see cref="WindowEx.Width"/> 的语义），由 WinUIEx 按 DPI 换成物理像素
@@ -153,6 +155,11 @@ public sealed partial class OverlayWindow : WindowEx
         // （我们自己拿不回来：那一刻的输入所有者是刚注入按键的提权助手）。只有窗口知道自己的 hwnd，
         // 所以在拿到它的这里写一次。
         ViewModel.RefreshCoordinator.OverlayWindowHandle = (nint)_hwnd;
+
+        // 拖放投递通道：关掉 UAC 的机器上 WinUI 收不到外部拖放，由自有落点顶上。
+        // **只多挂一个落点** —— 浮窗的显隐、置顶、前台归属走的是下面那些自己写的路径
+        // （_styles / _topMostTimer / EnsureForeground），与落点毫无关系，一行都没动。
+        App.GetService<ExternalDropChannel>().Attach(_hwnd, "浮窗", () => Content as UIElement);
 
         ConfigureOverlayWindow();
 
@@ -764,6 +771,52 @@ public sealed partial class OverlayWindow : WindowEx
         var storageItems = await e.DataView.GetStorageItemsAsync();
         _logger.Information("[浮窗] 收到拖入：{Count} 项，选中角色={Character}", storageItems.Count,
             ViewModel.SelectedCharacter?.DisplayName ?? "<无>");
+
+        await ViewModel.DropModPackageAsync(storageItems);
+    }
+
+    // ── 外部拖放通道（关掉 UAC 的机器上 WinUI 收不到拖放时走这条）──────────────────
+
+    string IExternalDropSurface.DropSurfaceName => "浮窗";
+
+    /// <summary>
+    /// 整窗都接。判据与 XAML 那侧一致：**有文件就接**，不看选没选中角色 ——
+    /// 角色列表只列「已经有 Mod 的角色」，一个都没有时它是空的，
+    /// 而「拖第一个 Mod 进来」恰恰就是那个场景（见 <see cref="RootGrid_OnDragOver"/>）。
+    ///
+    /// <para>
+    /// 至于「这一拖里到底有没有文件」，通道在问到这里之前已经查过 <c>CF_HDROP</c> 了，
+    /// 所以这里不必再判一次 —— 真的没有文件时根本不会问到。
+    /// </para>
+    /// </summary>
+    bool IExternalDropSurface.CanAcceptDropAt(Point point) => true;
+
+    /// <summary>
+    /// 外部通道送来的落下。走到这一步已经确认有文件，所以不走
+    /// 「这一拖里没有文件」那条状态行，直接交给与 XAML 那条路**同一个**处理入口
+    /// （<see cref="OverlayViewModel.DropModPackageAsync"/>）—— 判据只有一份。
+    /// </summary>
+    async Task IExternalDropSurface.HandleExternalDropAsync(IReadOnlyList<string> paths, Point point)
+    {
+        var storageItems = new List<IStorageItem>(paths.Count);
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                storageItems.Add(Directory.Exists(path)
+                    ? await StorageFolder.GetFolderFromPathAsync(path)
+                    : await StorageFile.GetFileFromPathAsync(path));
+            }
+            catch (Exception ex)
+            {
+                // 一个坏路径不该让整次拖放全废
+                _logger.Warning(ex, "[浮窗] 拖入的路径取不到，已跳过这一项");
+            }
+        }
+
+        _logger.Information("[浮窗] 外部通道收到拖入：{Count} 项，选中角色={Character}",
+            storageItems.Count, ViewModel.SelectedCharacter?.DisplayName ?? "<无>");
 
         await ViewModel.DropModPackageAsync(storageItems);
     }
