@@ -1017,10 +1017,25 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
         // 走 App.GetService 而不是构造函数注入：拖拽自检服务依赖浮窗服务，而浮窗那套是刻意 internal 的，
         // 放不进这个 public ViewModel 的构造函数（CS0051）。页面本来就是这么取服务的，这里沿用。
-        var result = App.GetService<DragDropSelfCheckService>().Run(dragEventReceived);
+        //
+        // **整段包 try**：这条路的调用点在 DragEnter / DragOver / 计时器里，在那里抛异常 = 直接终止进程
+        // （实测踩过一次：服务装不出来就在拖拽回调里崩了）。诊断代码不能反过来把拖拽搞坏 ——
+        // 出问题时把状态行改成一句实话，让用户知道是「自检坏了」而不是「JASM 坏了」。
+        try
+        {
+            var result = App.GetService<DragDropSelfCheckService>().Run(dragEventReceived);
 
-        DragSelfCheckStatus = result.Headline;
-        DragSelfCheckReport = result.Report;
+            DragSelfCheckStatus = result.Headline;
+            DragSelfCheckReport = result.Report;
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "[拖拽自检] 出结论时失败");
+
+            DragSelfCheckStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_DragSelfCheckFailed",
+                defaultValue: "The check itself failed - see the log");
+            DragSelfCheckReport = null;
+        }
     }
 
     /// <summary>
