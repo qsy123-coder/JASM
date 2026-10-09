@@ -1,5 +1,142 @@
 # Changelog
 
+## [2.33.0](https://github.com/qsy123-coder/JASM/compare/v2.32.0...v2.33.0) (2026-10-09)
+
+
+### Features
+
+* **diagnostics:** 启动时把「这份进程提没提权」记进日志 ([faac2ce](https://github.com/qsy123-coder/JASM/commit/faac2ce74e598436c6b735b6c66e47ed55220933))
+* **diagnostics:** 拖拽探针 ([e42ebd9](https://github.com/qsy123-coder/JASM/commit/e42ebd967dd9da252d0791a9dcd30347de6a9acb))
+* **diagnostics:** 拖拽自检的纯逻辑：三档权限关系与五档结论 ([7032b38](https://github.com/qsy123-coder/JASM/commit/7032b38c6d086b93def6b6fdd06d59ea2e814844))
+* **diagnostics:** 拖拽自检的采集与结论组装 ([68bd7dc](https://github.com/qsy123-coder/JASM/commit/68bd7dc495c5789ba166e83b27c66919a18e074c))
+* **diagnostics:** 概览页接上拖拽探针，Drop 日志补上 formats ([0d10787](https://github.com/qsy123-coder/JASM/commit/0d10787648729dacfc8e28b61b21d7c82f348192))
+* **diagnostics:** 横幅按档位分文案，反方向那档给的是「去做自检」 ([994c71b](https://github.com/qsy123-coder/JASM/commit/994c71b42cd5dc2fda710ef29fe7d312f6096e95))
+* **diagnostics:** 横幅的动作按钮按档位换含义（切回普通权限 / 做拖拽自检） ([a3c2014](https://github.com/qsy123-coder/JASM/commit/a3c20145f7878145a1245e1bdb326b2e37937a8b))
+* **diagnostics:** 窗口根接上拖拽探针 ([72a6a2b](https://github.com/qsy123-coder/JASM/commit/72a6a2b77f290c67cc8e922cef9b197b90bfc37f))
+* **dragdrop:** OLE 落点互操作层（自有 IDropTarget 与注册/注销） ([de7941c](https://github.com/qsy123-coder/JASM/commit/de7941cc649b77e2ed05a642abe96a4127e3634c))
+* **dragdrop:** 加 GetCursorPos（手写互操作，不引 CsWin32 的 POINT 类型） ([c9bfc15](https://github.com/qsy123-coder/JASM/commit/c9bfc154ebb59d8f5c0e0ee652bb79e7abef2fe0))
+* **dragdrop:** 启动后在主窗口挂拖放通道 ([d2e1991](https://github.com/qsy123-coder/JASM/commit/d2e1991b847b8d5e08b9656598d09c4d44333ef5))
+* **dragdrop:** 启动后在主窗口挂落点探针 ([bf9e084](https://github.com/qsy123-coder/JASM/commit/bf9e08424ebc8a682aa7486ceb2a0203a3c9a294))
+* **dragdrop:** 往拖拽数据对象里写"光标旁那行说明文字" ([a58dd1e](https://github.com/qsy123-coder/JASM/commit/a58dd1eedfd7f64f7baf2b2d42e12681d350dbb4))
+* **dragdrop:** 拖放投递通道（门禁 + 坐标换算 + 命中测试 + 路由） ([b806e63](https://github.com/qsy123-coder/JASM/commit/b806e6310f95900ceb6c9320069f52d3b39c0c67))
+* **dragdrop:** 接上拖拽图像管理器（那颗跟着光标走的文件图标） ([0363fad](https://github.com/qsy123-coder/JASM/commit/0363fadfdde973eb6ae342162a6abc5e45f34d0a))
+* **dragdrop:** 概览页接上外部拖放通道 ([37cc189](https://github.com/qsy123-coder/JASM/commit/37cc189ebb9c92d9644456faf44dcd30a08ce61f))
+* **dragdrop:** 概览页接上毛玻璃提示层 ([0a2b3e9](https://github.com/qsy123-coder/JASM/commit/0a2b3e9dbc6d4d54fc5c9802c0c8c9d3ca8f06d3))
+* **dragdrop:** 概览页认不出角色时直接装到「其它角色」，不再弹框 ([25e8407](https://github.com/qsy123-coder/JASM/commit/25e840741c3e37fe7ae8ba336a67ff17f1e57a0a))
+* **dragdrop:** 浮窗接上"自动识别角色"那行光标说明 ([dfc1739](https://github.com/qsy123-coder/JASM/commit/dfc1739a09bbcadfee476b0ba75d24f3bb5abc1f))
+* **dragdrop:** 浮窗接上外部拖放通道 ([b087285](https://github.com/qsy123-coder/JASM/commit/b0872852dcf822d6df2b8f7151eb2d1ff952b183))
+* **dragdrop:** 自有 OLE 落点实现，拖拽中顺带记录窗口树 ([cb2cc3b](https://github.com/qsy123-coder/JASM/commit/cb2cc3b0cc51d93485c85615d147db810e6188f9))
+* **dragdrop:** 落点探针——只注册不接管，记注册结果与窗口树 ([7835e12](https://github.com/qsy123-coder/JASM/commit/7835e1284ab80f56d9f6e8823fdcf21bac374fd1))
+* **dragdrop:** 落点改为回调式，由通道决定收不收、由页面处理落下 ([6d2216d](https://github.com/qsy123-coder/JASM/commit/6d2216d5d3d4221532c8ca476b9f9d9e278b50d5))
+* **dragdrop:** 落点面接口加提示生命周期与说明文字 ([2bddb03](https://github.com/qsy123-coder/JASM/commit/2bddb038a12dbebb26b6de076c647ea5512cb31a))
+* **dragdrop:** 落点驱动光标说明文字与拖拽结束通知 ([2a43373](https://github.com/qsy123-coder/JASM/commit/2a433733c6f195da1ea931c70a7d283724eacbb4))
+* **dragdrop:** 补 ScreenToClient 与窗口树描述 ([fc1b174](https://github.com/qsy123-coder/JASM/commit/fc1b1743d6884dc73c0ca6e21fe7ba3b9578722c))
+* **dragdrop:** 通道驱动落点提示的亮灭，并把说明文字报给落点 ([3a72bef](https://github.com/qsy123-coder/JASM/commit/3a72bef3c9d795370f16a49c0a70119f338cf40a))
+* **dragdrop:** 页面侧落点接口（能不能落 + 落下怎么处理） ([1c88411](https://github.com/qsy123-coder/JASM/commit/1c884112eedb5ed1ed1e579454f7792c84c2ecbf))
+* **elevation:** 不借 explorer 也能起一份中完整性的自己 ([637b876](https://github.com/qsy123-coder/JASM/commit/637b87650ce8136001de57207e42c51ef602a175))
+* **elevation:** 主窗口加常驻的提权提示 ([14b0430](https://github.com/qsy123-coder/JASM/commit/14b0430a6230f1f9c39a6d445fd6d554a7ab2744))
+* **elevation:** 主窗口常驻提示的显隐与出路按钮 ([31687e8](https://github.com/qsy123-coder/JASM/commit/31687e86f2f7ca81b2907a4155c655b2368869ad))
+* **elevation:** 交接凭条加一个「只看不消费」的查询 ([d9caaf0](https://github.com/qsy123-coder/JASM/commit/d9caaf0d2ee6bca43d649a50b4c74b47e9533fb3))
+* **elevation:** 交接凭条的落盘读写 ([69443cc](https://github.com/qsy123-coder/JASM/commit/69443ccabc7dbd1b96f62d062c8b690aa93ff279))
+* **elevation:** 以普通权限重启自己 ([7b5b112](https://github.com/qsy123-coder/JASM/commit/7b5b112ba4562169e5353e094d64c500f3092e40))
+* **elevation:** 去提权重启的交接凭条协议 ([49a8424](https://github.com/qsy123-coder/JASM/commit/49a84240b55d332c88f399176156d4d9ed7e8355))
+* **elevation:** 启动最前面调用降权 ([11c48ff](https://github.com/qsy123-coder/JASM/commit/11c48ff83fabb0ac45af50dfd64dff64a86bc517))
+* **elevation:** 启动时把高完整性降为中完整性 ([3a97d0b](https://github.com/qsy123-coder/JASM/commit/3a97d0b0a34b06f1fa717de58579520a6bb45a48))
+* **elevation:** 启动时换一份中完整性的自己 ([87cd6cb](https://github.com/qsy123-coder/JASM/commit/87cd6cba1525709f7cb4c7b84142568cb99b2511))
+* **elevation:** 启动时若为管理员身份则换一份中完整性的自己 ([9771f24](https://github.com/qsy123-coder/JASM/commit/9771f24e500e4633460c06712137392489f99596))
+* **elevation:** 提权判定的唯一出处 ([73f9228](https://github.com/qsy123-coder/JASM/commit/73f92284324438f0dcb3fd4fdfb095e0a4c03fed))
+* **elevation:** 提权弹窗给出路，并认领去提权的交接 ([5aefef9](https://github.com/qsy123-coder/JASM/commit/5aefef91c93178ece993b4f71f51414cfb32fe07))
+* **elevation:** 查当前会话的 shell 进程 ([301a53c](https://github.com/qsy123-coder/JASM/commit/301a53c9ca055e0e2b01ea1b2b18ee4c7b2a2ba2))
+* **elevation:** 请 explorer 代起一个普通权限进程 ([aae3ec7](https://github.com/qsy123-coder/JASM/commit/aae3ec72989580db1cfd96fb10d21988ad02802e))
+* **i18n:** zh-cn 补提权相关的文案 ([05f5bf1](https://github.com/qsy123-coder/JASM/commit/05f5bf1d8b41f6edd97e9d34b5dbe9d4742dcbc3))
+* **overlay:** 暴露唤出键的注册状态，供自检报告引用 ([13045fe](https://github.com/qsy123-coder/JASM/commit/13045fe0530a7271fe1ea92fc515a6bc04b3d980))
+* **overlay:** 浮窗提权时的常驻提示 ([bb6b244](https://github.com/qsy123-coder/JASM/commit/bb6b24434fd61d7f23658c7741616df362b47045))
+* **overlay:** 浮窗状态区加一行提权提示 ([f6f91f0](https://github.com/qsy123-coder/JASM/commit/f6f91f0c728af8ced1a6ba082563f2f1f353c132))
+* **overlay:** 补一句「这一拖里没有文件」的状态文案 ([30afd83](https://github.com/qsy123-coder/JASM/commit/30afd83ecd2d7c4270a77ff4ceb73fa9283493a3))
+* **overlay:** 记录拖拽探针，并在来源没给文件时说明原因 ([85f96fd](https://github.com/qsy123-coder/JASM/commit/85f96fd6c64410f5b0e82ae90bd4673210e359b2))
+* **settings:** 拖拽自检的状态、命令与结论落地 ([1d1cef2](https://github.com/qsy123-coder/JASM/commit/1d1cef25821f9c2a1b681a070604d1a41dab3d62))
+* **settings:** 自检框接住拖拽事件，并开 10 秒等待窗口 ([90ca7ac](https://github.com/qsy123-coder/JASM/commit/90ca7aca80efc20162dbf8968876b615a18288a2))
+* **settings:** 设置页拖拽自检区块（自检框 + 开始自检/复制结论） ([b0d4ce9](https://github.com/qsy123-coder/JASM/commit/b0d4ce917a060fb5a3305d8490d8c933c5412291))
+
+
+### Bug Fixes
+
+* **diagnostics:** 启动日志改报「启动时的完整性 + 是否降级」 ([bdf8786](https://github.com/qsy123-coder/JASM/commit/bdf8786ed50f3e4303d6837b65a34e5c60aa1ad8))
+* **diagnostics:** 探针节流改成按落点分开 ([2206a5f](https://github.com/qsy123-coder/JASM/commit/2206a5fbc96d783ceaaf710d631d56d371f73c15))
+* **diagnostics:** 自检服务的构造函数改回 public —— DI 只认 public 构造函数 ([24787ae](https://github.com/qsy123-coder/JASM/commit/24787aedd9fd79ba962d782e2cbbf9a463c814b6))
+* **dragdrop:** DragOver 隔 200ms 重算一次；转发拖拽图像管理器 ([095a015](https://github.com/qsy123-coder/JASM/commit/095a015b856e10540b9c8a9020a65fe360e3ceb2))
+* **dragdrop:** 命中测试改用 GetCursorPos 取的坐标，不用 OLE 回调给的 pt ([5d43c55](https://github.com/qsy123-coder/JASM/commit/5d43c55dfe27d610832fb2dfafcc538a510b6fa8))
+* **dragdrop:** 收不收不再由坐标决定，坐标只负责"准" ([a3618c5](https://github.com/qsy123-coder/JASM/commit/a3618c557f18879f484a94084e75131a0fa3468a))
+* **dragdrop:** 本窗口自己的落点面不再用坐标框边界 ([7d2382a](https://github.com/qsy123-coder/JASM/commit/7d2382ae1e4367fc0144169076bf72a023c422dd))
+* **dragdrop:** 浮窗把自己的落点面交给通道兜底 ([f710274](https://github.com/qsy123-coder/JASM/commit/f7102748db1bf9cda10a549badd63c7c28f8075e))
+* **dragdrop:** 落下处理递回 UI 线程；浮窗用窗口面兜底 ([8e36b64](https://github.com/qsy123-coder/JASM/commit/8e36b64c60e5c4471a72878a685967ca6d9dd7cd))
+* **dragdrop:** 解压后的续体回到 UI 线程，认角色那一步要弹框 ([b417d12](https://github.com/qsy123-coder/JASM/commit/b417d12cafb5431f1fd2850d9a2b9610f3ecc50e))
+* **elevation:** 换份拉起来的那一份也量一次级别，别再拿「与 shell 同级」糊过去 ([95edf88](https://github.com/qsy123-coder/JASM/commit/95edf881638caa571a6161ec802e5a961b173493))
+* **elevation:** 换份的条件改成「比 shell 高」，而不是「自己是高完整性」 ([9834bd3](https://github.com/qsy123-coder/JASM/commit/9834bd3ece68063505a1b5b24a670d044fa86ad6))
+* **i18n:** 提权提示条文案改短，并清掉随弹窗一起删掉的词条 ([8dd9403](https://github.com/qsy123-coder/JASM/commit/8dd9403b0126ff78566833979285c117a18a12cc))
+* **mod-drop:** 详情页拖拽被拒时给用户一句话 ([15a5a9d](https://github.com/qsy123-coder/JASM/commit/15a5a9dda2fb124fd9fdf4a2b27cb8b2e131dfc1))
+* **mod-drop:** 详情页放行自解压 exe，并给每一条拒绝说出理由 ([499a7c6](https://github.com/qsy123-coder/JASM/commit/499a7c6a63277dc379dba81f80b44cc8bbc02a97))
+* **mod-env:** 提权复制失败不再劝用户以管理员身份运行 JASM ([d36a9ee](https://github.com/qsy123-coder/JASM/commit/d36a9ee3d58c3cd52c23ec7a3661ffcc51046d12))
+* **mod-env:** 测试启动 740 引导到命令自己的提权开关 ([649fedd](https://github.com/qsy123-coder/JASM/commit/649fedd7c6bbce791c47a96745fae6b27298fd28))
+* **mod-pane:** 封面图拖拽被拒时给用户一句话，并改掉劝提权的文案 ([cde3d7a](https://github.com/qsy123-coder/JASM/commit/cde3d7a250485af8dc4b6f2f91e6812b32a6492f))
+* **mod-pane:** 封面图落点把「为什么不收」交出来 ([e302757](https://github.com/qsy123-coder/JASM/commit/e302757e67c5e55825381a2a3816c8de8fb76880))
+* **overlay:** 刷新失败不再劝用户以管理员身份运行 JASM ([974de23](https://github.com/qsy123-coder/JASM/commit/974de235741b33f060efefc3fe9472cf51c2ed37))
+* **overlay:** 向导保存后补一次浮窗初始化 ([a0d80db](https://github.com/qsy123-coder/JASM/commit/a0d80dbbba1c05f9efb9dbb11eecc29f4a1c8806))
+* **overlay:** 浮窗初始化改为幂等，可以重复调用 ([e5d8ef7](https://github.com/qsy123-coder/JASM/commit/e5d8ef79401fc761d6f70bb08f0afcca1382f76f))
+* **settings:** 自检出结论整段包 try —— 它跑在拖拽回调里，抛异常就是杀进程 ([6348392](https://github.com/qsy123-coder/JASM/commit/6348392c9bd4c8088e5bc29802600d19a90eb7e5))
+* **shell:** 反方向那档不再给「做拖拽自检」那个按钮 ([91fe7d9](https://github.com/qsy123-coder/JASM/commit/91fe7d9533af9ccb9c51d9e3250e849db4f822c9))
+* **startup:** 删掉提权启动弹窗，信息挪到顶部提示条 ([63377c7](https://github.com/qsy123-coder/JASM/commit/63377c70ca87975e9baf94fd97f002c5852bf849))
+* **startup:** 提权提示条改成可关闭 ([5d55556](https://github.com/qsy123-coder/JASM/commit/5d55556e3247efd4fd7f33b91fbcab21cb834896))
+* **startup:** 提示条文案取不到时用内联兜底 ([a15d529](https://github.com/qsy123-coder/JASM/commit/a15d529eaa65126caea2121cacfcaaa653900cb1))
+
+
+### Miscellaneous
+
+* **cswin32:** 列出 GetShellWindow ([c32a214](https://github.com/qsy123-coder/JASM/commit/c32a214b396339acf4081ae6711f9e8746778cb6))
+* **cswin32:** 列出 SetTokenInformation 与 GetCurrentProcess ([bd82781](https://github.com/qsy123-coder/JASM/commit/bd8278138d6037bfeffe9ff121d02674f33bc858))
+* **cswin32:** 收回 SetTokenInformation 与 GetCurrentProcess ([8035498](https://github.com/qsy123-coder/JASM/commit/80354986132e4b8071be2345e60779c50f2f99e5))
+* **diagnostics:** 删掉拖拽自检服务 ([55e6883](https://github.com/qsy123-coder/JASM/commit/55e6883d0ac39acf0d1b53b46aa716481ee2b58c))
+* **di:** 不再注册 DragDropSelfCheckService ([5b6a13a](https://github.com/qsy123-coder/JASM/commit/5b6a13adae7a840d58336c069248428113c371cb))
+* **di:** 拖放通道注册为单例 ([965a388](https://github.com/qsy123-coder/JASM/commit/965a388e536fb3b143ea4152b6885ba801bc8386))
+* **di:** 注册拖拽自检服务 ([4c44e12](https://github.com/qsy123-coder/JASM/commit/4c44e12f67d7f6f7b6889a0eb8afd893184037c0))
+* **di:** 落点探针注册为单例 ([ea1b9f5](https://github.com/qsy123-coder/JASM/commit/ea1b9f51654b2961fd368c4ce296a4e60f85ff0b))
+* **format:** DragProbe.cs 行尾改回 CRLF 并去掉尾换行 ([c66cb58](https://github.com/qsy123-coder/JASM/commit/c66cb5837aeb41e51c03e806b7444607e8e56447))
+* **format:** IntegrityDowngrade.cs 行尾改回 CRLF 并去掉尾换行 ([6852e0f](https://github.com/qsy123-coder/JASM/commit/6852e0ff1b6f5f5a18ea1eb8dd93353785fd7fc6))
+* **format:** NativeDropTarget.cs 行尾改回 CRLF 并去掉尾换行 ([66bfa0e](https://github.com/qsy123-coder/JASM/commit/66bfa0e418dc95316d81401d935be551f27c294b))
+* **i18n:** 拖拽自检的 zh-cn 词条 ([a7b1ef1](https://github.com/qsy123-coder/JASM/commit/a7b1ef15ac95eeab4c76907d07ab553f564f4259))
+* **i18n:** 横幅反方向那档的文案 + 指向自检那句 ([3e66fcd](https://github.com/qsy123-coder/JASM/commit/3e66fcdfac7e08ceff8177c4826957815e95a7ca))
+* **i18n:** 清掉自检的词条，并改掉提示条里指向自检的那两句 ([7067828](https://github.com/qsy123-coder/JASM/commit/70678282aa93b9f7cb3dbd46d31ecbb11be01681))
+* **i18n:** 自检自身失败时的状态文案 ([46bae17](https://github.com/qsy123-coder/JASM/commit/46bae17ee68c5414d1659cd1d8e1690838a2cd4d))
+* **overlay:** 去掉只为自检报告存在的两个属性 ([038de6d](https://github.com/qsy123-coder/JASM/commit/038de6dfe79cf621f8e38b71d594640afd5a7b77))
+* **settings:** 删掉拖拽自检的 ViewModel 成员 ([a51865d](https://github.com/qsy123-coder/JASM/commit/a51865da2e4d42a8df4a307f89afb1d0ebad1f5f))
+* **settings:** 删掉拖拽自检的页面代码 ([d2babaa](https://github.com/qsy123-coder/JASM/commit/d2babaa6a44a6dc9b5ee4bc38ced8e653c9ee9eb))
+* **settings:** 删掉设置页的「拖拽安装排查」整段 ([5e0684e](https://github.com/qsy123-coder/JASM/commit/5e0684efc687bb90ecb499f07d1d37d5182c1d92))
+
+
+### Documentation
+
+* **diagnostics:** 记下自检服务为何是 internal、且由调用方 App.GetService 取 ([d34283e](https://github.com/qsy123-coder/JASM/commit/d34283eb95e03383d95bca862db58c1d57b886f6))
+* **elevation:** 注释跟上自检的删除 ([cde74a0](https://github.com/qsy123-coder/JASM/commit/cde74a0d4c9e60b322487c4f2ff6048e6fee6b8f))
+* **package:** README 写明两个包各自的运行时前提 ([3f84af2](https://github.com/qsy123-coder/JASM/commit/3f84af24189c8d741109377a4d6013112041f7a5))
+* **shell:** 提示条按钮的注释跟上档位语义 ([bc958fa](https://github.com/qsy123-coder/JASM/commit/bc958fab607628cfc9f8134502462782790dce03))
+* 新增拖拽通道兼容改造 PRD（关掉 UAC 的机器） ([51dc854](https://github.com/qsy123-coder/JASM/commit/51dc8544f319fa86abcfd9bb82b3bb05684e0371))
+* 新增鸣潮 mod 哈希修复手册 ([675037b](https://github.com/qsy123-coder/JASM/commit/675037b45e6809585157dd53faecc554f2ca8b28))
+
+
+### Tests
+
+* **diagnostics:** 拖拽自检判定 26 条单测 ([7cab7e4](https://github.com/qsy123-coder/JASM/commit/7cab7e4c9e8efa9ce65c10e98ad417cfd58326a4))
+* **elevation:** 交接凭条的格式与时效判定 ([03c6942](https://github.com/qsy123-coder/JASM/commit/03c6942ad469057e48e65b01b6931c4d22f48f86))
+* **overlay:** 刷新失败文案改成断言「别再提权 JASM」 ([bc205fb](https://github.com/qsy123-coder/JASM/commit/bc205fb3c107f76f379dcd640d5571b46acced0b))
+* 只留完整性级别关系那几条，自检判据的用例删掉 ([2de549e](https://github.com/qsy123-coder/JASM/commit/2de549e1e9aed904b211d8c682691aeb8d67bb55))
+
+
+### Code Refactoring
+
+* **core:** 自检判据只留 IntegrityRelation 与 Compare ([fd8ae1b](https://github.com/qsy123-coder/JASM/commit/fd8ae1b4c0c1eb8b4b8607a14ba4d4baf345a666))
+* **dragdrop:** 探针并入正式通道 ([8a75cf1](https://github.com/qsy123-coder/JASM/commit/8a75cf16c336266e3254afb0b1198ba899293a96))
+* **elevation:** 抽出「与 shell 的关系」三档，提示条仍只看「我们更高」 ([684e468](https://github.com/qsy123-coder/JASM/commit/684e4680da1055bb3c65d9e1e6165e5dc27e44a9))
+
 ## [2.30.0](https://github.com/qsy123-coder/JASM/compare/v2.29.0...v2.30.0) (2026-09-24)
 
 
