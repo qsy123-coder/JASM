@@ -80,21 +80,6 @@ internal sealed class OverlayWindowService : IDisposable
     }
 
     /// <summary>
-    /// 浮窗唤出键此刻注册成功没有。窗口还没建出来（当前选中的不是鸣潮 / 所有候选键都被占）时是 <c>false</c>。
-    ///
-    /// <para>
-    /// 给拖拽自检报告引用：浮窗是用户拖 Mod 的主要落点，而「唤不出来」与「拖不进去」在用户那头
-    /// 都可能被说成「没反应」。报告里把这一项列出来，能省掉一轮「你再按一下试试」的问答。
-    /// </para>
-    /// </summary>
-    internal bool IsOverlayHotkeyRegistered => _hotkeys?.IsRegistered ?? false;
-
-    /// <summary>实际生效的唤出键写法（<c>Ctrl+Alt+J</c>）；一个都没注册上时为 <c>null</c>
-    /// （<see cref="OverlayHotkeyRegistrar.Description"/> 在这种情况下会返回一句「一个都没注册上」，
-    /// 那是给界面看的说法，不适合直接塞进"键名"那一栏）。</summary>
-    internal string? OverlayHotkeyDescription => _hotkeys?.Description;
-
-    /// <summary>
     /// 启动浮窗。当前不是鸣潮、或热键一个都没注册上时**不建窗口**，直接返回（各自有日志/提示）。
     ///
     /// <para>
