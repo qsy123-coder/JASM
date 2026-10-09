@@ -1824,7 +1824,7 @@ JASM 并非为以管理员权限运行而设计。
   </data>
   <data name="ShellPage_ElevationNoticeMessage" xml:space="preserve">
     <value>拖 Mod 进 JASM 只会显示禁止光标、松手没反应：Windows 不允许把文件从中等权限的程序拖进高权限的程序。
-点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。想知道这台机器到底是哪一档，去设置页最下面点「开始自检」，它会给出结论与报告。</value>
+点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。</value>
   </data>
   <data name="ShellPage_ElevationNoticeAction" xml:space="preserve">
     <value>以普通权限重新启动</value>
@@ -1833,10 +1833,7 @@ JASM 并非为以管理员权限运行而设计。
     <value>JASM 的权限比资源管理器低 —— 拖拽安装不可用</value>
   </data>
   <data name="ShellPage_ElevationNoticeLowerMessage" xml:space="preserve">
-    <value>这台机器的资源管理器本身是高权限（UAC 关闭 / 整机提权 / 网吧机常见），而 JASM 是被普通权限拉起来的 —— 两个方向的权限差别都会被 Windows 挡住。请关掉 JASM，再以管理员身份重开；右边按钮可以先做一次拖拽自检，把结论复制给我们。</value>
-  </data>
-  <data name="ShellPage_ElevationNoticeSelfCheckAction" xml:space="preserve">
-    <value>做拖拽自检</value>
+    <value>这台机器的资源管理器本身是高权限（UAC 关闭 / 整机提权 / 网吧机常见），而 JASM 是被普通权限拉起来的 —— 两个方向的权限差别都会被 Windows 挡住。请关掉 JASM，再以管理员身份重开。</value>
   </data>
   <data name="Overlay_ElevationNotice" xml:space="preserve">
     <value>JASM 正以管理员身份运行：这个窗口收不了拖拽（Windows 的限制）。关掉 JASM 后用普通方式重新打开即可。</value>
@@ -2594,81 +2591,5 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   </data>
   <data name="ModDrop_FailedBody" xml:space="preserve">
     <value>这个包解不开。</value>
-  </data>
-  <!--  拖拽自检（设置页那一段）。XAML 的 uid 按 uid.属性名 查词条，代码里的 key 直接查。  -->
-  <data name="Settings_DragDropCheck_Title.Text" xml:space="preserve">
-    <value>拖拽安装排查</value>
-  </data>
-  <data name="Settings_DragDropCheck_Description.Text" xml:space="preserve">
-    <value>拖模组进 JASM 如果只显示禁止光标、松手没反应，让这台机器自己说原因：点「开始自检」，然后把任意文件拖进下面的框。</value>
-  </data>
-  <data name="Settings_DragDropCheck_StartButton.Content" xml:space="preserve">
-    <value>开始自检</value>
-  </data>
-  <data name="Settings_DragDropCheck_CopyButton.Content" xml:space="preserve">
-    <value>复制结论</value>
-  </data>
-  <data name="SettingsVM_DragSelfCheckIdle" xml:space="preserve">
-    <value>点「开始自检」，然后把任意文件拖进这个框</value>
-  </data>
-  <data name="SettingsVM_DragSelfCheckWaiting" xml:space="preserve">
-    <value>现在把任意文件拖进这个框（10 秒内）</value>
-  </data>
-  <data name="SettingsVM_DragSelfCheckFailed" xml:space="preserve">
-    <value>自检本身出错了（详见日志）—— 这跟你的拖拽没关系</value>
-  </data>
-  <data name="DragSelfCheck_Report_Integrity" xml:space="preserve">
-    <value>完整性级别：本进程 {0}；资源管理器 {1} → {2}</value>
-  </data>
-  <data name="DragSelfCheck_Report_HotkeyRegistered" xml:space="preserve">
-    <value>浮窗唤出键：{0}（已注册）</value>
-  </data>
-  <data name="DragSelfCheck_Report_HotkeyMissing" xml:space="preserve">
-    <value>浮窗唤出键：没有注册上 —— 浮窗唤不出来（候选键都被别的程序占了）</value>
-  </data>
-  <data name="DragSelfCheck_Report_EventReceived" xml:space="preserve">
-    <value>拖拽事件：收到了（这台机器能把文件拖进 JASM）</value>
-  </data>
-  <data name="DragSelfCheck_Report_EventMissing" xml:space="preserve">
-    <value>拖拽事件：{0} 秒内一次都没收到</value>
-  </data>
-  <data name="DragSelfCheck_Report_KnownBlockers" xml:space="preserve">
-    <value>检测到已知会接管拖放的软件：{0}</value>
-  </data>
-  <data name="DragSelfCheck_Report_Conclusion" xml:space="preserve">
-    <value>结论：{0}</value>
-  </data>
-  <data name="DragSelfCheck_Report_Advice" xml:space="preserve">
-    <value>出路：{0}</value>
-  </data>
-  <data name="DragSelfCheck_Headline_EventsArrived" xml:space="preserve">
-    <value>拖拽链路正常</value>
-  </data>
-  <data name="DragSelfCheck_Headline_Higher" xml:space="preserve">
-    <value>被权限挡住：JASM 正以管理员身份运行</value>
-  </data>
-  <data name="DragSelfCheck_Headline_Lower" xml:space="preserve">
-    <value>被权限挡住：JASM 的权限比资源管理器低</value>
-  </data>
-  <data name="DragSelfCheck_Headline_MachineBlocked" xml:space="preserve">
-    <value>权限这一档没问题，但拖拽投递被这台机器上的别的软件掐了</value>
-  </data>
-  <data name="DragSelfCheck_Headline_Undetermined" xml:space="preserve">
-    <value>拖拽事件没有到达 JASM，原因没判出来</value>
-  </data>
-  <data name="DragSelfCheck_Advice_EventsArrived" xml:space="preserve">
-    <value>拖拽本身没问题。若某个页面仍显示禁止光标，那是那一页自己的判据：浮窗只收真文件（网盘客户端 / 压缩软件给的虚拟文件不算），角色详情页一次只收一个包。</value>
-  </data>
-  <data name="DragSelfCheck_Advice_Higher" xml:space="preserve">
-    <value>Windows 不允许把文件从中等权限的程序拖进高权限的程序。用普通权限重开 JASM：右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。（较新版本的 JASM 启动时会自己换一份普通权限的进程，若这份日志里写着「与 shell 同级」却仍然拖不进，请把报告发给作者。）</value>
-  </data>
-  <data name="DragSelfCheck_Advice_Lower" xml:space="preserve">
-    <value>这台机器的资源管理器本身是高权限（UAC 关闭 / 整机提权 / 网吧机常见），而 JASM 是被普通权限拉起来的 —— 两个方向的权限差别都会被 Windows 挡住。请以管理员身份重开 JASM。</value>
-  </data>
-  <data name="DragSelfCheck_Advice_MachineBlocked" xml:space="preserve">
-    <value>两边权限相同却收不到拖拽事件，说明拖放投递被这台机器上的第三方软件接管了（网维 / 无盘 / 安全软件，网吧机最常见）—— 那种环境下拖不进任何程序，改 JASM 没用。请改用「添加 Mod」按钮装 Mod，它不依赖 Windows 的拖放。</value>
-  </data>
-  <data name="DragSelfCheck_Advice_Undetermined" xml:space="preserve">
-    <value>没能判出原因。请把这份报告发给作者；同时可以改用「添加 Mod」按钮装 Mod —— 它走文件选择器，不依赖 Windows 的拖放。</value>
   </data>
 </root>
