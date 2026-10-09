@@ -366,6 +366,22 @@ internal sealed class ExternalDropChannel : IDisposable
             return (null, default);
 
         var clientPoint = new DropTargetInterop.PointL { X = screenX, Y = screenY };
+
+        // 以 GetCursorPos 为准，OLE 传来的点只当线索记着（见 DropTargetInterop.GetCursorPos 的说明：
+        // 拿 OLE 的 pt 换算出来的点会全贴在窗口左边缘，那是错的）。
+        if (DropTargetInterop.GetCursorPos(out var cursor))
+        {
+            if (cursor.X != screenX || cursor.Y != screenY)
+            {
+                // 特意用 Information：这一行是"坐标来源到底差多少"的直接证据，
+                // 排查期要看得到。确认稳定之后可以降成 Debug。
+                _logger.Information("[拖放通道] 坐标来源不一致：OLE=({OleX},{OleY}) 光标=({CurX},{CurY})，以光标为准",
+                    screenX, screenY, cursor.X, cursor.Y);
+            }
+
+            clientPoint = cursor;
+        }
+
         if (!DropTargetInterop.ScreenToClient(attachment.Window, ref clientPoint))
         {
             _logger.Warning("[拖放通道] ScreenToClient 失败（错误码={ErrorCode}）", Marshal.GetLastWin32Error());
