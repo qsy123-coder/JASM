@@ -481,10 +481,12 @@ internal sealed class ExternalDropChannel : IDisposable
         if (displayed is not null)
             return displayed;
 
-        if (ownerSurface is not null && IsPointInside(root, point))
-            return ownerSurface;
-
-        return null;
+        // 本窗口自己的面：**不再用坐标去框它**。
+        //
+        // 拖拽已经进到这个窗口了、光标就在窗口范围内，这一层的存在本身就是"整窗可落"；
+        // 而坐标在本机不可靠（算出来的点会飘到窗口外），拿它做边界判断的结果是把窗口边缘
+        // 误判成"外面" —— 实机现象：贴着浮窗边缘拖进去，一进去就是禁止符。
+        return ownerSurface;
     }
 
     /// <summary>
@@ -515,15 +517,6 @@ internal sealed class ExternalDropChannel : IDisposable
         return null;
     }
 
-    /// <summary>点（根元素坐标系）是不是落在根元素范围内。用来给「本窗口兜底的面」划边界。</summary>
-    private static bool IsPointInside(UIElement root, Point point)
-    {
-        if (root is not FrameworkElement element)
-            return true; // 拿不到尺寸就不划边界，宁可多接也不要漏掉整个窗口
-
-        return point.X >= 0 && point.Y >= 0
-               && point.X <= element.ActualWidth && point.Y <= element.ActualHeight;
-    }
 
     /// <summary>
     /// 遍历并记录整个窗口树，每个窗口标注它有没有 OLE 落点。
