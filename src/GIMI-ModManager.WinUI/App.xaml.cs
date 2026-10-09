@@ -155,10 +155,6 @@ public partial class App : Application
                 services.AddSingleton<Services.Overlay.OverlayRefreshCoordinator>();
                 services.AddSingleton<Services.Overlay.OverlayWindowService>();
 
-                // 拖拽自检（设置页那一段）：把「为什么拖不进去」的判据采齐、说成一句人话。
-                // 它要读浮窗唤出键的状态，所以紧挨着 OverlayWindowService 注册（那边是单例）。
-                services.AddTransient<Services.Diagnostics.DragDropSelfCheckService>();
-
                 // 拖放投递通道：关掉 UAC 的机器上 WinUI 3 收不到外部拖放，由它挂自有落点顶上。
                 // 内部有门禁（只在高完整性机器上启用），正常机器不进这条路径。
                 // **必须是单例**：系统回调打进来的那个落点对象由它持有强引用，
