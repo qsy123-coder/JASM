@@ -164,8 +164,9 @@ internal sealed class ExternalDropChannel : IDisposable
             ownerSurface?.DropSurfaceName ?? "无");
 
         attachment.Target = new NativeDropTarget(owner, handle, _logger,
-            (x, y) => CanAcceptAt(attachment, rootProvider, x, y),
-            (paths, x, y) => HandleDropAsync(attachment, rootProvider, paths, x, y));
+            (x, y) => DecideAt(attachment, rootProvider, x, y),
+            (paths, x, y) => HandleDropAsync(attachment, rootProvider, paths, x, y),
+            () => OnDragEnded(attachment));
 
         // 把托管对象换成一个原生 COM 指针交给系统。这一步之后，系统的回调会直接进 NativeDropTarget。
         attachment.TargetPointer =
@@ -253,7 +254,7 @@ internal sealed class ExternalDropChannel : IDisposable
     /// 全程跑在 UI 线程（OLE 把回调派到窗口所属线程，也就是 WinUI 的 UI 线程），
     /// 所以可以直接摸视觉树。
     /// </summary>
-    private bool CanAcceptAt(Attachment attachment, Func<UIElement?> rootProvider, int screenX, int screenY)
+    private DropDecision DecideAt(Attachment attachment, Func<UIElement?> rootProvider, int screenX, int screenY)
     {
         // 整段包 try：这段跑在系统的拖拽回调里，抛出去会穿过 COM 边界**直接打挂进程**。
         // 而且它只是决定光标画成什么，失败时画禁止符就够了。
@@ -261,7 +262,7 @@ internal sealed class ExternalDropChannel : IDisposable
         {
             var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
             if (root is null)
-                return false;
+                return ClearActive(attachment);
 
             var surface = ResolveSurface(root, point, attachment.OwnerSurface);
             if (surface is null)
@@ -271,16 +272,55 @@ internal sealed class ExternalDropChannel : IDisposable
                 // 只在判成"不接"时记，一次拖拽进入窗口只来一发，不会刷屏。
                 _logger.Information("[拖放通道] 这一点不接（DIP=({X:F1},{Y:F1})）；命中链={Chain}",
                     point.X, point.Y, DescribeHits(root, point));
-                return false;
+                return ClearActive(attachment);
             }
 
-            return surface.CanAcceptDropAt(point);
+            if (!surface.CanAcceptDropAt(point))
+                return ClearActive(attachment);
+
+            // 换了个落点：旧的先收，新的再亮（成对，见 Attachment.ActiveSurface 的说明）
+            if (!ReferenceEquals(attachment.ActiveSurface, surface))
+            {
+                attachment.ActiveSurface?.OnExternalDragLeave();
+                attachment.ActiveSurface = surface;
+                surface.OnExternalDragEnter();
+            }
+
+            return new DropDecision(true, surface.DragCaption);
         }
         catch (Exception ex)
         {
             _logger.Warning(ex, "[拖放通道] 判断能不能落时出错，按不接处理");
-            return false;
+            return ClearActive(attachment);
         }
+    }
+
+    /// <summary>把当前亮着的落点收掉并答复"不接"。收的时候整段包 try —— 页面那边抛出来一样会穿 COM 边界。</summary>
+    private DropDecision ClearActive(Attachment attachment)
+    {
+        try
+        {
+            attachment.ActiveSurface?.OnExternalDragLeave();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "[拖放通道] 收起落点提示时出错");
+        }
+        finally
+        {
+            attachment.ActiveSurface = null;
+        }
+
+        return new DropDecision(false, null);
+    }
+
+    /// <summary>这一轮拖拽结束了（拖走 / 放下）：把还亮着的提示收掉。同样整段包 try。</summary>
+    private void OnDragEnded(Attachment attachment)
+    {
+        if (attachment.ActiveSurface is null)
+            return;
+
+        ClearActive(attachment);
     }
 
     /// <summary>
@@ -583,5 +623,15 @@ internal sealed class ExternalDropChannel : IDisposable
         /// 浮窗必须靠这个，因为 <c>Window</c> 不在其内容的视觉父链上（见 <see cref="ResolveSurface"/>）。
         /// </summary>
         internal IExternalDropSurface? OwnerSurface { get; set; }
+
+        /// <summary>
+        /// 当前这一轮拖拽"落在了谁身上"——<c>null</c> 表示没有落点亮着。
+        ///
+        /// <para>
+        /// 存它是为了**成对**：进了谁就要由谁来收（<c>OnExternalDragLeave</c>），
+        /// 否则概览页那层毛玻璃会一直挂在屏幕上 —— 拖拽走了不会再有事件来通知它收起来。
+        /// </para>
+        /// </summary>
+        internal IExternalDropSurface? ActiveSurface { get; set; }
     }
 }
