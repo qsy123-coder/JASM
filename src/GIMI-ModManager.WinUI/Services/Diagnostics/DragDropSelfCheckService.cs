@@ -28,6 +28,13 @@ internal sealed record DragDropSelfCheckResult(DragDropSelfCheckVerdict Verdict,
 /// （<paramref name="dragEventReceived"/> 就是那次实测的结果），本类只负责把实测与权限测量合起来出结论。
 /// </para>
 /// </summary>
+/// <remarks>
+/// <b>为什么是 internal、而且不注入 <c>SettingsViewModel</c> 的构造函数</b>：它依赖
+/// <see cref="OverlayWindowService"/>，那一个是**刻意 internal** 的（浮窗整套都只在本程序集里用，见
+/// <c>OverlayViewModel</c> 的类注释）；而 <c>SettingsViewModel</c> 是 public（XAML 的 <c>x:Bind</c> 要它），
+/// public 构造函数里放不下 internal 的参数类型（CS0051）。把浮窗那套为了一条诊断信息改成 public 是本末倒置，
+/// 所以这里按页面那套写法由调用方 <c>App.GetService&lt;&gt;()</c> 取（见 <c>SettingsViewModel.CompleteDragSelfCheck</c>）。
+/// </remarks>
 internal sealed class DragDropSelfCheckService
 {
     private readonly ILanguageLocalizer _localizer;
