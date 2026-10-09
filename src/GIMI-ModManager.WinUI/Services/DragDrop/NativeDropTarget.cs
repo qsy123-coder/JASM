@@ -6,6 +6,13 @@ using IDataObject = System.Runtime.InteropServices.ComTypes.IDataObject;
 namespace GIMI_ModManager.WinUI.Services.DragDrop;
 
 /// <summary>
+/// 通道对「这一点收不收」的答复。
+/// </summary>
+/// <param name="Accept">收不收 —— 决定光标画可放置还是禁止符。</param>
+/// <param name="Caption">收的时候要在光标旁边写的那句话；<c>null</c> = 不写。</param>
+internal readonly record struct DropDecision(bool Accept, string? Caption);
+
+/// <summary>
 /// 自己实现的 OLE 落点：系统把拖放回调打到这里来。
 ///
 /// <para>
@@ -44,13 +51,19 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
     private readonly nint _window;
 
     /// <summary>
-    /// 「这一处收不收」—— 坐标是**屏幕物理像素**，由通道换算后去问页面。
+    /// 「这一处收不收、光标旁写什么」—— 坐标是**屏幕物理像素**，由通道换算后去问页面。
     /// 只在载荷里真有文件时才会被调用（没文件时连问都不用问，直接禁止）。
     /// </summary>
-    private readonly Func<int, int, bool> _canAcceptAt;
+    private readonly Func<int, int, DropDecision> _decide;
 
     /// <summary>真的落下了：把文件路径交给通道去走安装流程。坐标同样是屏幕物理像素。</summary>
     private readonly Func<IReadOnlyList<string>, int, int, Task> _drop;
+
+    /// <summary>
+    /// 这一轮拖拽结束了（拖走或放下）—— 让通道把页面里亮着的提示收掉。
+    /// 页面里那层提示（概览页的毛玻璃）只有靠这个才会收，拖拽本身不会再来事件。
+    /// </summary>
+    private readonly Action _dragEnded;
 
     /// <summary>本次拖拽里 DragEnter / DragLeave 各打过一眼没有（避免指针反复进出时刷屏）。各用各的旗标 —— 两眼的时刻不同，都要留。</summary>
     private bool _treeLoggedOnEnter;
@@ -60,13 +73,14 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
     private bool _lastAccept;
 
     internal NativeDropTarget(string owner, nint window, ILogger logger,
-        Func<int, int, bool> canAcceptAt, Func<IReadOnlyList<string>, int, int, Task> drop)
+        Func<int, int, DropDecision> decide, Func<IReadOnlyList<string>, int, int, Task> drop, Action dragEnded)
     {
         _owner = owner;
         _window = window;
         _logger = logger.ForContext<NativeDropTarget>();
-        _canAcceptAt = canAcceptAt;
+        _decide = decide;
         _drop = drop;
+        _dragEnded = dragEnded;
     }
 
     /// <summary>
@@ -96,8 +110,13 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
 
         // 光标：**这一步就是整件事的目的**。有文件、且页面说这一处收，才画"可放置"；
         // 其余情况一律老实画禁止符 —— 一律给 Copy 会让用户以为到处都能放，松手却什么都不发生。
-        _lastAccept = hasFiles && _canAcceptAt(point.X, point.Y);
+        var decision = hasFiles ? _decide(point.X, point.Y) : default;
+        _lastAccept = hasFiles && decision.Accept;
         effect = _lastAccept ? AcceptedEffect : RefusedEffect;
+
+        // 光标旁那句说明（浮窗的「自动识别角色」）。不收就写 Invalid 清掉 ——
+        // 否则用户从浮窗拖到别处，那行字会跟着飘过去，说着跟当前落点无关的话。
+        DropTargetInterop.TrySetDropDescription(dataObject, _lastAccept ? decision.Caption : null);
 
         _treeLoggedOnEnter = false;
         _treeLoggedOnLeave = false;
@@ -132,12 +151,22 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
 
         _lastAccept = false;
 
+        // 让页面把提示收掉（概览页那层毛玻璃）。DragLeave 没有数据对象，
+        // 所以清不掉光标旁那行字 —— 但拖走后拖拽图整个就没了，那行字也看不见，
+        // 真正需要清的是"进了别的窗口"，那种情况下一次 DragEnter 会自己写掉。
+        _dragEnded();
+
         return 0;
     }
 
     int DropTargetInterop.IDropTarget.Drop(IDataObject dataObject, uint keyState, DropTargetInterop.PointL point,
         ref uint effect)
     {
+        // 落下这一刻就把说明文字清掉：安装流程可能弹框、可能要好一会儿，
+        // 那行"松手自动识别角色"留着就是在说已经发生过的事。
+        DropTargetInterop.TrySetDropDescription(dataObject, null);
+        _dragEnded();
+
         var files = TryReadFilePaths(dataObject);
         var extensions = files
             .Select(static f => Path.GetExtension(f))
