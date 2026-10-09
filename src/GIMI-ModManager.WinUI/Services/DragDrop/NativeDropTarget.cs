@@ -11,18 +11,18 @@ namespace GIMI_ModManager.WinUI.Services.DragDrop;
 /// <para>
 /// <b>它要解决什么</b>：在关掉 UAC 的机器上（<c>EnableLUA=0</c>，网吧无盘机常见），
 /// 所有进程都以高完整性运行，此时 **WinUI 3 收不到外部拖放** —— 表现是 <c>DragEnter</c> 从不触发、
-/// 光标一路禁止符，而 JASM 启动时的「与 shell 同级」策略恰好会保持高完整性，必然踩中。
-/// 同一个环境下 WPF / WinForms 的拖放却是正常的，说明系统层面并没有禁止拖放，
-/// 坏的是框架宿主 OLE 落点的方式 —— 所以这里绕开框架，自己实现一份落点。
+/// 光标一路禁止符。**已实测**：同一台机器上 XAML 的拖拽探针一条都不响，而本类的回调拿到了完整的
+/// <c>DragEnter</c> → <c>Drop</c> 序列，光标也判成了「可放置」。所以这条路是通的。
 /// </para>
 ///
 /// <para>
-/// <b>Phase 0 阶段它只记录、不改行为</b>：回调里只写日志，落点既不改写业务、也不接管现有的 XAML 落点。
-/// 见 <see cref="DropTargetProbe"/> 的类注释（为什么先探针、以及为什么不停掉别人的注册）。
+/// <b>它不自己决定收不收</b>：本类只负责「翻译」—— 把 OLE 的屏幕坐标与文件路径交给
+/// <see cref="ExternalDropChannel"/>，由那条通道去问页面（见 <see cref="IExternalDropSurface"/>）。
+/// 页面才是唯一知道「用户压在哪张卡片上、这一处收不收」的地方。
 /// </para>
 ///
 /// <para>
-/// <b>光标由本类决定</b>：<c>effect</c> 出参设成 <c>Copy</c> 系统才画「可放置」，
+/// <b>光标由本类写出去</b>：<c>effect</c> 出参设成 <c>Copy</c> 系统才画「可放置」，
 /// 设成 <c>None</c> 就是禁止符。「光标必须是正确的」这条验收标准落在
 /// <see cref="DragEnter"/> / <see cref="DragOver"/> 里。
 /// </para>
@@ -32,6 +32,9 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
     /// <summary>落点载荷是可放置的文件时给系统的效果位。</summary>
     private const uint AcceptedEffect = DropTargetInterop.DropEffect.Copy;
 
+    /// <summary>落点不接受这次拖放时给系统的效果位（= 光标画禁止符）。</summary>
+    private const uint RefusedEffect = DropTargetInterop.DropEffect.None;
+
     private readonly ILogger _logger;
 
     /// <summary>这个落点挂在谁身上（写进日志，好区分主窗口 / 浮窗）。</summary>
@@ -40,29 +43,39 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
     /// <summary>落点所在的窗口。拖拽进行中要拿它去查窗口树（见 <see cref="LogTreeOnce"/>）。</summary>
     private readonly nint _window;
 
-    /// <summary>本次拖放里有没有出现过载荷 —— 用来让 <c>DragLeave</c> / <c>Drop</c> 的日志能对上号。</summary>
-    private bool _dragging;
+    /// <summary>
+    /// 「这一处收不收」—— 坐标是**屏幕物理像素**，由通道换算后去问页面。
+    /// 只在载荷里真有文件时才会被调用（没文件时连问都不用问，直接禁止）。
+    /// </summary>
+    private readonly Func<int, int, bool> _canAcceptAt;
+
+    /// <summary>真的落下了：把文件路径交给通道去走安装流程。坐标同样是屏幕物理像素。</summary>
+    private readonly Func<IReadOnlyList<string>, int, int, Task> _drop;
 
     /// <summary>本次拖拽里 DragEnter / DragLeave 各打过一眼没有（避免指针反复进出时刷屏）。各用各的旗标 —— 两眼的时刻不同，都要留。</summary>
     private bool _treeLoggedOnEnter;
     private bool _treeLoggedOnLeave;
 
-    internal NativeDropTarget(string owner, nint window, ILogger logger)
+    /// <summary>上一次算出来的「收不收」——<c>DragOver</c> 每次鼠标移动都会来，那里不必重算命中测试。</summary>
+    private bool _lastAccept;
+
+    internal NativeDropTarget(string owner, nint window, ILogger logger,
+        Func<int, int, bool> canAcceptAt, Func<IReadOnlyList<string>, int, int, Task> drop)
     {
         _owner = owner;
         _window = window;
         _logger = logger.ForContext<NativeDropTarget>();
+        _canAcceptAt = canAcceptAt;
+        _drop = drop;
     }
 
     /// <summary>
     /// 趁拖拽**正在进行**打一眼窗口树。
     ///
     /// <para>
-    /// 为什么非要在这一刻打：开发机上「启动时 / 启动 8 秒后 / 一次拖拽结束之后」三种时刻，
-    /// 整棵树上的落点都只有我们挂的那一个，可 XAML 的 <c>DragEnter</c> 照样会响 ——
-    /// 唯一讲得通的是 **WinUI 在拖拽进行中才临时注册自己的落点、拖完就撤**。
-    /// 若确实如此，我们挂在顶层的落点只在拖拽开始时被问一下就顶掉，
-    /// 收不到拖放的机器上照样救不回来 —— 那这条路就得推翻重做。
+    /// 留着它是因为它是「WinUI 到底什么时候注册落点」的唯一目击证据：实测在关掉 UAC 的机器上，
+    /// 启动时 / 启动 8 秒后 / 拖拽进行中 / 拖拽结束之后，整棵树上的落点**始终只有我们挂的那一个** ——
+    /// 这解释了为什么那台机器上 XAML 的拖放彻底失效，也说明挂在顶层不会被谁顶掉。
     /// </para>
     /// </summary>
     private void LogTreeOnce(string phase, ref bool alreadyLogged)
@@ -81,17 +94,17 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
     {
         var hasFiles = TryProbeFilePayload(dataObject, out var formats);
 
-        // 先定光标：**这一步就是整件事的目的**。有文件就画"可放置"，没有就老实画禁止符
-        // （不能一律给 Copy —— 那会让用户以为虚拟文件/URL 也能拖进来，然后松手没反应）。
-        effect = hasFiles ? AcceptedEffect : DropTargetInterop.DropEffect.None;
+        // 光标：**这一步就是整件事的目的**。有文件、且页面说这一处收，才画"可放置"；
+        // 其余情况一律老实画禁止符 —— 一律给 Copy 会让用户以为到处都能放，松手却什么都不发生。
+        _lastAccept = hasFiles && _canAcceptAt(point.X, point.Y);
+        effect = _lastAccept ? AcceptedEffect : RefusedEffect;
 
-        _dragging = hasFiles;
         _treeLoggedOnEnter = false;
         _treeLoggedOnLeave = false;
 
         _logger.Information(
             "[拖放通道] {Owner} DragEnter：文件={HasFiles} 光标={Cursor} 可用格式=[{Formats}] 位置=({X},{Y})",
-            _owner, hasFiles ? "有" : "无", hasFiles ? "可放置" : "禁止", string.Join(",", formats),
+            _owner, hasFiles ? "有" : "无", _lastAccept ? "可放置" : "禁止", string.Join(",", formats),
             point.X, point.Y);
 
         LogTreeOnce("拖拽中·DragEnter", ref _treeLoggedOnEnter);
@@ -102,10 +115,10 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
 
     int DropTargetInterop.IDropTarget.DragOver(uint keyState, DropTargetInterop.PointL point, ref uint effect)
     {
-        // DragOver 会以很高的频率重复触发（鼠标每动一格一次）。这里 **不记日志** ——
-        // 之前拖拽探针就因为不打点被日志刷屏吃过亏（见 Helpers/DragProbe.cs 的节流注释）。
-        // 光标仍然每次都要设：不设的话系统会沿用上一次的值，表现是"进得来但划过去禁止符闪一下"。
-        effect = _dragging ? AcceptedEffect : DropTargetInterop.DropEffect.None;
+        // DragOver 以很高频率重复触发（鼠标每动一格一次），所以这里**不重做命中测试、也不记日志**——
+        // 重算等于每次鼠标移动都去遍历一次视觉树，而光标本来也是照着上一次的结果画的。
+        // 但 effect 每次都必须写：不写的话系统会沿用上一次的值，表现是"划过去禁止符闪一下"。
+        effect = _lastAccept ? AcceptedEffect : RefusedEffect;
 
         return 0;
     }
@@ -117,7 +130,7 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
         // 离开的这一刻再打一眼：若 WinUI 是在拖拽中途把落点挂到子窗口上的，这时应该能看见
         LogTreeOnce("拖拽中·DragLeave", ref _treeLoggedOnLeave);
 
-        _dragging = false;
+        _lastAccept = false;
 
         return 0;
     }
@@ -125,16 +138,11 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
     int DropTargetInterop.IDropTarget.Drop(IDataObject dataObject, uint keyState, DropTargetInterop.PointL point,
         ref uint effect)
     {
-        // Phase 0：只记录，**不接管**。真正安装要走现有的落点判据（浮窗只收真文件、详情页一次只收一个包…），
-        // 那是接完线之后的事 —— 现在贸然在这里调安装流程，会出现"同一个文件被处理两次"。
         var files = TryReadFilePaths(dataObject);
         var extensions = files
             .Select(static f => Path.GetExtension(f))
             .Where(static e => !string.IsNullOrEmpty(e))
             .ToArray();
-
-        effect = files.Length > 0 ? AcceptedEffect : DropTargetInterop.DropEffect.None;
-        _dragging = false;
 
         // 只记**个数与扩展名**，不记完整路径：这是要发给用户看 / 用户交回来的日志，
         // 里面的本地路径（用户名、盘符结构）没有诊断价值（见 CLAUDE.md 的"勿暴露本地路径细节"）。
@@ -142,7 +150,36 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
             _owner, files.Length, string.Join(",", extensions.Distinct(StringComparer.OrdinalIgnoreCase)),
             point.X, point.Y);
 
+        if (files.Length == 0)
+        {
+            effect = RefusedEffect;
+            return 0;
+        }
+
+        effect = AcceptedEffect;
+
+        // 处理是异步的（解压、认角色、起向导），而这里是系统在等我们返回 —— **不能阻塞**。
+        // 也不能让它抛出去：异常穿过 COM 边界会直接打挂进程，所以整段包住并记日志。
+        _ = HandleDropAsync(files, point.X, point.Y);
+
         return 0;
+    }
+
+    /// <summary>把落下这件事交给通道去走安装流程；异常只记日志（见上面那条注释）。</summary>
+    private async Task HandleDropAsync(IReadOnlyList<string> files, int screenX, int screenY)
+    {
+        try
+        {
+            await _drop(files, screenX, screenY);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "[拖放通道] {Owner} 处理落下的文件时出错", _owner);
+        }
+        finally
+        {
+            _lastAccept = false;
+        }
     }
 
     /// <summary>
