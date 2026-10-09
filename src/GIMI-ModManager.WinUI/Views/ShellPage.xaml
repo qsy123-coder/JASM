@@ -154,11 +154,12 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!--  提权时的**常驻**提示。为什么不能只靠启动那个弹窗：它有「不再显示此警告」，
-                      勾过一次就永远无声 —— 而提权真的会让拖拽安装整个失效（浮窗与主窗口同时只剩
+                <!--  权限这一档让拖拽不可用时的**常驻**提示。为什么不能只靠启动那个弹窗：它有「不再显示此警告」，
+                      勾过一次就永远无声 —— 而权限不等真的会让拖拽安装整个失效（浮窗与主窗口同时只剩
                       禁止光标、松手没反应、且不报任何错）。用户报「拖动安装显示禁用」时，
                       多半就是在这个位置之前就已经没有任何地方告诉他原因了。
-                      IsOpen 由代码后置在 Loaded 里按 AppElevation.IsDragDropBlocked() 置位。  -->
+                      IsOpen、Title、Message 与下面这个按钮的**含义**都由代码后置在 Loaded 里按
+                      AppElevation.CompareWithShell() 的两档分别置位（见 ShowElevationNoticeIfDragDropIsBlocked）。  -->
                 <InfoBar
                     x:Name="ElevationNotice"
                     Grid.Row="0"
@@ -167,8 +168,14 @@
                     IsOpen="False"
                     Severity="Warning">
                     <InfoBar.ActionButton>
-                        <!--  出路要摆在提示里：只告诉他"不可用"而不给一键解法，等于让他去找那个兼容性勾选  -->
-                        <Button Click="ElevationNoticeRestart_Click" Content="以普通权限重新启动" l:Uids.Uid="ShellPage_ElevationNoticeAction" />
+                        <!--  出路要摆在提示里：只告诉他"不可用"而不给一键解法，等于让他去找那个兼容性勾选。
+                              这一条横幅管**两档**（我们更高 / 我们更低），所以文案与按钮的含义都由代码按档位置，
+                              这里的字面量只是设计器里的默认值（我们更高那一档）。  -->
+                        <Button
+                            x:Name="ElevationNoticeActionButton"
+                            Click="ElevationNoticeAction_Click"
+                            Content="以普通权限重新启动"
+                            l:Uids.Uid="ShellPage_ElevationNoticeAction" />
                     </InfoBar.ActionButton>
                 </InfoBar>
 
