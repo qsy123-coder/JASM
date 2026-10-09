@@ -159,7 +159,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
         // 拖放投递通道：关掉 UAC 的机器上 WinUI 收不到外部拖放，由自有落点顶上。
         // **只多挂一个落点** —— 浮窗的显隐、置顶、前台归属走的是下面那些自己写的路径
         // （_styles / _topMostTimer / EnsureForeground），与落点毫无关系，一行都没动。
-        App.GetService<ExternalDropChannel>().Attach(_hwnd, "浮窗", () => Content as UIElement);
+        // 第四个参数是本窗口自己的落点面：**浮窗必须给** —— Window 不在其内容的视觉父链上，
+        // 通道顺着视觉树往上找是找不到本窗口的（实测现象：浮窗一直显示禁止符）。
+        App.GetService<ExternalDropChannel>().Attach(_hwnd, "浮窗", () => Content as UIElement, this);
 
         ConfigureOverlayWindow();
 
