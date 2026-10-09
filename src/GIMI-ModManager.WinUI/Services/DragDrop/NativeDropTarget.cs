@@ -69,8 +69,26 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
     private bool _treeLoggedOnEnter;
     private bool _treeLoggedOnLeave;
 
-    /// <summary>上一次算出来的「收不收」——<c>DragOver</c> 每次鼠标移动都会来，那里不必重算命中测试。</summary>
+    /// <summary>上一次算出来的「收不收」——决定光标画成什么。</summary>
     private bool _lastAccept;
+
+    /// <summary>上一次重算的时刻（<c>DragOver</c> 重算要节流，见那里）。</summary>
+    private long _lastDecideTick;
+
+    /// <summary>
+    /// 拖拽图像管理器（那颗跟着光标走的文件图标）。懒创建：只在第一次真正拖进来时才去要它。
+    /// </summary>
+    private DropTargetInterop.IDropTargetHelper? _helper;
+
+    /// <summary>是否已经尝试过创建（失败也只试一次，免得每次拖拽都去 CoCreateInstance）。</summary>
+    private bool _helperCreated;
+
+    /// <summary>
+    /// <c>DragOver</c> 重算的最小间隔。
+    ///
+    /// 200ms 上下：够快到"往里拖就恢复"，又不至于鼠标每动一格都去遍历一次视觉树。
+    /// </summary>
+    private const int DragOverRecheckMilliseconds = 200;
 
     internal NativeDropTarget(string owner, nint window, ILogger logger,
         Func<int, int, DropDecision> decide, Func<IReadOnlyList<string>, int, int, Task> drop, Action dragEnded)
@@ -128,16 +146,48 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
 
         LogTreeOnce("拖拽中·DragEnter", ref _treeLoggedOnEnter);
 
+        // 通知拖拽图像管理器：那颗跟着光标走的文件图标是它画的，不通知就不显示
+        EnsureHelper();
+        try
+        {
+            _helper?.DragEnter(_window, dataObject, ref point, (int)effect);
+        }
+        catch (Exception ex)
+        {
+            LogHelperFailure(ex, "DragEnter");
+        }
+
         // 返回 S_OK：我们**处理**了这个事件（返回错误码会让系统认为落点不认这次拖放）。
         return 0;
     }
 
     int DropTargetInterop.IDropTarget.DragOver(uint keyState, DropTargetInterop.PointL point, ref uint effect)
     {
-        // DragOver 以很高频率重复触发（鼠标每动一格一次），所以这里**不重做命中测试、也不记日志**——
-        // 重算等于每次鼠标移动都去遍历一次视觉树，而光标本来也是照着上一次的结果画的。
-        // 但 effect 每次都必须写：不写的话系统会沿用上一次的值，表现是"划过去禁止符闪一下"。
+        // **重算，但要节流**。
+        //
+        // 不重算是不行的：`DragEnter` 一次拖拽只来一发，那一发判错了就一路错到底 ——
+        // 实机现象正是「贴着浮窗边缘拖进去，进去就是禁止符，再往里拖也一直是禁止符」。
+        // 但也不能每次都算：`DragOver` 鼠标每动一格就来一发，每次遍历一遍视觉树太重。
+        // 折中是隔 200ms 重算一次，够快到"往里拖就恢复"。
+        var now = Environment.TickCount64;
+        if (now - _lastDecideTick >= DragOverRecheckMilliseconds)
+        {
+            _lastDecideTick = now;
+            _lastAccept = _decide(point.X, point.Y).Accept;
+        }
+
+        // effect 每次都必须写：不写的话系统会沿用上一次的值，表现是"划过去禁止符闪一下"。
         effect = _lastAccept ? AcceptedEffect : RefusedEffect;
+
+        EnsureHelper();
+        try
+        {
+            _helper?.DragOver(ref point, (int)effect);
+        }
+        catch (Exception ex)
+        {
+            LogHelperFailure(ex, "DragOver");
+        }
 
         return 0;
     }
@@ -156,8 +206,30 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
         // 真正需要清的是"进了别的窗口"，那种情况下一次 DragEnter 会自己写掉。
         _dragEnded();
 
+        try
+        {
+            _helper?.DragLeave();
+        }
+        catch (Exception ex)
+        {
+            LogHelperFailure(ex, "DragLeave");
+        }
+
         return 0;
     }
+
+    /// <summary>懒创建拖拽图像管理器。失败也只试一次 —— 每次拖拽都去 CoCreateInstance 是白费。</summary>
+    private void EnsureHelper()
+    {
+        if (_helperCreated)
+            return;
+
+        _helperCreated = true;
+        _helper = DropTargetInterop.TryCreateDropTargetHelper();
+    }
+
+    private void LogHelperFailure(Exception ex, string phase) =>
+        _logger.Debug(ex, "[拖放通道] 转发拖拽图像管理器失败（{Phase}），只是图像不显示，不影响拖放", phase);
 
     int DropTargetInterop.IDropTarget.Drop(IDataObject dataObject, uint keyState, DropTargetInterop.PointL point,
         ref uint effect)
@@ -186,6 +258,16 @@ internal sealed class NativeDropTarget : DropTargetInterop.IDropTarget
         }
 
         effect = AcceptedEffect;
+
+        EnsureHelper();
+        try
+        {
+            _helper?.Drop(dataObject, ref point, (int)effect);
+        }
+        catch (Exception ex)
+        {
+            LogHelperFailure(ex, "Drop");
+        }
 
         // 处理是异步的（解压、认角色、起向导），而这里是系统在等我们返回 —— **不能阻塞**。
         // 也不能让它抛出去：异常穿过 COM 边界会直接打挂进程，所以整段包住并记日志。
