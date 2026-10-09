@@ -404,6 +404,27 @@ internal sealed class ExternalDropChannel : IDisposable
     /// 与 XAML 事件从最内层往外冒的顺序一致。
     /// </para>
     /// </summary>
+    /// <summary>
+    /// 找出这一点上愿意接住的落点面。**三层兜底，顺序不能反**。
+    ///
+    /// <para>
+    /// <b>第一层（按坐标找）只负责"准"</b>：它能区分用户压在哪张角色卡片上。
+    /// 但它**不能决定收不收** —— 真机实测那个坐标根本不可靠：同一次运行里反推出的客户区原点
+    /// 有三个不同的值，而且算出来的点**永远贴在窗口最左边的导航栏上**（DIP x 恒为 0～70），
+    /// 用户明明拖在窗口中间。拿它当门槛的结果就是「光标一路禁止符、怎么拖都装不了」。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>第二层（在视觉树里找当前显示的落点面）才是收不收的判据</b>：坐标不可信时，
+    /// 「当前这一页愿不愿意接」这件事仍然答得出来。用户要的是"拖进 JASM 就能装"，
+    /// 精确到卡片只是锦上添花 —— 认不出卡片就走自动识别，那正是拖在空白处的既有行为。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>第三层（窗口自己的面）对浮窗是必需的</b>：`Window` **不是**其内容元素的视觉父级，
+    /// 前两层都找不到它 —— 实测现象就是浮窗一直显示禁止符。
+    /// </para>
+    /// </summary>
     private static IExternalDropSurface? ResolveSurface(UIElement root, Point point,
         IExternalDropSurface? ownerSurface)
     {
@@ -416,14 +437,40 @@ internal sealed class ExternalDropChannel : IDisposable
             }
         }
 
-        // 视觉树里没找到 → 用「本窗口自己的面」兜底。
-        //
-        // **这一条是必需的，不是保险**：`Window` **不是**其内容元素的视觉父级，
-        // `VisualTreeHelper.GetParent` 走到根元素就到头了。所以「整窗就是一个落点」的实现
-        // （浮窗自己实现接口那种）**永远**不会被上面那个循环找到 —— 实测现象就是浮窗一直显示禁止符。
-        // 页面那种实现不受影响：Page 本身就在视觉树里，往上走能得到它。
+        var displayed = FindSurfaceInTree(root);
+        if (displayed is not null)
+            return displayed;
+
         if (ownerSurface is not null && IsPointInside(root, point))
             return ownerSurface;
+
+        return null;
+    }
+
+    /// <summary>
+    /// 在视觉树里找**当前显示**的落点面（深度优先，第一个命中的说话）。
+    ///
+    /// <para>
+    /// 为什么这样能得到"当前这一页"：<c>Frame</c> 只把**当前页**挂在树上，切页时旧页会被摘掉。
+    /// 所以树上存在哪个实现了接口的页面，哪个就是现在显示的。
+    /// </para>
+    /// </summary>
+    private static IExternalDropSurface? FindSurfaceInTree(UIElement root)
+    {
+        if (root is IExternalDropSurface surface)
+            return surface;
+
+        var count = VisualTreeHelper.GetChildrenCount(root);
+
+        for (var i = 0; i < count; i++)
+        {
+            if (VisualTreeHelper.GetChild(root, i) is not UIElement child)
+                continue;
+
+            var found = FindSurfaceInTree(child);
+            if (found is not null)
+                return found;
+        }
 
         return null;
     }
