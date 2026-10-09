@@ -1824,10 +1824,19 @@ JASM 并非为以管理员权限运行而设计。
   </data>
   <data name="ShellPage_ElevationNoticeMessage" xml:space="preserve">
     <value>拖 Mod 进 JASM 只会显示禁止光标、松手没反应：Windows 不允许把文件从中等权限的程序拖进高权限的程序。
-点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。</value>
+点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。想知道这台机器到底是哪一档，去设置页最下面点「开始自检」，它会给出结论与报告。</value>
   </data>
   <data name="ShellPage_ElevationNoticeAction" xml:space="preserve">
     <value>以普通权限重新启动</value>
+  </data>
+  <data name="ShellPage_ElevationNoticeLowerTitle" xml:space="preserve">
+    <value>JASM 的权限比资源管理器低 —— 拖拽安装不可用</value>
+  </data>
+  <data name="ShellPage_ElevationNoticeLowerMessage" xml:space="preserve">
+    <value>这台机器的资源管理器本身是高权限（UAC 关闭 / 整机提权 / 网吧机常见），而 JASM 是被普通权限拉起来的 —— 两个方向的权限差别都会被 Windows 挡住。请关掉 JASM，再以管理员身份重开；右边按钮可以先做一次拖拽自检，把结论复制给我们。</value>
+  </data>
+  <data name="ShellPage_ElevationNoticeSelfCheckAction" xml:space="preserve">
+    <value>做拖拽自检</value>
   </data>
   <data name="Overlay_ElevationNotice" xml:space="preserve">
     <value>JASM 正以管理员身份运行：这个窗口收不了拖拽（Windows 的限制）。关掉 JASM 后用普通方式重新打开即可。</value>
