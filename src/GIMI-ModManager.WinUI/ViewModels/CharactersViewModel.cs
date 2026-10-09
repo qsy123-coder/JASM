@@ -1104,10 +1104,32 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
             return FindModList(ranked[0].Character);
         }
 
-        // 认不出来是**正常结果**，认错才是事故 —— 所以拿不准一律交给用户（见 CharacterNameMatcher 的注释）
         _logger.Information("Dropped package '{FileName}' was not resolved confidently ({Count} candidates)",
             fileName, ranked.Count);
 
+        // 一个候选都没有 = 真的认不出来。**这种时候不弹框，直接装到「其它角色」。**
+        //
+        // 浮窗那条路一直就是这个行为（认不出 → 装给当前角色，再不行落到「其它角色」）；
+        // 概览页原来会弹一个「认不出这是哪个角色」，而"认不出来"本来就是常态 ——
+        // 用户拖包进来要的是"装上"，不是被拦一道再自己想办法。
+        if (ranked.Count == 0)
+        {
+            var others = _gameService.GetAllModdableObjectsAsCategory<ICharacter>()
+                .FirstOrDefault(character => character.InternalNameEquals(_gameService.OtherCharacterInternalName));
+
+            if (others is not null)
+            {
+                _logger.Information("Nothing matched '{FileName}'; falling back to the 'others' character", fileName);
+                return FindModList(others);
+            }
+
+            _logger.Warning("Could not find the 'others' character to fall back to for '{FileName}'", fileName);
+            return null;
+        }
+
+        // 有候选、只是不够自信 → 仍然问一句「是这几个里的哪个」。
+        // 那是**挑一个**，与"认不出"是两回事：认错才是事故（见 CharacterNameMatcher 的注释），
+        // 所以这一档保留让用户拍板。
         var chosen = await _characterPickerService.PickAsync(ranked);
         return chosen is null ? null : FindModList(chosen);
     }
