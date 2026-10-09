@@ -299,27 +299,25 @@ public sealed partial class ShellPage : Page
 
                 ElevationNotice.Message = LocalizeOrFallback("ShellPage_ElevationNoticeMessage",
                     "拖 Mod 进 JASM 只会显示禁止光标、松手没反应：Windows 不允许把文件从中等权限的程序拖进高权限的程序。"
-                    + "点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。"
-                    + "想知道这台机器到底是哪一档，去设置页最下面点「开始自检」，它会给出结论与报告。");
+                    + "点右边按钮切回普通权限；也可以自己右键 JASM 的快捷方式 → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」。");
 
                 ElevationNoticeActionButton.Content = LocalizeOrFallback("ShellPage_ElevationNoticeAction",
                     "以普通权限重新启动");
+                ElevationNoticeActionButton.Visibility = Visibility.Visible;
                 break;
 
             // 反方向那一档：我们比 explorer 低（整机提权 / UAC 关闭的机器上 explorer 自己就是高，
             // 而 JASM 是被普通权限的程序拉起来的）。症状与提权一模一样，出路却正好相反 ——
-            // 这里不给「切回普通权限」那个按钮（那会把他送进更糟的一档），只给自检入口。
+            // 所以**这一档不给按钮**：「切回普通权限」那一手在这里是反的，会把他送进更糟的一档。
             case IntegrityRelation.OwnLower:
                 ElevationNotice.Title = LocalizeOrFallback("ShellPage_ElevationNoticeLowerTitle",
                     "JASM 的权限比资源管理器低 —— 拖拽安装不可用");
 
                 ElevationNotice.Message = LocalizeOrFallback("ShellPage_ElevationNoticeLowerMessage",
                     "这台机器的资源管理器本身是高权限（UAC 关闭 / 整机提权 / 网吧机常见），而 JASM 是被普通权限拉起来的 —— "
-                    + "两个方向的权限差别都会被 Windows 挡住。请关掉 JASM，再以管理员身份重开；"
-                    + "右边按钮可以先做一次拖拽自检，把结论复制给我们。");
+                    + "两个方向的权限差别都会被 Windows 挡住。请关掉 JASM，再以管理员身份重开。");
 
-                ElevationNoticeActionButton.Content = LocalizeOrFallback("ShellPage_ElevationNoticeSelfCheckAction",
-                    "做拖拽自检");
+                ElevationNoticeActionButton.Visibility = Visibility.Collapsed;
                 break;
 
             default:
@@ -354,18 +352,19 @@ public sealed partial class ShellPage : Page
     }
 
     /// <summary>
-    /// 横幅上那个按钮。**含义随档位不同，判据与亮横幅时用的是同一个**（现量一次
-    /// <see cref="AppElevation.CompareWithShell"/>，与 <c>ShowElevationNoticeIfDragDropIsBlocked</c> 同源，
-    /// 不会出现「按钮写着切回普通权限、点下去却去做自检」）：
-    /// 我们更高 ⇒ 切回普通权限；我们更低 ⇒ 去设置页做拖拽自检。
+    /// 横幅上那个按钮 = 「以普通权限重新启动」。
+    ///
+    /// <para>
+    /// 只有「我们比 shell 高」那一档才有它（反方向那档在 <see cref="ShowElevationNoticeIfDragDropIsBlocked"/>
+    /// 里被隐藏了：那边的出路是**反过来**的，这个按钮点下去会把他送进更糟的一档）。
+    /// 这里仍现量一次判据再动手，与亮横幅时同源 —— 万一显隐哪天没跟上，
+    /// 也绝不能让这一下真的去启动一份普通权限的进程。
+    /// </para>
     /// </summary>
     private async void ElevationNoticeAction_Click(object sender, RoutedEventArgs e)
     {
         if (AppElevation.CompareWithShell() == IntegrityRelation.OwnLower)
-        {
-            App.GetService<INavigationService>().NavigateTo(typeof(SettingsViewModel).FullName!);
             return;
-        }
 
         // 失败时 RestartWithoutElevationAsync 自己会弹通知 —— 绝不静默失败
         await App.GetService<LifeCycleService>().RestartWithoutElevationAsync();
