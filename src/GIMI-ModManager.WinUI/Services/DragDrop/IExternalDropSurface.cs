@@ -24,6 +24,29 @@ internal interface IExternalDropSurface
     string DropSurfaceName { get; }
 
     /// <summary>
+    /// 光标旁边那行说明文字（如浮窗的「自动识别角色」）；<c>null</c> = 不写。
+    ///
+    /// <para>
+    /// 概览页用的是页面内那层毛玻璃提示，不需要光标旁再写一行，所以那边返回 <c>null</c>。
+    /// </para>
+    /// </summary>
+    string? DragCaption { get; }
+
+    /// <summary>
+    /// 有东西被拖进了这个落点 —— 把提示亮起来（概览页就是那层毛玻璃）。
+    ///
+    /// <para>
+    /// 为什么必须由通道来喊：自有落点绕过了 XAML 的拖拽事件，页面里原来挂在
+    /// <c>DragEnter</c> 上的提示层**永远等不到机会**，用户就只看到一个能放的光标、
+    /// 没有「松手会干什么」的说明。
+    /// </para>
+    /// </summary>
+    void OnExternalDragEnter();
+
+    /// <summary>东西被拖走了，或者已经放下了 —— 把提示收起来。</summary>
+    void OnExternalDragLeave();
+
+    /// <summary>
     /// 指到这个点（**XAML 坐标，DIP**）时，这一处接不接外部拖放。
     /// 返回值决定光标画成「可放置」还是禁止符 —— 所以它必须诚实：
     /// 一律返回 true 会让用户以为到处都能放，松手却什么都不发生。
