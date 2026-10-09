@@ -155,6 +155,10 @@ public partial class App : Application
                 services.AddSingleton<Services.Overlay.OverlayRefreshCoordinator>();
                 services.AddSingleton<Services.Overlay.OverlayWindowService>();
 
+                // 拖拽自检（设置页那一段）：把「为什么拖不进去」的判据采齐、说成一句人话。
+                // 它要读浮窗唤出键的状态，所以紧挨着 OverlayWindowService 注册（那边是单例）。
+                services.AddTransient<Services.Diagnostics.DragDropSelfCheckService>();
+
                 // 点击按键徽章 → 合成按键发给游戏（见 GameKeySender 的注释：切前台必须在同步段做）
                 services.AddSingleton<IGameKeySender, GameKeySender>();
 
