@@ -41,8 +41,9 @@ internal static class AppElevation
     ///
     /// <para>
     /// 与 <see cref="IsDragDropBlocked"/> 的分工：那个是给提示条用的布尔（只关心「我们更高」这一档，
-    /// 且带「shell 读不到就保守说明」的兜底），这个是给 <c>DragDropSelfCheckService</c> 用的完整三档 ——
-    /// 自检必须能说出**反方向**那一档（我们比 shell 低，整机提权的机器上就是这个形态），
+    /// 且带「shell 读不到就保守说明」的兜底），这个是完整的三档 ——
+    /// 提权提示条要按档位给不同的出路，降权策略（<c>IntegrityDowngrade</c>）也要用它说清
+    /// **反方向**那一档（我们比 shell 低，整机提权 / UAC 关闭的机器上就是这个形态），
     /// 而那个布尔按设计答不了。
     /// </para>
     /// </summary>
@@ -68,9 +69,9 @@ internal static class AppElevation
             IntegrityRelation.Unknown => IsElevated(),
             IntegrityRelation.OwnHigher => true,
 
-            // 「我们比 shell 低」也拖不进，但**不在这里**亮提示条：这条横幅的文案与那个按钮都是
-            // 「切回普通权限」的出路，方向正好反了，摆在这里会把用户支到更糟的一档去。
-            // 这一档由拖拽自检报告给说法（见 DragDropSelfCheckVerdict.BlockedByOwnLowerIntegrity）。
+            // 「我们比 shell 低」也拖不进，但**这个布尔**答不了它：它只服务「亮不亮那条常驻提示条」，
+            // 而该档的文案与按钮显隐由 ShellPage.ShowElevationNoticeIfDragDropIsBlocked 按三档关系
+            // 自己置位（那一档的出路是「以管理员身份重开」，与这条布尔覆盖的「切回普通权限」正好相反）。
             _ => false
         };
     }
