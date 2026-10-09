@@ -186,6 +186,71 @@ internal static class DropTargetInterop
     /// <summary>OLE 在窗口上留下的「落点接口」属性名。</summary>
     internal const string OleDropTargetInterfaceProp = "OleDropTargetInterface";
 
+    // ── 拖拽图像管理器（那颗跟着光标走的文件图标）────────────────────────────────
+
+    /// <summary>
+    /// <c>IDropTargetHelper</c>：由 shell 实现、由**目标**调用。
+    ///
+    /// <para>
+    /// <b>为什么必须转发给它的四个方法</b>：那颗跟着光标走的"文件图标"是拖拽图像管理器画的，
+    /// 而它只知道**被通知过**的落点。实现 <c>IDropTarget</c> 时不转发，系统就没把图像挂上来 ——
+    /// 退化成只剩一个效果徽标。图形学上它叫 "drop target helper"，实际上就是这条通知链路。
+    /// </para>
+    ///
+    /// <para>
+    /// 用法：<c>CoCreateInstance(CLSID_DragDropHelper)</c> 拿到实例，然后在
+    /// <c>DragEnter</c>/<c>DragOver</c>/<c>DragLeave</c>/<c>Drop</c> 里各调一次同名方法。
+    /// 拿不到实例（极少数环境）就静默跳过 —— 图像不显示而已，不影响拖放本身。
+    /// </para>
+    /// </summary>
+    [ComImport]
+    [Guid("4657278B-411B-11D2-839A-00C04FB9D3B7")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IDropTargetHelper
+    {
+        void DragEnter(nint window, [MarshalAs(UnmanagedType.Interface)] IDataObject dataObject,
+            ref PointL point, int effect);
+
+        void DragLeave();
+
+        void DragOver(ref PointL point, int effect);
+
+        void Drop([MarshalAs(UnmanagedType.Interface)] IDataObject dataObject, ref PointL point, int effect);
+    }
+
+    /// <summary><c>CLSID_DragDropHelper</c>：shell 那个拖拽图像管理器。</summary>
+    private static readonly Guid DragDropHelperClsid = new("4657278A-411B-11D2-839A-00C04FB9D3B7");
+
+    /// <summary><c>CLSCTX_INPROC_SERVER</c>。</summary>
+    private const uint ClsctxInprocServer = 0x1;
+
+    [DllImport("ole32.dll", ExactSpelling = true)]
+    private static extern int CoCreateInstance(ref Guid clsid, nint outer, uint context, ref Guid iid, out nint instance);
+
+    /// <summary>拿到拖拽图像管理器；拿不到返回 <c>null</c>（不抛）。</summary>
+    internal static IDropTargetHelper? TryCreateDropTargetHelper()
+    {
+        try
+        {
+            var iid = typeof(IDropTargetHelper).GUID;
+            var clsid = DragDropHelperClsid;
+
+            var hr = CoCreateInstance(ref clsid, 0, ClsctxInprocServer, ref iid, out var instance);
+            if (hr < 0 || instance == 0)
+            {
+                Serilog.Log.Debug("[拖放通道] 拿不到拖拽图像管理器（0x{Result:X8}），拖拽图不显示", hr);
+                return null;
+            }
+
+            return (IDropTargetHelper)Marshal.GetObjectForIUnknown(instance);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "[拖放通道] 创建拖拽图像管理器失败");
+            return null;
+        }
+    }
+
     // ── 光标旁那行说明文字（"自动识别角色"）────────────────────────────────────
 
     /// <summary>
