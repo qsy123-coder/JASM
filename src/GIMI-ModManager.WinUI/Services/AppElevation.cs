@@ -1,3 +1,4 @@
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Services.Input;
 
 namespace GIMI_ModManager.WinUI.Services;
@@ -35,17 +36,42 @@ internal static class AppElevation
     /// </remarks>
     internal static bool IsDragDropBlocked() => DragDropBlockedLazy.Value;
 
+    /// <summary>
+    /// 本进程与 shell 的完整性级别关系（三档），**每次现读**、不缓存。
+    ///
+    /// <para>
+    /// 与 <see cref="IsDragDropBlocked"/> 的分工：那个是给提示条用的布尔（只关心「我们更高」这一档，
+    /// 且带「shell 读不到就保守说明」的兜底），这个是给 <c>DragDropSelfCheckService</c> 用的完整三档 ——
+    /// 自检必须能说出**反方向**那一档（我们比 shell 低，整机提权的机器上就是这个形态），
+    /// 而那个布尔按设计答不了。
+    /// </para>
+    /// </summary>
+    internal static IntegrityRelation CompareWithShell()
+    {
+        var shellProcessId = WindowProcessQuery.TryGetShellProcessId();
+
+        var shell = shellProcessId is { } processId
+            ? WindowProcessQuery.TryReadIntegrityLevelRid(processId)
+            : null;
+
+        return DragDropSelfCheck.Compare(WindowProcessQuery.OwnIntegrityLevelRid, shell);
+    }
+
     private static bool ComputeDragDropBlocked()
     {
-        var own = WindowProcessQuery.OwnIntegrityLevelRid;
+        var relation = CompareWithShell();
 
-        // 拿不到 shell 的进程 / 完整性级别时退回「提权了就算不可用」：
-        // 宁可多说一句（用户看一眼就知道自己是不是提权了），也别让他对着禁止光标猜
-        if (WindowProcessQuery.TryGetShellProcessId() is not { } shellProcessId)
-            return IsElevated();
+        return relation switch
+        {
+            // 拿不到 shell 的进程 / 完整性级别时退回「提权了就算不可用」：
+            // 宁可多说一句（用户看一眼就知道自己是不是提权了），也别让他对着禁止光标猜
+            IntegrityRelation.Unknown => IsElevated(),
+            IntegrityRelation.OwnHigher => true,
 
-        return WindowProcessQuery.TryReadIntegrityLevelRid(shellProcessId) is { } shell
-            ? own > shell
-            : IsElevated();
+            // 「我们比 shell 低」也拖不进，但**不在这里**亮提示条：这条横幅的文案与那个按钮都是
+            // 「切回普通权限」的出路，方向正好反了，摆在这里会把用户支到更糟的一档去。
+            // 这一档由拖拽自检报告给说法（见 DragDropSelfCheckVerdict.BlockedByOwnLowerIntegrity）。
+            _ => false
+        };
     }
 }
