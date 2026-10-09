@@ -19,7 +19,6 @@ using GIMI_ModManager.WinUI.Models.Options;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
-using GIMI_ModManager.WinUI.Services.Diagnostics;
 using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.ModHandling;
@@ -169,8 +168,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         GameDataSyncStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncIdle", defaultValue: "Idle");
         GameDataCurrentVersion = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNone", defaultValue: "None");
         GameDataLastSyncTime = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncNever", defaultValue: "Never");
-        DragSelfCheckStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_DragSelfCheckIdle",
-            defaultValue: "Click \"Start check\", then drag any file into the box");
         _selectedGameService = selectedGameService;
         _modUpdateAvailableChecker = modUpdateAvailableChecker;
         _lifeCycleService = lifeCycleService;
@@ -956,112 +953,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     {
         var dialog = new DisableAllModsDialog();
         return dialog.ShowDialogAsync();
-    }
-
-    // ── 拖拽自检（「为什么拖不进去」，见 DragDropSelfCheckService）──────
-
-    /// <summary>
-    /// 自检框里那一行字：既是提示（该做什么）也是结论（这台机器怎么样）。
-    ///
-    /// 用一个字符串驱动界面而不是几个布尔：用户读到的就是这一句，界面上没有第二处状态要对齐；
-    /// 判定本身在 <see cref="DragDropSelfCheckService"/> 里，这里只负责把它的结论摆出来。
-    /// </summary>
-    [ObservableProperty] private string _dragSelfCheckStatus = string.Empty;
-
-    /// <summary>完整报告（多行）。没跑过、或上一次没留下结论时是 <c>null</c>。</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasDragSelfCheckReport))]
-    private string? _dragSelfCheckReport;
-
-    /// <summary>报告区的显隐。给界面一个布尔是因为 <c>x:Bind</c> 绑不了「字符串非空」。</summary>
-    public bool HasDragSelfCheckReport => !string.IsNullOrEmpty(DragSelfCheckReport);
-
-    /// <summary>自检进行中：按钮停用、框在等那 10 秒。计时在页面里（见 SettingsPage）。</summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartDragSelfCheckCommand))]
-    private bool _isDragSelfCheckRunning;
-
-    /// <summary>
-    /// 开始一次自检：清掉上一次的结论，等用户往框里拖一次。
-    /// **只负责摆好状态**，10 秒的窗口与拖拽事件都在页面侧（<c>SettingsPage.xaml.cs</c>）接。
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanStartDragSelfCheck))]
-    private void StartDragSelfCheck()
-    {
-        IsDragSelfCheckRunning = true;
-        DragSelfCheckReport = null;
-        DragSelfCheckStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_DragSelfCheckWaiting",
-            defaultValue: "Drag any file into this box now (10 seconds)");
-
-        _logger.Information("[拖拽自检] 开始，等拖拽事件 {Seconds} 秒", DragDropSelfCheck.WindowSeconds);
-    }
-
-    private bool CanStartDragSelfCheck() => !IsDragSelfCheckRunning;
-
-    /// <summary>
-    /// 一次自检的收尾。**两种收尾共用这一个入口**（收到事件 / 计时到点）——结论只有一份、
-    /// 也只能下在一个地方。重入直接忽略：<c>DragOver</c> 每动一下指针都来一发。
-    /// </summary>
-    /// <param name="dragEventReceived">这一轮里框有没有被拖过（实测那一半证据）。</param>
-    /// <param name="draggedFormats">收到事件时数据对象里的格式清单，只进日志（报告里不列，太长）。</param>
-    internal void CompleteDragSelfCheck(bool dragEventReceived, IReadOnlyList<string>? draggedFormats = null)
-    {
-        if (!IsDragSelfCheckRunning)
-            return;
-
-        IsDragSelfCheckRunning = false;
-
-        if (dragEventReceived)
-            _logger.Information("[拖拽自检] 收到拖拽事件，可用格式=[{Formats}]",
-                draggedFormats is null ? "<没读>" : string.Join(",", draggedFormats));
-
-        // 走 App.GetService 而不是构造函数注入：拖拽自检服务依赖浮窗服务，而浮窗那套是刻意 internal 的，
-        // 放不进这个 public ViewModel 的构造函数（CS0051）。页面本来就是这么取服务的，这里沿用。
-        //
-        // **整段包 try**：这条路的调用点在 DragEnter / DragOver / 计时器里，在那里抛异常 = 直接终止进程
-        // （实测踩过一次：服务装不出来就在拖拽回调里崩了）。诊断代码不能反过来把拖拽搞坏 ——
-        // 出问题时把状态行改成一句实话，让用户知道是「自检坏了」而不是「JASM 坏了」。
-        try
-        {
-            var result = App.GetService<DragDropSelfCheckService>().Run(dragEventReceived);
-
-            DragSelfCheckStatus = result.Headline;
-            DragSelfCheckReport = result.Report;
-        }
-        catch (Exception e)
-        {
-            _logger.Error(e, "[拖拽自检] 出结论时失败");
-
-            DragSelfCheckStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_DragSelfCheckFailed",
-                defaultValue: "The check itself failed - see the log");
-            DragSelfCheckReport = null;
-        }
-    }
-
-    /// <summary>
-    /// 把报告复制到剪贴板 —— 用户在群里 / 工单里贴给我们的就是它，所以这条路的成败要在日志里留痕。
-    /// </summary>
-    [RelayCommand]
-    private void CopyDragSelfCheckReport()
-    {
-        if (string.IsNullOrEmpty(DragSelfCheckReport))
-            return;
-
-        try
-        {
-            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-            package.SetText(DragSelfCheckReport);
-            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-
-            // 不 Flush 的话，JASM 一退出剪贴板里那份就没了（用户多半是先复制、再去发消息）
-            Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
-        }
-        catch (Exception e)
-        {
-            // 剪贴板被别的程序占着（那类 COMException）不是致命错误：报告就在屏幕上，
-            // 用户手动选中复制一样拿得到，所以只记一行日志
-            _logger.Warning(e, "[拖拽自检] 复制报告失败");
-        }
     }
 
     public void OnNavigatedFrom()
