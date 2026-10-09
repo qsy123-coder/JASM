@@ -73,6 +73,19 @@ internal sealed class ExternalDropChannel : IDisposable
     /// </summary>
     private bool _dryRun;
 
+    /// <summary>
+    /// 挂载时抓住的 **UI 线程 SynchronizationContext**，落下时用它把处理递回去。
+    ///
+    /// <para>
+    /// <b>为什么非抓不可</b>：我们的入口是**原始 OLE 回调**，不是 XAML 事件 —— 实测那个线程上
+    /// <c>SynchronizationContext.Current</c> 是空的，于是 <c>await</c> 之后的续体跑到线程池上去了。
+    /// 表现是一条 <c>RPC_E_WRONG_THREAD</c>（<c>0x8001010E</c>）：
+    /// 安装流程跑到「弹角色选择器」那一步才炸 —— <c>new StackPanel()</c> 在非 UI 线程上创建 XAML 控件。
+    /// XAML 事件那条路没这个问题（派发事件时框架会把上下文装好），所以这个坑只有走自有落点才会踩到。
+    /// </para>
+    /// </summary>
+    private SynchronizationContext? _uiContext;
+
     public ExternalDropChannel(ILogger logger) => _logger = logger.ForContext<ExternalDropChannel>();
 
     /// <summary>
@@ -120,13 +133,17 @@ internal sealed class ExternalDropChannel : IDisposable
     /// 在一个窗口上挂落点。<paramref name="rootProvider"/> 返回该窗口的 XAML 根元素
     /// （命中测试要从它往下走）—— 用委托是因为窗口内容可能比本调用更晚就绪。
     /// </summary>
-    internal unsafe void Attach(HWND window, string owner, Func<UIElement?> rootProvider)
+    internal unsafe void Attach(HWND window, string owner, Func<UIElement?> rootProvider,
+        IExternalDropSurface? ownerSurface = null)
     {
         if (!IsEnvEnabled())
         {
             _logger.Debug("[拖放通道] {Owner} 门禁未通过，不挂载", owner);
             return;
         }
+
+        // 抓 UI 线程的上下文（挂载一定在 UI 线程上做，见 ActivationService / OverlayWindow 的调用点）
+        _uiContext ??= SynchronizationContext.Current;
 
         var handle = (nint)window.Value;
 
@@ -137,11 +154,14 @@ internal sealed class ExternalDropChannel : IDisposable
         // ⚠️ **刻意不调 OleUninitialize**：返回值 S_FALSE 表示"本线程早就初始化过"，
         // 那是 WinUI 自己初始化来跑拖放的。我们在 Dispose 里减一次引用，
         // 就可能把 WinUI 还要用的 OLE 拆掉。进程活得比通道久，这点引用留着无害。
-        var attachment = new Attachment(handle);
+        var attachment = new Attachment(handle) { OwnerSurface = ownerSurface };
 
         _logger.Information(
-            "[拖放通道] 挂载 {Owner}：OleInitialize=0x{OleResult:X8} 本进程={OwnIntegrity} shell={ShellRelation}",
-            owner, oleResult, DescribeOwnIntegrity(), AppElevation.CompareWithShell());
+            "[拖放通道] 挂载 {Owner}：OleInitialize=0x{OleResult:X8} 本进程={OwnIntegrity} shell={ShellRelation}"
+            + " UI上下文={UiContext} 自有面={OwnerSurface}",
+            owner, oleResult, DescribeOwnIntegrity(), AppElevation.CompareWithShell(),
+            _uiContext is null ? "无（落下时会退回 DispatcherQueue）" : "有",
+            ownerSurface?.DropSurfaceName ?? "无");
 
         attachment.Target = new NativeDropTarget(owner, handle, _logger,
             (x, y) => CanAcceptAt(attachment, rootProvider, x, y),
@@ -214,7 +234,7 @@ internal sealed class ExternalDropChannel : IDisposable
                 return;
             }
 
-            var surface = ResolveSurface(root, point);
+            var surface = ResolveSurface(root, point, attachment.OwnerSurface);
 
             _logger.Information(
                 "[拖放通道] 自测（窗口中心）：屏幕=({ScreenX},{ScreenY}) → XAML DIP=({X:F1},{Y:F1})；"
@@ -235,47 +255,98 @@ internal sealed class ExternalDropChannel : IDisposable
     /// </summary>
     private bool CanAcceptAt(Attachment attachment, Func<UIElement?> rootProvider, int screenX, int screenY)
     {
-        var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
-        if (root is null)
-            return false;
+        // 整段包 try：这段跑在系统的拖拽回调里，抛出去会穿过 COM 边界**直接打挂进程**。
+        // 而且它只是决定光标画成什么，失败时画禁止符就够了。
+        try
+        {
+            var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
+            if (root is null)
+                return false;
 
-        var surface = ResolveSurface(root, point);
-        return surface is not null && surface.CanAcceptDropAt(point);
+            var surface = ResolveSurface(root, point, attachment.OwnerSurface);
+            if (surface is null)
+            {
+                // 「光标显示禁止」有两种完全不同的来路：真的没压在任何落点上，和**该接的页面没被认出来**
+                // （坐标换算偏了 / 页面没实现接口）。这一行把命中链留下来，两者一眼可分 ——
+                // 只在判成"不接"时记，一次拖拽进入窗口只来一发，不会刷屏。
+                _logger.Information("[拖放通道] 这一点不接（DIP=({X:F1},{Y:F1})）；命中链={Chain}",
+                    point.X, point.Y, DescribeHits(root, point));
+                return false;
+            }
+
+            return surface.CanAcceptDropAt(point);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "[拖放通道] 判断能不能落时出错，按不接处理");
+            return false;
+        }
     }
 
-    /// <summary>落下：把路径交给命中测试出来的那个页面，由它走既有的安装流程。</summary>
-    private async Task HandleDropAsync(Attachment attachment, Func<UIElement?> rootProvider,
+    /// <summary>
+    /// 落下：把路径交给命中测试出来的那个页面，由它走既有的安装流程。
+    ///
+    /// <para>
+    /// <b>必须先递回 UI 线程</b>：本方法是系统的拖拽回调调起来的，那个线程上
+    /// <c>SynchronizationContext</c> 是空的，直接往下 await 会让续体落到线程池，
+    /// 最后炸在「非 UI 线程上 new XAML 控件」（<c>RPC_E_WRONG_THREAD</c>，实测）。
+    /// </para>
+    /// </summary>
+    private Task HandleDropAsync(Attachment attachment, Func<UIElement?> rootProvider,
         IReadOnlyList<string> paths, int screenX, int screenY)
     {
-        var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
-        if (root is null)
+        if (_uiContext is { } context)
         {
-            _logger.Warning("[拖放通道] 落下时拿不到 XAML 根元素，放弃处理（{Count} 个文件）", paths.Count);
-            return;
+            context.Post(_ => _ = HandleDropCoreAsync(attachment, rootProvider, paths, screenX, screenY), null);
+            return Task.CompletedTask;
         }
 
-        var surface = ResolveSurface(root, point);
-        if (surface is null)
+        // 抓不到上下文（理论上不该发生，挂载一定在 UI 线程）也不丢功能，只是少一层保险
+        return HandleDropCoreAsync(attachment, rootProvider, paths, screenX, screenY);
+    }
+
+    /// <summary>落下处理的实体。**必须在 UI 线程上跑**（见 <see cref="HandleDropAsync"/>）。</summary>
+    private async Task HandleDropCoreAsync(Attachment attachment, Func<UIElement?> rootProvider,
+        IReadOnlyList<string> paths, int screenX, int screenY)
+    {
+        try
         {
-            // 落下点不在任何愿意接住的页面上（比如落在导航栏、标题栏）。**这不是错误**：
-            // 用户在那些地方松手本来就该什么都不发生。
-            _logger.Information("[拖放通道] 落下点没有页面接住（位置=({X},{Y})），忽略", point.X, point.Y);
-            return;
+            var (root, point) = ResolvePoint(attachment, rootProvider, screenX, screenY);
+            if (root is null)
+            {
+                _logger.Warning("[拖放通道] 落下时拿不到 XAML 根元素，放弃处理（{Count} 个文件）", paths.Count);
+                return;
+            }
+
+            var surface = ResolveSurface(root, point, attachment.OwnerSurface);
+            if (surface is null)
+            {
+                // 落下点不在任何愿意接住的页面上（比如落在导航栏、标题栏）。**这不是错误**：
+                // 用户在那些地方松手本来就该什么都不发生。
+                _logger.Information("[拖放通道] 落下点没有页面接住（位置=({X},{Y})），忽略", point.X, point.Y);
+                return;
+            }
+
+            _logger.Information("[拖放通道] 把 {Count} 个文件交给「{Surface}」（位置=({X},{Y})）",
+                paths.Count, surface.DropSurfaceName, point.X, point.Y);
+
+            if (_dryRun)
+            {
+                // 命中链是自测的重点：坐标换算要有一处不对，这里立刻看得出来 ——
+                // 鼠标压在角色卡片上、链上却没有卡片那一层，就是 DIP 换算偏了。
+                _logger.Warning("[拖放通道] 强开自测：到此为止，不调用页面的处理。命中链={Chain}",
+                    DescribeHits(root, point));
+                return;
+            }
+
+            await surface.HandleExternalDropAsync(paths, point);
         }
-
-        _logger.Information("[拖放通道] 把 {Count} 个文件交给「{Surface}」（位置=({X},{Y})）",
-            paths.Count, surface.DropSurfaceName, point.X, point.Y);
-
-        if (_dryRun)
+        catch (Exception ex)
         {
-            // 命中链是自测的重点：坐标换算要有一处不对，这里立刻看得出来 ——
-            // 鼠标压在角色卡片上、链上却没有卡片那一层，就是 DIP 换算偏了。
-            _logger.Warning("[拖放通道] 强开自测：到此为止，不调用页面的处理。命中链={Chain}",
-                DescribeHits(root, point));
-            return;
+            // 这里已经不在 COM 边界上（是 Post 回来的），但页面那侧抛出来同样要留住，
+            // 不能变成一条无人处理的 Task 异常
+            _logger.Error(ex, "[拖放通道] 处理落下的文件时出错");
         }
-
-        await surface.HandleExternalDropAsync(paths, point);
     }
 
     /// <summary>
@@ -317,7 +388,8 @@ internal sealed class ExternalDropChannel : IDisposable
     /// 与 XAML 事件从最内层往外冒的顺序一致。
     /// </para>
     /// </summary>
-    private static IExternalDropSurface? ResolveSurface(UIElement root, Point point)
+    private static IExternalDropSurface? ResolveSurface(UIElement root, Point point,
+        IExternalDropSurface? ownerSurface)
     {
         foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(point, root))
         {
@@ -328,7 +400,26 @@ internal sealed class ExternalDropChannel : IDisposable
             }
         }
 
+        // 视觉树里没找到 → 用「本窗口自己的面」兜底。
+        //
+        // **这一条是必需的，不是保险**：`Window` **不是**其内容元素的视觉父级，
+        // `VisualTreeHelper.GetParent` 走到根元素就到头了。所以「整窗就是一个落点」的实现
+        // （浮窗自己实现接口那种）**永远**不会被上面那个循环找到 —— 实测现象就是浮窗一直显示禁止符。
+        // 页面那种实现不受影响：Page 本身就在视觉树里，往上走能得到它。
+        if (ownerSurface is not null && IsPointInside(root, point))
+            return ownerSurface;
+
         return null;
+    }
+
+    /// <summary>点（根元素坐标系）是不是落在根元素范围内。用来给「本窗口兜底的面」划边界。</summary>
+    private static bool IsPointInside(UIElement root, Point point)
+    {
+        if (root is not FrameworkElement element)
+            return true; // 拿不到尺寸就不划边界，宁可多接也不要漏掉整个窗口
+
+        return point.X >= 0 && point.Y >= 0
+               && point.X <= element.ActualWidth && point.Y <= element.ActualHeight;
     }
 
     /// <summary>
@@ -423,5 +514,11 @@ internal sealed class ExternalDropChannel : IDisposable
 
         /// <summary>是否由我们注册成功（决定 Dispose 时要不要 Revoke）。</summary>
         internal bool Registered { get; set; }
+
+        /// <summary>
+        /// 本窗口自己的落点面（可能为 <c>null</c>）。视觉树里找不到页面时用它兜底 ——
+        /// 浮窗必须靠这个，因为 <c>Window</c> 不在其内容的视觉父链上（见 <see cref="ResolveSurface"/>）。
+        /// </summary>
+        internal IExternalDropSurface? OwnerSurface { get; set; }
     }
 }
