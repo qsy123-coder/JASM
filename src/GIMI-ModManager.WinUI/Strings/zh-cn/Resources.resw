@@ -2605,6 +2605,9 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="SettingsVM_DragSelfCheckWaiting" xml:space="preserve">
     <value>现在把任意文件拖进这个框（10 秒内）</value>
   </data>
+  <data name="SettingsVM_DragSelfCheckFailed" xml:space="preserve">
+    <value>自检本身出错了（详见日志）—— 这跟你的拖拽没关系</value>
+  </data>
   <data name="DragSelfCheck_Report_Integrity" xml:space="preserve">
     <value>完整性级别：本进程 {0}；资源管理器 {1} → {2}</value>
   </data>
