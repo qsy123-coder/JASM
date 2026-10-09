@@ -207,7 +207,13 @@ public class ModDragAndDropService
         // 解压是纯 IO，也是整条路上最贵的一段（实测大包 10s+）——**搬去后台线程**。
         // 留在 UI 线程上就是浮窗连同主窗口一起冻住十几秒：窗口不重绘、进度动画也不会动。
         stageProgress?.Report(ModInstallStage.Extracting);
-        var scanResult = await Task.Run(() => ExtractWithCleanup(scanner, file.Path)).ConfigureAwait(false);
+        // ⚠️ **这里不能加 ConfigureAwait(false)**：它只影响"续体在哪跑"，而搬线程这件事
+        // Task.Run 已经做了（解压照样在后台）。续体回到 UI 线程是**必须的** ——
+        // 紧接着的 resolveModList 要做 UI 的事（认不出角色时弹候选框，见 CharacterPickerService），
+        // 落在别的线程上就是 RPC_E_WRONG_THREAD（0x8001010E）：实机表现是
+        // 「拖进来的包认不出来 → 弹框那一步直接报错，什么都没装上」。
+        // 顺带一提，这条路上弹框并不常见（认得出角色就走不到），所以这个坑很晚才被踩到。
+        var scanResult = await Task.Run(() => ExtractWithCleanup(scanner, file.Path));
 
         ICharacterModList? modList;
         try
