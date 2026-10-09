@@ -149,6 +149,14 @@ internal static class DropTargetInterop
     [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, EntryPoint = "GetClassNameW")]
     internal static extern int GetClassName(nint window, [Out] char[] className, int maxCount);
 
+    /// <summary>
+    /// 屏幕坐标 → 窗口客户区坐标。
+    /// 落点拿到的坐标是**屏幕物理像素**（OLE 给的 <c>POINTL</c>），而命中测试要的是
+    /// **XAML 的 DIP 坐标**，两者差着「窗口位置」和「DPI 缩放」两道，必须转。
+    /// </summary>
+    [DllImport("user32.dll", ExactSpelling = true)]
+    internal static extern bool ScreenToClient(nint window, ref PointL point);
+
     /// <summary>遍历一个窗口的全部后代（含孙辈）。</summary>
     [DllImport("user32.dll", ExactSpelling = true)]
     internal static extern bool EnumChildWindows(nint parent, EnumChildProc callback, nint param);
