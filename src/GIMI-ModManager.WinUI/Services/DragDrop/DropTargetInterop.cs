@@ -151,11 +151,30 @@ internal static class DropTargetInterop
 
     /// <summary>
     /// 屏幕坐标 → 窗口客户区坐标。
-    /// 落点拿到的坐标是**屏幕物理像素**（OLE 给的 <c>POINTL</c>），而命中测试要的是
-    /// **XAML 的 DIP 坐标**，两者差着「窗口位置」和「DPI 缩放」两道，必须转。
+    /// 命中测试要的是 **XAML 的 DIP 坐标**，与屏幕坐标差着「窗口位置」和「DPI 缩放」两道，必须转。
     /// </summary>
     [DllImport("user32.dll", ExactSpelling = true)]
     internal static extern bool ScreenToClient(nint window, ref PointL point);
+
+    /// <summary>
+    /// 取光标的**屏幕**坐标。
+    ///
+    /// <para>
+    /// <b>为什么宁可问光标、也不用 OLE 回调给的那个 <c>pt</c></b>：真机实测，
+    /// 拿 OLE 的 <c>pt</c> 当屏幕坐标去 <c>ScreenToClient</c>，**换算出来的点全贴在窗口最左边缘**
+    /// （DIP x 恒为 0～20，命中链永远落在导航栏的 <c>ItemsRepeaterScrollHost</c> 上），
+    /// 而用户明明拖在窗口中间 —— 说明它与本进程 <c>ScreenToClient</c> 用的不是同一个坐标系
+    /// （跨进程 / DPI 视角差异，具体成因不值得再查）。
+    /// </para>
+    ///
+    /// <para>
+    /// <c>GetCursorPos</c> 与本进程的 <c>ScreenToClient</c> **天然同一坐标系** ——
+    /// 挂载时那次窗口中心自测走的就是这条路，一直算得对。拖拽期间光标就在落点上，
+    /// 所以拿它代替 <c>pt</c> 是等价的。
+    /// </para>
+    /// </summary>
+    [DllImport("user32.dll", ExactSpelling = true)]
+    internal static extern bool GetCursorPos(out PointL point);
 
     /// <summary>遍历一个窗口的全部后代（含孙辈）。</summary>
     [DllImport("user32.dll", ExactSpelling = true)]
