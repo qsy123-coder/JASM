@@ -16,6 +16,7 @@ using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.Notifications;
+using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.Validators.PreConfigured;
 using GIMI_ModManager.WinUI.ViewModels.SubVms;
 using GIMI_ModManager.WinUI.Views;
@@ -172,6 +173,14 @@ public partial class StartupViewModel : ObservableRecipient, INavigationAware
             await Task.Run(() => _skinManagerService.ReorganizeModsAsync(disableMods: DisableMods));
         }
 
+        // 游戏内浮窗补初始化一次。**首次启动时这是唯一的机会**：启动流程那次（ActivationService.StartupAsync）
+        // 跑在"游戏还没选"的那一刻 —— 选游戏正是本向导里的一步 —— 于是它判定「不是鸣潮」直接返回，
+        // 建窗口与注册热键都没发生，之后也没有任何东西会再初始化一次。用户看到的是
+        // 「配好 Mod 环境、点保存、Ctrl+Alt+J 怎么按都没反应，重启 JASM 才好」。
+        //
+        // 重复调用是幂等的（同一个游戏已经就绪就什么都不做）：换了游戏它会先把手上的热键还给系统再按新游戏注册，
+        // 没换则直接返回，所以从这个向导保存多少次都不会把已经在跑的浮窗搞坏。
+        await App.GetService<OverlayWindowService>().InitializeAsync();
 
         _navigationService.NavigateTo(typeof(CharactersViewModel).FullName!, null, true);
         _windowManagerService.ResizeWindowPercent(_windowManagerService.MainWindow, 80, 80);
