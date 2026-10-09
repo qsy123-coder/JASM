@@ -539,6 +539,62 @@
                 </StackPanel>
 
 
+                <!--  拖拽自检：拖拽安装用不了时，让这台机器自己说结论（用户点一下、把报告复制给我们）。
+                      框本身就是落点（AllowDrop 挂在它上面），10 秒窗口与拖拽事件在 .xaml.cs 里接，
+                      结论与报告文本由 SettingsViewModel.CompleteDragSelfCheck 填。  -->
+                <TextBlock
+                    Style="{ThemeResource SubtitleTextBlockStyle}"
+                    Text="Troubleshoot drag and drop"
+                    l:Uids.Uid="Settings_DragDropCheck_Title" />
+
+                <StackPanel Margin="{StaticResource XSmallTopMargin}" Spacing="8">
+                    <TextBlock
+                        Style="{ThemeResource BodyTextBlockStyle}"
+                        Text="If dragging mods into JASM shows the &quot;no entry&quot; cursor and nothing happens, let this machine tell you why."
+                        TextWrapping="Wrap"
+                        l:Uids.Uid="Settings_DragDropCheck_Description" />
+
+                    <Border
+                        x:Name="DragSelfCheckBox"
+                        Height="72"
+                        AllowDrop="True"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        DragEnter="DragSelfCheckBox_OnDragEnter"
+                        DragOver="DragSelfCheckBox_OnDragOver"
+                        Drop="DragSelfCheckBox_OnDrop">
+                        <TextBlock
+                            Margin="12"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap"
+                            Text="{x:Bind ViewModel.DragSelfCheckStatus, Mode=OneWay}" />
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <!--  Click 与 Command 都挂：Command 管状态与按钮停用，Click 负责开那 10 秒计时 -->
+                        <Button
+                            Click="DragSelfCheckStart_OnClick"
+                            Command="{x:Bind ViewModel.StartDragSelfCheckCommand}"
+                            Content="Start check"
+                            l:Uids.Uid="Settings_DragDropCheck_StartButton" />
+                        <Button
+                            Command="{x:Bind ViewModel.CopyDragSelfCheckReportCommand}"
+                            Content="Copy result"
+                            l:Uids.Uid="Settings_DragDropCheck_CopyButton" />
+                    </StackPanel>
+
+                    <TextBlock
+                        IsTextSelectionEnabled="True"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.DragSelfCheckReport, Mode=OneWay}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind ViewModel.HasDragSelfCheckReport, Mode=OneWay, Converter={StaticResource BoolToVisibleConverter}}" />
+                </StackPanel>
+
                 <TextBlock
                     Style="{ThemeResource SubtitleTextBlockStyle}"
                     Text="About this application"
