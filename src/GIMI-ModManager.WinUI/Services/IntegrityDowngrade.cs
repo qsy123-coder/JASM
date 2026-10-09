@@ -1,3 +1,4 @@
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using Serilog;
 
@@ -58,6 +59,12 @@ internal static class IntegrityDowngrade
     internal static string? FailureReason { get; private set; }
 
     /// <summary>
+    /// 本进程是「被换份拉起来的」时，那一刻**实测**的与 shell 的关系
+    /// （凭条在并不等于级别就对，所以要量；见 <see cref="RelaunchAtMediumIfElevated"/>）。
+    /// </summary>
+    private static IntegrityRelation? _handoffRelation;
+
+    /// <summary>
     /// 本进程比 shell 高时，换一份与 shell 同级（中完整性）的自己。其余情况什么都不做。
     /// <b>绝不抛异常</b>：这是启动路径上的第一步，失败只是「拖拽可能不可用」，不该拦住启动。
     /// </summary>
@@ -66,9 +73,30 @@ internal static class IntegrityDowngrade
     {
         try
         {
-            // 凭条在 = 本进程就是上一份换出来的：绝不能再换一次（一份接一份没完）
+            // 凭条在 = 本进程就是上一份换出来的：绝不能再换一次（一份接一份没完）。
+            //
+            // **但凭条只说明「刚发生过一次换份」，不证明这一份的级别就对**，所以这里照样量一次再下结论：
+            // 换份失败、或两份 JASM 抢同一张凭条时，这一份可能就是高的。此前这一段是裸 `return`，
+            // Outcome 停在 NotElevated，启动日志便写成「与 shell 同级（拖拽安装可用）」——
+            // 提权运行、拖拽全灭，日志却说可用，收用户排查时正好会踩这个。
+            //
+            // 量的是 AppElevation.CompareWithShell()（**不碰** IsDragDropBlocked 那个 Lazy 缓存，
+            // 所以不会污染后面横幅要读的那份判据）。
             if (UnelevatedRelaunchMarker.IsPendingHandoff(logger))
-                return Outcome;
+            {
+                var relation = AppElevation.CompareWithShell();
+                _handoffRelation = relation;
+
+                if (relation == IntegrityRelation.OwnHigher)
+                {
+                    logger.Warning("[降权] 交接凭条在（本该是换份拉起来的那一份），但实测本进程仍比 shell 高 —— 换份没生效");
+                    return Fail("交接凭条在，本进程却仍比 shell 高（换份没生效）");
+                }
+
+                logger.Information("[降权] 本进程是上一份换份拉起来的（交接凭条在），不再换第二次；实测与 shell 的关系={Relation}",
+                    relation);
+                return Outcome = IntegrityOutcome.HandedOff;
+            }
 
             // 判据用 AppElevation.IsDragDropBlocked()（= 我们比 shell 高）而不是 IsOwnProcessElevated()：
             // 后者会把「shell 也是高」那种机器（UAC 关闭 / 整机提权）也一起换掉，而那正是不能换的情况。
@@ -102,6 +130,20 @@ internal static class IntegrityDowngrade
     internal static string Describe() => Outcome switch
     {
         IntegrityOutcome.Relaunching => "已换一份中完整性的自己启动（本进程即将退出）",
+
+        // 换份拉起来的那一份：**照实测的关系说**，不能一律写成「与 shell 同级」——
+        // 凭条只说明刚换过，说明不了这一份的级别（见 _handoffRelation 的注释）。
+        IntegrityOutcome.HandedOff => _handoffRelation switch
+        {
+            IntegrityRelation.OwnLower =>
+                "本进程是上一份换份拉起来的（交接凭条在）：本进程比 shell 低 —— 拖拽仍不可用，请以管理员身份重开 JASM",
+            IntegrityRelation.OwnHigher =>
+                "本进程是上一份换份拉起来的（交接凭条在）：本进程仍比 shell 高 —— 拖拽仍不可用",
+            IntegrityRelation.Same =>
+                "本进程是上一份换份拉起来的（交接凭条在）：与 shell 同级（拖拽安装可用）",
+            _ => "本进程是上一份换份拉起来的（交接凭条在）：与 shell 的关系读不出来"
+        },
+
         IntegrityOutcome.Failed =>
             "本进程比 shell 高，换一份中完整性的自己失败："
             + FailureReason
@@ -126,8 +168,11 @@ internal static class IntegrityDowngrade
 /// <summary><see cref="IntegrityDowngrade"/> 的启动结果。</summary>
 internal enum IntegrityOutcome
 {
-    /// <summary>本来就与 shell 同级（绝大多数用户），或者本进程已经是被换出来的那一份：没做任何事。</summary>
+    /// <summary>本来就与 shell 同级（绝大多数用户）：没做任何事。</summary>
     NotElevated,
+
+    /// <summary>本进程是上一份提权进程换份拉起来的（交接凭条在）—— 没再换第二次，级别照实测说。</summary>
+    HandedOff,
 
     /// <summary>比 shell 高，已经换了一份中完整性的 —— 本进程应当立刻退出，把位置让给它。</summary>
     Relaunching,
