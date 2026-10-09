@@ -34,6 +34,12 @@ internal sealed record DragDropSelfCheckResult(DragDropSelfCheckVerdict Verdict,
 /// <c>OverlayViewModel</c> 的类注释）；而 <c>SettingsViewModel</c> 是 public（XAML 的 <c>x:Bind</c> 要它），
 /// public 构造函数里放不下 internal 的参数类型（CS0051）。把浮窗那套为了一条诊断信息改成 public 是本末倒置，
 /// 所以这里按页面那套写法由调用方 <c>App.GetService&lt;&gt;()</c> 取（见 <c>SettingsViewModel.CompleteDragSelfCheck</c>）。
+///
+/// <para>
+/// <b>但构造函数必须是 public</b>（`internal 的类 + public 的构造函数`，与 <see cref="OverlayWindowService"/> 同款）：
+/// DI 的 <c>ActivatorUtilities</c> **只考虑 public 构造函数**，写成 internal 的话编译照样过，
+/// 直到运行期取服务时才抛 <c>InvalidOperationException</c>（实测：在拖拽事件的回调里抛，直接把进程打挂）。
+/// </para>
 /// </remarks>
 internal sealed class DragDropSelfCheckService
 {
@@ -41,7 +47,7 @@ internal sealed class DragDropSelfCheckService
     private readonly OverlayWindowService _overlayWindowService;
     private readonly ILogger _logger;
 
-    internal DragDropSelfCheckService(ILanguageLocalizer localizer,
+    public DragDropSelfCheckService(ILanguageLocalizer localizer,
         OverlayWindowService overlayWindowService, ILogger logger)
     {
         _localizer = localizer;
