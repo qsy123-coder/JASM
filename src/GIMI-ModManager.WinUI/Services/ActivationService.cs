@@ -13,6 +13,7 @@ using GIMI_ModManager.WinUI.Models.Options;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.AppManagement.Updating;
+using GIMI_ModManager.WinUI.Services.DragDrop;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.Services.Overlay;
@@ -124,6 +125,10 @@ public class ActivationService : IActivationService
         // Activate the MainWindow.
         App.MainWindow.Activate();
 
+        // 拖放通道探针（Phase 0）：关掉 UAC 的机器上 WinUI 3 收不到外部拖放，
+        // 这里先探"自有落点能不能收到"。排在这儿的唯一原因是窗口此时才拿到 HWND。
+        AttachDropTargetProbe();
+
         // Set MainWindow Cleanup on Close.
         App.MainWindow.Closed += OnApplicationExit;
 
@@ -132,6 +137,47 @@ public class ActivationService : IActivationService
 
         // Show popups
         ShowStartupPopups();
+    }
+
+    /// <summary>
+    /// 在主窗口上挂自有拖放落点（Phase 0 探针）。
+    ///
+    /// <para>
+    /// 整段包 try 是刻意的：这是**诊断**路径，而它跑在启动流程里 —— 诊断代码自己抛异常把启动搞坏，
+    /// 是本仓库已经吃过一次的亏（一次拖拽自检的 DI 异常在回调里把整个进程打挂）。
+    /// 失败只记一条 Warning，其余功能照常。
+    /// </para>
+    ///
+    /// <para>
+    /// 只挂主窗口：浮窗那条线（显隐、置顶、前台归属）完全不经过这里，不会被影响。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>为什么是 <c>App.GetService</c> 现取、而不是构造函数注入</b>：本类是 <c>public</c>
+    /// （DI 要构造它），而 <see cref="DropTargetProbe"/> 是 <c>internal</c> ——
+    /// public 构造函数里放不下 internal 的参数类型（CS0051）。本工程为此有两套既有做法：
+    /// 把服务改成 public（<c>ElevatorService</c> / <c>ModEnvSetupFacade</c>），或调用方现取
+    /// （<c>OverlayWindowService</c> 那条路）。这里跟后者，因为探针是个纯诊断件，
+    /// 没有理由为它扩大程序集可见性。
+    /// </para>
+    ///
+    /// <para>
+    /// 注意别被 <c>MSB3073</c>（XamlCompiler 报的那个）带偏：真正的错是上面那条 CS0051。
+    /// </para>
+    /// </summary>
+    private void AttachDropTargetProbe()
+    {
+        try
+        {
+            var window = (HWND)WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+
+            // 从容器现取（单例）：探针要活到进程结束，不能只由这一帧的局部变量持有
+            App.GetService<DropTargetProbe>().Attach(window, "主窗口");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "[拖放通道] 挂载探针失败，已跳过（不影响其余功能）");
+        }
     }
 
     private async Task CheckIfAlreadyRunningAsync()
