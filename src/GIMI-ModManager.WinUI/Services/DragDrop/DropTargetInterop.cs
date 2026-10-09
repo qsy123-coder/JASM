@@ -186,6 +186,143 @@ internal static class DropTargetInterop
     /// <summary>OLE 在窗口上留下的「落点接口」属性名。</summary>
     internal const string OleDropTargetInterfaceProp = "OleDropTargetInterface";
 
+    // ── 光标旁那行说明文字（"自动识别角色"）────────────────────────────────────
+
+    /// <summary>
+    /// 说明文字的剪贴板格式名。目标侧把 <see cref="DropDescription"/> 以此格式
+    /// <c>SetData</c> 进拖拽的 <c>IDataObject</c>，系统就会把它画在光标旁边那颗拖拽图旁边。
+    ///
+    /// <para>
+    /// <b>为什么不是 <c>IDropTargetHelper</c></b>：那个接口只管拖拽**图像**（显示/隐藏），
+    /// 说明文字的通道是这条 <c>SetData</c>。而且它的生效前提是**拖拽来源**调用过
+    /// <c>IDragSourceHelper2::SetFlags(DSH_ALLOWDROPDESCRIPTIONTEXT)</c> ——
+    /// 资源管理器是调过的，所以从资源管理器拖进来的文件能显示；来源没开的话，写进去也不显示，
+    /// 属于静默失效（不报错），这里只能尽力而为。
+    /// </para>
+    /// </summary>
+    internal const string DropDescriptionFormatName = "DropDescription";
+
+    /// <summary><c>DROPDESCRIPTION.szMessage</c> / <c>szInsert</c> 的长度（<c>MAX_PATH</c>）。</summary>
+    private const int DropDescriptionTextLength = 260;
+
+    /// <summary>
+    /// <c>DROPIMAGETYPE</c>：决定说明文字旁边那颗小图标是什么。只列用得到的。
+    ///
+    /// ⚠️ <c>Invalid</c>（-1）是**清除**说明文字用的，想显示自定义文字时**不能**用它 ——
+    /// 用了它系统会忽略 <c>szMessage</c>，看起来"写了但没显示"。
+    /// </summary>
+    internal static class DropImageType
+    {
+        internal const int Invalid = -1;
+        internal const int Copy = 1;
+    }
+
+    /// <summary>
+    /// <c>DROPDESCRIPTION</c>：说明文字的载荷。<c>szMessage</c> 里可以用 <c>%1</c> 占位，
+    /// 由 <c>szInsert</c> 填进去（那种 "复制到 XXX" 的写法）；不要占位就整句写在 Message 里。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DropDescription
+    {
+        internal int Type;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DropDescriptionTextLength)]
+        internal string Message;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DropDescriptionTextLength)]
+        internal string Insert;
+    }
+
+    /// <summary>注册一个剪贴板格式名，换回系统分配的格式号（同一名字每次返回同一个号）。</summary>
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, EntryPoint = "RegisterClipboardFormatW")]
+    private static extern ushort RegisterClipboardFormat(string format);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    private static extern nint GlobalAlloc(uint flags, nuint bytes);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    private static extern nint GlobalLock(nint memory);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    private static extern bool GlobalUnlock(nint memory);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    private static extern nint GlobalFree(nint memory);
+
+    /// <summary><c>GMEM_MOVEABLE</c>：OLE 要求 <c>TYMED_HGLOBAL</c> 的内存块是可移动的。</summary>
+    private const uint GmemMoveable = 0x0002;
+
+    /// <summary><c>GMEM_ZEROINIT</c>：省掉自己把两个字符串缓冲区清零。</summary>
+    private const uint GmemZeroInit = 0x0040;
+
+    /// <summary>
+    /// 把说明文字写进这次拖拽的数据对象；<paramref name="message"/> 为 <c>null</c> 时**清除**它。
+    ///
+    /// <para>
+    /// <b>整段绝不抛</b>：它跑在系统拖拽回调里，抛出去会穿过 COM 边界直接打挂进程；
+    /// 而它做的事只是"光标旁好看一点"，失败就该悄悄算了。
+    /// </para>
+    /// </summary>
+    internal static void TrySetDropDescription(IDataObject dataObject, string? message)
+    {
+        nint memory = 0;
+
+        try
+        {
+            var description = new DropDescription
+            {
+                // 清除用 Invalid；显示自定义文字必须给 Copy 之类，给 Invalid 系统会忽略文字
+                Type = message is null ? DropImageType.Invalid : DropImageType.Copy,
+                Message = message ?? string.Empty,
+                Insert = string.Empty
+            };
+
+            var size = (nuint)Marshal.SizeOf<DropDescription>();
+            memory = GlobalAlloc(GmemMoveable | GmemZeroInit, size);
+            if (memory == 0)
+                return;
+
+            var target = GlobalLock(memory);
+            if (target == 0)
+                return;
+
+            try
+            {
+                Marshal.StructureToPtr(description, target, false);
+            }
+            finally
+            {
+                GlobalUnlock(memory);
+            }
+
+            var format = new FORMATETC
+            {
+                cfFormat = (short)RegisterClipboardFormat(DropDescriptionFormatName),
+                ptd = IntPtr.Zero,
+                dwAspect = DVASPECT.DVASPECT_CONTENT,
+                lindex = -1,
+                tymed = TYMED.TYMED_HGLOBAL
+            };
+
+            var medium = new STGMEDIUM { tymed = TYMED.TYMED_HGLOBAL, unionmember = memory };
+
+            // fRelease=true：把这块内存的所有权交给数据对象，由它用完释放 —— 所以这里不能再释放
+            dataObject.SetData(ref format, ref medium, true);
+            memory = 0;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "[拖放通道] 写说明文字失败（不影响拖放本身）");
+        }
+        finally
+        {
+            // 只有在所有权没交出去时才需要自己收（成功路径已把 memory 置 0）。
+            // 不收回就是每拖一次漏 1 KB，长期跑着会攒起来。
+            if (memory != 0)
+                GlobalFree(memory);
+        }
+    }
+
     /// <summary>OLE 走 broker 那条路时另留的属性名（见 <c>ole32</c> 的 <c>PrivDragDrop</c>）。</summary>
     internal const string OleEndPointIdProp = "OleEndPointID";
 
