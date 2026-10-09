@@ -5,6 +5,7 @@ using CommunityToolkit.WinUI;
 using GIMI_ModManager.WinUI.Helpers;
 using GIMI_ModManager.WinUI.Helpers.Xaml;
 using GIMI_ModManager.WinUI.Models;
+using GIMI_ModManager.WinUI.Services.DragDrop;
 using GIMI_ModManager.WinUI.ViewModels;
 using GIMI_ModManager.WinUI.ViewModels.SubVms;
 using Microsoft.UI.Xaml;
@@ -12,10 +13,17 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
+using Windows.Foundation;
 
 namespace GIMI_ModManager.WinUI.Views;
 
-public sealed partial class CharactersPage : Page
+/// <summary>
+/// 角色列表页。除了原有的 XAML 落点，还实现了 <see cref="IExternalDropSurface"/> ——
+/// 关掉 UAC 的机器上 WinUI 收不到外部拖放，由 <see cref="ExternalDropChannel"/> 自己接住 OLE 事件，
+/// 再按命中测试把文件交回本页。**两条路的判据共用同一个方法**（见 <see cref="HandleFileDropAsync"/>），
+/// 不各抄一份。
+/// </summary>
+public sealed partial class CharactersPage : Page, IExternalDropSurface
 {
     public CharactersViewModel ViewModel { get; }
 
@@ -134,20 +142,7 @@ public sealed partial class CharactersPage : Page
             else
             {
                 var storageItems = await e.DataView.GetStorageItemsAsync();
-
-                // 压缩包 / 自解压 exe 一律改判给自动识别：用户拖包进来要的是「你帮我认这是谁的」，
-                // 落点在哪张卡上并不代表他知道是谁的 —— 实机连着两次都把包拖在了卡片上，
-                // 结果装进了压到的那张卡的角色（其中一次还被他瞄着的角色不是同一只）。
-                // 文件夹不在此列：文件夹是用户自己整理好的「这就是 X 的」，仍旧装进落点那个角色。
-                if (storageItems.Count > 0 && storageItems.All(item => item is StorageFile))
-                {
-                    Log.Information("A file drop on a character card is handed to auto detect");
-                    await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
-                }
-                else
-                {
-                    await ViewModel.ModDroppedOnCharacterAsync(characterGridItem, storageItems);
-                }
+                await HandleFileDropAsync(characterGridItem, storageItems);
             }
         }
 
@@ -213,7 +208,7 @@ public sealed partial class CharactersPage : Page
         Log.Information("Auto detect drop on the page root: {ItemCount} item(s)；formats=[{Formats}]",
             storageItems.Count, string.Join(",", e.DataView.AvailableFormats));
 
-        await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
+        await HandleFileDropAsync(null, storageItems);
     }
 
     /// <summary>
@@ -273,5 +268,117 @@ public sealed partial class CharactersPage : Page
     private void SortingComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         ViewModel.SortByCommand.Execute(e.AddedItems.OfType<CharactersViewModel.GridItemSortingMethod>());
+    }
+
+    // ── 外部拖放通道（关掉 UAC 的机器上 WinUI 收不到拖放时走这条）──────────────────
+
+    /// <summary>
+    /// 两条落点通道**共用**的落点判定。
+    ///
+    /// <para>
+    /// <paramref name="card"/> 是落点所在的角色卡片；为 <c>null</c> 表示落在列表空白处（走自动识别）。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>为什么不在这里再判一次「压没压在卡片上」</b>：那件事由调用方负责 ——
+    /// XAML 那条路靠事件冒泡（卡片先接住并标 <c>Handled</c>），外部通道那条路靠命中测试。
+    /// 两边都已经把答案算出来了，这里只消费结论。
+    /// </para>
+    /// </summary>
+    private async Task HandleFileDropAsync(CharacterGridItemModel? card, IReadOnlyList<IStorageItem> storageItems)
+    {
+        if (storageItems.Count == 0)
+            return;
+
+        if (card is null)
+        {
+            await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
+            return;
+        }
+
+        // 压缩包 / 自解压 exe 一律改判给自动识别：用户拖包进来要的是「你帮我认这是谁的」，
+        // 落点在哪张卡上并不代表他知道是谁的 —— 实机连着两次都把包拖在了卡片上，
+        // 结果装进了压到的那张卡的角色（其中一次还被他瞄着的角色不是同一只）。
+        // 文件夹不在此列：文件夹是用户自己整理好的「这就是 X 的」，仍旧装进落点那个角色。
+        if (storageItems.All(item => item is StorageFile))
+        {
+            Log.Information("A file drop on a character card is handed to auto detect");
+            await ViewModel.ModDroppedOnAutoDetectAreaAsync(storageItems);
+            return;
+        }
+
+        await ViewModel.ModDroppedOnCharacterAsync(card, storageItems);
+    }
+
+    string IExternalDropSurface.DropSurfaceName => "概览页";
+
+    /// <summary>
+    /// 整页都接：本页根 Grid 就是落点（卡片与列表空白处都算，各自走各自的分支），
+    /// 这与 XAML 那侧把 <c>AllowDrop</c> 挂在页面根 Grid 上是一致的。
+    /// </summary>
+    bool IExternalDropSurface.CanAcceptDropAt(Point point) => true;
+
+    /// <summary>
+    /// 外部通道送来的落下：先按坐标命中测试出「压在哪张卡上」，再走与 XAML 那条路**同一个**判定。
+    /// </summary>
+    async Task IExternalDropSurface.HandleExternalDropAsync(IReadOnlyList<string> paths, Point point)
+    {
+        var card = FindCharacterCardAt(point);
+        var storageItems = await ResolveStorageItemsAsync(paths);
+
+        Log.Information("External drop on characters page: card={Card}, {ItemCount} item(s)",
+            card is null ? "<空白处>" : card.Character.InternalName.Id, storageItems.Count);
+
+        await HandleFileDropAsync(card, storageItems);
+    }
+
+    /// <summary>
+    /// 这个点压在哪个角色卡片上；不在卡片上返回 <c>null</c>。
+    ///
+    /// 与 XAML 那侧 <see cref="IsPointerOverCharacterCard"/> 是**同一个判据**
+    /// （往上找 <c>DataContext</c> 是 <see cref="CharacterGridItemModel"/> 的祖先），
+    /// 只是起点从「事件的原始来源」换成了「命中测试的结果」。
+    /// </summary>
+    private CharacterGridItemModel? FindCharacterCardAt(Point point)
+    {
+        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(point, this))
+        {
+            for (DependencyObject? current = hit; current is not null; current = VisualTreeHelper.GetParent(current))
+            {
+                if (current is FrameworkElement { DataContext: CharacterGridItemModel card })
+                    return card;
+
+                // 走到页面自己就停：再往上就是导航壳，那儿的 DataContext 与本页无关
+                if (ReferenceEquals(current, this))
+                    break;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 把路径还原成 <see cref="IStorageItem"/>（下游安装流程认的是这个类型，不是字符串路径）。
+    /// 单个路径取不到就跳过并记一笔 —— 一个坏路径不该让整次拖放全废。
+    /// </summary>
+    private static async Task<IReadOnlyList<IStorageItem>> ResolveStorageItemsAsync(IReadOnlyList<string> paths)
+    {
+        var items = new List<IStorageItem>(paths.Count);
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                items.Add(Directory.Exists(path)
+                    ? await StorageFolder.GetFolderFromPathAsync(path)
+                    : await StorageFile.GetFileFromPathAsync(path));
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Could not resolve a dropped path into a storage item");
+            }
+        }
+
+        return items;
     }
 }
