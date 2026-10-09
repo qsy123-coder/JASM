@@ -782,6 +782,25 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     string IExternalDropSurface.DropSurfaceName => "浮窗";
 
     /// <summary>
+    /// 光标旁那行说明 —— 与 XAML 那侧 <see cref="RootGrid_OnDragOver"/> 里
+    /// <c>e.DragUIOverride.Caption</c> 写的是**同一句**：装给谁要等落下后认包才知道，
+    /// 这里给具体角色名反而是骗人的。
+    /// </summary>
+    string? IExternalDropSurface.DragCaption => "自动识别角色";
+
+    /// <summary>
+    /// 浮窗的提示就是那行光标说明（见 <see cref="DragCaption"/>），页面内没有第二个提示层，
+    /// 所以进出这两个回调不需要做事 —— 留着是因为接口要求。
+    /// </summary>
+    void IExternalDropSurface.OnExternalDragEnter()
+    {
+    }
+
+    void IExternalDropSurface.OnExternalDragLeave()
+    {
+    }
+
+    /// <summary>
     /// 整窗都接。判据与 XAML 那侧一致：**有文件就接**，不看选没选中角色 ——
     /// 角色列表只列「已经有 Mod 的角色」，一个都没有时它是空的，
     /// 而「拖第一个 Mod 进来」恰恰就是那个场景（见 <see cref="RootGrid_OnDragOver"/>）。
