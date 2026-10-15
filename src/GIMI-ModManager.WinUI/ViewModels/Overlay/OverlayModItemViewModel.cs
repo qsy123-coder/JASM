@@ -42,6 +42,14 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     /// </summary>
     [ObservableProperty] private bool _isSelected;
 
+    /// <summary>
+    /// 这一行是不是被**右键标成了 NSFW**，界面据此画那个红标。
+    ///
+    /// 它只是浮窗自己那份名单上的一个记号（<c>OverlayNsfwMarks</c>）：不改文件夹名、
+    /// 也不碰 Mod 的设置文件，所以标上 / 取消都不会影响游戏里的表现。
+    /// </summary>
+    [ObservableProperty] private bool _isMarked;
+
     /// <summary>勾选这一行时要执行的动作，由浮窗的 ViewModel 在造行时注入。</summary>
     private Func<OverlayModItemViewModel, Task>? _toggleMod;
 
