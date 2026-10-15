@@ -557,6 +557,28 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
     private void OnHideClick(object sender, RoutedEventArgs e) => HideOverlay();
 
+    // ── 右键一行 = 打 NSFW 标记（一件件过 Mod 时的审阅记号）──────────────
+
+    /// <summary>
+    /// 右键一行：给这一件打上 / 取消 NSFW 标记（实现在 <see cref="OverlayViewModel.ToggleNsfwMarkAsync"/>，
+    /// 只动名单、不动磁盘上的 Mod）。
+    ///
+    /// **为什么是右键而不是再占一个热键**：标记与"换到这一件"本来就是同一行上的前后两拍
+    /// （左键勾上看效果 → 右键记一笔），右键既不跟勾选抢同一个手势，也不用再往这扇窗上挤一个全局热键。
+    /// 事件打在行根 Grid 上，所以勾选框、缩略图、名字上右键都算在这一行上。
+    /// </summary>
+    private async void OnModRowRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not OverlayModItemViewModel item)
+            return;
+
+        // 不让它往上冒：列表控件收到右键会走它自己那套（取消选中之类），而行的高亮是浮窗自己
+        // 维护的（SelectionMode="None"、ListViewItem 压根没有选中态），别让两套语义打架。
+        e.Handled = true;
+
+        await ViewModel.ToggleNsfwMarkAsync(item);
+    }
+
     private void OnDragStripPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         // 指针捕获：拖出窗口范围时仍然能收到 PointerMoved，否则拖动会在边界处断掉
