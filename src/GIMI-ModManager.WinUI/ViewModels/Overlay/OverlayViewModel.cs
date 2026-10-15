@@ -56,6 +56,14 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// <summary>当前选中角色的全部 Mod（未过滤）。搜一个词不该重新去读盘，所以过滤只在这个快照上做。</summary>
     private List<OverlayModItemViewModel> _allMods = new();
 
+    /// <summary>
+    /// 右键打的那份 NSFW 名单（「一件件过、看到不对的标一下」）。启动时读一次，之后每次改动整份写回。
+    ///
+    /// 整写而不是增量：几百条的名单序列化只要几毫秒，而增量落盘要额外记"哪几条动过"，
+    /// 为这点开销换一个更容易写错的状态机不划算。
+    /// </summary>
+    private OverlayNsfwMarks _nsfwMarks = new();
+
     /// <summary>浮窗自己的设置。窗口的位置也由这里统一落盘 —— 两个写入者各存一份会互相覆盖。</summary>
     public OverlaySettings Settings { get; private set; } = new();
 
@@ -97,6 +105,19 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </para>
     /// </summary>
     [ObservableProperty] private string? _elevationNotice;
+
+    /// <summary>
+    /// 「已标记 N 个 · 右键可标记 / 取消」那一行。一件都没标时是 <c>null</c>，那行整个塌掉。
+    ///
+    /// 这句里**必须带着「右键」两个字**：标记没有任何别的地方可发现（既不占热键、也没有按钮），
+    /// 而它又是唯一能告诉用户"打过的记号在哪、怎么去掉"的地方。
+    /// </summary>
+    [ObservableProperty] private string? _markedSummary;
+
+    /// <summary>上面那行的显隐。<c>Visibility</c> 绑不了「字符串非空」，另外给一个布尔。</summary>
+    public bool HasMarks => !string.IsNullOrEmpty(MarkedSummary);
+
+    partial void OnMarkedSummaryChanged(string? value) => OnPropertyChanged(nameof(HasMarks));
 
     /// <summary>
     /// 0 = 单选（默认），1 = 多选。界面直接绑 <c>Segmented.SelectedIndex</c>，所以这里用序号而不是布尔 ——
@@ -421,6 +442,13 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         // 而本方法一定在窗口显示之前跑完，所以在这一步赋值是够的。
         ModeIndex = Settings.MultiSelectMode ? MultiSelectModeIndex : SingleSelectModeIndex;
 
+        // NSFW 名单也在建行之前读回来：晚一步的话，已标记的那些行会先以"没标"的样子画一遍，
+        // 下次重建才补上红标 —— 用户看到的是"我的标记丢了"。
+        _nsfwMarks = await _localSettingsService
+            .ReadOrCreateSettingAsync<OverlayNsfwMarks>(OverlayNsfwMarks.Key, SettingScope.App);
+
+        UpdateMarkSummary();
+
         RefreshCharacters();
     }
 
@@ -558,12 +586,22 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
     private void LoadMods(IModdableObject? character)
     {
-        _allMods = character is null
+        var entries = character is null ? null : ResolveModList(character)?.Mods;
+
+        _allMods = entries is null
             ? new List<OverlayModItemViewModel>()
-            : ResolveModList(character)?.Mods
-                .Select(entry => OverlayModItemViewModel.FromEntry(entry).WithToggleHandler(ToggleModAsync))
-                .ToList()
-            ?? new List<OverlayModItemViewModel>();
+            : entries
+                .Select(entry =>
+                {
+                    var item = OverlayModItemViewModel.FromEntry(entry).WithToggleHandler(ToggleModAsync);
+
+                    // 名单按 Id 比对，所以标记跟着 Mod 本身走：改名、换自定义名、甚至开/关一次
+                    //（文件夹加上又去掉 DISABLED_ 前缀）都不会把红标弄丢。
+                    item.IsMarked = _nsfwMarks.IsMarked(entry.Id);
+
+                    return item;
+                })
+                .ToList();
 
         ApplyFilter();
     }
@@ -693,6 +731,54 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         if (failed.Count > 0)
             ErrorMessage = $"单选模式一次只留一件，但「{string.Join("」「", failed)}」没能关掉，详情见日志。";
+    }
+
+    // ── 右键打 NSFW 标记（一件件过 Mod 时的审阅记号）──────────────────
+
+    /// <summary>
+    /// 右键一行：把这一件标成 NSFW，再点一次取消。
+    ///
+    /// **只动名单，不动 Mod**：不改文件夹名、不碰 Mod 的设置文件、也不触发刷新 ——
+    /// 此刻用户正拿左键一件件试着看（左键=换装 + F10），右键只是顺手记一笔，
+    /// 要是它顺手把游戏里的画面也换了，"看这一件"与"记这一件"就缠在一起没法用了。
+    /// </summary>
+    public async Task ToggleNsfwMarkAsync(OverlayModItemViewModel item)
+    {
+        var marked = _nsfwMarks.Toggle(item.Id,
+            SelectedCharacter?.Character.InternalName ?? string.Empty, item.Name);
+
+        item.IsMarked = marked;
+        UpdateMarkSummary();
+
+        await SaveNsfwMarksAsync();
+
+        _logger.Information("[浮窗] {Action}NSFW 标记：{Mod}（名单现有 {Count} 件）",
+            marked ? "打上" : "取消", item.Name, _nsfwMarks.Count);
+    }
+
+    /// <summary>
+    /// 把名单整份写回设置（<c>LocalAppSettings.json</c> 的 App 作用域）。
+    ///
+    /// 存不下时**不回滚内存里的标记**：这一次标记活得比进程短，但界面必须和用户刚才那一下
+    /// 对得上；为了一个落盘失败把红标弹回去，比下次启动少一条记录更让人困惑。
+    /// </summary>
+    private async Task SaveNsfwMarksAsync()
+    {
+        try
+        {
+            await _localSettingsService.SaveSettingAsync(OverlayNsfwMarks.Key, _nsfwMarks, SettingScope.App);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗] 保存 NSFW 标记失败（这一次标记可能活不过重启）");
+        }
+    }
+
+    private void UpdateMarkSummary()
+    {
+        var count = _nsfwMarks.Count;
+
+        MarkedSummary = count == 0 ? null : $"已标记 {count} 个 · 右键可标记 / 取消";
     }
 
     /// <summary>
