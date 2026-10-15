@@ -273,6 +273,15 @@
                         TextWrapping="Wrap" />
                 </Grid>
 
+                <!--  「已标记 N 个 · 右键可标记 / 取消」。用中性灰而不是下面那两种橙色：
+                      它不是错误也不是提权告警，只是"这一轮审到哪儿了"的计数。  -->
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#B3FFFFFF"
+                    Text="{x:Bind ViewModel.MarkedSummary, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasMarks, Mode=OneWay}" />
+
                 <TextBlock
                     FontSize="11"
                     Foreground="#FFE8A33D"
@@ -306,11 +315,19 @@
                 </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="overlayVm:OverlayModItemViewModel">
-                        <Grid ColumnSpacing="8">
+                        <!--  Tag 上挂的是这一行自己，右键处理器从它取回 VM（模板里 x:Bind 的
+                              DataContext 是行 VM，Tag 只是把它交给代码后置的一种不依赖 DataContext 的拿法）。
+                              RightTapped 打在**整行**上：左键落在勾选框上换装、右键落在行上打标，
+                              两个手势各走各的，不会互相抢。  -->
+                        <Grid
+                            ColumnSpacing="8"
+                            RightTapped="OnModRowRightTapped"
+                            Tag="{x:Bind}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
                             <!--  键盘选中行的高亮：铺在最底层（先声明的在下层），横跨三列、不参与布局。
@@ -319,7 +336,7 @@
                                   为两态去写转换器或 VisualState 都不如一层可显隐的底直白。  -->
                             <Border
                                 Grid.Column="0"
-                                Grid.ColumnSpan="3"
+                                Grid.ColumnSpan="4"
                                 Margin="-4,-2"
                                 Background="#33FFFFFF"
                                 BorderBrush="#FFE8A33D"
@@ -362,6 +379,23 @@
                                     TextTrimming="CharacterEllipsis"
                                     Visibility="{x:Bind HasAuthor}" />
                             </StackPanel>
+
+                            <!--  右键打上的 NSFW 红标。用实心红底 + 白字而不是换个图标：
+                                  这件 Mod 的名字多半就是露骨的那几个字，扫一眼列表时要能立刻把
+                                  「已经判过的」和「还没看的」分开，颜色比图标快。  -->
+                            <Border
+                                Grid.Column="3"
+                                Padding="6,1"
+                                VerticalAlignment="Center"
+                                Background="#FFC62828"
+                                CornerRadius="3"
+                                Visibility="{x:Bind IsMarked, Mode=OneWay}">
+                                <TextBlock
+                                    FontSize="10"
+                                    FontWeight="SemiBold"
+                                    Foreground="White"
+                                    Text="NSFW" />
+                            </Border>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
