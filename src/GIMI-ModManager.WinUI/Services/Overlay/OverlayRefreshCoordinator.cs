@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Services.Input;
 using Serilog;
+using Windows.Win32;
 using Windows.Win32.Foundation;
 
 namespace GIMI_ModManager.WinUI.Services.Overlay;
@@ -137,6 +138,11 @@ internal sealed partial class OverlayRefreshCoordinator : ObservableObject
             do
             {
                 IsRefreshing = true;
+
+                // 「确实开始送了」这一行必须记在等闸门**之前**：只靠 GameKeySender 那几行的话，
+                // 「请求被合并 / 卡在闸门 / 卡在送键里」在日志里长得一模一样 —— 全是"什么都没有"。
+                _logger.Information("[浮窗] 开始刷新：送 F10 前的前台={Foreground}",
+                    WindowProcessQuery.DescribeWindow(PInvoke.GetForegroundWindow()));
 
                 await WaitForSendSlotAsync();
 

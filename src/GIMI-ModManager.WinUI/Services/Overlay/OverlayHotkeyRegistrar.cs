@@ -46,6 +46,12 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     private const int NavigationHotkeyIdBase = HotkeyId + 1;
 
     /// <summary>
+    /// 截图热键的 id。**与导航键的 id 段错开**（导航键从 <see cref="HotkeyId"/>+1 连占几格），
+    /// 否则 WM_HOTKEY 会被认成另一个动作。
+    /// </summary>
+    internal const int ScreenshotHotkeyId = HotkeyId + 0x10;
+
+    /// <summary>
     /// 浮窗显示期间的导航键。每个动作一串候选，按顺序试、**每个动作只占一个键**。
     ///
     /// 上下 / 回车只有一个候选：语义固定（上下移动、回车切换），换一个键用户就猜不到了，
@@ -99,11 +105,25 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     /// </summary>
     public event Action<OverlayHotkeyAction>? NavigationPressed;
 
+    /// <summary>
+    /// 截图热键被按下（按上次区域截图）。
+    ///
+    /// 与导航键不同，它**常驻注册**：浮窗藏着时按它正是主要用法（在游戏里直接截，不必先唤出浮窗）。
+    /// 回调在 UI 线程上；窗口不存在 / 当前不是鸣潮时注册者本身就不会存在。
+    /// </summary>
+    public event Action? ScreenshotPressed;
+
     /// <summary>最终注册成功的那个候选键；<c>null</c> = 一个都没注册上。</summary>
     public OverlayHotkeyCandidate? RegisteredCandidate { get; }
 
     /// <summary>注册失败的那些候选键与各自的原因，用于给用户一句完整的解释。</summary>
     public IReadOnlyList<OverlayHotkeyFailure> Failures { get; }
+
+    /// <summary>截图热键最终注册成功的候选；<c>null</c> = 没注册上（按钮那条路仍然可用）。</summary>
+    public OverlayHotkeyCandidate? RegisteredScreenshotCandidate { get; }
+
+    /// <summary>截图热键注册失败的那些候选与原因。</summary>
+    public IReadOnlyList<OverlayHotkeyFailure> ScreenshotFailures { get; }
 
     public bool IsRegistered => RegisteredCandidate is not null;
 
@@ -119,8 +139,15 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     /// </summary>
     public string? FailureMessage { get; }
 
+    /// <summary>截图热键一个都没注册上时的说明；注册成功时为 <c>null</c>。</summary>
+    public string? ScreenshotFailureMessage { get; }
+
     /// <summary>实际生效的热键写法（<c>Ctrl+Alt+J</c>），直接显示在界面上。</summary>
     public string Description => RegisteredCandidate?.FriendlyName ?? "(一个都没注册上)";
+
+    /// <summary>实际生效的截图热键写法；没注册上时是一句能直接放进 tooltip 的说明。</summary>
+    public string ScreenshotDescription =>
+        RegisteredScreenshotCandidate?.FriendlyName ?? "(热键未注册，请用浮窗上的按钮)";
 
     /// <summary>
     /// 依次尝试候选键，注册**第一个可用的**。
@@ -143,7 +170,8 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
         _monitor.WindowMessageReceived += OnWindowMessageReceived;
 
         var selection = OverlayHotkeyCandidates.TrySelect(
-            candidates ?? OverlayHotkeyCandidates.CreateDefaults(), TryRegister);
+            candidates ?? OverlayHotkeyCandidates.CreateDefaults(),
+            candidate => TryRegister(candidate, HotkeyId));
 
         RegisteredCandidate = selection.Candidate;
         Failures = selection.Failures;
@@ -152,11 +180,33 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
         {
             _logger.Information("[浮窗] 全局热键注册成功: {Hotkey}（id={Id}，用了备选键={Fallback}）",
                 Description, HotkeyId, selection.IsFallback);
-            return;
+        }
+        else
+        {
+            FailureMessage = OverlayHotkeyCandidates.DescribeFailure(Failures);
+            _logger.Warning("[浮窗] 全局热键注册失败: {Reason}", FailureMessage);
         }
 
-        FailureMessage = OverlayHotkeyCandidates.DescribeFailure(Failures);
-        _logger.Warning("[浮窗] 全局热键注册失败: {Reason}", FailureMessage);
+        // 截图热键与唤出键**分开注册**：两者互不影响，一个被占不该拖累另一个。
+        // 它常驻注册（浮窗隐藏时才是主要用法），所以放在构造里而不是 RegisterNavigationHotkeys。
+        var screenshotSelection = OverlayHotkeyCandidates.TrySelect(
+            OverlayHotkeyCandidates.CreateScreenshotDefaults(),
+            candidate => TryRegister(candidate, ScreenshotHotkeyId));
+
+        RegisteredScreenshotCandidate = screenshotSelection.Candidate;
+        ScreenshotFailures = screenshotSelection.Failures;
+
+        if (screenshotSelection.IsRegistered)
+        {
+            _logger.Information("[浮窗] 截图热键注册成功: {Hotkey}（id={Id}，用了备选键={Fallback}）",
+                ScreenshotDescription, ScreenshotHotkeyId, screenshotSelection.IsFallback);
+        }
+        else
+        {
+            ScreenshotFailureMessage = OverlayHotkeyCandidates.DescribeFailure(ScreenshotFailures);
+            _logger.Warning("[浮窗] 截图热键注册失败（浮窗上的截图按钮仍然可用）: {Reason}",
+                ScreenshotFailureMessage);
+        }
     }
 
     /// <summary>
@@ -164,13 +214,13 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     /// 这里只报「成没成、系统给的原因是什么」。失败原因取系统文案（最常见是「已被占用」）——
     /// 换成自己的措辞就会把「被谁占了」这个关键信息抹掉。
     /// </summary>
-    private HotkeyRegistrationAttempt TryRegister(OverlayHotkeyCandidate candidate)
+    private HotkeyRegistrationAttempt TryRegister(OverlayHotkeyCandidate candidate, int id)
     {
         // MOD_NOREPEAT 由 Core 的 ToRegisterHotKeyFlags 强制带上：漏了不会报错，
         // 只会在用户按住热键时把「切换显隐」刷成不停闪烁。
         var flags = (HOT_KEY_MODIFIERS)OverlayHotkeyCandidates.ToRegisterHotKeyFlags(candidate.Modifiers);
 
-        if (PInvoke.RegisterHotKey(_hwnd, HotkeyId, flags, candidate.VirtualKey))
+        if (PInvoke.RegisterHotKey(_hwnd, id, flags, candidate.VirtualKey))
         {
             _logger.Debug("[浮窗] 热键候选可用: {Hotkey}", candidate.FriendlyName);
             return HotkeyRegistrationAttempt.Ok;
@@ -194,6 +244,13 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
         {
             _logger.Debug("[浮窗] 收到 WM_HOTKEY，切换浮窗显隐");
             Pressed?.Invoke();
+            return;
+        }
+
+        if (id == ScreenshotHotkeyId)
+        {
+            _logger.Debug("[浮窗] 收到 WM_HOTKEY，按上次区域截图");
+            ScreenshotPressed?.Invoke();
             return;
         }
 
@@ -306,6 +363,12 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
             // RegisterHotKey 占的是系统级资源：不注销，这个组合键会在进程活着的期间一直不被放给别的程序
             PInvoke.UnregisterHotKey(_hwnd, HotkeyId);
             _logger.Debug("[浮窗] 已注销全局热键 {Hotkey}", Description);
+        }
+
+        if (RegisteredScreenshotCandidate is not null)
+        {
+            PInvoke.UnregisterHotKey(_hwnd, ScreenshotHotkeyId);
+            _logger.Debug("[浮窗] 已注销截图热键 {Hotkey}", ScreenshotDescription);
         }
     }
 }

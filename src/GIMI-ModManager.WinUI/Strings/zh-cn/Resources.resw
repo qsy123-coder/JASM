@@ -2574,6 +2574,12 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModDrop_CorruptBody" xml:space="preserve">
     <value>压缩包可能损坏或不完整，重新下载一份试试。</value>
   </data>
+  <data name="ModDrop_DiskFullTitle" xml:space="preserve">
+    <value>磁盘空间不足</value>
+  </data>
+  <data name="ModDrop_DiskFullBody" xml:space="preserve">
+    <value>解压时 Mod 目录所在的磁盘满了。清出一些空间，再把这个包拖进来 —— 包本身没问题，不用重新下载。</value>
+  </data>
   <data name="ModDrop_EmptyTitle" xml:space="preserve">
     <value>包里什么都没有</value>
   </data>

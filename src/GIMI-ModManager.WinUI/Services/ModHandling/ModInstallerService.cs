@@ -102,21 +102,38 @@ public class ModInstallerService(
         // 这份设置，浮窗与画廊都一样）。盘上存的是**相对**路径，重读一次就重新落到新位置上。
         await skinMod.Settings.ReadSettingsAsync().ConfigureAwait(false);
 
-        // 只**启用**新装的这个，不去动用户原有的启用组合：静默通道不该顺手改别的东西。
-        // （向导那条路会「只启用它」，那是用户当着面勾的，不是这里该替他做的决定。）
-        //
-        // 只有带 DISABLED_ 前缀的才需要这一步：新装进来的通常没有前缀，也就是**已经启用**了，
-        // 那种情况再调 EnableMod 会抛「Cannot enable a enabled mod」—— 那不是失败，是已经到位。
-        if (ModFolderHelpers.FolderHasDisabledPrefix(skinMod.Name))
+        // 导入后的启用策略由 ModInstallEnablementPolicy 统一决定：
+        //  - 多选模式：只启用新装的这个，不动用户原有的启用组合（静默通道不该顺手改别的东西）；
+        //  - 单选模式：新 Mod 保持未启用，当前勾选不变 —— 否则导入一次就多出几件勾选。
+        if (ModInstallEnablementPolicy.MayAutoEnableNewMod(_localSettingsService))
+        {
+            // 只有带 DISABLED_ 前缀的才需要这一步：新装进来的通常没有前缀，也就是**已经启用**了，
+            // 那种情况再调 EnableMod 会抛「Cannot enable a enabled mod」—— 那不是失败，是已经到位。
+            if (ModFolderHelpers.FolderHasDisabledPrefix(skinMod.Name))
+            {
+                try
+                {
+                    modList.EnableMod(skinMod.Id);
+                }
+                catch (Exception e)
+                {
+                    // 装是装上了，只是没启用 —— 让用户自己去勾一下就行，不该因此把整次安装判失败
+                    Serilog.Log.Warning(e, "静默安装后启用 Mod 失败: {Mod}", skinMod.Name);
+                }
+            }
+        }
+        else if (modList.IsModEnabled(skinMod))
         {
             try
             {
-                modList.EnableMod(skinMod.Id);
+                modList.DisableMod(skinMod.Id);
+                Serilog.Log.Information("[导入] 单选模式：新 Mod「{Mod}」保持未启用，当前勾选不变", skinMod.Name);
             }
             catch (Exception e)
             {
-                // 装是装上了，只是没启用 —— 让用户自己去勾一下就行，不该因此把整次安装判失败
-                Serilog.Log.Warning(e, "静默安装后启用 Mod 失败: {Mod}", skinMod.Name);
+                // 不能因为收不起来就把安装判失败：新 Mod 已经装好，用户最多看到一件多勾
+                Serilog.Log.Warning(e, "[导入] 单选模式下没能把新 Mod「{Mod}」收起: {Reason}",
+                    skinMod.Name, e.Message);
             }
         }
 

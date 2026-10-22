@@ -1,10 +1,13 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using Windows.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
+using GIMI_ModManager.Core.Entities;
+using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
@@ -12,7 +15,9 @@ using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModHandling;
+using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels;
 using GIMI_ModManager.WinUI.ViewModels.Messages;
@@ -51,10 +56,34 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     private readonly IGameService _gameService;
     private readonly ILocalSettingsService _localSettingsService;
     private readonly ModDragAndDropService _dragAndDropService;
+    private readonly OverlayScreenshotService _screenshotService;
+    private readonly ModSettingsService _modSettingsService;
+    private readonly IGameKeySender _gameKeySender;
+    private readonly NotificationManager _notificationManager;
     private readonly ILogger _logger;
+
+    /// <summary>上一个显示行内按键面板的 Mod。用来判断"目标换人了"，好让列表把它滚进视野。</summary>
+    private Guid? _keyPanelTargetId;
+
+    /// <summary>截图状态行的代际：连续截图时，过期的延时清理不能把新消息抹掉。</summary>
+    private int _screenshotStatusEpoch;
+
+    /// <summary>初始化时把存下来的尺寸档位读进属性：此时不该触发一次多余的落盘。</summary>
+    private bool _loadingOverlaySettings;
 
     /// <summary>当前选中角色的全部 Mod（未过滤）。搜一个词不该重新去读盘，所以过滤只在这个快照上做。</summary>
     private List<OverlayModItemViewModel> _allMods = new();
+
+    /// <summary>
+    /// 右键打的那份 NSFW 名单（「一件件过、看到不对的标一下」）。启动时读一次，之后每次改动整份写回。
+    ///
+    /// 整写而不是增量：几百条的名单序列化只要几毫秒，而增量落盘要额外记"哪几条动过"，
+    /// 为这点开销换一个更容易写错的状态机不划算。
+    /// </summary>
+    private OverlayNsfwMarks _nsfwMarks = new();
+
+    /// <summary>中键打的「已看过」名单。与 NSFW 名单各存一份、互不影响。</summary>
+    private OverlaySeenMarks _seenMarks = new();
 
     /// <summary>浮窗自己的设置。窗口的位置也由这里统一落盘 —— 两个写入者各存一份会互相覆盖。</summary>
     public OverlaySettings Settings { get; private set; } = new();
@@ -69,7 +98,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </summary>
     public ObservableCollection<OverlayCharacterItem> Characters { get; } = new();
 
-    /// <summary>当前显示（已过滤 + 已启用前移）的 Mod 行。</summary>
+    /// <summary>
+    /// 当前显示的 Mod 行（按搜索词过滤，**顺序与后端给的一致**）。
+    /// 不按勾选状态重排：勾了第六件，下次打开它还得在第六行。
+    /// </summary>
     public ObservableCollection<OverlayModItemViewModel> Mods { get; } = new();
 
     [ObservableProperty] private OverlayCharacterItem? _selectedCharacter;
@@ -87,6 +119,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// <summary>勾选失败时的提示。刷新那边的成败由 <see cref="RefreshCoordinator"/> 负责，这里只管动盘失败。</summary>
     [ObservableProperty] private string? _errorMessage;
 
+    public bool HasErrorMessage => !string.IsNullOrEmpty(ErrorMessage);
+
+    partial void OnErrorMessageChanged(string? value) => OnPropertyChanged(nameof(HasErrorMessage));
+
     /// <summary>
     /// 提权时的那句常驻提示（<c>null</c> = 不提权，那一行自己塌掉）。见 <see cref="AppElevation.IsDragDropBlocked"/>。
     ///
@@ -97,6 +133,125 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </para>
     /// </summary>
     [ObservableProperty] private string? _elevationNotice;
+
+    public bool HasElevationNotice => !string.IsNullOrEmpty(ElevationNotice);
+
+    partial void OnElevationNoticeChanged(string? value) => OnPropertyChanged(nameof(HasElevationNotice));
+
+    /// <summary>
+    /// 刷新状态那一行要不要占位置。没有刷新、没有成败、没有状态文案时整行收起 ——
+    /// 否则浮窗顶部与第一行 Mod 之间会空出一条永远存在的空白（用户反馈的就是这个）。
+    /// </summary>
+    public bool HasRefreshStatus =>
+        RefreshCoordinator.IsRefreshing
+        || RefreshCoordinator.ShowSuccessIcon
+        || RefreshCoordinator.ShowFailureIcon
+        || !string.IsNullOrWhiteSpace(RefreshCoordinator.StatusMessage);
+
+    /// <summary>
+    /// 「已标记 N 个 · 右键可标记 / 取消」那一行。一件都没标时是 <c>null</c>，那行整个塌掉。
+    ///
+    /// 这句里**必须带着「右键」两个字**：标记没有任何别的地方可发现（既不占热键、也没有按钮），
+    /// 而它又是唯一能告诉用户"打过的记号在哪、怎么去掉"的地方。
+    /// </summary>
+    [ObservableProperty] private string? _markedSummary;
+
+    /// <summary>上面那行的显隐。<c>Visibility</c> 绑不了「字符串非空」，另外给一个布尔。</summary>
+    public bool HasMarks => !string.IsNullOrEmpty(MarkedSummary);
+
+    partial void OnMarkedSummaryChanged(string? value) => OnPropertyChanged(nameof(HasMarks));
+
+    /// <summary>「已看过 N 个 · 中键可标记 / 取消」那一行。一件都没标时是 <c>null</c>。</summary>
+    [ObservableProperty] private string? _seenSummary;
+
+    public bool HasSeenMarks => !string.IsNullOrEmpty(SeenSummary);
+
+    partial void OnSeenSummaryChanged(string? value) => OnPropertyChanged(nameof(HasSeenMarks));
+
+    // ── 截图与按键面板 ─────────────────────────────────────────
+
+    /// <summary>
+    /// 浮窗自己的 hwnd。送键后要把前台交还给它（理由见 <c>IGameKeySender</c>），
+    /// 只有窗口自己知道句柄，所以由 <c>OverlayWindow</c> 在构造时写一次。
+    /// </summary>
+    public nint OverlayWindowHandle { get; set; }
+
+    /// <summary>截图状态行的显隐。</summary>
+    [ObservableProperty] private string? _screenshotStatusMessage;
+
+    public bool HasScreenshotStatus => !string.IsNullOrEmpty(ScreenshotStatusMessage);
+
+    /// <summary>状态行该按「成功」还是「问题/取消」配色（见 OverlayWindow.xaml 的两条 TextBlock）。</summary>
+    [ObservableProperty]
+    private bool _screenshotStatusIsProblem;
+
+    public bool HasScreenshotSuccess => HasScreenshotStatus && !ScreenshotStatusIsProblem;
+
+    public bool HasScreenshotProblem => HasScreenshotStatus && ScreenshotStatusIsProblem;
+
+    partial void OnScreenshotStatusIsProblemChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HasScreenshotSuccess));
+        OnPropertyChanged(nameof(HasScreenshotProblem));
+    }
+
+    partial void OnScreenshotStatusMessageChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasScreenshotStatus));
+        OnPropertyChanged(nameof(HasScreenshotSuccess));
+        OnPropertyChanged(nameof(HasScreenshotProblem));
+    }
+
+    /// <summary>正在截图（框选 / 落盘）。期间再按截图键不重复触发。</summary>
+    [ObservableProperty] private bool _isCapturing;
+
+    /// <summary>
+    /// 行内按键面板的目标换人了：列表据此把那一行滚进视野
+    /// （面板从勾选行下面展开，可能整块落在可视区之外）。
+    /// </summary>
+    public event Action<OverlayModItemViewModel>? KeyPanelTargetChanged;
+
+    /// <summary>截图输出目录：没配过就用默认的「图片\JASM\浮窗截图」。</summary>
+    public string ScreenshotOutputFolder =>
+        string.IsNullOrWhiteSpace(Settings.ScreenshotOutputFolder)
+            ? OverlayScreenshotService.GetDefaultOutputFolder()
+            : Settings.ScreenshotOutputFolder!;
+
+    /// <summary>
+    /// 浮窗尺寸的三档预设。产品定死（PRD v1.1），顺序就是标题栏下拉框里的顺序。
+    /// 中档 = 2.33 时代的 380×360，保证老用户的肌肉记忆不变。
+    /// </summary>
+    public IReadOnlyList<OverlaySizeOption> SizeOptions { get; } =
+    [
+        new("小", 320, 300),
+        new("中", 380, 360),
+        new("大", 460, 480)
+    ];
+
+    /// <summary>当前档位序号（0/1/2）。界面双向绑定到标题栏的下拉框。</summary>
+    [ObservableProperty] private int _selectedSizeIndex = 1;
+
+    /// <summary>当前档位的像素尺寸（DIP）。窗口自己读它来定宽高。</summary>
+    public OverlaySizeOption CurrentSizeOption =>
+        SizeOptions[Math.Clamp(SelectedSizeIndex, 0, SizeOptions.Count - 1)];
+
+    partial void OnSelectedSizeIndexChanged(int value)
+    {
+        var clamped = Math.Clamp(value, 0, SizeOptions.Count - 1);
+
+        // 越界值（设置文件被手改坏）先夹回来，避免窗口按一个不存在的档位去算尺寸
+        if (clamped != value)
+        {
+            SelectedSizeIndex = clamped;
+            return;
+        }
+
+        if (_loadingOverlaySettings)
+            return;
+
+        Settings.SizePreset = clamped;
+        _ = SaveSettingsAsync();
+    }
 
     /// <summary>
     /// 0 = 单选（默认），1 = 多选。界面直接绑 <c>Segmented.SelectedIndex</c>，所以这里用序号而不是布尔 ——
@@ -156,15 +311,27 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
     public OverlayViewModel(ISkinManagerService skinManagerService, IGameService gameService,
         OverlayRefreshCoordinator refreshCoordinator, ILocalSettingsService localSettingsService,
-        ModDragAndDropService dragAndDropService, ILogger logger)
+        ModDragAndDropService dragAndDropService, OverlayScreenshotService screenshotService,
+        ModSettingsService modSettingsService, IGameKeySender gameKeySender,
+        NotificationManager notificationManager, ILogger logger)
     {
         _skinManagerService = skinManagerService;
         _gameService = gameService;
         RefreshCoordinator = refreshCoordinator;
         _localSettingsService = localSettingsService;
         _dragAndDropService = dragAndDropService;
+        _screenshotService = screenshotService;
+        _modSettingsService = modSettingsService;
+        _gameKeySender = gameKeySender;
+        _notificationManager = notificationManager;
         _logger = logger.ForContext<OverlayViewModel>();
+
+        // 状态行是否占位置的判据跨在协调器上：它一变，HasRefreshStatus 就要重新算
+        RefreshCoordinator.PropertyChanged += OnRefreshCoordinatorPropertyChanged;
     }
+
+    private void OnRefreshCoordinatorPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        => OnPropertyChanged(nameof(HasRefreshStatus));
 
     /// <summary>
     /// 把拖进浮窗的包装到**当前选中的角色**上，与主窗口卡片那条拖拽路走同一个服务。
@@ -210,6 +377,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         InstallStatusText = files.Count > 1 ? $"准备安装 {files.Count} 个包…" : "准备中…";
 
         var failed = 0;
+        // 单独记一笔「盘满了」：批量拖几十个包时，它往往一口气带走尾巴上的一整串；
+        // 汇总只说「N 个失败」会把人引向「包坏了」，而实际要做的只是清空间。
+        var diskFullFailures = 0;
 
         // 逐个装、**串行**：解压临时目录、安装通知、列表热更新这几处都假定「同一时刻只有一单在跑」。
         // 一个包失败不影响后面的 —— 批量拖十几个的时候，最糟的结果是有一个坏包把整批带停。
@@ -250,6 +420,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
                 {
                     // 同一单里更早的失败（认角色、解压）会从这里冒出来；通知那条路由拖拽服务负责
                     failed++;
+                    if (e is ArchiveExtractionException { Reason: ArchiveExtractionFailureReason.DiskFull })
+                        diskFullFailures++;
+
                     _logger.Warning(e, "[浮窗] 批量安装中这一单失败: {File}", file.Name);
                 }
             }
@@ -263,19 +436,26 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             if (files.Count > 1)
             {
                 var ok = files.Count - failed;
+                var diskFullNote = diskFullFailures > 0 ? $"，其中 {diskFullFailures} 个是磁盘空间不足" : string.Empty;
                 InstallStatusText = failed == 0
                     ? $"已安装 {ok} 个"
-                    : $"装好 {ok} 个，{failed} 个失败（详见主窗口通知）";
+                    : $"装好 {ok} 个，{failed} 个失败{diskFullNote}";
 
                 if (failed == 0)
                     ShowInstallSuccess = true;
-
-                ErrorMessage = failed > 0 ? "有包没装上，详情见主窗口的通知。" : null;
             }
             else if (!ShowInstallSuccess)
             {
                 InstallStatusText = null;
             }
+
+            // 解压阶段的失败不发主窗口通知（那条通知是「装到某个角色失败」才有的），所以
+            // 「详见主窗口通知」在这些情况下是空指路 —— 磁盘满这种能自己解决的，直接把话说清楚。
+            if (diskFullFailures > 0)
+                ErrorMessage =
+                    $"磁盘空间不足：{diskFullFailures} 个包没解开。清出空间后把这几个重新拖进来即可（包本身没问题）。";
+            else if (files.Count > 1)
+                ErrorMessage = failed > 0 ? "有包没装上，详情见主窗口通知或日志。" : null;
 
             _ = ClearInstallStatusLaterAsync(epoch);
         }
@@ -364,7 +544,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     ///
     /// 判据与主窗口那条拖拽路完全同一套（同 <see cref="CharacterNameMatcher"/>、同样的线索与伪角色排除），
     /// 唯一不同的是**认得不准时不弹选择框**：浮窗上没有问「是哪个角色」的地方，它的定位就是不打岔。
-    /// 认不出来时调用方退回「当前选中的角色」—— 你正看着谁就装给谁，总比弹个框强。
+    /// 认不出来时由调用方装到「其它角色」分类（不退回当前选中的角色，理由见
+    /// <see cref="ResolveTargetModListAsync"/> 的注释）。
     /// </summary>
     private ICharacterModList? ResolveDroppedCharacter(string fileName, DragAndDropScanResult scanResult)
     {
@@ -379,7 +560,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         if (!CharacterNameMatcher.IsConfident(ranked))
         {
-            _logger.Information("[浮窗] 拖入的包 '{FileName}' 认不出角色（{Count} 个候选），改装给当前选中的角色",
+            // 去向是「其它角色」，**不是**当前选中的角色 —— 见方法头注释里那条实测教训
+            _logger.Information("[浮窗] 拖入的包 '{FileName}' 认不出角色（{Count} 个候选），将装到「其它角色」",
                 fileName, ranked.Count);
             return null;
         }
@@ -417,9 +599,34 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         Settings = await _localSettingsService
             .ReadOrCreateSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App);
 
+        // 尺寸档位：初始化阶段不触发 OnSelectedSizeIndexChanged 的那次落盘
+        _loadingOverlaySettings = true;
+        try
+        {
+            SelectedSizeIndex = Math.Clamp(Settings.SizePreset ?? 1, 0, SizeOptions.Count - 1);
+        }
+        finally
+        {
+            _loadingOverlaySettings = false;
+        }
+
         // 把存下来的模式读进界面。页面级绑定读的是 ModeIndex 的当前值，
         // 而本方法一定在窗口显示之前跑完，所以在这一步赋值是够的。
         ModeIndex = Settings.MultiSelectMode ? MultiSelectModeIndex : SingleSelectModeIndex;
+
+        // NSFW 名单也在建行之前读回来：晚一步的话，已标记的那些行会先以"没标"的样子画一遍，
+        // 下次重建才补上红标 —— 用户看到的是"我的标记丢了"。
+        _nsfwMarks = await _localSettingsService
+            .ReadOrCreateSettingAsync<OverlayNsfwMarks>(OverlayNsfwMarks.Key, SettingScope.App);
+
+        // 「已看过」的正式数据在 Mod 自己的设置里；这份旧名单只用来做一次性迁移
+        _seenMarks = await _localSettingsService
+            .ReadOrCreateSettingAsync<OverlaySeenMarks>(OverlaySeenMarks.Key, SettingScope.App);
+
+        await MigrateSeenMarksAsync();
+
+        UpdateMarkSummary();
+        UpdateSeenSummary();
 
         RefreshCharacters();
     }
@@ -533,6 +740,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         //   2. 不清 HasPendingChanges —— 攒下的改动是真的没刷过，拨开关不会让它们生效。
         // 于是从多选切回单选时，那个待刷新提示会继续亮着，直到用户点一次「刷新」。
 
+        // 「下一个」按钮只在单选模式出现：拨开关时立刻重算，别等下一次勾选
+        RefreshNextButtons();
+
         // 不 await：这里只该把模式记下来，落盘慢一点无所谓，不能卡住拨开关
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
         SaveSettingsAsync();
@@ -558,14 +768,32 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
     private void LoadMods(IModdableObject? character)
     {
-        _allMods = character is null
+        var entries = character is null ? null : ResolveModList(character)?.Mods;
+
+        // 行对象整批重建了：上一次的"面板目标是哪一行"不再作数，重算后要重新滚一次
+        _keyPanelTargetId = null;
+
+        _allMods = entries is null
             ? new List<OverlayModItemViewModel>()
-            : ResolveModList(character)?.Mods
-                .Select(entry => OverlayModItemViewModel.FromEntry(entry).WithToggleHandler(ToggleModAsync))
-                .ToList()
-            ?? new List<OverlayModItemViewModel>();
+            : entries
+                .Select(entry =>
+                {
+                    var item = OverlayModItemViewModel.FromEntry(entry).WithToggleHandler(ToggleModAsync);
+
+                    // NSFW 名单按 Id 比对，所以红标跟着 Mod 本身走：改名、换自定义名、甚至开/关一次
+                    //（文件夹加上又去掉 DISABLED_ 前缀）都不会把它弄丢。
+                    // 「已看过」不是名单：它来自 Mod 自己的设置（见 OverlayModItemViewModel.FromEntry）。
+                    item.IsMarked = _nsfwMarks.IsMarked(entry.Id);
+
+                    return item;
+                })
+                .ToList();
 
         ApplyFilter();
+        UpdateSeenSummary();
+
+        // 换角色等于换一批 Mod：按键面板要跟着当前唯一勾选的 Mod 重来
+        _ = RefreshKeyBindingsAsync();
     }
 
     private void ApplyFilter()
@@ -592,6 +820,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
                 : SelectedCharacter is null
                     ? null
                     : "这个角色还没有 Mod。";
+
+        RefreshNextButtons();
     }
 
     /// <summary>
@@ -635,6 +865,14 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         // 让主窗口把它那边的同一个 Mod 也更新掉（画廊 / 详情页 / 预设面板都在收这条消息）
         Messenger.Send(new ModChangedMessage(this, entry, null));
+
+        // 勾选状态变了 = 「唯一勾选」可能变了：按键面板按新目标重算（解析在后台，不挡下面这次刷新）
+        _ = RefreshKeyBindingsAsync();
+
+        // 这一行是「勾了但游戏没换」排查的分界线：有它 = 点击确实走到了刷新这一步；
+        // 没有它 = 问题在更前面（点击没进到浮窗、或改盘失败，那两种各自另有日志）。
+        _logger.Information("[浮窗] 勾选 {Mod}：启用={Enabled}，多选模式={MultiSelect}",
+            item.Name, item.IsEnabled, IsMultiSelectMode);
 
         if (IsMultiSelectMode)
         {
@@ -693,6 +931,416 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         if (failed.Count > 0)
             ErrorMessage = $"单选模式一次只留一件，但「{string.Join("」「", failed)}」没能关掉，详情见日志。";
+    }
+
+    // ── 右键打 NSFW 标记（一件件过 Mod 时的审阅记号）──────────────────
+
+    /// <summary>
+    /// 右键一行：把这一件标成 NSFW，再点一次取消。
+    ///
+    /// **只动名单，不动 Mod**：不改文件夹名、不碰 Mod 的设置文件、也不触发刷新 ——
+    /// 此刻用户正拿左键一件件试着看（左键=换装 + F10），右键只是顺手记一笔，
+    /// 要是它顺手把游戏里的画面也换了，"看这一件"与"记这一件"就缠在一起没法用了。
+    /// </summary>
+    public async Task ToggleNsfwMarkAsync(OverlayModItemViewModel item)
+    {
+        var marked = _nsfwMarks.Toggle(item.Id,
+            SelectedCharacter?.Character.InternalName ?? string.Empty, item.Name);
+
+        item.IsMarked = marked;
+        UpdateMarkSummary();
+
+        await SaveNsfwMarksAsync();
+
+        _logger.Information("[浮窗] {Action}NSFW 标记：{Mod}（名单现有 {Count} 件）",
+            marked ? "打上" : "取消", item.Name, _nsfwMarks.Count);
+    }
+
+    /// <summary>
+    /// 把名单整份写回设置（<c>LocalAppSettings.json</c> 的 App 作用域）。
+    ///
+    /// 存不下时**不回滚内存里的标记**：这一次标记活得比进程短，但界面必须和用户刚才那一下
+    /// 对得上；为了一个落盘失败把红标弹回去，比下次启动少一条记录更让人困惑。
+    /// </summary>
+    private async Task SaveNsfwMarksAsync()
+    {
+        try
+        {
+            await _localSettingsService.SaveSettingAsync(OverlayNsfwMarks.Key, _nsfwMarks, SettingScope.App);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗] 保存 NSFW 标记失败（这一次标记可能活不过重启）");
+        }
+    }
+
+    private void UpdateMarkSummary()
+    {
+        var count = _nsfwMarks.Count;
+
+        MarkedSummary = count == 0 ? null : $"已标记 {count} 个 · 右键可标记 / 取消";
+    }
+
+    // ── 中键打「已看过」标记（与 NSFW 各记各的）────────────────────
+
+    /// <summary>
+    /// 中键一行：标记 / 取消「已看过」。
+    ///
+    /// 与右键 NSFW **不是同一种存储**：NSFW 记在浮窗自己的名单里，中键写进 Mod 自己的设置
+    /// （<c>SeenAt</c>），跟着 Mod 走。两件事互相独立，同一件可以同时是「已看过」和 NSFW。
+    /// 用手势区分：右键判内容，中键记进度。
+    /// </summary>
+    public async Task ToggleSeenMarkAsync(OverlayModItemViewModel item)
+    {
+        var mark = !item.IsSeen;
+        var seenAt = mark ? DateTime.Now : (DateTime?)null;
+
+        try
+        {
+            var result = await _modSettingsService.SaveSettingsAsync(item.Id,
+                new UpdateSettingsRequest { SetSeenAt = seenAt });
+
+            if (result is not { IsSuccess: true })
+            {
+                ErrorMessage = $"「{item.Name}」的已看过标记没能保存，详情见日志。";
+                return;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗] 保存「已看过」到 Mod 设置失败: {Mod}", item.Name);
+            ErrorMessage = $"「{item.Name}」的已看过标记没能保存，详情见日志。";
+            return;
+        }
+
+        item.IsSeen = mark;
+        UpdateSeenSummary();
+
+        // 让主窗口（画廊）把这张卡片上的「已看过」角标同步过去
+        if (ResolveEntry(item.Id) is { } entry)
+            Messenger.Send(new ModChangedMessage(this, entry, null));
+
+        _logger.Information("[浮窗] {Action}已看过标记：{Mod}（写入 Mod 设置）",
+            mark ? "打上" : "取消", item.Name);
+    }
+
+    private void UpdateSeenSummary()
+    {
+        var count = _allMods.Count(mod => mod.IsSeen);
+
+        SeenSummary = count == 0 ? null : $"已看过 {count} 个 · 中键可标记 / 取消";
+    }
+
+    /// <summary>
+    /// 把旧版 <c>OverlaySeenMarks</c> 名单一次性迁进各 Mod 的 <c>SeenAt</c>。
+    ///
+    /// 只对**还没有 SeenAt** 的 Mod 写入，且完成后置 <c>Migrated</c>：迁移是幂等的，
+    /// 但置位之后不再重放 —— 否则用户在 Mod 上取消「已看过」会被旧名单在下次启动时重新标上。
+    /// Mod 已经不存在时跳过，不算失败。
+    /// </summary>
+    private async Task MigrateSeenMarksAsync()
+    {
+        if (_seenMarks.Migrated || _seenMarks.Entries is null || _seenMarks.Entries.Count == 0)
+            return;
+
+        var migrated = 0;
+        var failed = 0;
+
+        foreach (var entry in _seenMarks.Entries.ToList())
+        {
+            try
+            {
+                var mod = _skinManagerService.GetModById(entry.Id);
+
+                if (mod is null)
+                    continue;
+
+                if (mod.Settings.GetSettingsLegacy().TryPickT0(out var settings, out _)
+                    && settings.SeenAt is not null)
+                {
+                    migrated++;
+                    continue;
+                }
+
+                var result = await _modSettingsService.SaveSettingsAsync(entry.Id,
+                    new UpdateSettingsRequest { SetSeenAt = entry.MarkedAt.LocalDateTime });
+
+                if (result is { IsSuccess: true })
+                    migrated++;
+                else
+                    failed++;
+            }
+            catch (Exception e)
+            {
+                failed++;
+                _logger.Warning(e, "[浮窗] 迁移已看过标记失败: {ModId}", entry.Id);
+            }
+        }
+
+        if (failed == 0)
+        {
+            _seenMarks.Migrated = true;
+
+            try
+            {
+                await _localSettingsService.SaveSettingAsync(OverlaySeenMarks.Key, _seenMarks, SettingScope.App);
+            }
+            catch (Exception e)
+            {
+                // 迁移本身已经生效；标记没落盘最多下次重放一遍（幂等）
+                _logger.Warning(e, "[浮窗] 保存已看过名单的迁移标记失败");
+            }
+        }
+
+        _logger.Information("[浮窗] 已看过名单迁移：成功 {Migrated} 条，失败 {Failed} 条", migrated, failed);
+    }
+
+    // ── 勾选下一个（审查流水线：一件件往下走）────────────────────
+
+    /// <summary>
+    /// 勾选列表里当前勾选行的**下一行**。
+    ///
+    /// 只服务单选模式的审阅流程：勾上下一件时 <see cref="ToggleModAsync"/> 会把当前这件收起来、
+    /// 并触发 F10 刷新。多选模式不显示这个按钮（"下一个"与"自由勾选"没有一致的语义）。
+    /// **到头就停**：最后一件不显示按钮，不循环回第一件。
+    /// </summary>
+    public async Task SelectNextModAsync(OverlayModItemViewModel current)
+    {
+        if (IsMultiSelectMode)
+            return;
+
+        var index = Mods.IndexOf(current);
+
+        if (index < 0 || index + 1 >= Mods.Count)
+            return;
+
+        var next = Mods[index + 1];
+
+        if (!next.IsEnabled)
+            await ToggleModAsync(next);
+    }
+
+    /// <summary>
+    /// 按当前列表顺序与模式刷新所有行的「下一个」按钮：
+    /// 只有**勾选中的那一行**、**不是最后一行**、**单选模式**才显示。
+    /// </summary>
+    private void RefreshNextButtons()
+    {
+        for (var index = 0; index < Mods.Count; index++)
+        {
+            Mods[index].ShowNextButton =
+                !IsMultiSelectMode
+                && Mods[index].IsEnabled
+                && index < Mods.Count - 1;
+        }
+    }
+
+    // ── 截图（按唯一勾选的 Mod 命名并保存）────────────────────────
+
+    /// <summary>
+    /// 当前**唯一勾选**的 Mod；一件没勾或勾了多件都返回 <c>null</c>。
+    ///
+    /// 判据放在这里而不是界面层：截图命名与按键面板都要求"只对着一个对象"，
+    /// 两处各写一遍迟早会出现「截图截的是 A、按键面板显示的是 B」。
+    /// </summary>
+    public OverlayModItemViewModel? GetUniqueCheckedMod()
+    {
+        OverlayModItemViewModel? found = null;
+
+        foreach (var mod in _allMods.Where(mod => mod.IsEnabled))
+        {
+            if (found is not null)
+                return null; // 第二件 = 不唯一
+
+            found = mod;
+        }
+
+        return found;
+    }
+
+    /// <summary>把行 VM 对回磁盘上的条目（改封面、发变更消息都要它）。</summary>
+    private CharacterSkinEntry? ResolveEntry(Guid modId)
+        => ResolveModList(SelectedCharacter?.Character)?.Mods.FirstOrDefault(entry => entry.Id == modId);
+
+    /// <summary>
+    /// 把一张已经裁好的截图落盘，并记住这次用的区域。
+    ///
+    /// <b>不碰 Mod 封面</b>：只往输出目录写一个 PNG，不改 <c>ImagePath</c>、不动
+    /// <c>.JASM_Cover.*</c>、不发封面变更消息（产品决定，见 PRD）。
+    /// </summary>
+    public async Task SaveScreenshotAsync(CapturedFrame frame, OverlayCaptureRegion region,
+        OverlayModItemViewModel target, bool notifyViaSystem = false)
+    {
+        var path = await _screenshotService.SavePngAsync(frame, ScreenshotOutputFolder, target.Name);
+
+        Settings.RememberCaptureRegion(region);
+        await SaveSettingsAsync();
+
+        // 截图**不碰 Mod 封面**：不写 ImagePath、不复制 / 删除 .JASM_Cover.*、不发封面变更消息。
+        // 封面始终沿用用户原来的设置（产品决定）。
+        var message = $"已保存：{Path.GetFileName(path)}";
+
+        ShowScreenshotStatus(message);
+
+        // 热键截图时浮窗是藏着的：状态行没人看得见，换一条系统通知告诉用户"截到了"
+        if (notifyViaSystem)
+            _notificationManager.ShowNotification("浮窗截图", message, TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>
+    /// 截图失败 / 被取消时写一句状态。文案必须能指向下一步动作。
+    /// 浮窗藏着时（热键触发）改发系统通知，否则用户什么都看不到。
+    /// </summary>
+    public void ReportScreenshotProblem(string message, bool notifyViaSystem = false)
+    {
+        ShowScreenshotStatus(message, isProblem: true);
+
+        if (notifyViaSystem)
+            _notificationManager.ShowNotification("浮窗截图", message, TimeSpan.FromSeconds(6));
+    }
+
+    private void ShowScreenshotStatus(string message, bool isProblem = false)
+    {
+        ScreenshotStatusIsProblem = isProblem;
+        ScreenshotStatusMessage = message;
+        _ = ClearScreenshotStatusLaterAsync(++_screenshotStatusEpoch);
+    }
+
+    private async Task ClearScreenshotStatusLaterAsync(int epoch)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(6));
+
+        if (epoch != _screenshotStatusEpoch)
+            return;
+
+        ScreenshotStatusMessage = null;
+    }
+
+    // ── 按键面板（挂在唯一勾选的那一行下面）────────────────────────
+
+    /// <summary>
+    /// 按当前唯一勾选的 Mod 重新摆放 / 加载行内按键面板。
+    ///
+    /// **面板跟着行走**：只有唯一勾选的那一行显示它，其余行一律收起。
+    /// 解析放在后台，结果回来时再确认"还是不是同一件"—— 用户可能在解析途中又勾了别的 Mod。
+    /// </summary>
+    public async Task RefreshKeyBindingsAsync()
+    {
+        // 勾选状态与列表顺序都可能刚变过，行尾的「下一个」按钮跟着重算
+        RefreshNextButtons();
+
+        var unique = GetUniqueCheckedMod();
+
+        // 先摆位置：除目标行外全部隐藏。目标行从隐藏变为显示时会自动展开（见 SetKeyPanelVisible）。
+        foreach (var row in _allMods)
+            row.SetKeyPanelVisible(ReferenceEquals(row, unique));
+
+        if (unique is null)
+        {
+            _keyPanelTargetId = null;
+            return;
+        }
+
+        if (_keyPanelTargetId != unique.Id)
+        {
+            _keyPanelTargetId = unique.Id;
+
+            // 面板可能把整行撑到可视区外，交给窗口把这一行滚进来
+            KeyPanelTargetChanged?.Invoke(unique);
+        }
+
+        // 这一行已经解析过（空结果也算）：直接复用，不重复扫盘。
+        // 正在解析时也直接返回 —— 勾选与重建列表可能在同一拍各触发一次刷新。
+        if (unique.KeyBindingsLoaded || unique.IsKeyBindingLoading)
+            return;
+
+        unique.IsKeyBindingLoading = true;
+        unique.KeyPanelEmptyMessage = null;
+
+        try
+        {
+            var entry = ResolveEntry(unique.Id);
+
+            if (entry is null)
+            {
+                unique.KeyPanelEmptyMessage = "这个 Mod 已经不在当前角色的列表里了。";
+                return;
+            }
+
+            var modPath = entry.Mod.FullPath;
+            var groups = await Task.Run(() => ModIniKeyBindingParser.ParseAllKeyBindings(modPath));
+
+            // 解析期间用户可能已经换了 Mod：晚到的结果直接丢掉
+            if (GetUniqueCheckedMod()?.Id != unique.Id)
+                return;
+
+            unique.ClearKeyBindings();
+
+            foreach (var group in groups)
+                unique.KeyBindingGroups.Add(group);
+
+            unique.KeyBindingsLoaded = true;
+            unique.NotifyKeyBindingsChanged();
+            unique.KeyPanelEmptyMessage = groups.Count == 0 ? "此 Mod 无按键绑定。" : null;
+        }
+        catch (Exception e)
+        {
+            // 不置 KeyBindingsLoaded：下次勾选这一行时会重试
+            unique.KeyPanelEmptyMessage = "读取按键绑定失败，详情见日志。";
+            _logger.Warning(e, "[浮窗] 读取按键绑定失败: {Mod}", unique.Name);
+        }
+        finally
+        {
+            unique.IsKeyBindingLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// 点击按键徽章：把这一键发给游戏。成功静默（游戏里会看到反应），失败才提示。
+    /// 前台交还给浮窗 —— 与刷新路径同一条规则：送键那一下游戏被切到前台，
+    /// 不交还的话用户下一次点击就落在游戏上了。
+    /// </summary>
+    public async Task SendKeyBindingAsync(ModIniKeyBindingEntry entry)
+    {
+        if (!entry.CanSendKey || entry.KeyCode is not { } keyCode)
+            return;
+
+        var result = await _gameKeySender.SendKeyAsync(keyCode, entry.ModifierKeyCodes, OverlayWindowHandle);
+
+        if (result.Status == GameKeySendStatus.Sent)
+            return;
+
+        _logger.Warning("[浮窗] 发送按键失败: {Key} 状态={Status} 详情={Detail}",
+            entry.KeyValue, result.Status, result.Detail);
+
+        _notificationManager.ShowNotification("发送按键失败",
+            DescribeKeySendFailure(result), TimeSpan.FromSeconds(6));
+    }
+
+    /// <summary>与主窗口详情页徽章完全一致的失败文案（那边在 <c>ModPane.xaml.cs</c>）。</summary>
+    private static string DescribeKeySendFailure(GameKeySendResult result)
+    {
+        var fallback = result.Status switch
+        {
+            GameKeySendStatus.BlockedChord =>
+                "这个组合键被 JASM 当作危险快捷键拦下了，没有发送。",
+            GameKeySendStatus.TargetNotConfigured =>
+                "找不到游戏信息，请先确认 JASM 里配置的游戏目录指向装了 mod 的 XXMI 目录。",
+            GameKeySendStatus.GameProcessNotRunning =>
+                "游戏当前没有运行，先把游戏开起来再点。",
+            GameKeySendStatus.GameWindowNotFound =>
+                "找到游戏进程了，但没有可用的游戏窗口。切回游戏画面后再试一次。",
+            GameKeySendStatus.NeedsElevation =>
+                "游戏正以管理员身份运行，JASM 自己和提权助手都没能把按键送进去。"
+                + "请更新 JASM 后重试（新版助手专为这种情况准备）；别用管理员身份运行 JASM 本身，那修不了按键，还会让拖拽安装失效。",
+            GameKeySendStatus.SendInputFailed =>
+                "按键没能送进游戏。如果游戏是以管理员身份运行的，请更新 JASM 让提权助手代发；"
+                + "别用管理员身份运行 JASM 本身，那会让拖拽安装失效。",
+            _ => "按键没能送进游戏。"
+        };
+
+        // 提权 / 助手那条路的失败原因是动态的，别让上面的通用文案盖掉
+        return result.Detail ?? fallback;
     }
 
     /// <summary>
@@ -759,6 +1407,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             return;
 
         item.IsEnabled = message.SkinEntry.IsEnabled;
+
+        // 主窗口那边可能刚换了勾选（应用预设 / 随机化）：面板跟着重算
+        _ = RefreshKeyBindingsAsync();
     }
 
     /// <summary>

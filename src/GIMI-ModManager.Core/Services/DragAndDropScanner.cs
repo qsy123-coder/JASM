@@ -334,16 +334,17 @@ public sealed class DragAndDropScanner
         var stdout = stdoutTask.GetAwaiter().GetResult();
         var stderr = stderrTask.GetAwaiter().GetResult();
 
+        // 剩余空间要在**失败之后**量：这一趟可能刚好把盘写满，事先量看不出问题
         var failure = ArchiveExtractionClassifier.Classify(process.ExitCode, stdout, stderr,
-            !string.IsNullOrEmpty(password));
+            !string.IsNullOrEmpty(password), TryGetFreeBytes(_workFolder));
 
         if (failure is not null)
         {
-            // 异常消息里只带退出码：密码绝不能出现在异常里（它会一路飘到日志和用户看得到的通知上）
-            _logger.Warning("7z extraction failed with exit code {ExitCode}: {StdErr}", process.ExitCode,
-                Excerpt(stderr));
+            // 异常消息里只带退出码与原因：密码绝不能出现在异常里（它会一路飘到日志和用户看得到的通知上）
+            _logger.Warning("7z extraction failed with exit code {ExitCode} ({Reason}): {StdErr}",
+                process.ExitCode, failure.Value, Excerpt(stderr));
             throw new ArchiveExtractionException(failure.Value,
-                $"7-Zip extraction failed with exit code {process.ExitCode}");
+                $"7-Zip extraction failed with exit code {process.ExitCode} ({failure.Value})");
         }
 
         if (process.ExitCode == ArchiveExtractionClassifier.WarningExitCode)
@@ -376,6 +377,24 @@ public sealed class DragAndDropScanner
             .Select(argument => argument.StartsWith("-p", StringComparison.Ordinal) ? "-p***" : argument);
 
         return $"{startInfo.FileName} {string.Join(' ', arguments)}";
+    }
+
+    /// <summary>
+    /// 解压目标盘的剩余字节数；测不到（UNC 路径、盘符已消失、权限不足）返回 <c>null</c>。
+    /// 只给 <see cref="ArchiveExtractionClassifier"/> 在失败时判「是不是盘满了」用 ——
+    /// 判不出来不是错误，退回按 7-Zip 自己的文案判。
+    /// </summary>
+    private static long? TryGetFreeBytes(string path)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(path);
+            return string.IsNullOrEmpty(root) ? null : new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>把可能很长的进程输出截断，只用于日志。</summary>

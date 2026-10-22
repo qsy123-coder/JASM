@@ -5,6 +5,7 @@ using Windows.Storage;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
+using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Services.DragDrop;
 using GIMI_ModManager.WinUI.Services.Input;
@@ -12,7 +13,9 @@ using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.ViewModels.Overlay;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Serilog;
 using Windows.Foundation;
 using WinUIEx;
@@ -51,15 +54,11 @@ namespace GIMI_ModManager.WinUI.Views.Overlay;
 public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 {
     /// <summary>
-    /// 浮窗尺寸。**DIP**（<see cref="WindowEx.Width"/> 的语义），由 WinUIEx 按 DPI 换成物理像素
-    /// （这台机 150%，所以 340×320 逻辑 = 510×480 物理）。
-    ///
-    /// 嫌大/嫌小就改这两个数：内部是「标题条 + 角色下拉 + 搜索 + 模式行 + 列表(*)+ 底栏」，
+    /// 浮窗尺寸由 <see cref="OverlayViewModel.CurrentSizeOption"/> 的三档预设决定（小/中/大，DIP）。
+    /// 内部是「标题条 + 角色下拉 + 搜索 + 模式行 + 列表(*)+ 底栏」，
     /// 只有列表那一行是 <c>*</c>，所以整体变矮只是列表变短，不会把别的挤掉。
     /// </summary>
-    private const int OverlayWidth = 380;
-
-    private const int OverlayHeight = 360;
+    private OverlaySizeOption CurrentSize => ViewModel.CurrentSizeOption;
 
     /// <summary>置顶自愈的间隔。1 秒是原型的取值：既够快（用户几乎来不及看到它被盖住），也不至于每秒都去动窗口。</summary>
     private static readonly TimeSpan TopMostCheckInterval = TimeSpan.FromSeconds(1);
@@ -80,6 +79,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     private const int StackProbeTickInterval = 5;
 
     private readonly OverlayWindowStyles _styles;
+    private readonly OverlayScreenshotService _screenshotService;
     private readonly ILogger _logger;
     private readonly HWND _hwnd;
     private readonly DispatcherTimer _topMostTimer;
@@ -130,12 +130,31 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// <summary>本次"前台被抢走"期间是否已经记过"改走注入空输入那条路"（见 <see cref="EnsureForeground"/>）。</summary>
     private bool _foregroundNudged;
 
+    /// <summary>
+    /// 「把某一行滚进视野」的代次（见 <see cref="BringItemIntoView"/>）。
+    /// 多拍对齐时只有最后一次请求算数，避免早先那名目标的延迟对齐把列表拽回去。
+    /// </summary>
+    private int _scrollIntoViewEpoch;
+
+    /// <summary>
+    /// 隐藏前记下的滚动锚点：哪一行、以及它当时相对可视区上沿的位置。
+    ///
+    /// 记「行 + 相对位置」而不是单纯的滚动偏移：重开浮窗时列表会整体重建（角色/Mod 行都是新对象），
+    /// 而勾选行的按键面板重新展开会改变条目高度 —— 只记偏移的话，重开后会落到别的行上。
+    /// </summary>
+    private ScrollAnchor? _scrollAnchor;
+
+    /// <summary><see cref="_scrollAnchor"/> 的内容。用 <c>Guid</c> 而不是行对象：行每次重建都是新实例。</summary>
+    private readonly record struct ScrollAnchor(Guid ModId, double OffsetFromViewportTop);
+
     /// <summary>浮窗的 ViewModel（internal：它和它手上的协调器都只在本程序集里用）。</summary>
     internal OverlayViewModel ViewModel { get; }
 
-    internal OverlayWindow(OverlayViewModel viewModel, ILogger logger)
+    internal OverlayWindow(OverlayViewModel viewModel, OverlayScreenshotService screenshotService,
+        ILogger logger)
     {
         ViewModel = viewModel;
+        _screenshotService = screenshotService;
         _logger = logger.ForContext<OverlayWindow>();
 
         InitializeComponent();
@@ -148,6 +167,13 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
         // （导航热键、过滤之后的重定位），挂在这里它们都自动得到同一件事。
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
 
+        // 行内按键面板换行时把那一行滚进视野
+        ViewModel.KeyPanelTargetChanged += OnKeyPanelTargetChanged;
+
+        // 用户自己滚了列表：还没跑完的延迟对齐就不该再把他拽回去（见 CancelPendingScrollAdjustments）。
+        // 挂在 ListView 上而不是 ScrollViewer 上：后者要等模板应用之后才找得到，而滚轮事件会冒泡到这里。
+        ModList.PointerWheelChanged += (_, _) => CancelPendingScrollAdjustments();
+
         _styles = new OverlayWindowStyles(_logger);
         _hwnd = (HWND)WinRT.Interop.WindowNative.GetWindowHandle(this);
 
@@ -155,6 +181,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
         // （我们自己拿不回来：那一刻的输入所有者是刚注入按键的提权助手）。只有窗口知道自己的 hwnd，
         // 所以在拿到它的这里写一次。
         ViewModel.RefreshCoordinator.OverlayWindowHandle = (nint)_hwnd;
+
+        // 按键面板的徽章点击送完键也要交还前台，理由同上
+        ViewModel.OverlayWindowHandle = (nint)_hwnd;
 
         // 拖放投递通道：关掉 UAC 的机器上 WinUI 收不到外部拖放，由自有落点顶上。
         // **只多挂一个落点** —— 浮窗的显隐、置顶、前台归属走的是下面那些自己写的路径
@@ -204,8 +233,8 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     private void ConfigureOverlayWindow()
     {
-        Width = OverlayWidth;
-        Height = OverlayHeight;
+        Width = CurrentSize.Width;
+        Height = CurrentSize.Height;
 
         // 内容（角色下拉、Mod 列表）是后来才填满的，填满那一刻窗口会被撑大 —— 见 ReassertSize
         RootGrid.SizeChanged += (_, _) => ReassertSize();
@@ -232,6 +261,13 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     public void SetHotkeyHint(string text) => HotkeyHintText.Text = text;
 
     /// <summary>
+    /// 把实际生效的截图热键写进按钮 tooltip。没注册上时写明"请用按钮" ——
+    /// tooltip 里写死 Ctrl+Alt+S 会骗用户（首选被占时会退到备选）。
+    /// </summary>
+    public void SetScreenshotHotkeyHint(string text)
+        => ToolTipService.SetToolTip(CaptureLastRegionButton, $"按上次区域截图（{text}）");
+
+    /// <summary>
     /// 把窗口尺寸**再按一遍**那两个常量。
     ///
     /// 为什么需要：实机反馈「浮窗本来很小，用着用着突然变大」。构造时设一次的 <c>Width</c>/<c>Height</c>
@@ -240,11 +276,35 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     internal void ReassertSize()
     {
-        if (Math.Abs(Width - OverlayWidth) > 0.5)
-            Width = OverlayWidth;
+        var size = CurrentSize;
 
-        if (Math.Abs(Height - OverlayHeight) > 0.5)
-            Height = OverlayHeight;
+        if (Math.Abs(Width - size.Width) > 0.5)
+            Width = size.Width;
+
+        if (Math.Abs(Height - size.Height) > 0.5)
+            Height = size.Height;
+    }
+
+    /// <summary>
+    /// 窗口尺寸变化后把它夹回工作区：浮窗没有标题栏，下半截被摆到屏幕外就再也点不到了。
+    /// 只在可见时做 —— 隐藏时等下一次唤出，<see cref="RestorePosition"/> 会再夹一次。
+    /// </summary>
+    private void KeepOnScreen()
+    {
+        if (!IsOverlayVisible)
+            return;
+
+        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var size = AppWindow.Size;
+        var position = AppWindow.Position;
+
+        var (x, y) = OverlayPlacement.ResolveTopLeft(
+            (position.X, position.Y),
+            new OverlayRect(workArea.X, workArea.Y, workArea.Width, workArea.Height),
+            size.Width, size.Height);
+
+        if (x != position.X || y != position.Y)
+            AppWindow.Move(new PointInt32(x, y));
     }
 
     /// <summary>
@@ -268,11 +328,20 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
             return;
         }
 
+        // 标题栏换了大小档位：按新档位设尺寸，再把窗口夹回工作区
+        if (e.PropertyName == nameof(OverlayViewModel.SelectedSizeIndex))
+        {
+            ReassertSize();
+            KeepOnScreen();
+            return;
+        }
+
         if (e.PropertyName != nameof(OverlayViewModel.SelectedMod))
             return;
 
+        // 键盘逐行走：只做最小滚动（行已在可视区里就不动），别每按一下都把整屏跳一遍
         if (ViewModel.SelectedMod is { } item)
-            ModList.ScrollIntoView(item);
+            BringItemIntoView(item, alignToTop: false);
     }
 
     /// <summary>
@@ -291,6 +360,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
         _dragProbeLogged = false;
 
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
+
+        // 把列表滚回隐藏前的落点（用户要求：重开浮窗不跳动）。排进队列、不能当场做，理由见该方法。
+        ScheduleScrollAnchorRestore();
 
         // 首次显示才做的收尾，刻意放在 ShowWindow **之后**：
         //   1. 构造阶段 AppWindow.Size 不可信（原型实测：那时算出来的"居中"会跑到屏幕左上角）；
@@ -326,6 +398,10 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     public void HideOverlay()
     {
+        // 记下此刻的滚动落点，重开时再放回去（见 ScheduleScrollAnchorRestore）。
+        // 必须在 SW_HIDE **之前**读：藏起来之后行容器可能被回收，位置就读不到了。
+        CaptureScrollAnchor();
+
         // "该不该还前台"必须在 SW_HIDE **之前**判定：一藏起来系统立刻就把前台分配给别的窗口，
         // 之后再读"前台是不是我"永远是假 —— 这段还前台的逻辑会整个静默失效。
         var foregroundWasOurs = !_foregroundBeforeShow.IsNull && OverlayWindowStyles.IsOwnWindowForeground(_hwnd);
@@ -406,6 +482,16 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
         if (!IsOverlayVisible)
             return;
 
+        // 刷新在飞：这段时间前台必须**留在游戏上**，浮窗不许插手。
+        // 送键链路刚在同步段把游戏切到前台，而提权助手 / 主程序都要回读到「前台是游戏进程」
+        // 才肯发 F10（否则回执 not-foreground、这一发**根本不会发出去**）。本类每秒一拍的自愈
+        // 若在中间把前台抢回浮窗，就是「勾了、界面显示在刷、游戏里没换」。
+        // 切换到别的程序再回来之后尤其容易撞上：那时前台本来就不在浮窗上，
+        // 光标一压到浮窗就每拍都在重申（还带空鼠标事件解锁），正好横在送礼这一段里。
+        // 刷新结束后前台本就会被交还回来（见 RequestRefreshAsync 的 handback），跳过这几拍不会丢。
+        if (ViewModel.RefreshCoordinator.IsRefreshing)
+            return;
+
         if (OverlayWindowStyles.IsOwnWindowForeground(_hwnd))
         {
             if (_foregroundLossLogged)
@@ -423,16 +509,22 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
         if (!_foregroundLossLogged)
         {
-            _logger.Warning("浮窗可见但前台被抢走了（当前前台={Foreground}，光标在浮窗上={OnOverlay}），此后每拍重申一次",
+            _logger.Warning("浮窗可见但前台被抢走了（当前前台={Foreground}，光标在浮窗上={OnOverlay}），此后光标压在浮窗上时每拍重申一次",
                 WindowProcessQuery.DescribeWindow(PInvoke.GetForegroundWindow()), cursorOnOverlay);
             _foregroundLossLogged = true;
         }
 
+        // 光标不在浮窗上 = 用户人在游戏里（或切去了别的程序）。这时前台就该留在别人手上，
+        // 去抢等于每隔一秒把用户从游戏里踢一下 —— 也正是上面那段取舍说明里的「不能抢」。
+        // 这里只记账、不动手；用户把光标移回来，下一拍就会走下面的重申。
+        if (!cursorOnOverlay)
+            return;
+
         _foregroundRetakeCount++;
 
-        // 光标在浮窗上这一次记一条（按状态变化记，不按拍数记）：它同时是"用户正伸手点浮窗"的凭据，
+        // 这一次记一条（按状态变化记，不按拍数记）：它同时是"用户正伸手点浮窗"的凭据，
         // 也是"为什么这次能抢回来"的答案 —— 没这一行的话，日志里两种重申看起来一模一样。
-        if (cursorOnOverlay && !_foregroundNudged)
+        if (!_foregroundNudged)
         {
             _logger.Information("光标在浮窗上，改走「注入空鼠标事件解锁前台锁」那条路重申前台");
             _foregroundNudged = true;
@@ -440,8 +532,10 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
         // 这里**不等**回读：每秒都在跑的路径上阻塞 UI 线程 300ms 不可接受，
         // 而这次重申成没成下一拍就知道（前台是我们的就记"已收回"）。
+        // 注入空鼠标事件这一步必须带：前台是被别人拿走的时，本进程的输入身份已经过期，
+        // 不带它的话 SetForegroundWindow 会被前台锁一直拒（实测连撞 16 拍）。
         ForegroundWindowActivator.Activate(_hwnd, handOverRightToSetForeground: false, _logger,
-            nudgeInputForForegroundLock: cursorOnOverlay);
+            nudgeInputForForegroundLock: true);
     }
 
     /// <summary>
@@ -556,6 +650,439 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     }
 
     private void OnHideClick(object sender, RoutedEventArgs e) => HideOverlay();
+
+    // ── 截图（框选 / 复用上次区域）────────────────────────────────
+
+    private void OnCaptureRegionClick(object sender, RoutedEventArgs e)
+        => _ = CaptureScreenshotAsync(useSavedRegion: false);
+
+    private void OnCaptureLastRegionClick(object sender, RoutedEventArgs e)
+        => _ = CaptureScreenshotAsync(useSavedRegion: true);
+
+    /// <summary>
+    /// 截图热键的入口。**浮窗隐藏时也会走到这里**：全局热键注册在窗口上，与显隐无关。
+    /// </summary>
+    internal Task CaptureLastRegionAsync() => CaptureScreenshotAsync(useSavedRegion: true);
+
+    /// <summary>
+    /// 截图主流程：先确定唯一的 Mod 目标，再决定「复用记忆区域」还是「抓整屏后框选」。
+    ///
+    /// <para>
+    /// 浮窗一定先藏起来：它压在游戏画面上，不藏就会被拍进截图（而且遮罩窗口也不能出现在自己的底图里）。
+    /// 拍完按**截图前的显隐**恢复 —— 用户是按热键截的，截完不该平白冒出一个浮窗。
+    /// </para>
+    ///
+    /// <para>
+    /// 框选窗口会拿走前台；无论成败都要把它还回截图前的那个窗口（通常是游戏）。
+    /// </para>
+    /// </summary>
+    internal async Task CaptureScreenshotAsync(bool useSavedRegion)
+    {
+        if (ViewModel.IsCapturing)
+            return;
+
+        // 记在目标判定之前：热键截图的常态是浮窗藏着，失败反馈要走系统通知
+        var wasVisible = IsOverlayVisible;
+
+        var target = ViewModel.GetUniqueCheckedMod();
+
+        if (target is null)
+        {
+            ViewModel.ReportScreenshotProblem("请先勾选，且只勾选一件 Mod，再截图。",
+                notifyViaSystem: !wasVisible);
+            return;
+        }
+
+        ViewModel.IsCapturing = true;
+
+        if (wasVisible)
+            HideOverlay();
+
+        var foregroundBefore = PInvoke.GetForegroundWindow();
+
+        try
+        {
+            var bounds = OverlayScreenshotService.GetVirtualScreenBounds();
+
+            // 「上次区域」先夹回当前虚拟屏幕；换过分辨率 / 显示器之后旧坐标可能已经失效
+            var saved = useSavedRegion
+                ? ViewModel.Settings.SavedCaptureRegion?.ClampTo(bounds)
+                : null;
+
+            if (saved is { } region)
+            {
+                var frame = await Task.Run(() => _screenshotService.Capture(region));
+                await ViewModel.SaveScreenshotAsync(frame, region, target, notifyViaSystem: !wasVisible);
+                return;
+            }
+
+            // 没有记忆区域（或已经失效）：抓整屏，让用户在上面框
+            var fullRegion = new OverlayCaptureRegion(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            var fullScreen = await Task.Run(() => _screenshotService.Capture(fullRegion));
+            var selector = new ScreenshotRegionSelectorWindow(fullScreen, _logger);
+            var chosen = await selector.PickAsync();
+
+            if (chosen is null)
+            {
+                ViewModel.ReportScreenshotProblem("已取消截图。", notifyViaSystem: !wasVisible);
+                return;
+            }
+
+            var cropped = _screenshotService.Crop(fullScreen, chosen.Value);
+            await ViewModel.SaveScreenshotAsync(cropped, chosen.Value, target, notifyViaSystem: !wasVisible);
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "[浮窗截图] 截图失败");
+            ViewModel.ReportScreenshotProblem($"截图失败：{e.Message}", notifyViaSystem: !wasVisible);
+        }
+        finally
+        {
+            // 框选窗口在时前台是它；不在时这句是幂等的。先还前台，再决定浮窗回不回来
+            ForegroundWindowActivator.Activate(foregroundBefore, handOverRightToSetForeground: false, _logger);
+
+            if (wasVisible)
+                ShowOverlay();
+
+            ViewModel.IsCapturing = false;
+        }
+    }
+
+    // ── 按键面板（挂在勾选行下面）────────────────────────────────
+
+    /// <summary>
+    /// 面板目标换行：把那一行滚进视野。展开的面板会把行撑高，
+    /// 不滚的话它可能整块落在列表可视区下面，看起来像"勾了但没出面板"。
+    /// </summary>
+    private void OnKeyPanelTargetChanged(OverlayModItemViewModel item)
+        => App.MainWindow.DispatcherQueue.TryEnqueue(() => BringItemIntoView(item));
+
+    /// <summary>
+    /// 把一行滚进视野。分几拍：行内按键面板是**先出现、后撑高**的，按键绑定还会再解析回来长一截，
+    /// 每一拍都可能把已经摆好的落点推歪，所以面板稳定之后再各补一次。
+    /// </summary>
+    /// <param name="alignToTop">
+    /// <c>true</c> = 行顶贴列表上沿：按键面板换了主人时用（落点必须是行，面板要跟着露出来）。
+    /// <c>false</c> = 最小滚动：键盘逐行移动时用，行已经在可视区里就完全不动。
+    /// </param>
+    private void BringItemIntoView(OverlayModItemViewModel item, bool alignToTop = true)
+    {
+        // 连着按上下键时，每一行都会排上三拍；只认最后那一次 ——
+        // 否则前一行的延迟对齐会在 150ms 后把列表拽回去。
+        var epoch = ++_scrollIntoViewEpoch;
+
+        ScrollItemIntoView(item, alignToTop);
+
+        // 第二拍：面板刚展开，等这一步布局跑完
+        App.MainWindow.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (epoch == _scrollIntoViewEpoch)
+                ScrollItemIntoView(item, alignToTop);
+        });
+
+        // 第三拍：按键绑定解析回来后面板内容还会再长一截，稍等一拍再对齐
+        App.MainWindow.DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(PanelLayoutSettleMilliseconds);
+
+            // 不用 ConfigureAwait(false)：续体要回 UI 线程才能动列表。
+            // 行对象可能已经整批换过（换角色 / 重开浮窗），或者用户已经选中了别的行 —— 那几拍都不作数。
+            if (epoch != _scrollIntoViewEpoch || !ViewModel.Mods.Contains(item))
+                return;
+
+            ScrollItemIntoView(item, alignToTop);
+        });
+    }
+
+    /// <summary>面板内容稳定大约要这么久（见 <see cref="BringItemIntoView"/> 的第三拍）。</summary>
+    private const int PanelLayoutSettleMilliseconds = 150;
+
+    /// <summary>
+    /// 把某一行滚进视野。
+    ///
+    /// **量的是「行」不是容器**：容器是「行 + 按键面板」一整个 item，面板展开后它比可视区还高，
+    /// 按容器算落点会停在面板上（用户反馈：重开浮窗后看到的是一屏按键映射，而不是勾的那件 Mod）。
+    /// 行元素从模板里按 <c>Tag</c> 找（模板最外层那层 Grid 挂的就是行 VM）。
+    /// </summary>
+    private void ScrollItemIntoView(OverlayModItemViewModel item, bool alignToTop)
+    {
+        if (ModList.ContainerFromItem(item) is not FrameworkElement container)
+        {
+            // 容器还没被虚拟化出来（列表刚重建）：先交给 ListView 按估算高度滚一次，
+            // 后面那几拍等容器实现出来之后，这里的精确对齐会接手。
+            ModList.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
+            return;
+        }
+
+        try
+        {
+            if (FindScrollViewer(ModList) is not { } scrollViewer)
+                return;
+
+            var row = FindRowElement(container, item) ?? container;
+            var top = row.TransformToVisual(scrollViewer).TransformPoint(new Point(0, 0)).Y;
+
+            if (alignToTop)
+            {
+                // 已经贴顶就不动；否则把行顶对齐到上沿（面板照旧在下面展开）
+                if (Math.Abs(top) < 0.5)
+                    return;
+
+                scrollViewer.ChangeView(null, scrollViewer.VerticalOffset + top, null, disableAnimation: true);
+                return;
+            }
+
+            var height = row.ActualHeight;
+            var viewportHeight = scrollViewer.ViewportHeight;
+
+            // 整行都在可视区里就不动 —— 键盘逐行移动时画面保持稳定
+            if (top >= -0.5 && top + height <= viewportHeight + 0.5)
+                return;
+
+            // 最小滚动：只挪露不出来的那一截（上沿露不出就贴顶，下沿露不出就贴底）
+            var delta = top < -0.5 ? top : top + height - viewportHeight;
+
+            scrollViewer.ChangeView(null, scrollViewer.VerticalOffset + delta, null, disableAnimation: true);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            // 容器正在被回收 / 不在同一棵可视树上：这一次跳过，下一拍再来
+            _logger.Debug(e, "把行滚进视野失败");
+        }
+    }
+
+    /// <summary>
+    /// 在行容器里找模板最外层那层「行」元素（模板最外层的 StackPanel → 第一个挂
+    /// <c>Tag="{x:Bind}"</c> 的 Grid）。深度优先，所以先命中的是行本身，
+    /// 不会拿到行尾那个同样挂了 Tag 的「下一个」按钮。
+    /// </summary>
+    private static FrameworkElement? FindRowElement(DependencyObject root, OverlayModItemViewModel item)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+
+            if (child is FrameworkElement element && ReferenceEquals(element.Tag, item))
+                return element;
+
+            if (FindRowElement(child, item) is { } found)
+                return found;
+        }
+
+        return null;
+    }
+
+    // ── 留在隐藏前的滚动落点（重开不跳）─────────────────────────
+
+    /// <summary>
+    /// 记下此刻列表最上面那一行。**必须在 SW_HIDE 之前调**：藏起来之后行容器可能被回收。
+    /// 读不到可用行（列表空 / 正在重建）时置 <c>null</c>，重开时按默认落点处理。
+    /// </summary>
+    private void CaptureScrollAnchor()
+    {
+        _scrollAnchor = null;
+
+        if (FindScrollViewer(ModList) is not { } scrollViewer)
+            return;
+
+        try
+        {
+            foreach (var item in ViewModel.Mods)
+            {
+                if (ModList.ContainerFromItem(item) is not FrameworkElement container)
+                    continue;
+
+                var top = container.TransformToVisual(scrollViewer).TransformPoint(new Point(0, 0)).Y;
+
+                // 整个在可视区上方的跳过；第一个「下沿还在可视区里」的就是锚点
+                if (top + container.ActualHeight <= 0)
+                    continue;
+
+                _scrollAnchor = new ScrollAnchor(item.Id, top);
+                return;
+            }
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            _logger.Debug(e, "记录列表滚动位置失败");
+        }
+    }
+
+    /// <summary>
+    /// 重开浮窗后把列表滚回隐藏前的落点（产品决定：重开不跳动，所有 Mod 位置保持原样）。
+    ///
+    /// **排进 DispatcherQueue、不当场做**：唤出流程里的 <c>RefreshCharacters</c> 已经排了一条
+    /// 「滚到勾选行」（按键面板换了目标），要等它先跑完再由这里接管；接管时代次 +1，
+    /// 把它后面的几拍对齐一并作废，免得两边互相拽。
+    /// </summary>
+    private void ScheduleScrollAnchorRestore()
+    {
+        if (_scrollAnchor is null)
+            return;
+
+        App.MainWindow.DispatcherQueue.TryEnqueue(BeginScrollAnchorRestore);
+    }
+
+    /// <summary>
+    /// 锚点补拍的延时（毫秒）：面板刚撑高、按键绑定解析回来（可能到 1 秒）各要一次。
+    /// 用户在这期间自己滚了会被 <see cref="CancelPendingScrollAdjustments"/> 作废。
+    /// </summary>
+    private static readonly int[] ScrollAnchorRestoreDelays = [16, 150, 500, 1000];
+
+    private void BeginScrollAnchorRestore()
+    {
+        var epoch = ++_scrollIntoViewEpoch;
+
+        RestoreScrollAnchor();
+
+        foreach (var delay in ScrollAnchorRestoreDelays)
+        {
+            App.MainWindow.DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(delay);
+
+                // 不用 ConfigureAwait(false)：续体要回 UI 线程才能动列表
+                if (epoch == _scrollIntoViewEpoch)
+                    RestoreScrollAnchor();
+            });
+        }
+    }
+
+    private void RestoreScrollAnchor()
+    {
+        if (_scrollAnchor is not { } anchor)
+            return;
+
+        var item = ViewModel.Mods.FirstOrDefault(mod => mod.Id == anchor.ModId);
+
+        if (item is null)
+        {
+            // 那一件没了（删了 / 换了角色）：退回默认 —— 把当前选中行露出来
+            _scrollAnchor = null;
+
+            if (ViewModel.SelectedMod is { } selected)
+                BringItemIntoView(selected, alignToTop: false);
+
+            return;
+        }
+
+        if (ModList.ContainerFromItem(item) is not FrameworkElement container)
+        {
+            // 还没被虚拟化出来：先按估算高度滚过去，下一拍再精确对齐
+            ModList.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
+            return;
+        }
+
+        try
+        {
+            if (FindScrollViewer(ModList) is not { } scrollViewer)
+                return;
+
+            var top = container.TransformToVisual(scrollViewer).TransformPoint(new Point(0, 0)).Y;
+            var delta = top - anchor.OffsetFromViewportTop;
+
+            if (Math.Abs(delta) < 0.5)
+                return;
+
+            scrollViewer.ChangeView(null, scrollViewer.VerticalOffset + delta, null, disableAnimation: true);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            _logger.Debug(e, "恢复列表滚动位置失败");
+        }
+    }
+
+    /// <summary>
+    /// 用户自己滚了：把还没跑完的延迟对齐作废，否则 150 / 500ms 后那几拍会把他刚滚到的位置拽回去。
+    /// 记下的锚点也一并丢掉 —— 隐藏时会按新位置重新记。
+    /// </summary>
+    private void CancelPendingScrollAdjustments()
+    {
+        _scrollIntoViewEpoch++;
+        _scrollAnchor = null;
+    }
+
+    /// <summary>在可视树里找 ListView 内部那个 ScrollViewer（ListView 不公开它）。</summary>
+    private static ScrollViewer? FindScrollViewer(DependencyObject root)
+    {
+        if (root is ScrollViewer scrollViewer)
+            return scrollViewer;
+
+        var count = VisualTreeHelper.GetChildrenCount(root);
+
+        for (var index = 0; index < count; index++)
+        {
+            if (FindScrollViewer(VisualTreeHelper.GetChild(root, index)) is { } found)
+                return found;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 点击面板里的按键徽章 → 把这一键发给游戏。
+    /// 条目从 <c>Tag</c> 取（模板里 <c>Tag="{x:Bind}"</c>），不依赖 DataContext。
+    /// </summary>
+    private async void OnKeyBadgeClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ModIniKeyBindingEntry entry)
+            return;
+
+        await ViewModel.SendKeyBindingAsync(entry);
+    }
+
+    // ── 右键一行 = 打 NSFW 标记（一件件过 Mod 时的审阅记号）──────────────
+
+    /// <summary>
+    /// 右键一行：给这一件打上 / 取消 NSFW 标记（实现在 <see cref="OverlayViewModel.ToggleNsfwMarkAsync"/>，
+    /// 只动名单、不动磁盘上的 Mod）。
+    ///
+    /// **为什么是右键而不是再占一个热键**：标记与"换到这一件"本来就是同一行上的前后两拍
+    /// （左键勾上看效果 → 右键记一笔），右键既不跟勾选抢同一个手势，也不用再往这扇窗上挤一个全局热键。
+    /// 事件打在行根 Grid 上，所以勾选框、缩略图、名字上右键都算在这一行上。
+    /// </summary>
+    /// <summary>
+    /// 鼠标中键一行：标记 / 取消「已看过」（实现在 <see cref="OverlayViewModel.ToggleSeenMarkAsync"/>）。
+    ///
+    /// 与右键 NSFW 分开：右键判内容、中键记进度，两件事互相独立。
+    /// 中键在 WinUI 里没有默认行为（不会触发选中或滚动），标 Handled 免得它继续往上传。
+    /// </summary>
+    /// <summary>
+    /// 行尾「下一个」按钮：勾上列表里的下一件。
+    /// 实际切换走 <see cref="OverlayViewModel.SelectNextModAsync"/>，与手动点勾选框同一条路。
+    /// </summary>
+    private async void OnNextModClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is OverlayModItemViewModel item)
+            await ViewModel.SelectNextModAsync(item);
+    }
+
+    private async void OnModRowPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint((UIElement)sender);
+
+        if (!point.Properties.IsMiddleButtonPressed)
+            return;
+
+        e.Handled = true;
+
+        if ((sender as FrameworkElement)?.Tag is OverlayModItemViewModel item)
+            await ViewModel.ToggleSeenMarkAsync(item);
+    }
+
+    private async void OnModRowRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not OverlayModItemViewModel item)
+            return;
+
+        // 不让它往上冒：列表控件收到右键会走它自己那套（取消选中之类），而行的高亮是浮窗自己
+        // 维护的（SelectionMode="None"、ListViewItem 压根没有选中态），别让两套语义打架。
+        e.Handled = true;
+
+        await ViewModel.ToggleNsfwMarkAsync(item);
+    }
 
     private void OnDragStripPointerPressed(object sender, PointerRoutedEventArgs e)
     {
@@ -672,6 +1199,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
         // 摘掉订阅：ViewModel 由 Host 持有、比这扇窗活得久，留着订阅等于让窗口被它拖住不放
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ViewModel.KeyPanelTargetChanged -= OnKeyPanelTargetChanged;
 
         RememberPosition();
         _logger.Debug("浮窗已关闭");

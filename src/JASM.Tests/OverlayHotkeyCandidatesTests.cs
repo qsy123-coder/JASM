@@ -155,4 +155,29 @@ public class OverlayHotkeyCandidatesTests
     [Fact]
     public void DescribeFailureSaysSoWhenThereWasNothingToTry()
         => Assert.Equal("没有可用的候选热键。", OverlayHotkeyCandidates.DescribeFailure([]));
+
+    [Fact]
+    public void ScreenshotDefaultsStartWithCtrlAltSAndEndWithBareF9()
+    {
+        var candidates = OverlayHotkeyCandidates.CreateScreenshotDefaults();
+
+        // 首选是用户选定的组合；最后一个是不带修饰键的兜底 —— 顺序就是回退顺序，不能随手换
+        Assert.Equal("Ctrl+Alt+S", candidates[0].FriendlyName);
+        Assert.Equal("Ctrl+Shift+S", candidates[1].FriendlyName);
+        Assert.Equal("F9", candidates[^1].FriendlyName);
+    }
+
+    [Fact]
+    public void ScreenshotDefaultsAreNotASharedMutableInstance()
+        => Assert.NotSame(OverlayHotkeyCandidates.CreateScreenshotDefaults(),
+            OverlayHotkeyCandidates.CreateScreenshotDefaults());
+
+    [Fact]
+    public void ScreenshotHotkeyAlsoGetsTheNoRepeatFlag()
+    {
+        // 截图是"一发一个文件"：按住热键连发会在输出目录里刷出一串重复截图
+        var flags = OverlayHotkeyCandidates.ToRegisterHotKeyFlags(HotkeyModifiers.Control | HotkeyModifiers.Alt);
+
+        Assert.Equal(OverlayHotkeyCandidates.NoRepeatFlag, flags & OverlayHotkeyCandidates.NoRepeatFlag);
+    }
 }

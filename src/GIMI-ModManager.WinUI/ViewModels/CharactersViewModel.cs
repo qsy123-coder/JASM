@@ -1180,6 +1180,10 @@ public partial class CharactersViewModel : ObservableRecipient, INavigationAware
                 "ModDrop_CorruptTitle", "ModDrop_CorruptBody",
                 "The archive could not be read",
                 "It looks damaged or incomplete. Try downloading it again."),
+            ArchiveExtractionFailureReason.DiskFull => (
+                "ModDrop_DiskFullTitle", "ModDrop_DiskFullBody",
+                "Not enough disk space",
+                "The drive holding the Mods folder ran out of space while unpacking. Free some space and drag the package in again - nothing else is wrong with it."),
             ArchiveExtractionFailureReason.EmptyOutput => (
                 "ModDrop_EmptyTitle", "ModDrop_EmptyBody",
                 "The archive contained nothing",

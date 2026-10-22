@@ -23,6 +23,7 @@ using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
+using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.Validators.PreConfigured;
 using GIMI_ModManager.WinUI.ViewModels.SettingsViewModels;
 using GIMI_ModManager.WinUI.Views;
@@ -128,6 +129,12 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     public PathPicker PathToGIMIFolderPicker { get; }
     public PathPicker PathToModsFolderPicker { get; }
 
+    /// <summary>
+    /// 浮窗截图的输出目录。与浮窗里那个快捷入口读写的是**同一份设置**
+    /// （<see cref="OverlaySettings.ScreenshotOutputFolder"/>），不另外存一份。
+    /// </summary>
+    public PathPicker OverlayScreenshotFolderPicker { get; }
+
     [ObservableProperty] private bool _legacyCharacterDetails;
 
     /// <summary>Whether the selected game supports one-click Mod environment setup (e.g. WuWa).</summary>
@@ -186,6 +193,14 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         _modManagerOptions = localSettingsService.ReadSetting<ModManagerOptions>(ModManagerOptions.Section);
         PathToGIMIFolderPicker = new PathPicker();
         PathToModsFolderPicker = new PathPicker(ModsFolderValidator.Validators);
+
+        OverlayScreenshotFolderPicker = new PathPicker();
+
+        var overlaySettings = localSettingsService.ReadSetting<OverlaySettings>(OverlaySettings.Key,
+            SettingScope.App);
+        OverlayScreenshotFolderPicker.Path = string.IsNullOrWhiteSpace(overlaySettings?.ScreenshotOutputFolder)
+            ? OverlayScreenshotService.GetDefaultOutputFolder()
+            : overlaySettings!.ScreenshotOutputFolder;
 
         CharacterAsSkinsCheckbox = _modManagerOptions?.CharacterSkinsAsCharacters ?? false;
 
@@ -365,6 +380,45 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private async Task BrowseModsFolderAsync()
     {
         await PathToModsFolderPicker.BrowseFolderPathAsync(App.MainWindow);
+    }
+
+    /// <summary>选浮窗截图的输出目录。选完立刻落盘 —— 它是个独立的小设置，不值得再让用户点一次「更新」。</summary>
+    [RelayCommand]
+    private async Task BrowseOverlayScreenshotFolderAsync()
+    {
+        await OverlayScreenshotFolderPicker.BrowseFolderPathAsync(App.MainWindow);
+
+        if (OverlayScreenshotFolderPicker.PathHasValue)
+            await SaveOverlayScreenshotFolderAsync();
+    }
+
+    [RelayCommand]
+    private async Task SaveOverlayScreenshotFolderAsync()
+    {
+        var settings = await _localSettingsService.ReadOrCreateSettingAsync<OverlaySettings>(
+            OverlaySettings.Key, SettingScope.App);
+
+        settings.ScreenshotOutputFolder = OverlayScreenshotFolderPicker.Path;
+
+        await _localSettingsService.SaveSettingAsync(OverlaySettings.Key, settings, SettingScope.App);
+
+        _notificationManager.ShowNotification("浮窗截图", "截图输出目录已保存。",
+            TimeSpan.FromSeconds(4));
+    }
+
+    /// <summary>清除「按上次区域截图」记住的矩形，下次会重新框选。</summary>
+    [RelayCommand]
+    private async Task ClearOverlayCaptureRegionAsync()
+    {
+        var settings = await _localSettingsService.ReadOrCreateSettingAsync<OverlaySettings>(
+            OverlaySettings.Key, SettingScope.App);
+
+        settings.ClearCaptureRegion();
+
+        await _localSettingsService.SaveSettingAsync(OverlaySettings.Key, settings, SettingScope.App);
+
+        _notificationManager.ShowNotification("浮窗截图", "已清除记忆的截图区域，下次需要重新框选。",
+            TimeSpan.FromSeconds(5));
     }
 
     /// <summary>

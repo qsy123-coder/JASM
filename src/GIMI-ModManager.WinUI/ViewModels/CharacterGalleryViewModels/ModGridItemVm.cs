@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GIMI_ModManager.Core.Entities.Mods.Contract;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.WinUI.Helpers;
 using GIMI_ModManager.WinUI.Models;
@@ -58,6 +59,16 @@ namespace GIMI_ModManager.WinUI.ViewModels.CharacterGalleryViewModels
         public Style? ButtonStyle => _modModel.IsEnabled
             ? (Style)Application.Current.Resources["AccentButtonStyle"]
             : (Style)Application.Current.Resources["DefaultButtonStyle"];
+
+        /// <summary>已看过（来自 Mod 自己的设置文件）。</summary>
+        public bool IsSeen => _modModel.IsSeen;
+
+        /// <summary>浮窗写完「已看过」后，把这张卡片的角标同步过去。</summary>
+        public void RefreshSeenFromSettings(ModSettings settings)
+        {
+            _modModel.IsSeen = settings.SeenAt is not null;
+            OnPropertyChanged(nameof(IsSeen));
+        }
 
         public bool IsEnabled
         {

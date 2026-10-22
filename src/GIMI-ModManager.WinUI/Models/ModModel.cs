@@ -27,6 +27,9 @@ public partial class ModModel : ObservableObject, IEquatable<ModModel>
 
     [ObservableProperty] private Uri _imagePath = PlaceholderImagePath;
     [ObservableProperty] private string _author = string.Empty;
+
+    /// <summary>浮窗中键标记的「已看过」；画廊卡片据此显示角标。</summary>
+    [ObservableProperty] private bool _isSeen;
     [ObservableProperty] private string _characterSkinOverride = string.Empty;
     [ObservableProperty] private string? _modIniPath = null;
     [ObservableProperty] private bool _ignoreMergedIni = true;
@@ -97,6 +100,7 @@ public partial class ModModel : ObservableObject, IEquatable<ModModel>
         DateAdded = settings.DateAdded ?? DateTime.MinValue;
         ModIniPath = settings.MergedIniPath?.LocalPath;
         IgnoreMergedIni = settings.IgnoreMergedIni;
+        IsSeen = settings.SeenAt is not null;
         return this;
     }
 

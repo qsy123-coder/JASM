@@ -1,6 +1,8 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.Entities;
+using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Models;
 
@@ -42,6 +44,87 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     /// </summary>
     [ObservableProperty] private bool _isSelected;
 
+    /// <summary>
+    /// 这一行是不是被**右键标成了 NSFW**，界面据此画那个红标。
+    ///
+    /// 它只是浮窗自己那份名单上的一个记号（<c>OverlayNsfwMarks</c>）：不改文件夹名、
+    /// 也不碰 Mod 的设置文件，所以标上 / 取消都不会影响游戏里的表现。
+    /// </summary>
+    [ObservableProperty] private bool _isMarked;
+
+    /// <summary>
+    /// 这一行是不是被**鼠标中键**标成了「已看过」。
+    ///
+    /// 与 <see cref="IsMarked"/>（右键的 NSFW 标记）互相独立：两件事可以同时成立。
+    /// </summary>
+    [ObservableProperty] private bool _isSeen;
+
+    /// <summary>
+    /// 单选模式下、这一行是当前勾选且后面还有一行时，行尾显示「下一个」按钮。
+    /// 由浮窗的 ViewModel 统一刷新（它才知道列表顺序与当前模式）。
+    /// </summary>
+    [ObservableProperty] private bool _showNextButton;
+
+    /// <summary>
+    /// 这一行下方是否显示按键映射面板。**只有当前唯一勾选的那一行**为 true ——
+    /// 面板跟着行走，不是浮窗底部那块全局面板。
+    /// </summary>
+    [ObservableProperty] private bool _isKeyPanelVisible;
+
+    /// <summary>这一行下方的按键面板是否展开。用户点标题行折叠 / 展开。</summary>
+    [ObservableProperty] private bool _isKeyPanelExpanded;
+
+    [ObservableProperty] private bool _isKeyBindingLoading;
+
+    /// <summary>面板里的状态说明（无绑定 / 读取失败）。<c>null</c> = 不显示。</summary>
+    [ObservableProperty] private string? _keyPanelEmptyMessage;
+
+    /// <summary>这一行 Mod 的 ini 按键绑定（按文件分组）。</summary>
+    public ObservableCollection<ModIniKeyBindingGroup> KeyBindingGroups { get; } = new();
+
+    /// <summary>
+    /// 是否已经为这一行解析过按键绑定。**空结果也算解析过** ——
+    /// 否则每次刷新都会为一个"确实没有按键"的 Mod 重新扫一遍盘。
+    /// </summary>
+    public bool KeyBindingsLoaded { get; set; }
+
+    /// <summary>折叠箭头：展开时朝上、收起时朝下。</summary>
+    public string KeyPanelChevronGlyph => IsKeyPanelExpanded ? "" : "";
+
+    partial void OnIsKeyPanelExpandedChanged(bool value)
+        => OnPropertyChanged(nameof(KeyPanelChevronGlyph));
+
+    /// <summary>
+    /// 设为「当前唯一勾选行」或取消。**从隐藏变为显示时默认展开**；
+    /// 已经在显示时重复调用不动用户的折叠状态。
+    /// </summary>
+    public void SetKeyPanelVisible(bool visible)
+    {
+        if (IsKeyPanelVisible == visible)
+            return;
+
+        IsKeyPanelVisible = visible;
+
+        if (visible)
+            IsKeyPanelExpanded = true;
+    }
+
+    /// <summary>点面板标题行：折叠 / 展开。</summary>
+    public void ToggleKeyPanel() => IsKeyPanelExpanded = !IsKeyPanelExpanded;
+
+    /// <summary>清空已解析的绑定（重新解析前用）。</summary>
+    public void ClearKeyBindings()
+    {
+        KeyBindingGroups.Clear();
+        KeyBindingsLoaded = false;
+        OnPropertyChanged(nameof(HasKeyBindings));
+    }
+
+    public bool HasKeyBindings => KeyBindingGroups.Count > 0;
+
+    /// <summary>绑定集合整体换过之后通知界面（集合本身不负责通知 Count 依赖属性）。</summary>
+    public void NotifyKeyBindingsChanged() => OnPropertyChanged(nameof(HasKeyBindings));
+
     /// <summary>勾选这一行时要执行的动作，由浮窗的 ViewModel 在造行时注入。</summary>
     private Func<OverlayModItemViewModel, Task>? _toggleMod;
 
@@ -49,7 +132,7 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     public bool HasAuthor => !string.IsNullOrWhiteSpace(Author);
 
     private OverlayModItemViewModel(Guid id, string folderName, string name, string author, bool isEnabled,
-        Uri imagePath)
+        Uri imagePath, bool isSeen)
     {
         Id = id;
         FolderName = folderName;
@@ -57,6 +140,7 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
         Author = author;
         _isEnabled = isEnabled;
         ImagePath = imagePath;
+        _isSeen = isSeen;
     }
 
     /// <summary>
@@ -74,6 +158,7 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
         var name = ModFolderHelpers.GetFolderNameWithoutDisabledPrefix(folderName);
         var author = string.Empty;
         var imagePath = ModModel.PlaceholderImagePath;
+        var isSeen = false;
 
         if (entry.Mod.Settings.GetSettingsLegacy().TryPickT0(out var settings, out _))
         {
@@ -82,9 +167,11 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
 
             author = settings.Author ?? string.Empty;
             imagePath = settings.ImagePath ?? ModModel.PlaceholderImagePath;
+            isSeen = settings.SeenAt is not null;
         }
 
-        return new OverlayModItemViewModel(entry.Id, folderName, name, author, entry.IsEnabled, imagePath);
+        return new OverlayModItemViewModel(entry.Id, folderName, name, author, entry.IsEnabled, imagePath,
+            isSeen);
     }
 
     /// <summary>

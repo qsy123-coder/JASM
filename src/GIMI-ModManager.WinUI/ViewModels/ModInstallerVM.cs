@@ -166,7 +166,11 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
             .ReadOrCreateSettingAsync<ModInstallerSettings>(ModInstallerSettings.Key);
 
 
-        EnableThisMod = !_characterModList.Character.IsMultiMod && installerSettings.EnableModOnInstall;
+        // 单选模式（浮窗默认）下导入不改变当前勾选：安装向导里的「装完启用」也强制关掉，
+        // 否则这个勾选框会让用户以为新 Mod 会被启用，实际不会。
+        EnableThisMod = !_characterModList.Character.IsMultiMod
+                        && installerSettings.EnableModOnInstall
+                        && ModInstallEnablementPolicy.MayAutoEnableNewMod(_localSettingsService);
         AlwaysOnTop = installerSettings.ModInstallerWindowOnTop;
 
         await Task.Run(async () =>
@@ -318,7 +322,13 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
             string.Format(_localizer.GetLocalizedStringOrDefault("ModInstallerVM_ModInstalledMessage", defaultValue: "Mod '{0}' ({1}), was successfully added to {2} ModList"), modName, newMod.Name, _characterModList.Character.DisplayName),
             TimeSpan.FromSeconds(5));
 
-        if (EnableThisMod)
+        if (!ModInstallEnablementPolicy.MayAutoEnableNewMod(_localSettingsService))
+        {
+            // 单选模式：导入不改变当前勾选 —— 新 Mod 保持未启用，原有的勾选一件都不动。
+            // 用户想用新 Mod 时自己去浮窗 / 画廊里勾。
+            Task.Run(() => DisableMod(newMod));
+        }
+        else if (EnableThisMod)
             Task.Run(() => EnableOnlyMod(newMod));
         else
         {
