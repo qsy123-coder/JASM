@@ -371,8 +371,18 @@ public class ModDragAndDropService
             // 解压出来的临时目录用完就清 —— 装的时候是搬/复制进角色目录，这份原件不该留在临时目录里
             try
             {
-                if (contentRoot.Exists)
-                    contentRoot.Delete(true);
+                // 搬走之后这个目录**本来就不存在了**，而 `DirectoryInfo.Exists` 用的是建对象那一刻的
+                // 缓存，常常仍然回 true —— 于是 Delete 抛 DirectoryNotFoundException。那不是失败，
+                // 正是期望状态：不接住它，后面的「删空包装目录」会被一并跳过，JASM_TMP 就会一直
+                // 堆空壳（实测 464 个）。
+                try
+                {
+                    if (contentRoot.Exists)
+                        contentRoot.Delete(true);
+                }
+                catch (DirectoryNotFoundException)
+                {
+                }
 
                 // 搬走之后剩下的那层空包装（<工作根>\<guid>）也收掉：不然每装一次就在目标盘上
                 // 留一个空目录。只在它确实空、且确实是咱们自己的工作目录时才删。
