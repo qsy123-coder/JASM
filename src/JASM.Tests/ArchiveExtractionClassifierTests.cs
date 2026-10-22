@@ -23,6 +23,11 @@ public class ArchiveExtractionClassifierTests
     private const string NotAnArchiveError =
         "ERROR: C:\\Temp\\plain.txt : Cannot open the file as archive\n";
 
+    // 实测原文（7z x <自解压 exe>，目标盘写满时）。`Cannot set length for output file` 是 7-Zip
+    // 自己的英文串；它后面冒号里那半句由 OS 提供，实测中文机器上是「磁盘空间不足。」
+    private const string DiskFullError =
+        "ERROR: Cannot set length for output file : 磁盘空间不足。 : D:\\JASM_TMP\\x\\y.dds\n\n\nSystem ERROR:\n";
+
     [Fact]
     public void ASuccessfulExtractionHasNoFailureReason()
     {
@@ -68,6 +73,33 @@ public class ArchiveExtractionClassifierTests
     {
         Assert.Equal(ArchiveExtractionFailureReason.NotAnArchive,
             ArchiveExtractionClassifier.Classify(2, "", NotAnArchiveError, passwordSupplied: false));
+    }
+
+    [Fact]
+    public void ADiskFullFailureIsRecognisedBySevenZipsOwnMessage()
+    {
+        // 关键词只认 7-Zip 那句英文；OS 那半句会随系统语言变，不能拿来判
+        Assert.Equal(ArchiveExtractionFailureReason.DiskFull,
+            ArchiveExtractionClassifier.Classify(2, "", DiskFullError, passwordSupplied: true));
+    }
+
+    [Fact]
+    public void ALowFreeSpaceIsReportedAsDiskFullEvenWithoutSevenZipsMessage()
+    {
+        // 文案全是我们不认识的（可能换了 7-Zip 版本 / 另一条写盘路径），但盘确实快空了 ——
+        // 这时「清空间重试」比「重新下载」更可能是对的
+        Assert.Equal(ArchiveExtractionFailureReason.DiskFull,
+            ArchiveExtractionClassifier.Classify(2, "", "ERROR: something we do not know\n", true,
+                freeBytesOnDestination: ArchiveExtractionClassifier.MinimumFreeBytesForDiskFull - 1));
+    }
+
+    [Fact]
+    public void PlentyOfFreeSpaceLeavesAnUnknownFailureAsCorrupt()
+    {
+        // 兜底判据不能把「盘还很空」的损坏包误报成磁盘满
+        Assert.Equal(ArchiveExtractionFailureReason.Corrupt,
+            ArchiveExtractionClassifier.Classify(2, "", "ERROR: something we do not know\n", true,
+                freeBytesOnDestination: 10L * 1024 * 1024 * 1024));
     }
 
     [Fact]
