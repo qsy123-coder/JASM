@@ -15,6 +15,12 @@ public enum ArchiveExtractionFailureReason
     /// <summary>包损坏 / 解压中断。</summary>
     Corrupt,
 
+    /// <summary>
+    /// 解压目标盘没空间了。与 <see cref="Corrupt"/> 在 7-Zip 的输出里都可能是退出码 2，
+    /// 但用户要做的事完全不同（清空间重试 ≠ 重新下载），所以单列一档。
+    /// </summary>
+    DiskFull,
+
     /// <summary>解压跑完了，但一个文件都没出来（半失败，不能当成功放过去）。</summary>
     EmptyOutput,
 
