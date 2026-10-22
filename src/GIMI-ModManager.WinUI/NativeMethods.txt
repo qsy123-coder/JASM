@@ -34,3 +34,17 @@ GetClipCursor
 GetAsyncKeyState
 MessageBox
 GetShellWindow
+GetDC
+ReleaseDC
+CreateCompatibleDC
+DeleteDC
+CreateDIBSection
+SelectObject
+DeleteObject
+BitBlt
+GetSystemMetrics
+SYSTEM_METRICS_INDEX
+BITMAPINFO
+BITMAPINFOHEADER
+DIB_USAGE
+ROP_CODE
