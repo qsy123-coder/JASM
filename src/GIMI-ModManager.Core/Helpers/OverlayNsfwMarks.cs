@@ -3,16 +3,25 @@ using Newtonsoft.Json;
 namespace GIMI_ModManager.Core.Helpers;
 
 /// <summary>
-/// 浮窗里的「NSFW 标记」：一件一件过 Mod 时把看到的那件打上标，攒成一份名单。
+/// 浮窗里的审阅记号：一件一件过 Mod 时，把「这一件是什么」记下来。
+///
+/// <para>
+/// 两份名单共用这一套逻辑，只有设置键与用途不同：
+/// <list type="bullet">
+/// <item><see cref="OverlayNsfwMarks"/>：右键打的 NSFW 记号，用来下架；</item>
+/// <item><see cref="OverlaySeenMarks"/>：中键打的「已看过」记号，用来知道一轮审到哪儿了。</item>
+/// </list>
+/// 两份**互相独立**：同一件 Mod 可以既标 NSFW 又标已看过，也可以只标其中一个。
+/// </para>
 ///
 /// <para>
 /// 这是**审阅用的临时记录**，不是 Mod 的元数据：标记只写在这里，不碰 Mod 的文件夹名、
-/// 也不动它自己的设置文件 —— 打错了一下右键就能反悔，而且反悔不会改变游戏里的表现。
+/// 也不动它自己的设置文件 —— 打错了一下键就能反悔，而且反悔不会改变游戏里的表现。
 /// </para>
 ///
 /// <para>
 /// 名单落在 <c>LocalAppSettings.json</c>（App 作用域）里，是纯文本且带着 Mod 名与角色，
-/// 目的就是让「哪些要下架」这份结论能被人直接读走。
+/// 目的就是让「哪些要下架 / 哪些看过了」这份结论能被人直接读走。
 /// </para>
 ///
 /// <para>
@@ -20,19 +29,16 @@ namespace GIMI_ModManager.Core.Helpers;
 /// 名字与角色只是**给人看的副本**，改名/换语言都不会让它变成判据。
 /// </para>
 /// </summary>
-public sealed class OverlayNsfwMarks
+public abstract class OverlayMarkList
 {
-    /// <summary>在设置文件里的键名，与 <c>OverlaySettings.Key</c> 同级。</summary>
-    [JsonIgnore] public const string Key = "OverlayNsfwMarks";
-
     /// <summary>
     /// 标记过的 Mod。
     ///
-    /// **刻意不清理**：Mod 被删掉或改名之后，它那条记录仍然留着。这份名单是拿去下架的，
+    /// **刻意不清理**：Mod 被删掉或改名之后，它那条记录仍然留着。这份名单是拿去审阅的，
     /// 名字留在名单里比「对象没了就把记录也删了」有用得多；而读它的时候只按 Id 比对，
     /// 多出来的记录也不影响界面。
     /// </summary>
-    public List<OverlayNsfwMarkEntry> Entries { get; set; } = new();
+    public List<OverlayMarkEntry> Entries { get; set; } = new();
 
     /// <summary>标记条数。设置文件被手改坏（<c>Entries</c> 为 <c>null</c>）时按 0 算，不抛。</summary>
     [JsonIgnore] public int Count => Entries?.Count ?? 0;
@@ -50,7 +56,7 @@ public sealed class OverlayNsfwMarks
     {
         // 手改坏、或老版本没有这个字段时反序列化出来是 null —— 在这里补回来，
         // 别让一个坏文件把「标记」这个功能整个弄哑。
-        Entries ??= new List<OverlayNsfwMarkEntry>();
+        Entries ??= new List<OverlayMarkEntry>();
 
         var existing = Entries.FirstOrDefault(entry => entry.Id == modId);
 
@@ -60,7 +66,7 @@ public sealed class OverlayNsfwMarks
             return false;
         }
 
-        Entries.Add(new OverlayNsfwMarkEntry
+        Entries.Add(new OverlayMarkEntry
         {
             Id = modId,
             Character = character,
@@ -73,12 +79,40 @@ public sealed class OverlayNsfwMarks
 }
 
 /// <summary>
+/// NSFW 名单：浮窗里**右键**打的记号，用来下架。设置键 <c>OverlayNsfwMarks</c>。
+/// </summary>
+public sealed class OverlayNsfwMarks : OverlayMarkList
+{
+    /// <summary>在设置文件里的键名，与 <c>OverlaySettings.Key</c> 同级。</summary>
+    [JsonIgnore] public const string Key = "OverlayNsfwMarks";
+}
+
+/// <summary>
+/// 「已看过」名单：浮窗里**中键**打的记号，用来知道一轮审到哪儿了。设置键 <c>OverlaySeenMarks</c>。
+///
+/// 与 NSFW 名单**没有**互斥关系：看过的不一定 NSFW，NSFW 的也可能还没看。
+/// </summary>
+public sealed class OverlaySeenMarks : OverlayMarkList
+{
+    /// <summary>在设置文件里的键名，与 <c>OverlayNsfwMarks.Key</c> 并列。</summary>
+    [JsonIgnore] public const string Key = "OverlaySeenMarks";
+
+    /// <summary>
+    /// 这份名单是否已经迁移进各 Mod 的 <c>SeenAt</c>。
+    ///
+    /// 迁移后记录仍然留着（方便回看），但**不再重新应用** —— 否则用户在 Mod 上取消「已看过」、
+    /// 下次启动又会被旧名单重新标上。
+    /// </summary>
+    public bool Migrated { get; set; }
+}
+
+/// <summary>
 /// 名单里的一条。
 ///
 /// 角色存 <c>InternalName</c>（与 <c>OverlaySettings.LastSelectedCharacter</c> 同口径）：
 /// 显示名会随语言变、也可能被改，拿它当记录会在换语言后对不上人。
 /// </summary>
-public sealed class OverlayNsfwMarkEntry
+public sealed class OverlayMarkEntry
 {
     public Guid Id { get; set; }
 
