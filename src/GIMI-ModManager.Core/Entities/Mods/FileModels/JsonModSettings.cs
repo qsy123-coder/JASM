@@ -36,6 +36,10 @@ internal class JsonModSettings
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? LastChecked { get; set; }
 
+    /// <summary>浮窗中键标记的「已看过」时间。ISO 字符串，null 时整个字段不写。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SeenAt { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? Preferences { get; set; }
 }
