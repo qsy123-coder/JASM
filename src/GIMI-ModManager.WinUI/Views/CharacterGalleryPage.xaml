@@ -370,6 +370,28 @@
                                                 IsContextMenuEnabled="True"
                                                 PasteButtonCommand="{x:Bind PasteImageFromClipboardCommand}"
                                                 ClearButtonCommand="{x:Bind ClearImageCommand}"/>
+
+                                            <!--  浮窗中键标的「已看过」：压在缩略图左上角。
+                                                  绿底 + 对勾与浮窗里的绿勾同一套语义，扫一眼就能把审过的挑出来。  -->
+                                            <Border
+                                                Margin="8"
+                                                Padding="6,2"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Top"
+                                                Background="#CC2E7D32"
+                                                CornerRadius="4"
+                                                Visibility="{x:Bind IsSeen, Mode=OneWay}">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <FontIcon
+                                                        FontSize="10"
+                                                        Foreground="White"
+                                                        Glyph="&#xE73E;" />
+                                                    <TextBlock
+                                                        FontSize="10"
+                                                        Foreground="White"
+                                                        Text="已看过" />
+                                                </StackPanel>
+                                            </Border>
                                         </Grid>
 
                                         <Grid
