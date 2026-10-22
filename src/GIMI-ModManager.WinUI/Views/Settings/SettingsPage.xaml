@@ -507,6 +507,39 @@
 
                 <TextBlock
                     Style="{ThemeResource SubtitleTextBlockStyle}"
+                    Text="浮窗截图" />
+                <StackPanel Margin="{StaticResource SmallTopBottomMargin}" Spacing="8">
+                    <TextBlock
+                        MaxWidth="600"
+                        HorizontalAlignment="Left"
+                        IsTextSelectionEnabled="True"
+                        TextWrapping="WrapWholeWords"
+                        Text="浮窗截图的输出目录。截图以当前唯一勾选 Mod 的显示名命名，只保存在这个目录里，不会改动 Mod 的封面；「按上次区域截图」会复用最近一次框选的矩形。" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                            Text="{x:Bind ViewModel.OverlayScreenshotFolderPicker.Path, Mode=TwoWay}"
+                            PlaceholderText="截图输出目录" />
+                        <Button
+                            Grid.Column="1"
+                            Command="{x:Bind ViewModel.BrowseOverlayScreenshotFolderCommand}"
+                            Content="浏览…" />
+                        <Button
+                            Grid.Column="2"
+                            Command="{x:Bind ViewModel.SaveOverlayScreenshotFolderCommand}"
+                            Content="保存" />
+                    </Grid>
+                    <Button
+                        Command="{x:Bind ViewModel.ClearOverlayCaptureRegionCommand}"
+                        Content="清除记忆的截图区域" />
+                </StackPanel>
+
+                <TextBlock
+                    Style="{ThemeResource SubtitleTextBlockStyle}"
                     Text="Export/Backup Mods"
                     l:Uids.Uid="Settings_Export_Title" />
 
