@@ -1,5 +1,82 @@
 # Changelog
 
+## [2.34.0](https://github.com/qsy123-coder/JASM/compare/v2.33.0...v2.34.0) (2026-10-22)
+
+
+### Features
+
+* **gallery:** Mod 卡片暴露「已看过」状态 ([6dff7d7](https://github.com/qsy123-coder/JASM/commit/6dff7d719118fe9848d730501026f2cd346f0eb8))
+* **gallery:** Mod 模型带上 SeenAt ([e3abf29](https://github.com/qsy123-coder/JASM/commit/e3abf2979bbc5c3b8f0dbfef82a662dab904a0f6))
+* **gallery:** 卡片显示「已看过」角标 ([82da960](https://github.com/qsy123-coder/JASM/commit/82da96080b5cd491599dba3b036cabe1462fd33c))
+* **gallery:** 画廊卡片同步「已看过」角标 ([be00190](https://github.com/qsy123-coder/JASM/commit/be00190bc83140b4af1cef019fa0076576cd0c34))
+* **mods:** Mod 设置 JSON 映射 SeenAt ([bfd3ec7](https://github.com/qsy123-coder/JASM/commit/bfd3ec764d09bd3323b76294ecb57d7eb6375a40))
+* **mods:** Mod 设置新增 SeenAt（已看过时间戳） ([00524b1](https://github.com/qsy123-coder/JASM/commit/00524b15256886c7cb1fe602d77d8281681c4525))
+* **mods:** 单选模式下新装的 Mod 保持未启用 ([6a85544](https://github.com/qsy123-coder/JASM/commit/6a8554473d6b3040ec1016069ca18df0f43a5244))
+* **mods:** 安装向导在单选模式下装完不启用新 Mod ([9e7e41a](https://github.com/qsy123-coder/JASM/commit/9e7e41ae83096f75481e2ffe9178a63661602f7f))
+* **mods:** 拖拽失败提示新增「磁盘空间不足」 ([11fd152](https://github.com/qsy123-coder/JASM/commit/11fd1526a813499abfbcd05297aa307a45dc1e98))
+* **mods:** 支持写入 SeenAt ([409467f](https://github.com/qsy123-coder/JASM/commit/409467f3f7e906d20479d3c5cc8bae2c668c0e0c))
+* **mods:** 新增「新 Mod 是否自动启用」的统一判据 ([02e7e7c](https://github.com/qsy123-coder/JASM/commit/02e7e7ca99c4f753284399afbddd08bdee80ff07))
+* **mods:** 补「磁盘空间不足」中文提示 ([3ae4ca3](https://github.com/qsy123-coder/JASM/commit/3ae4ca3e784503fd965ddbc1c0eeb781cdd449f9))
+* **mods:** 补「磁盘空间不足」英文提示 ([fe1d928](https://github.com/qsy123-coder/JASM/commit/fe1d92810e6f1bc20638060c0a3d974903fb827d))
+* **overlay:** Mod 行暴露 NSFW 标记状态 ([89f776c](https://github.com/qsy123-coder/JASM/commit/89f776ca58445ec0f47e11c4da42b80a2363708d))
+* **overlay:** 声明截图所需的 GDI 与窗口函数 ([2c2af30](https://github.com/qsy123-coder/JASM/commit/2c2af30efda07b73c389feb3e302af25f5b71e3a))
+* **overlay:** 截图、行内按键面板、尺寸档位、中键已看过与「下一个」 ([d979985](https://github.com/qsy123-coder/JASM/commit/d9799853c181206e5a92ff69f1d2a125f2ce9262))
+* **overlay:** 接住行的右键，转成标记切换 ([cf7d4f7](https://github.com/qsy123-coder/JASM/commit/cf7d4f79ba5dbd7d1ff39eb9fa9c3f4aaf167d60))
+* **overlay:** 新增 NSFW 标记名单（Core 纯逻辑） ([cdca8d2](https://github.com/qsy123-coder/JASM/commit/cdca8d2d59c4d2bbd443d67170578aa4da77920b))
+* **overlay:** 新增截图区域计算（物理像素、任意方向、夹取） ([cefaeb5](https://github.com/qsy123-coder/JASM/commit/cefaeb575129252d18fd1ad702e6c8ae47489fc5))
+* **overlay:** 新增截图抓屏与 PNG 落盘服务 ([828416e](https://github.com/qsy123-coder/JASM/commit/828416e181e22d5cfc26df9471ab62403faa3a71))
+* **overlay:** 新增截图文件名清洗与重名序号 ([84977e9](https://github.com/qsy123-coder/JASM/commit/84977e9ccecf636ac32b49a611fd541f9309c24a))
+* **overlay:** 新增截图框选遮罩窗口 ([65870ac](https://github.com/qsy123-coder/JASM/commit/65870ac8a7ebcbeaec66aa33e1d88a481911be9f))
+* **overlay:** 新增截图热键候选（Ctrl+Alt+S 起，逐级回退） ([2d3b9a5](https://github.com/qsy123-coder/JASM/commit/2d3b9a5aa482ffb97f38b234cfa9be53a71b96b4))
+* **overlay:** 新增浮窗小/中/大三档尺寸 ([4a5b519](https://github.com/qsy123-coder/JASM/commit/4a5b519de4c72b4ee826d9cff7e647ab19e55d9d))
+* **overlay:** 框选遮罩的拖框、取消与物理坐标换算 ([826dca6](https://github.com/qsy123-coder/JASM/commit/826dca69ffbca3596fc92255a2dd00f03cafa780))
+* **overlay:** 注册截图热键并回报实际生效键 ([1f87f28](https://github.com/qsy123-coder/JASM/commit/1f87f281f4038bd032f12a67c355838d0211716e))
+* **overlay:** 注册浮窗截图服务 ([f9a0046](https://github.com/qsy123-coder/JASM/commit/f9a0046aa9e7f9e40dcaa2f2d530390c119c79f8))
+* **overlay:** 浮窗加截图入口、尺寸下拉、行内按键面板与状态行配色 ([e437810](https://github.com/qsy123-coder/JASM/commit/e4378102211803056eaf1801794fd808610b19f4))
+* **overlay:** 浮窗右键打 NSFW 标记并落盘 ([026096f](https://github.com/qsy123-coder/JASM/commit/026096f982c15d9eed4fe4891da59483bfb0c8bc))
+* **overlay:** 浮窗截图流程、滚动对齐与中键/下一个手势 ([8633773](https://github.com/qsy123-coder/JASM/commit/8633773eb10061e32cc51454099dcc24b6fcb085))
+* **overlay:** 浮窗服务接入截图热键 ([ab4bb8d](https://github.com/qsy123-coder/JASM/commit/ab4bb8dba2c7bb39b1295cf0cafe48747c5efbbd))
+* **overlay:** 浮窗行加右键标记与 NSFW 红标 ([9405200](https://github.com/qsy123-coder/JASM/commit/9405200013958ec7475e05e9448398c500f8c0ed))
+* **overlay:** 行 VM 增加按键面板与「已看过」状态 ([f4df1b1](https://github.com/qsy123-coder/JASM/commit/f4df1b1f29a165fc957f8e85bbb2cac7d9327bd2))
+* **overlay:** 设置新增尺寸档位、截图目录与记忆区域 ([3a1ef0a](https://github.com/qsy123-coder/JASM/commit/3a1ef0a12f52256289fbe28598d8a46cc43200e1))
+* **settings:** 浮窗截图目录与清除记忆区域 ([c728f68](https://github.com/qsy123-coder/JASM/commit/c728f688c0cc25972588037ee1b09ffd90831b06))
+* **settings:** 设置页新增「浮窗截图」区块 ([c6620a3](https://github.com/qsy123-coder/JASM/commit/c6620a3aba19815fbe814ee981feefe67c84cbda))
+
+
+### Bug Fixes
+
+* **mods:** 判出 7-Zip 的磁盘满失败，不再一律当包损坏 ([a059054](https://github.com/qsy123-coder/JASM/commit/a059054cfb4b72a0b954b112dd9482ac98e1ab9b))
+* **mods:** 解压临时目录清理不再被 DirectoryNotFoundException 打断 ([9e1628d](https://github.com/qsy123-coder/JASM/commit/9e1628d58d0a4198b9c596fbf0b415997287b326))
+* **mods:** 解压失败原因新增「磁盘空间不足」 ([c5f999f](https://github.com/qsy123-coder/JASM/commit/c5f999f2cfe0f2284eaeba31c22dd45992618ebc))
+* **mods:** 解压失败时量目标盘剩余空间，供判磁盘满 ([13e116e](https://github.com/qsy123-coder/JASM/commit/13e116e01db017e2968060398a30d150353b54af))
+
+
+### Miscellaneous
+
+* **overlay:** 刷新协调器补一条日志 ([4c1fde1](https://github.com/qsy123-coder/JASM/commit/4c1fde10535b9747ca26a136c6169747255cf719))
+
+
+### Documentation
+
+* **overlay:** 浮窗截图与按键面板 PRD ([bb3250b](https://github.com/qsy123-coder/JASM/commit/bb3250b5d5b856429a3de87467d4b74264848497))
+
+
+### Tests
+
+* **mods:** 覆盖磁盘满判据（含真 7-zip 原文） ([1e1eee6](https://github.com/qsy123-coder/JASM/commit/1e1eee6ef941ee11f21ce4c24dc6afb0be1d72d2))
+* **overlay:** 补 NSFW 标记名单的用例 ([abe19b7](https://github.com/qsy123-coder/JASM/commit/abe19b78a7f0fa3c5b5b5100b2e415c74260bbe4))
+* **overlay:** 覆盖「已看过」旧名单迁移 ([001cc4c](https://github.com/qsy123-coder/JASM/commit/001cc4c777e47f797e59faaca4ba5af0521f0277))
+* **overlay:** 覆盖截图区域计算 ([fd9fd40](https://github.com/qsy123-coder/JASM/commit/fd9fd40aba0328907ecc7e8616799aabe84c61c0))
+* **overlay:** 覆盖截图文件名清洗与重名 ([9064f4c](https://github.com/qsy123-coder/JASM/commit/9064f4c83006976ff558f07b706c2e8853848beb))
+* **overlay:** 覆盖截图热键候选回退 ([e5f16fe](https://github.com/qsy123-coder/JASM/commit/e5f16fe0aa2fafed47e5ff775a09f11fbca63fbe))
+* **overlay:** 随列表排序变化更新用例 ([0e42f2b](https://github.com/qsy123-coder/JASM/commit/0e42f2be647102108910d184cd1b601372983404))
+
+
+### Code Refactoring
+
+* **overlay:** 列表不再把已启用项前移 ([347bd47](https://github.com/qsy123-coder/JASM/commit/347bd478c1072860d443a313e57ba002af5886ab))
+* **overlay:** 标记名单抽成通用基类并迁移旧「已看过」名单 ([58e2333](https://github.com/qsy123-coder/JASM/commit/58e23330015886176f3f8fdce66aca3ffadf0acc))
+
 ## [2.33.0](https://github.com/qsy123-coder/JASM/compare/v2.32.0...v2.33.0) (2026-10-09)
 
 
