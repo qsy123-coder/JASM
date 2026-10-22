@@ -656,6 +656,12 @@
   <data name="ModDrop_CorruptBody" xml:space="preserve">
     <value>It looks damaged or incomplete. Try downloading it again.</value>
   </data>
+  <data name="ModDrop_DiskFullTitle" xml:space="preserve">
+    <value>Not enough disk space</value>
+  </data>
+  <data name="ModDrop_DiskFullBody" xml:space="preserve">
+    <value>The drive holding the Mods folder ran out of space while unpacking. Free some space and drag the package in again - nothing else is wrong with it.</value>
+  </data>
   <data name="ModDrop_EmptyTitle" xml:space="preserve">
     <value>The archive contained nothing</value>
   </data>
