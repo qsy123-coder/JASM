@@ -143,7 +143,8 @@ public class ModSettingsService
                     : change.ImagePath,
                 characterSkinOverride: change.CharacterSkinOverride.EmptyStringToNull(),
                 customName: change.CustomName.EmptyStringToNull(),
-                description: change.Description.EmptyStringToNull()
+                description: change.Description.EmptyStringToNull(),
+                seenAt: change.SeenAt
             );
 
 
@@ -310,6 +311,14 @@ public class UpdateSettingsRequest
     public string? SetDescription
     {
         set => Description = NewValue<string?>.Set(value);
+    }
+
+    /// <summary>浮窗「已看过」时间；<c>SetSeenAt = null</c> 表示取消标记。</summary>
+    public NewValue<DateTime?>? SeenAt { get; set; }
+
+    public DateTime? SetSeenAt
+    {
+        set => SeenAt = NewValue<DateTime?>.Set(value);
     }
 
 
