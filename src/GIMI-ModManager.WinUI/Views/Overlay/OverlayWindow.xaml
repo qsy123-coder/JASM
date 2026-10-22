@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:coreHelpers="using:GIMI_ModManager.Core.Entities.Mods.Helpers"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:l="using:WinUI3Localizer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -79,6 +80,9 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <TextBlock
@@ -95,14 +99,56 @@
                 <TextBlock
                     x:Name="HotkeyHintText"
                     Grid.Column="1"
-                    Margin="8,0,8,0"
+                    MaxWidth="96"
+                    Margin="8,0,6,0"
                     VerticalAlignment="Center"
                     FontSize="11"
-                    Foreground="#C8FFFFFF" />
+                    Foreground="#C8FFFFFF"
+                    TextTrimming="CharacterEllipsis" />
+
+                <!--  浮窗大小：小 / 中 / 大。下拉框放标题条里，切换会持久化。
+                      宽度压到 50 左右，给右边的截图按钮与关闭键留位置。  -->
+                <ComboBox
+                    x:Name="SizeComboBox"
+                    Grid.Column="2"
+                    Width="64"
+                    MinWidth="0"
+                    Padding="6,2,0,2"
+                    Margin="0,0,4,0"
+                    VerticalAlignment="Center"
+                    FontSize="10"
+                    DisplayMemberPath="DisplayName"
+                    ItemsSource="{x:Bind ViewModel.SizeOptions}"
+                    SelectedIndex="{x:Bind ViewModel.SelectedSizeIndex, Mode=TwoWay}"
+                    ToolTipService.ToolTip="浮窗大小" />
+
+                <!--  框选截图 / 按上次区域截图。放在标题条里而不是另起一行：
+                      浮窗只有 360 高，每一行都要留给 Mod 列表。  -->
+                <Button
+                    x:Name="CaptureRegionButton"
+                    Grid.Column="3"
+                    Margin="0,0,2,0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnCaptureRegionClick"
+                    ToolTipService.ToolTip="框选截图（会记住这次区域）">
+                    <FontIcon FontSize="12" Glyph="&#xE722;" />
+                </Button>
+
+                <Button
+                    x:Name="CaptureLastRegionButton"
+                    Grid.Column="4"
+                    Margin="0,0,2,0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnCaptureLastRegionClick"
+                    ToolTipService.ToolTip="按上次区域截图（全局热键 Ctrl+Alt+S）">
+                    <FontIcon FontSize="12" Glyph="&#xE8EE;" />
+                </Button>
 
                 <Button
                     x:Name="HideButton"
-                    Grid.Column="2"
+                    Grid.Column="5"
                     Margin="0,0,6,0"
                     Background="Transparent"
                     BorderThickness="0"
@@ -232,7 +278,7 @@
                 <!--  图标 + 文字用 Grid 而不是横向 StackPanel：StackPanel 给子元素的可用宽度是"无限"，
                       于是文字的 TextWrapping="Wrap" 永远等不到该换行的宽度 —— 实测长文案（"提权助手没在运行…"）
                       就这样被窗口右边缘硬生生切掉。Grid 的 * 列才会把真实剩余宽度交给 TextBlock。  -->
-                <Grid ColumnSpacing="6">
+                <Grid ColumnSpacing="6" Visibility="{x:Bind ViewModel.HasRefreshStatus, Mode=OneWay}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
@@ -282,11 +328,37 @@
                     TextWrapping="Wrap"
                     Visibility="{x:Bind ViewModel.HasMarks, Mode=OneWay}" />
 
+                <!--  「已看过 N 个 · 中键可标记 / 取消」。与 NSFW 那条并列，提醒手势怎么用。  -->
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#B3FFFFFF"
+                    Text="{x:Bind ViewModel.SeenSummary, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasSeenMarks, Mode=OneWay}" />
+
+                <!--
+                    截图结果两条：成功（绿色，与安装成功同一个色值）与 取消/失败（琥珀色，与 ErrorMessage 同色）。
+                    以前共用一条绿色的，截图失败在界面上看起来像办成了。
+                -->
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#FF6CCB5F"
+                    Text="{x:Bind ViewModel.ScreenshotStatusMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasScreenshotSuccess, Mode=OneWay}" />
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#FFE8A33D"
+                    Text="{x:Bind ViewModel.ScreenshotStatusMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasScreenshotProblem, Mode=OneWay}" />
+
                 <TextBlock
                     FontSize="11"
                     Foreground="#FFE8A33D"
                     Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                    TextWrapping="Wrap" />
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasErrorMessage, Mode=OneWay}" />
 
                 <!--  提权时的常驻提示。它必须常驻：UIPI 会在 OLE 层把跨完整性级别的拖拽整个掐掉，
                       连 DragOver 都不会触发 —— 所以上面那条"拖拽时才写"的状态行在这里永远等不到机会。
@@ -295,7 +367,8 @@
                     FontSize="11"
                     Foreground="#FFE8A33D"
                     Text="{x:Bind ViewModel.ElevationNotice, Mode=OneWay}"
-                    TextWrapping="Wrap" />
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasElevationNotice, Mode=OneWay}" />
             </StackPanel>
 
             <!--  x:Name 是给代码后置用的：键盘选中换行时要把那一行滚进视野，
@@ -315,18 +388,24 @@
                 </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="overlayVm:OverlayModItemViewModel">
-                        <!--  Tag 上挂的是这一行自己，右键处理器从它取回 VM（模板里 x:Bind 的
-                              DataContext 是行 VM，Tag 只是把它交给代码后置的一种不依赖 DataContext 的拿法）。
-                              RightTapped 打在**整行**上：左键落在勾选框上换装、右键落在行上打标，
-                              两个手势各走各的，不会互相抢。  -->
-                        <Grid
-                            ColumnSpacing="8"
-                            RightTapped="OnModRowRightTapped"
-                            Tag="{x:Bind}">
+                        <!--  行 + 它自己的按键面板。面板不是浮窗底部的全局块：
+                              只有当前唯一勾选的那一行才显示，勾选换人它就跟着换行。  -->
+                        <StackPanel>
+                            <!--  Tag 上挂的是这一行自己，右键处理器从它取回 VM（模板里 x:Bind 的
+                                  DataContext 是行 VM，Tag 只是把它交给代码后置的一种不依赖 DataContext 的拿法）。
+                                  RightTapped 打在**整行**上：左键落在勾选框上换装、右键落在行上打标，
+                                  两个手势各走各的，不会互相抢。  -->
+                            <Grid
+                                ColumnSpacing="8"
+                                PointerPressed="OnModRowPointerPressed"
+                                RightTapped="OnModRowRightTapped"
+                                Tag="{x:Bind}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
@@ -336,7 +415,7 @@
                                   为两态去写转换器或 VisualState 都不如一层可显隐的底直白。  -->
                             <Border
                                 Grid.Column="0"
-                                Grid.ColumnSpan="4"
+                                Grid.ColumnSpan="6"
                                 Margin="-4,-2"
                                 Background="#33FFFFFF"
                                 BorderBrush="#FFE8A33D"
@@ -396,7 +475,152 @@
                                     Foreground="White"
                                     Text="NSFW" />
                             </Border>
-                        </Grid>
+
+                            <!--  中键打的「已看过」记号。用绿色对勾而不是再加一块文字徽章：
+                                  红标（要下架）与绿勾（看过了）是两类信息，颜色 + 形状一眼能分开，
+                                  也不跟长 Mod 名抢宽度。  -->
+                            <FontIcon
+                                Grid.Column="4"
+                                Margin="0,0,2,0"
+                                VerticalAlignment="Center"
+                                FontSize="13"
+                                Foreground="#FF6CCB5F"
+                                Glyph="&#xE73E;"
+                                ToolTipService.ToolTip="已看过（中键标记 / 取消）"
+                                Visibility="{x:Bind IsSeen, Mode=OneWay}" />
+
+                            <!--  单选模式下的「下一个」：只出现在当前勾选行、且后面还有一行时。
+                                  点它 = 勾上下一件（当前的自动收起，并触发 F10 刷新），
+                                  是"一件件往下审"最短的一步。  -->
+                            <Button
+                                Grid.Column="5"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Margin="0,0,0,0"
+                                Padding="6,2"
+                                FontSize="10"
+                                Click="OnNextModClick"
+                                Content="下一个"
+                                Tag="{x:Bind}"
+                                ToolTipService.ToolTip="勾选下一件 Mod（当前这件会自动收起）"
+                                Visibility="{x:Bind ShowNextButton, Mode=OneWay}" />
+                            </Grid>
+
+                            <!--  行内按键映射。只有唯一勾选的那一行显示（IsKeyPanelVisible）；
+                                  标题行点一下折叠 / 展开。放在行下面而不是浮窗底部，是为了让
+                                  「这一件 Mod 有哪些按键」与 Mod 本身贴在一起看。  -->
+                            <Border
+                                Margin="72,2,0,4"
+                                Padding="8,4"
+                                Background="#1AFFFFFF"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Visibility="{x:Bind IsKeyPanelVisible, Mode=OneWay}">
+                                <StackPanel Spacing="4">
+                                    <Button
+                                        Padding="0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Click="{x:Bind ToggleKeyPanel}"
+                                        ToolTipService.ToolTip="折叠 / 展开按键映射">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                Foreground="#E6FFFFFF"
+                                                Text="按键映射" />
+                                            <FontIcon
+                                                Grid.Column="1"
+                                                FontSize="9"
+                                                Foreground="#99FFFFFF"
+                                                Glyph="{x:Bind KeyPanelChevronGlyph, Mode=OneWay}" />
+                                        </Grid>
+                                    </Button>
+
+                                    <StackPanel Spacing="4" Visibility="{x:Bind IsKeyPanelExpanded, Mode=OneWay}">
+                                        <ProgressRing
+                                            Width="16"
+                                            Height="16"
+                                            HorizontalAlignment="Left"
+                                            IsActive="{x:Bind IsKeyBindingLoading, Mode=OneWay}"
+                                            Visibility="{x:Bind IsKeyBindingLoading, Mode=OneWay}" />
+
+                                        <TextBlock
+                                            FontSize="10"
+                                            Foreground="#B3FFFFFF"
+                                            Text="{x:Bind KeyPanelEmptyMessage, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+
+                                        <ItemsRepeater ItemsSource="{x:Bind KeyBindingGroups, Mode=OneWay}">
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="coreHelpers:ModIniKeyBindingGroup">
+                                                    <StackPanel Margin="0,0,0,2" Spacing="2">
+                                                        <!--  ini 文件分组头：点一下折叠  -->
+                                                        <Button
+                                                            Padding="0"
+                                                            HorizontalAlignment="Left"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Click="{x:Bind ToggleExpanded}">
+                                                            <TextBlock
+                                                                FontSize="9"
+                                                                Foreground="#99FFFFFF"
+                                                                Text="{x:Bind ShortPath}" />
+                                                        </Button>
+
+                                                        <ItemsRepeater
+                                                            ItemsSource="{x:Bind Bindings}"
+                                                            Visibility="{x:Bind IsExpanded, Mode=OneWay}">
+                                                            <ItemsRepeater.ItemTemplate>
+                                                                <DataTemplate x:DataType="coreHelpers:ModIniKeyBindingEntry">
+                                                                    <Grid Margin="0,1" ColumnSpacing="8">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <StackPanel VerticalAlignment="Center">
+                                                                            <TextBlock
+                                                                                FontSize="11"
+                                                                                Foreground="#E6FFFFFF"
+                                                                                Text="{x:Bind DisplayLabel}"
+                                                                                TextTrimming="CharacterEllipsis" />
+                                                                            <TextBlock
+                                                                                FontSize="9"
+                                                                                Foreground="#80FFFFFF"
+                                                                                Text="{x:Bind Description}"
+                                                                                TextTrimming="CharacterEllipsis" />
+                                                                        </StackPanel>
+
+                                                                        <Button
+                                                                            Grid.Column="1"
+                                                                            MinWidth="0"
+                                                                            MinHeight="0"
+                                                                            Padding="7,1"
+                                                                            Click="OnKeyBadgeClick"
+                                                                            Content="{x:Bind KeyValue}"
+                                                                            IsEnabled="{x:Bind CanSendKey}"
+                                                                            Tag="{x:Bind}"
+                                                                            ToolTipService.ToolTip="点击把这个按键发给游戏" />
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ItemsRepeater.ItemTemplate>
+                                                        </ItemsRepeater>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
