@@ -7,6 +7,8 @@ namespace GIMI_ModManager.Core.Helpers;
 /// 纯函数（不碰进程、不碰磁盘），所以能拿真实抓到的 7-Zip 输出直接喂进单测 —— 判据的每条分支
 /// 都有实测样例，见下。**没把握的别再靠猜**：7-Zip 的两条消息文案是它内置的英文串，不受系统
 /// 语言影响（对比：<c>System ERROR:</c> 那类由 OS 提供、会随语言变，所以一概不匹配）。
+/// 「磁盘满」是唯一需要绕开这个限制的一种：7-Zip 自己那句先认，认不出时靠调用方实测的剩余空间兜底
+/// （见 <paramref name="freeBytesOnDestination"/>）。
 /// </para>
 ///
 /// <para>实测样例（7-Zip 24.09，stdin 关闭）：</para>
@@ -32,6 +34,20 @@ public static class ArchiveExtractionClassifier
     /// <summary>7-Zip 认不出这是压缩包时的消息。</summary>
     private const string NotAnArchiveNeedle = "Cannot open the file as archive";
 
+    /// <summary>
+    /// 7-Zip 写不出输出文件时的消息（它自己的英文串，不随系统语言变）。实测磁盘满长这样：
+    /// <c>ERROR: Cannot set length for output file : 磁盘空间不足。 : &lt;path&gt;</c> ——
+    /// 冒号后面那半句是 OS 给的、会随语言变，所以只认 7-Zip 自己的前半句。
+    /// </summary>
+    private const string OutputWriteFailureNeedle = "Cannot set length for output file";
+
+    /// <summary>
+    /// 解压目标盘剩余不足这个数（64 MB）时，任何解压失败都按磁盘满报。给
+    /// <see cref="OutputWriteFailureNeedle"/> 兜底：盘都这样了，先清空间几乎总是对的；
+    /// 反过来「包坏了让用户重下」才是更贵的建议。
+    /// </summary>
+    public const long MinimumFreeBytesForDiskFull = 64L * 1024 * 1024;
+
     /// <summary>7-Zip 的退出码：0 成功、1 警告（有文件没处理）、2 致命、255 被用户中止、7 命令行错、8 内存不足。</summary>
     public const int SuccessExitCode = 0;
 
@@ -48,8 +64,12 @@ public static class ArchiveExtractionClassifier
     /// <param name="stdout">标准输出（已解码）。</param>
     /// <param name="stderr">标准错误（已解码）。</param>
     /// <param name="passwordSupplied">本次调用**本侧有没有传 <c>-p</c></b>。传过还报密码错 = 密码错；没传过 = 需要密码。</param>
+    /// <param name="freeBytesOnDestination">
+    /// 解压目标盘**失败那一刻**的剩余字节数；<c>null</c> = 没测到。有了它才能判出「盘满了」——
+    /// 那个错误的一半文案由 OS 提供、随语言变，不能匹配。
+    /// </param>
     public static ArchiveExtractionFailureReason? Classify(int exitCode, string? stdout, string? stderr,
-        bool passwordSupplied)
+        bool passwordSupplied, long? freeBytesOnDestination = null)
     {
         if (IsSuccess(exitCode))
             return null;
@@ -64,6 +84,11 @@ public static class ArchiveExtractionClassifier
 
         if (text.Contains(NotAnArchiveNeedle, StringComparison.Ordinal))
             return ArchiveExtractionFailureReason.NotAnArchive;
+
+        // 磁盘满：7-Zip 自己的英文串能认；认不出时看目标盘还剩多少（见参数说明）。
+        if (text.Contains(OutputWriteFailureNeedle, StringComparison.Ordinal) ||
+            freeBytesOnDestination is >= 0 and < MinimumFreeBytesForDiskFull)
+            return ArchiveExtractionFailureReason.DiskFull;
 
         return exitCode == FatalExitCode
             ? ArchiveExtractionFailureReason.Corrupt
