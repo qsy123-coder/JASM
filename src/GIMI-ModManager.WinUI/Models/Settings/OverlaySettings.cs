@@ -1,3 +1,4 @@
+using GIMI_ModManager.Core.Helpers;
 using Newtonsoft.Json;
 
 namespace GIMI_ModManager.WinUI.Models.Settings;
@@ -51,4 +52,60 @@ public class OverlaySettings
     /// <summary>喂给 <c>OverlayPlacement.ResolveTopLeft</c> 的入参；没存过时为 <c>null</c>。</summary>
     [JsonIgnore] public (int X, int Y)? SavedTopLeft =>
         HasSavedPosition ? (XPosition!.Value, YPosition!.Value) : null;
+
+    /// <summary>
+    /// 浮窗尺寸档位：0 = 小、1 = 中、2 = 大（见 <c>OverlayViewModel.SizeOptions</c>）。
+    /// <c>null</c> = 没存过 → 中档。
+    /// </summary>
+    public int? SizePreset { get; set; }
+
+    /// <summary>
+    /// 截图输出目录。<c>null</c> = 没配过，用
+    /// <c>OverlayScreenshotService.GetDefaultOutputFolder()</c>（图片\JASM\浮窗截图）。
+    /// </summary>
+    public string? ScreenshotOutputFolder { get; set; }
+
+    /// <summary>最后一次成功截图用的区域（虚拟屏幕物理像素）。复用区域就靠这四个值。</summary>
+    public int? CaptureRegionX { get; set; }
+
+    public int? CaptureRegionY { get; set; }
+
+    public int? CaptureRegionWidth { get; set; }
+
+    public int? CaptureRegionHeight { get; set; }
+
+    /// <summary>
+    /// 四项都存过且宽高够用才算数。只存下一半时宁可当没存过、让用户重新框选 ——
+    /// 拿半份坐标去截图只会截到一块没人预期的地方。
+    /// </summary>
+    [JsonIgnore] public bool HasSavedCaptureRegion =>
+        CaptureRegionX.HasValue && CaptureRegionY.HasValue
+        && CaptureRegionWidth.HasValue && CaptureRegionHeight.HasValue
+        && CaptureRegionWidth.Value >= OverlayCaptureRegion.MinimumSide
+        && CaptureRegionHeight.Value >= OverlayCaptureRegion.MinimumSide;
+
+    /// <summary>喂给截图流程的入参；没存过时为 <c>null</c>。</summary>
+    [JsonIgnore] public OverlayCaptureRegion? SavedCaptureRegion =>
+        HasSavedCaptureRegion
+            ? new OverlayCaptureRegion(CaptureRegionX!.Value, CaptureRegionY!.Value,
+                CaptureRegionWidth!.Value, CaptureRegionHeight!.Value)
+            : null;
+
+    /// <summary>记住这次成功截图用的区域。</summary>
+    public void RememberCaptureRegion(OverlayCaptureRegion region)
+    {
+        CaptureRegionX = region.X;
+        CaptureRegionY = region.Y;
+        CaptureRegionWidth = region.Width;
+        CaptureRegionHeight = region.Height;
+    }
+
+    /// <summary>清除记忆区域（换分辨率 / 想重新框一个构图时用）。</summary>
+    public void ClearCaptureRegion()
+    {
+        CaptureRegionX = null;
+        CaptureRegionY = null;
+        CaptureRegionWidth = null;
+        CaptureRegionHeight = null;
+    }
 }
