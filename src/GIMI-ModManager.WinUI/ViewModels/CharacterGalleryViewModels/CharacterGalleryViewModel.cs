@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Messaging;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities;
@@ -16,11 +17,13 @@ using GIMI_ModManager.WinUI.Models.CustomControlTemplates;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.ModHandling;
+using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.ViewModels.CharacterGalleryViewModels;
 
-public partial class CharacterGalleryViewModel : ObservableRecipient, INavigationAware
+public partial class CharacterGalleryViewModel : ObservableRecipient, INavigationAware,
+    IRecipient<ModChangedMessage>
 {
     private readonly ISkinManagerService _skinManagerService;
     private readonly ILocalSettingsService _localSettingsService;
@@ -129,6 +132,9 @@ public partial class CharacterGalleryViewModel : ObservableRecipient, INavigatio
 
     public async void OnNavigatedTo(object parameter)
     {
+        // 接收「已看过」等 Mod 变更消息：浮窗中键标完，画廊卡片角标立刻跟着变
+        IsActive = true;
+
         var internalName = new InternalName("_");
 
 
@@ -414,6 +420,20 @@ public partial class CharacterGalleryViewModel : ObservableRecipient, INavigatio
 
     public void OnNavigatedFrom()
     {
+        IsActive = false;
+    }
+
+    /// <summary>
+    /// 浮窗写完了某个 Mod 的设置（目前是「已看过」）：把同一张卡片的角标同步过去。
+    /// 设置从 <c>SkinEntry.Mod.Settings</c> 的缓存读；写完后 <c>ModSettingsService</c> 已经把它更新过。
+    /// </summary>
+    public void Receive(ModChangedMessage message)
+    {
+        if (!message.SkinEntry.Mod.Settings.GetSettingsLegacy().TryPickT0(out var settings, out _))
+            return;
+
+        var item = _backendMods.FirstOrDefault(mod => mod.Id == message.SkinEntry.Id);
+        item?.RefreshSeenFromSettings(settings);
     }
 
 
