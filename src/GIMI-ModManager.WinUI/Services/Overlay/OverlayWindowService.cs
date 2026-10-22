@@ -3,6 +3,7 @@ using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
+using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.ViewModels.Overlay;
@@ -34,6 +35,7 @@ internal sealed class OverlayWindowService : IDisposable
     private const string SupportedGame = "WuWa";
 
     private readonly OverlayViewModel _viewModel;
+    private readonly OverlayScreenshotService _screenshotService;
     private readonly SelectedGameService _selectedGameService;
     private readonly NotificationManager _notificationManager;
     private readonly ILogger _logger;
@@ -66,17 +68,20 @@ internal sealed class OverlayWindowService : IDisposable
 
     public OverlayWindowService(ISkinManagerService skinManagerService, IGameService gameService,
         OverlayRefreshCoordinator refreshCoordinator, ILocalSettingsService localSettingsService,
-        ModDragAndDropService dragAndDropService, SelectedGameService selectedGameService,
-        NotificationManager notificationManager, ILogger logger)
+        ModDragAndDropService dragAndDropService, OverlayScreenshotService screenshotService,
+        ModSettingsService modSettingsService, IGameKeySender gameKeySender,
+        SelectedGameService selectedGameService, NotificationManager notificationManager, ILogger logger)
     {
         _selectedGameService = selectedGameService;
+        _screenshotService = screenshotService;
         _notificationManager = notificationManager;
         _logger = logger.ForContext<OverlayWindowService>();
 
         // ViewModel 不经过 DI：它是 internal 的、且 DI 的 ActivatorUtilities 只认公开构造函数。
         // 依赖项由本类转交，顺带保证"浮窗与设置页共用同一个刷新协调器"这件事是显式的。
         _viewModel = new OverlayViewModel(skinManagerService, gameService, refreshCoordinator,
-            localSettingsService, dragAndDropService, logger);
+            localSettingsService, dragAndDropService, screenshotService, modSettingsService,
+            gameKeySender, notificationManager, logger);
     }
 
     /// <summary>
@@ -149,7 +154,7 @@ internal sealed class OverlayWindowService : IDisposable
             // 先把设置与角色列表读出来：窗口的构造与首次摆位都依赖设置里的坐标
             await _viewModel.InitializeAsync();
 
-            window = new OverlayWindow(_viewModel, _logger);
+            window = new OverlayWindow(_viewModel, _screenshotService, _logger);
             _window = window;
 
             // 窗口关闭（正常退出）时把热键注销掉：RegisterHotKey 占的是系统级资源，
@@ -188,9 +193,11 @@ internal sealed class OverlayWindowService : IDisposable
 
         hotkeys.Pressed += ToggleOverlay;
         hotkeys.NavigationPressed += OnNavigationPressed;
+        hotkeys.ScreenshotPressed += OnScreenshotPressed;
 
         // 热键名由这里填：只有注册完才知道最终用的是首选键还是被挤到了备选键
         window.SetHotkeyHint(hotkeys.Description);
+        window.SetScreenshotHotkeyHint(hotkeys.ScreenshotDescription);
 
         if (hotkeys.IsFallback)
             _logger.Warning("[浮窗] 首发热键被占用，已自动改用备选键 {Hotkey}", hotkeys.Description);
@@ -216,6 +223,7 @@ internal sealed class OverlayWindowService : IDisposable
         // 先摘事件再注销，免得注销过程中打进来的 WM_HOTKEY 还去切一次显隐
         _hotkeys.Pressed -= ToggleOverlay;
         _hotkeys.NavigationPressed -= OnNavigationPressed;
+        _hotkeys.ScreenshotPressed -= OnScreenshotPressed;
         _hotkeys.Dispose();
         _hotkeys = null;
     }
@@ -265,6 +273,20 @@ internal sealed class OverlayWindowService : IDisposable
     {
         _window?.HideOverlay();
         _hotkeys?.UnregisterNavigationHotkeys();
+    }
+
+    /// <summary>
+    /// 截图热键：按上次区域截图。**浮窗隐藏时也有效** —— 这正是它的使用场景
+    /// （在游戏里看到满意效果，不唤出浮窗直接按一下）。
+    /// 窗口不存在（没选鸣潮）时什么也不做。
+    /// </summary>
+    private void OnScreenshotPressed()
+    {
+        var window = _window;
+        if (window is null)
+            return;
+
+        _ = window.CaptureLastRegionAsync();
     }
 
     /// <summary>
