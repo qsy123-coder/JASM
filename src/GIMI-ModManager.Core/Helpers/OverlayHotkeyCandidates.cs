@@ -59,6 +59,7 @@ public static class OverlayHotkeyCandidates
     private const ushort VirtualKeyJ = 0x4A;
     private const ushort VirtualKeyK = 0x4B;
     private const ushort VirtualKeyM = 0x4D;
+    private const ushort VirtualKeyS = 0x53;
     private const ushort VirtualKeyF9 = 0x78;
 
     /// <summary><c>MOD_NOREPEAT</c>：不加的话按住热键会以键盘重复率连续触发，把「切换显隐」刷成不停闪烁。</summary>
@@ -80,6 +81,22 @@ public static class OverlayHotkeyCandidates
         new(HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKeyK, "K"),
         new(HotkeyModifiers.Control | HotkeyModifiers.Shift, VirtualKeyJ, "J"),
         new(HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKeyF9, "F9")
+    ];
+
+    /// <summary>
+    /// 截图热键的候选表：**按上次区域截图**（不弹框选遮罩），与唤出键分开注册。
+    ///
+    /// 首选 <c>Ctrl+Alt+S</c> 是用户选定的；被占用时依次退到 <c>Ctrl+Shift+S</c> 与裸 <c>F9</c>。
+    /// 裸 F9 是最后兜底：它比组合键更容易和录屏/宏软件撞，但总比"截图没有键盘入口"强 ——
+    /// 实际生效的是哪一个会显示在浮窗上，不会骗用户。
+    ///
+    /// 与 <see cref="CreateDefaults"/> 一样返回新数组，避免调用方误改共享实例。
+    /// </summary>
+    public static IReadOnlyList<OverlayHotkeyCandidate> CreateScreenshotDefaults() =>
+    [
+        new(HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKeyS, "S"),
+        new(HotkeyModifiers.Control | HotkeyModifiers.Shift, VirtualKeyS, "S"),
+        new(HotkeyModifiers.None, VirtualKeyF9, "F9")
     ];
 
     /// <summary>
