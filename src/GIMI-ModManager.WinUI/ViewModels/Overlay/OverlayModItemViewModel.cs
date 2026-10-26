@@ -95,8 +95,9 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
         => OnPropertyChanged(nameof(KeyPanelChevronGlyph));
 
     /// <summary>
-    /// 设为「当前唯一勾选行」或取消。**从隐藏变为显示时默认展开**；
-    /// 已经在显示时重复调用不动用户的折叠状态。
+    /// 设为「当前唯一勾选行」或取消。**每次从隐藏变为显示都回到折叠态**：
+    /// 面板是辅助信息，不能自己展开把列表顶走；展开只能由用户点标题行触发
+    /// （安装完成重建列表时新 Mod 会成为唯一勾选行，同样不该自动弹开）。
     /// </summary>
     public void SetKeyPanelVisible(bool visible)
     {
@@ -106,7 +107,7 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
         IsKeyPanelVisible = visible;
 
         if (visible)
-            IsKeyPanelExpanded = true;
+            IsKeyPanelExpanded = false;
     }
 
     /// <summary>点面板标题行：折叠 / 展开。</summary>
