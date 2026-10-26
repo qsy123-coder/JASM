@@ -305,8 +305,8 @@ internal sealed class OverlayWindowService : IDisposable
             return;
 
         // 修复页没有键盘可操作的目标：↑/↓ 会切换隐藏的 Mod 列表、Enter 会改盘、R 会刷新。
-        // 热键是全局的，页签本身却只能鼠标点 —— 不入这个守卫，用户在修复页按一下就会动到别的东西。
-        if (window.ViewModel.IsFixTabActive)
+        // 删除确认卡盖着时同理：卡片要用户明确点“删除/取消”，背后不能被热键改动。
+        if (window.ViewModel.IsFixTabActive || window.ViewModel.IsDeleteConfirmVisible)
             return;
 
         switch (action)
