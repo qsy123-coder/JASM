@@ -1,5 +1,103 @@
 # Changelog
 
+## [2.35.0](https://github.com/qsy123-coder/JASM/compare/v2.34.0...v2.35.0) (2026-10-26)
+
+
+### Features
+
+* **overlay:** Mod 行新增删除图标与确认卡 ([7168c03](https://github.com/qsy123-coder/JASM/commit/7168c0376d529b9e7b1c178de93b7173590f6fee))
+* **overlay:** 三档尺寸改为 380/460/520 并移除修复页专用尺寸 ([3e4c654](https://github.com/qsy123-coder/JASM/commit/3e4c654e202c0fb5533ab8cde8df892e10da9a00))
+* **overlay:** 修复页恢复尺寸下拉可用并更新尺寸注释 ([b4875ca](https://github.com/qsy123-coder/JASM/commit/b4875ca04c3bd83b770987f3af81564316aa4fd1))
+* **overlay:** 修复页支持拖放并落点切回 Mod 页 ([0a61dfd](https://github.com/qsy123-coder/JASM/commit/0a61dfda56e3875a231a109ff7be5e96d406731f))
+* **overlay:** 删除入口与确认卡期间的拖放守卫 ([668b6bd](https://github.com/qsy123-coder/JASM/commit/668b6bd6d7db935ccc1acd879ab4cc10810d5efe))
+* **overlay:** 删除确认期间屏蔽导航热键 ([9c8275f](https://github.com/qsy123-coder/JASM/commit/9c8275f229abe662ba91ae2771c73462c89f6a24))
+* **overlay:** 持久化自定义唤出热键 ([178d572](https://github.com/qsy123-coder/JASM/commit/178d5721a45156691c2e7a22eaa54d875aa39eee))
+* **overlay:** 按键映射面板默认折叠，安装后不再自动展开 ([fc1b1fa](https://github.com/qsy123-coder/JASM/commit/fc1b1fa630c68024e983534dd02d00ce6163ccdc))
+* **overlay:** 支持探测候选热键可用性 ([c047e88](https://github.com/qsy123-coder/JASM/commit/c047e884bc7a17a6c1558278573188bce0585406))
+* **overlay:** 支持自定义热键、热键换绑与直接打开浮窗 ([5621e4e](https://github.com/qsy123-coder/JASM/commit/5621e4ef7b304539c00a4250aae49749fbcad993))
+* **overlay:** 新增删除 Mod 的确认与回收站流程 ([1eb51a8](https://github.com/qsy123-coder/JASM/commit/1eb51a84668521fab5c7dd268441f7eefe053c2a))
+* **overlay:** 补充打开浮窗按钮中文文案 ([2061f18](https://github.com/qsy123-coder/JASM/commit/2061f18bdda9fbbca5285a6eb39665f384edd96f))
+* **overlay:** 补充打开浮窗按钮英文文案 ([7906bd8](https://github.com/qsy123-coder/JASM/commit/7906bd8963330b63fe1308c2914f91023f8f2ec1))
+* **overlay:** 角色概览工具栏新增打开浮窗按钮 ([7c5a46f](https://github.com/qsy123-coder/JASM/commit/7c5a46f39385e9810f1f89046d78d73b644c947c))
+* **overlay:** 角色概览页新增打开浮窗命令 ([5e04f64](https://github.com/qsy123-coder/JASM/commit/5e04f64715358771d0db48453166166fb058dfa2))
+* **overlay:** 记录修复页是否已初始化大档 ([81353ff](https://github.com/qsy123-coder/JASM/commit/81353ff9de3916a15d46de922c18f87191e90f9a))
+* **overlay:** 设置页新增浮窗快捷键区块 ([52e427e](https://github.com/qsy123-coder/JASM/commit/52e427ef102f9772fb1b0ae2d5ba685ce193add7))
+* **overlay:** 设置页新增热键录制与冲突提示 ([a01c815](https://github.com/qsy123-coder/JASM/commit/a01c8152e3989f16924a67c366330e7743df6240))
+* **overlay:** 首次进入修复页自动选大档 ([3967bfe](https://github.com/qsy123-coder/JASM/commit/3967bfe9b135eaaceb2b666123abded47c1a4a6c))
+* **wuwa-fixer:** 修复页尺寸切换、滚动与拖放守卫 ([85f2f2f](https://github.com/qsy123-coder/JASM/commit/85f2f2f3cdc1a73c3178ed4b58b23ef4bf5be465))
+* **wuwa-fixer:** 内嵌 CLI 与配置释放到本地应用数据 ([5fb003b](https://github.com/qsy123-coder/JASM/commit/5fb003b51b2278a8d14d44f6c23ef7cb7c4c0e45))
+* **wuwa-fixer:** 固化 CLI 版本、内嵌资源名与释放标记 ([94b4b52](https://github.com/qsy123-coder/JASM/commit/94b4b52c2488d7aa789c4492ba90c01ce011b27e))
+* **wuwa-fixer:** 备份扫描、回滚与清理后台服务 ([43825e2](https://github.com/qsy123-coder/JASM/commit/43825e270ed23229fc606a7614b5eb210ff4a5e9))
+* **wuwa-fixer:** 执行 CLI 并解析 NDJSON 进度 ([eb455ec](https://github.com/qsy123-coder/JASM/commit/eb455ec1490dbfd77fc8f18163b9d4f9e09eef41))
+* **wuwa-fixer:** 持久化修复开关与子页状态 ([422e152](https://github.com/qsy123-coder/JASM/commit/422e1524c8f99fd30dfb363605e8e480abd26cc3))
+* **wuwa-fixer:** 新增 .BAK 扫描与按时间戳分组 ([930ce7d](https://github.com/qsy123-coder/JASM/commit/930ce7d313c6a0085b56de7d68c12f58bdf35b86))
+* **wuwa-fixer:** 新增 CLI 启动参数构造 ([2f04c14](https://github.com/qsy123-coder/JASM/commit/2f04c14a2b20016aa45285c9187e8901fe7ba987))
+* **wuwa-fixer:** 新增 CLI/配置释放决策 ([dd9eb42](https://github.com/qsy123-coder/JASM/commit/dd9eb4209eab9c9c099fc3fbee5fcb307655fcef))
+* **wuwa-fixer:** 新增 NDJSON 事件解析 ([00f7529](https://github.com/qsy123-coder/JASM/commit/00f752929366ba69696c8037838789e6135ea86e))
+* **wuwa-fixer:** 新增上游版本号解析与比较 ([f85f46a](https://github.com/qsy123-coder/JASM/commit/f85f46a995c19764e0f8ae7c7060bdf9b36b5d3c))
+* **wuwa-fixer:** 新增五个修复开关及互斥归一 ([ecf5a8c](https://github.com/qsy123-coder/JASM/commit/ecf5a8cdcfebef528d98f03484498ab8849730a2))
+* **wuwa-fixer:** 新增修复任务模型 ([fb07395](https://github.com/qsy123-coder/JASM/commit/fb073950f2bebfab368aa37c4e6843df9b5e98d4))
+* **wuwa-fixer:** 新增修复结果判定 ([2c1a1f9](https://github.com/qsy123-coder/JASM/commit/2c1a1f951fa7b2b8cd0cc03980e82b847fc62b79))
+* **wuwa-fixer:** 新增修复配置校验 ([d84a3ca](https://github.com/qsy123-coder/JASM/commit/d84a3ca334de5fa19d25be685c9fce57bcdf6f1e))
+* **wuwa-fixer:** 新增可勾选的修复目标项 ([ab596c2](https://github.com/qsy123-coder/JASM/commit/ab596c271fc324ea97ab316334f81a439604e08d))
+* **wuwa-fixer:** 新增可跨浮窗隐藏的修复任务会话 ([eb60a8c](https://github.com/qsy123-coder/JASM/commit/eb60a8ce3a89db53a4fc65eb8e238e3630c9eb1b))
+* **wuwa-fixer:** 新增回滚执行与备份清理 ([68e7e3e](https://github.com/qsy123-coder/JASM/commit/68e7e3e2cd40a7d529a50f27d519bc8df885b650))
+* **wuwa-fixer:** 新增回滚计划生成 ([fc65a50](https://github.com/qsy123-coder/JASM/commit/fc65a50e337a599f5820b07e07e2c7dcb90b25bf))
+* **wuwa-fixer:** 新增回滚路径护栏 ([d8969e5](https://github.com/qsy123-coder/JASM/commit/d8969e599b135349976bb0e3dba55afc4f1f3db8))
+* **wuwa-fixer:** 新增浮窗修复/回滚视图模型 ([6dbbdfe](https://github.com/qsy123-coder/JASM/commit/6dbbdfea41885deb7029f6cebf18eb2738291e30))
+* **wuwa-fixer:** 新增还原点展示项 ([cc0af79](https://github.com/qsy123-coder/JASM/commit/cc0af79a2d1db388a7af6f36bf6d6b6adaa6b5a5))
+* **wuwa-fixer:** 新增配置更新源与主机白名单 ([a874b7d](https://github.com/qsy123-coder/JASM/commit/a874b7d8a2553a265237b575befee84a9f83305b))
+* **wuwa-fixer:** 新增配置静默检查节流 ([71deee4](https://github.com/qsy123-coder/JASM/commit/71deee43f9f201e56fae418699cee3b36c3cfe86))
+* **wuwa-fixer:** 注册修复服务与配置更新 HttpClient ([9dcbdcd](https://github.com/qsy123-coder/JASM/commit/9dcbdcd6d913e39a012f312b054f203838a7cee6))
+* **wuwa-fixer:** 浮窗接入修复服务、页签尺寸与目标刷新 ([033dcdb](https://github.com/qsy123-coder/JASM/commit/033dcdba4f2d7634840db42f21f7d1b7f6c6e73a))
+* **wuwa-fixer:** 浮窗新增修复页签与修复/回滚面板 ([6161060](https://github.com/qsy123-coder/JASM/commit/61610607a75743d9118bb8821e6488f5003f03d2))
+* **wuwa-fixer:** 组合引擎释放、配置与单 Mod 执行 ([31334f3](https://github.com/qsy123-coder/JASM/commit/31334f3a8dec251b63e2bcff39f77dd6d849a7c0))
+* **wuwa-fixer:** 补充修复页中文文案 ([39a1b5d](https://github.com/qsy123-coder/JASM/commit/39a1b5d0d2906b81c134419aa5f4c4a866574c2d))
+* **wuwa-fixer:** 补充修复页英文文案 ([2bd859c](https://github.com/qsy123-coder/JASM/commit/2bd859c4469824100bacc49d57c99b5b69d48113))
+* **wuwa-fixer:** 转交修复服务并在修复页屏蔽导航热键 ([5148b1f](https://github.com/qsy123-coder/JASM/commit/5148b1f7dcd553d477820e7202bd1782ec9a3cc0))
+* **wuwa-fixer:** 配置读取、检查与手动更新 ([907ec0f](https://github.com/qsy123-coder/JASM/commit/907ec0ff2dc3fbb492dd22e277ed6c675b12cb65))
+
+
+### Bug Fixes
+
+* **build:** 取修复引擎脚本在 CI 的 GBK 控制台下改用 UTF-8 输出 ([2c8d78c](https://github.com/qsy123-coder/JASM/commit/2c8d78cc72673a9ea792f0dd79c8593b691d430d))
+
+
+### Documentation
+
+* **overlay:** 同步修复 PRD 的三档尺寸条款（v1.1） ([b3416ce](https://github.com/qsy123-coder/JASM/commit/b3416cef75cf22e0aaaec81f15823f758f08b475))
+* **overlay:** 新增删除 Mod PRD（浮窗内确认、回收站） ([e0ad19d](https://github.com/qsy123-coder/JASM/commit/e0ad19dbcfe2ab36b8a56cb632a1576e3c2cfdeb))
+* **overlay:** 新增概览页打开浮窗与自定义快捷键 PRD ([f217bc8](https://github.com/qsy123-coder/JASM/commit/f217bc8afe201b93557134ade94127b9dad579cf))
+* **overlay:** 新增浮窗体验调整 PRD（拖放/尺寸/按键映射） ([2755ed3](https://github.com/qsy123-coder/JASM/commit/2755ed3a169b1e72bd16614df25059f5402907e4))
+* **wuwa-fixer:** 新增上游 GPL-3.0 组件声明 ([d1a10e9](https://github.com/qsy123-coder/JASM/commit/d1a10e94e8bbd921d91645cdb495d7ee245eb6aa))
+* **wuwa-fixer:** 新增浮窗 Mod 修复 PRD ([c0fe9a6](https://github.com/qsy123-coder/JASM/commit/c0fe9a69ca906481fb4d3960604d688064e85c2d))
+
+
+### Tests
+
+* **wuwa-fixer:** 覆盖 CLI 参数与特殊路径 ([6adce57](https://github.com/qsy123-coder/JASM/commit/6adce57c1c3ac1d782610fecf55c6949fa259de8))
+* **wuwa-fixer:** 覆盖 NDJSON 事件容错 ([eb36111](https://github.com/qsy123-coder/JASM/commit/eb3611188c86620dd2ae08760ed66e679283e56c))
+* **wuwa-fixer:** 覆盖修复开关互斥与参数映射 ([6eb1632](https://github.com/qsy123-coder/JASM/commit/6eb16325111f8fe39ac5089e514f9194c8544d09))
+* **wuwa-fixer:** 覆盖修复结果判定 ([85d877c](https://github.com/qsy123-coder/JASM/commit/85d877c6ce22212c4f82dbc5ad206aedf291a609))
+* **wuwa-fixer:** 覆盖回滚执行与预检 ([c995dba](https://github.com/qsy123-coder/JASM/commit/c995dbab442a098359a8746929fc9ecc7149adbc))
+* **wuwa-fixer:** 覆盖回滚计划语义 ([ab472da](https://github.com/qsy123-coder/JASM/commit/ab472dae8f97f9ef605f8a0285c8f859550ca8b5))
+* **wuwa-fixer:** 覆盖备份命名与分组统计 ([54d5fc9](https://github.com/qsy123-coder/JASM/commit/54d5fc98049dddfd0b2834e5902ba667a9df3644))
+* **wuwa-fixer:** 覆盖更新源白名单 ([2722740](https://github.com/qsy123-coder/JASM/commit/27227408c989a53c824697c9f17c29c647ae17d8))
+* **wuwa-fixer:** 覆盖版本号解析与比较 ([f59e2b0](https://github.com/qsy123-coder/JASM/commit/f59e2b0dc69f5d7db51d728dad6297896c8016e3))
+* **wuwa-fixer:** 覆盖路径越界与大小写 ([0408efe](https://github.com/qsy123-coder/JASM/commit/0408efe0b13d209988ea5dc3fa7b49d2c4bee245))
+* **wuwa-fixer:** 覆盖配置校验分支 ([101335e](https://github.com/qsy123-coder/JASM/commit/101335e0d7c8a60dd880b5c91ccec9664c4fc707))
+* **wuwa-fixer:** 覆盖释放决策 ([2750ec5](https://github.com/qsy123-coder/JASM/commit/2750ec531926dd6f8e8a97013cc9f19f27d9054f))
+* **wuwa-fixer:** 覆盖静默检查节流 ([767684a](https://github.com/qsy123-coder/JASM/commit/767684a23616ded3db8a730b11db97be4d80582d))
+* **wuwa-fixer:** 锁定内嵌资源名契约 ([46de479](https://github.com/qsy123-coder/JASM/commit/46de4792efae825f403ce1269def224c4ef0ea26))
+
+
+### Build System
+
+* **wuwa-fixer:** 发布前准备修复引擎资源并附带第三方声明 ([2944eb9](https://github.com/qsy123-coder/JASM/commit/2944eb9b52745ec2317dd2d303bb398d47570778))
+* **wuwa-fixer:** 将 CLI 与配置作为内嵌资源打包 ([c58829e](https://github.com/qsy123-coder/JASM/commit/c58829ed0dd46cbb1c2c85dceaf47a695c3d0993))
+* **wuwa-fixer:** 忽略已下载的内嵌资源目录 ([29a9a10](https://github.com/qsy123-coder/JASM/commit/29a9a101283d1678fb36cb07c1d9bbf3880c79cd))
+* **wuwa-fixer:** 新增 CLI 与配置下载脚本（固定版本与 SHA256） ([19ea32b](https://github.com/qsy123-coder/JASM/commit/19ea32bdc7e77416c67a54233b1e87e9faf0029f))
+
 ## [2.34.0](https://github.com/qsy123-coder/JASM/compare/v2.33.0...v2.34.0) (2026-10-22)
 
 
