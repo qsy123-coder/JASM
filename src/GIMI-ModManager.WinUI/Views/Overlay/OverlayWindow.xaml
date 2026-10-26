@@ -297,6 +297,15 @@
                         TextTrimming="CharacterEllipsis"
                         TextWrapping="Wrap" />
                 </Grid>
+
+                <!--  删除成功后的绿色状态行（失败走 ErrorMessage 的琥珀色）。  -->
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#FF6CCB5F"
+                    Text="{x:Bind ViewModel.DeleteStatusMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasDeleteStatus, Mode=OneWay}" />
+
                 <!--  图标 + 文字用 Grid 而不是横向 StackPanel：StackPanel 给子元素的可用宽度是"无限"，
                       于是文字的 TextWrapping="Wrap" 永远等不到该换行的宽度 —— 实测长文案（"提权助手没在运行…"）
                       就这样被窗口右边缘硬生生切掉。Grid 的 * 列才会把真实剩余宽度交给 TextBlock。  -->
@@ -430,6 +439,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
                             <!--  键盘选中行的高亮：铺在最底层（先声明的在下层），横跨三列、不参与布局。
@@ -438,7 +448,7 @@
                                   为两态去写转换器或 VisualState 都不如一层可显隐的底直白。  -->
                             <Border
                                 Grid.Column="0"
-                                Grid.ColumnSpan="6"
+                                Grid.ColumnSpan="7"
                                 Margin="-4,-2"
                                 Background="#33FFFFFF"
                                 BorderBrush="#FFE8A33D"
@@ -527,6 +537,25 @@
                                 Tag="{x:Bind}"
                                 ToolTipService.ToolTip="勾选下一件 Mod（当前这件会自动收起）"
                                 Visibility="{x:Bind ShowNextButton, Mode=OneWay}" />
+
+                            <!--  删除：整件 Mod 文件夹移至 Windows 回收站。常驻显示，小档也放得下；
+                                  点击只弹浮窗内的确认卡，不直接动盘。  -->
+                            <Button
+                                Grid.Column="6"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Margin="2,0,0,0"
+                                Padding="5,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="OnDeleteModClick"
+                                Tag="{x:Bind}"
+                                ToolTipService.ToolTip="删除 Mod（移至回收站）">
+                                <FontIcon
+                                    FontSize="12"
+                                    Foreground="#FFE06A6A"
+                                    Glyph="&#xE74D;" />
+                            </Button>
                             </Grid>
 
                             <!--  行内按键映射。只有唯一勾选的那一行显示（IsKeyPanelVisible）；
@@ -1050,6 +1079,62 @@
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
+
+            <!--  删除确认：盖住整个浮窗（含标题条），背景吃掉指针。必须留在浮窗内部 ——
+                  主窗口 ContentDialog 会激活主窗口、把游戏踢出前台。  -->
+            <Grid
+                Grid.RowSpan="7"
+                Background="#A6000000"
+                Visibility="{x:Bind ViewModel.IsDeleteConfirmVisible, Mode=OneWay}">
+                <Border
+                    MaxWidth="360"
+                    Margin="20"
+                    Padding="16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="#FF1B1C22"
+                    BorderBrush="#40FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Foreground="White"
+                            Text="删除这个 Mod？" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="#E6FFFFFF"
+                            Text="{x:Bind ViewModel.DeleteConfirmModName, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="#FFE8A33D"
+                            Text="整个 Mod 文件夹会移至 Windows 回收站，可从回收站恢复。"
+                            TextWrapping="Wrap" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                HorizontalAlignment="Stretch"
+                                Command="{x:Bind ViewModel.CancelDeleteCommand}"
+                                Content="取消"
+                                IsEnabled="{x:Bind ViewModel.CanConfirmDelete, Mode=OneWay}" />
+                            <Button
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                Background="#FFC62828"
+                                BorderThickness="0"
+                                Command="{x:Bind ViewModel.ConfirmDeleteCommand}"
+                                Content="{x:Bind ViewModel.ConfirmDeleteButtonText, Mode=OneWay}"
+                                Foreground="White"
+                                IsEnabled="{x:Bind ViewModel.CanConfirmDelete, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </Grid>
     </Page>
 </winUiEx:WindowEx>
