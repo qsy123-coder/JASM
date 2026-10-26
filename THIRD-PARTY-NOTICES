@@ -1,0 +1,26 @@
+JASM 内置的第三方组件与许可说明
+================================
+
+JASM - Just Another Skin Manager 以 GNU General Public License v3.0 发布（见 LICENSE）。
+
+------------------------------------------------------------
+Wuwa Mod Fixer（浮窗 Mod 修复引擎）
+------------------------------------------------------------
+项目：  https://github.com/Moonholder/Wuwa_Mod_Fixer
+作者：  Moonholder 及贡献者
+版本：  v3.7.0（wuwa-mod-cli）
+许可：  GNU General Public License v3.0
+用途：  JASM 浮窗「修复」页签通过其官方命令行版本修复 WWMI Mod；
+        程序以 EmbeddedResource 形式随 JASM 分发，运行时释放到
+        %LOCALAPPDATA%\JASM\WuwaModFixer\。
+源码：  https://github.com/Moonholder/Wuwa_Mod_Fixer （v3.7.0 对应 tag）
+数据：  config.json 来自上游仓库 main 分支，可通过浮窗「更新配置」更新。
+
+该组件同样以 GPL-3.0 授权，与 JASM 的许可相容。若你需要该组件的源码，
+请访问上述仓库；JASM 不修改其行为，只按官方 CLI 契约调用。
+
+------------------------------------------------------------
+其他第三方组件
+------------------------------------------------------------
+见 README.md 的「第三方 / 致谢」一节（JSON 与武器图片来源、7-Zip、SharpCompress、
+WinUI3Localizer 等）。
