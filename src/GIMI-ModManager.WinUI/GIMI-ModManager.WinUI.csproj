@@ -287,6 +287,30 @@
 		<EmbeddedResource Include="Assets\easterEgg.mp3" />
 	</ItemGroup>
 
+	<!-- 浮窗「修复」页签的内置引擎：上游 Wuwa_Mod_Fixer 的官方 CLI 与配置。
+	     资源由 Build/FetchWuwaModFixer.py 下载并校验，目录不入库（见 .gitignore）。
+	     Condition 与 Elevator 同理：日常 dotnet build 没有这两份文件也不能失败；
+	     但 Release.py 在 publish 前会先跑取资源脚本，CI 产物里一定带得走。
+
+	     LogicalName 必须与 WuwaModFixerProtocol 的常量逐字一致：
+	     资源名对不上时运行期只会拿到 null，表现成「修复引擎不可用」，不会编译报错。 -->
+	<ItemGroup>
+		<Content Remove="Assets\WuwaModFixer\**" />
+		<None Remove="Assets\WuwaModFixer\**" />
+	</ItemGroup>
+
+	<ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets\WuwaModFixer\wuwa-mod-cli.exe')">
+		<EmbeddedResource Include="Assets\WuwaModFixer\wuwa-mod-cli.exe">
+			<LogicalName>JASM.WuwaModFixer.wuwa-mod-cli.exe</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets\WuwaModFixer\config.json')">
+		<EmbeddedResource Include="Assets\WuwaModFixer\config.json">
+			<LogicalName>JASM.WuwaModFixer.config.json</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
 	<!-- 提权助手 Elevator.exe 内嵌进主 exe：单 exe 版磁盘上只有一个文件，助手只能这样交付，
 	     运行时由 ElevatorProvisioner 释放到 %LOCALAPPDATA%\JASM。见 ElevatorProvisioning 的类注释。
 
