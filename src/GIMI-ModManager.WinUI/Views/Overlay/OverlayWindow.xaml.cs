@@ -336,7 +336,29 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
             return;
         }
 
+        // 切到修复页/切回 Mod 页：窗口尺寸随 CurrentSizeOption 变；列表相关的滚动与拖放全部停用。
+        // 修复页的列表是隐藏的，对它做 ContainerFromItem / BringItemIntoView 只会白滚一场。
+        if (e.PropertyName == nameof(OverlayViewModel.IsFixTabActive))
+        {
+            RootGrid.AllowDrop = ViewModel.IsModTabActive;
+            _scrollAnchor = null;
+            CancelPendingScrollAdjustments();
+            ReassertSize();
+            KeepOnScreen();
+            return;
+        }
+
+        if (e.PropertyName == nameof(OverlayViewModel.CurrentSizeOption))
+        {
+            ReassertSize();
+            KeepOnScreen();
+            return;
+        }
+
         if (e.PropertyName != nameof(OverlayViewModel.SelectedMod))
+            return;
+
+        if (!ViewModel.IsModTabActive)
             return;
 
         // 键盘逐行走：只做最小滚动（行已在可视区里就不动），别每按一下都把整屏跳一遍
@@ -362,7 +384,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
 
         // 把列表滚回隐藏前的落点（用户要求：重开浮窗不跳动）。排进队列、不能当场做，理由见该方法。
-        ScheduleScrollAnchorRestore();
+        // 修复页没有列表可滚，直接跳过（锚点在切页时已清空）。
+        if (ViewModel.IsModTabActive)
+            ScheduleScrollAnchorRestore();
 
         // 首次显示才做的收尾，刻意放在 ShowWindow **之后**：
         //   1. 构造阶段 AppWindow.Size 不可信（原型实测：那时算出来的"居中"会跑到屏幕左上角）；
@@ -755,7 +779,12 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 不滚的话它可能整块落在列表可视区下面，看起来像"勾了但没出面板"。
     /// </summary>
     private void OnKeyPanelTargetChanged(OverlayModItemViewModel item)
-        => App.MainWindow.DispatcherQueue.TryEnqueue(() => BringItemIntoView(item));
+    {
+        if (!ViewModel.IsModTabActive)
+            return;
+
+        App.MainWindow.DispatcherQueue.TryEnqueue(() => BringItemIntoView(item));
+    }
 
     /// <summary>
     /// 把一行滚进视野。分几拍：行内按键面板是**先出现、后撑高**的，按键绑定还会再解析回来长一截，
@@ -767,6 +796,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </param>
     private void BringItemIntoView(OverlayModItemViewModel item, bool alignToTop = true)
     {
+        if (!ViewModel.IsModTabActive)
+            return;
+
         // 连着按上下键时，每一行都会排上三拍；只认最后那一次 ——
         // 否则前一行的延迟对齐会在 150ms 后把列表拽回去。
         var epoch = ++_scrollIntoViewEpoch;
@@ -883,6 +915,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     private void CaptureScrollAnchor()
     {
         _scrollAnchor = null;
+
+        if (!ViewModel.IsModTabActive)
+            return;
 
         if (FindScrollViewer(ModList) is not { } scrollViewer)
             return;
@@ -1217,6 +1252,15 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     private void RootGrid_OnDragOver(object sender, DragEventArgs e)
     {
+        // 修复页不接受拖入：那页没有“装到哪个角色”的语义，且主按钮可能正在跑任务。
+        // 三层都要挡（AllowDrop / DragOver / 外部通道），因为关 UAC 的机器走的是另一条投递路。
+        if (!ViewModel.IsModTabActive)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.Handled = true;
+            return;
+        }
+
         var hasItems = e.DataView.Contains(StandardDataFormats.StorageItems);
 
         LogDragProbeOnce(hasItems, e);
@@ -1284,6 +1328,13 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
     private async void RootGrid_OnDrop(object sender, DragEventArgs e)
     {
+        if (!ViewModel.IsModTabActive)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.Handled = true;
+            return;
+        }
+
         // 这一轮拖拽到此结束，把诊断重新武装，下一次拖拽才会再留下一行（见 _dragProbeLogged）。
         // 放在最前面：下面"读不出文件就早返回"那条路同样是一轮拖拽的收尾。
         _dragProbeLogged = false;
@@ -1338,7 +1389,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 所以这里不必再判一次 —— 真的没有文件时根本不会问到。
     /// </para>
     /// </summary>
-    bool IExternalDropSurface.CanAcceptDropAt(Point point) => true;
+    bool IExternalDropSurface.CanAcceptDropAt(Point point) => ViewModel.IsModTabActive;
 
     /// <summary>
     /// 外部通道送来的落下。走到这一步已经确认有文件，所以不走
@@ -1347,6 +1398,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     async Task IExternalDropSurface.HandleExternalDropAsync(IReadOnlyList<string> paths, Point point)
     {
+        if (!ViewModel.IsModTabActive)
+            return;
+
         var storageItems = new List<IStorageItem>(paths.Count);
 
         foreach (var path in paths)
