@@ -94,6 +94,18 @@ public class OverlaySettings
     public string? LastConfigCheckUtc { get; set; }
 
     /// <summary>
+    /// 用户自定义的浮窗唤出热键：修饰键（<c>HotkeyModifiers</c> 的位组合）。
+    /// 三项任一为空 = 没自定义过，沿用默认候选表。
+    /// </summary>
+    public int? OverlayHotkeyModifiers { get; set; }
+
+    /// <summary>自定义热键的主键虚拟键码。</summary>
+    public int? OverlayHotkeyVirtualKey { get; set; }
+
+    /// <summary>自定义热键主键的显示名（<c>J</c> / <c>F9</c> / <c>Space</c>）。</summary>
+    public string? OverlayHotkeyKeyName { get; set; }
+
+    /// <summary>
     /// 截图输出目录。<c>null</c> = 没配过，用
     /// <c>OverlayScreenshotService.GetDefaultOutputFolder()</c>（图片\JASM\浮窗截图）。
     /// </summary>
