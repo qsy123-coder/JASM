@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.35.1](https://github.com/qsy123-coder/JASM/compare/v2.35.0...v2.35.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **mods:** 拖拽安装剥到带 ini 的那一层并改叫包名 ([418e14a](https://github.com/qsy123-coder/JASM/commit/418e14a10695bd6e501874d25d911a159e2db04c))
+* **mods:** 拖拽安装改用 ResolveInstallRoot 定落盘根 ([c2a693b](https://github.com/qsy123-coder/JASM/commit/c2a693ba1a147f12cf8d24b2dc7035e4a14baa34))
+* **mods:** 解压目录名不再带容器扩展名 ([3fb2fef](https://github.com/qsy123-coder/JASM/commit/3fb2fefaf48c3cef568cb35693462a7f1171af48))
+
+
+### Tests
+
+* **mods:** 覆盖拖拽安装落盘根的实机形状 ([7a4d898](https://github.com/qsy123-coder/JASM/commit/7a4d8985c8a9b8a6a09fbb6584a7b50d62f9c306))
+* **mods:** 覆盖解压目录名的扩展名剥离 ([39b3ed6](https://github.com/qsy123-coder/JASM/commit/39b3ed610d51169aabdca8784dd1c02633d5f853))
+
 ## [2.35.0](https://github.com/qsy123-coder/JASM/compare/v2.34.0...v2.35.0) (2026-10-26)
 
 
