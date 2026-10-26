@@ -245,15 +245,14 @@ public class ModDragAndDropService
     /// 把解压结果交给安装向导 —— 两条拖拽路径共用。
     ///
     /// <para>
-    /// 先把 <c>JASM_TMP\&lt;guid&gt;</c> 这层包装剥掉，再看包内容根<b>自己带不带 ini</b>：
-    /// 带的（多合一包）就<b>钦定根为 mod 根</b>，整个包当一个 Mod 装 —— 否则向导会去取
-    /// 树里第一个 <c>mod.ini</c>（多半是包里某个子目录），用户只装到包的一个碎片，
-    /// 而按键切换那些逻辑还留在没被装进去的根 ini 里。
+    /// 落盘根由 <see cref="ModPackageRootResolver.ResolveInstallRoot"/> 定：剥掉 <c>JASM_TMP\&lt;guid&gt;</c>
+    /// 与包内的纯包装层，停在「自己带 ini 的那一层」，并改叫包名（不含 <c>.exe</c> / <c>.zip</c> 这类容器后缀）。
     /// </para>
     ///
     /// <para>
-    /// 不带的（一堆互不相干的 Mod 打成包）维持原样，仍然交给向导自己的启发式去猜 —— 那条路走了很久，
-    /// 没有明确证据不该动。判定见 <see cref="ModPackageRootResolver"/>。
+    /// <b>为什么要剥到 ini 那一层</b>：以前只剥 <c>&lt;guid&gt;</c>，把「exe 名那一层」整个落盘，于是装出来是
+    /// <c>DISABLED_xxx.exe\xxx\PebbleRox-…\single_layer_depth.ini</c> 这种三层目录。XXMI 扫不到 mod 根上的 ini，
+    /// 实机表现是<b>启动直接崩溃</b>；用户手动把嵌套去掉就正常。
     /// </para>
     ///
     /// <para>
@@ -270,51 +269,20 @@ public class ModDragAndDropService
     {
         var extractedRoot = new DirectoryInfo(scanResult.ExtractedFolder.FullPath);
 
-        // 只剥 JASM 自己的 JASM_TMP\<guid> 那一层纯包装，再往下那一层（**就是 exe 的名字**）就是用户
-        // 拖进来的那整个包 —— 不再往里钻。
-        //
-        // 以前这里用 ModPackageRootResolver.ResolveContentRoot 一路剥到「自己带 ini 的那一层」，
-        // 碰上「外层是 exe 名、ini 摆在子目录里」的包就只装进去一个子目录（实测：装出来的文件夹叫
-        // 'Sigrika Ball Full'，而用户要的是 exe 名那一层）。包里那些按键切换逻辑常常摆在外层，
-        // 少装了它的表现就是「装上了但热键没反应」。
-        var contentRoot = ResolveExtractedPackageFolder(extractedRoot);
+        // 内容一个字节都不动，只剥包装层 + 换外层名字：装出来的目录必须直接摆着 ini
+        // （多一层 XXMI 就启动崩溃），名字必须是包名（不能带 .exe）。
+        var contentRoot = ModPackageRootResolver.ResolveInstallRoot(extractedRoot);
 
-        // 剥完包装层的那一层，就是**用户拖进来的那个包**（目录名通常就是 exe 名）—— 整个当 Mod 装。
-        //
-        // 以前这里还门一道「根自己带 ini 才整包装」，其余交给向导的启发式去猜；猜出来的多是包里
-        // 某个子目录，于是用户只装到一块碎片，而按键切换那些逻辑还留在他没装进去的那一层
-        // （实机反馈：「拖进去的文件夹应该是整个才对」）。向导的目录树仍然摆着，真要只装其中一层，
-        // 用户在树里往下选就是了 —— 默认值给整包才是对的。
-        _logger.Information("Installing the whole extracted folder as one mod ('{ModRoot}')", contentRoot.Name);
+        _logger.Information("Installing the extracted package as one mod ('{ModRoot}')", contentRoot.Name);
 
         stageProgress?.Report(ModInstallStage.Installing);
 
         if (installSilently)
-            return await InstallSilentlyAsync(contentRoot, modList, stageProgress).ConfigureAwait(false);
+            return await InstallSilentlyAsync(contentRoot, scanResult.TempFolder, modList, stageProgress)
+                .ConfigureAwait(false);
 
         return await _modInstallerService.StartModInstallationAsync(contentRoot.Parent ?? extractedRoot, modList,
             setup: options => options.ModRootFolder = contentRoot).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// 解压出来的那**一整个包目录**：剥掉 <c>JASM_TMP\&lt;guid&gt;</c> 这层纯包装，返回它下面那一层 ——
-    /// 通常就是 <b>exe 的名字</b>，也就是用户拖进来的那个包本身。
-    ///
-    /// 只有恰好一层子目录时才这么取；没有子目录（散文件）或有多个并列条目时退回入参本身，
-    /// 交给向导那棵树去选（树根是它，选中项露在第一层）。
-    /// </summary>
-    private static DirectoryInfo ResolveExtractedPackageFolder(DirectoryInfo extractedRoot)
-    {
-        try
-        {
-            var subFolders = extractedRoot.GetDirectories();
-            return subFolders.Length == 1 ? subFolders[0] : extractedRoot;
-        }
-        catch (Exception)
-        {
-            // 读不动就别猜：退回包装层本身，后面的流程照样能跑（向导里用户还能自己选）
-            return extractedRoot;
-        }
     }
 
     /// <summary>
@@ -324,8 +292,9 @@ public class ModDragAndDropService
     /// 也不是拖拽该有的手感。落盘那一手与向导点「添加模组」完全相同
     /// （<c>ModInstallerService.InstallFolderSilentlyAsync</c>），所以目录名、启用行为都跟着那条路走。
     /// </summary>
-    private async Task<InstallMonitor?> InstallSilentlyAsync(DirectoryInfo contentRoot, ICharacterModList modList,
-        IProgress<ModInstallStage>? stageProgress = null)
+    /// <param name="workFolderRoot">本次解压独占的临时目录（<c>JASM_TMP\&lt;guid&gt;</c>），装完整个收掉。</param>
+    private async Task<InstallMonitor?> InstallSilentlyAsync(DirectoryInfo contentRoot, string workFolderRoot,
+        ICharacterModList modList, IProgress<ModInstallStage>? stageProgress = null)
     {
         var characterName = modList.Character.DisplayName;
 
@@ -368,37 +337,60 @@ public class ModDragAndDropService
         }
         finally
         {
-            // 解压出来的临时目录用完就清 —— 装的时候是搬/复制进角色目录，这份原件不该留在临时目录里
+            CleanupExtractedTemp(contentRoot, workFolderRoot);
+        }
+    }
+
+    /// <summary>
+    /// 解压出来的临时目录用完就清 —— 装的时候是搬/复制进角色目录，这份原件不该留在临时目录里。
+    ///
+    /// <para>
+    /// 内容根现在可能埋在 <c>&lt;工作根&gt;\&lt;guid&gt;\&lt;包名&gt;\…</c> 里好几层（包装层被剥掉了，
+    /// 但目录还在原地），所以要从它往上把空壳逐个收掉。只删<b>确实空了</b>的目录，
+    /// 而且绝不越过 <paramref name="workFolderRoot"/> 这一层 —— 剥掉的包装层里可能还躺着预览图之类
+    /// 没被搬走的散文件，那种目录留着（下一次拖拽也不会复用它，只是别误删别的路径）。
+    /// </para>
+    /// </summary>
+    private void CleanupExtractedTemp(DirectoryInfo contentRoot, string workFolderRoot)
+    {
+        try
+        {
+            // 搬走之后这个目录**本来就不存在了**，而 `DirectoryInfo.Exists` 用的是建对象那一刻的
+            // 缓存，常常仍然回 true —— 于是 Delete 抛 DirectoryNotFoundException。那不是失败，
+            // 正是期望状态：不接住它，后面的「删空包装目录」会被一并跳过，JASM_TMP 就会一直
+            // 堆空壳（实测 464 个）。
             try
             {
-                // 搬走之后这个目录**本来就不存在了**，而 `DirectoryInfo.Exists` 用的是建对象那一刻的
-                // 缓存，常常仍然回 true —— 于是 Delete 抛 DirectoryNotFoundException。那不是失败，
-                // 正是期望状态：不接住它，后面的「删空包装目录」会被一并跳过，JASM_TMP 就会一直
-                // 堆空壳（实测 464 个）。
-                try
-                {
-                    if (contentRoot.Exists)
-                        contentRoot.Delete(true);
-                }
-                catch (DirectoryNotFoundException)
-                {
-                }
-
-                // 搬走之后剩下的那层空包装（<工作根>\<guid>）也收掉：不然每装一次就在目标盘上
-                // 留一个空目录。只在它确实空、且确实是咱们自己的工作目录时才删。
-                var workRoot = contentRoot.Parent;
-                if (workRoot?.Exists == true &&
-                    string.Equals(workRoot.Parent?.Name, DragAndDropScanner.WorkFolderName,
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !workRoot.EnumerateFileSystemInfos().Any())
-                {
-                    workRoot.Delete();
-                }
+                if (contentRoot.Exists)
+                    contentRoot.Delete(true);
             }
-            catch (Exception e)
+            catch (DirectoryNotFoundException)
             {
-                _logger.Warning(e, "清理解压临时目录失败: {Path}", contentRoot.FullName);
             }
+
+            if (string.IsNullOrWhiteSpace(workFolderRoot))
+                return;
+
+            var directory = contentRoot.Parent;
+            while (directory is not null &&
+                   directory.FullName.StartsWith(workFolderRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                // 用静态 API 而不是 DirectoryInfo 的方法：后者带缓存，搬走之后还会说「存在」
+                var path = directory.FullName;
+                var parent = directory.Parent;
+
+                if (Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any())
+                    break;
+
+                if (Directory.Exists(path))
+                    Directory.Delete(path, false);
+
+                directory = parent;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "清理解压临时目录失败: {Path}", contentRoot.FullName);
         }
     }
 
