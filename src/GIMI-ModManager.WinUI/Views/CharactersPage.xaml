@@ -210,6 +210,12 @@
                     IsHitTestVisible="True"
                     l:Uids.Uid="Characters_RefreshModsButton" />
                 <Button
+                    Margin="8,0,0,0"
+                    Command="{x:Bind ViewModel.OpenOverlayCommand}"
+                    Content="打开浮窗"
+                    l:Uids.Uid="Characters_OpenOverlayButton"
+                    Visibility="{x:Bind ViewModel.IsOverlayAvailable, Mode=OneWay}" />
+                <Button
                     Margin="32,0,32,0"
                     Command="{x:Bind ViewModel.Start3DmigotoCommand}"
                     Content="Start 3Dmigoto"
