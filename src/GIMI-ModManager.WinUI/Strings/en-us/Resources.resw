@@ -680,4 +680,36 @@
   <data name="ModDrop_FailedBody" xml:space="preserve">
     <value>The package could not be unpacked.</value>
   </data>
-</root>
+  <data name="Overlay_TabMods.Content" xml:space="preserve">
+    <value>Mods</value>
+  </data>
+  <data name="Overlay_TabFix.Content" xml:space="preserve">
+    <value>Repair</value>
+  </data>
+  <data name="Overlay_FixSubRepair.Content" xml:space="preserve">
+    <value>One-click repair</value>
+  </data>
+  <data name="Overlay_FixSubRollback.Content" xml:space="preserve">
+    <value>Backups &amp; rollback</value>
+  </data>
+  <data name="Overlay_FixDerived.Text" xml:space="preserve">
+    <value>Fill missing texture states</value>
+  </data>
+  <data name="Overlay_FixStable.Text" xml:space="preserve">
+    <value>Apply stable textures</value>
+  </data>
+  <data name="Overlay_FixRendering33.Text" xml:space="preserve">
+    <value>Fix holes / missing body parts</value>
+  </data>
+  <data name="Overlay_FixAemeath.Text" xml:space="preserve">
+    <value>Fix Aemeath mech model</value>
+  </data>
+  <data name="Overlay_FixAero.Text" xml:space="preserve">
+    <value>Fix Rover-Aero eyes</value>
+  </data>
+  <data name="Overlay_FixAeroMode1.Content" xml:space="preserve">
+    <value>TexCoord override</value>
+  </data>
+  <data name="Overlay_FixAeroMode2.Content" xml:space="preserve">
+    <value>Mirror texture</value>
+  </data></root>
