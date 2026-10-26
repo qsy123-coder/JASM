@@ -28,10 +28,14 @@ using GIMI_ModManager.WinUI.Validators.PreConfigured;
 using GIMI_ModManager.WinUI.ViewModels.SettingsViewModels;
 using GIMI_ModManager.WinUI.Views;
 using GIMI_ModManager.WinUI.ViewModels.SubVms;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
 using Serilog;
+using Windows.System;
+using Windows.UI.Core;
 
 namespace GIMI_ModManager.WinUI.ViewModels;
 
@@ -201,6 +205,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         OverlayScreenshotFolderPicker.Path = string.IsNullOrWhiteSpace(overlaySettings?.ScreenshotOutputFolder)
             ? OverlayScreenshotService.GetDefaultOutputFolder()
             : overlaySettings!.ScreenshotOutputFolder;
+
+        RefreshOverlayHotkeyDisplay(overlaySettings);
 
         CharacterAsSkinsCheckbox = _modManagerOptions?.CharacterSkinsAsCharacters ?? false;
 
@@ -380,6 +386,189 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private async Task BrowseModsFolderAsync()
     {
         await PathToModsFolderPicker.BrowseFolderPathAsync(App.MainWindow);
+    }
+
+    /// <summary>浮窗唤出键的当前生效值（可能是默认候选、自定义键，或被占用后的默认兜底）。</summary>
+    [ObservableProperty] private string _overlayHotkeyDisplay = "Ctrl+Alt+J";
+
+    /// <summary>改键结果/冲突提示。</summary>
+    [ObservableProperty] private string? _overlayHotkeyStatusMessage;
+
+    public bool HasOverlayHotkeyStatus => !string.IsNullOrWhiteSpace(OverlayHotkeyStatusMessage);
+
+    partial void OnOverlayHotkeyStatusMessageChanged(string? value) =>
+        OnPropertyChanged(nameof(HasOverlayHotkeyStatus));
+
+    private void RefreshOverlayHotkeyDisplay(OverlaySettings? settings)
+    {
+        var service = App.GetService<OverlayWindowService>();
+
+        if (service.IsOverlayWindowCreated && !service.IsToggleHotkeyRegistered)
+            OverlayHotkeyStatusMessage = "浮窗热键当前未注册（可能被其它程序占用），可录制一个新组合。";
+
+        if (service.IsInitializedForSupportedGame)
+        {
+            OverlayHotkeyDisplay = service.ToggleHotkeyDescription;
+            if (service.IsToggleHotkeyFallback)
+            {
+                OverlayHotkeyStatusMessage =
+                    $"自定义快捷键被占用，当前临时使用 {OverlayHotkeyDisplay}，请换一个组合。";
+            }
+
+            return;
+        }
+
+        if (settings?.OverlayHotkeyModifiers is { } modifiers
+            && settings.OverlayHotkeyVirtualKey is { } virtualKey
+            && modifiers != 0
+            && virtualKey > 0)
+        {
+            var keyName = string.IsNullOrWhiteSpace(settings.OverlayHotkeyKeyName)
+                ? $"VK{virtualKey:X2}"
+                : settings.OverlayHotkeyKeyName;
+            OverlayHotkeyDisplay = OverlayHotkeyCandidates.Describe(
+                (HotkeyModifiers)(uint)modifiers, keyName);
+        }
+    }
+
+    /// <summary>
+    /// 录制新的浮窗唤出键。必须带至少一个修饰键；先探测注册、成功后才落盘，
+    /// 被占用时旧键保持不动（与热键独占的语义一致）。
+    /// </summary>
+    [RelayCommand]
+    private async Task RecordOverlayHotkeyAsync()
+    {
+        var capturedModifiers = HotkeyModifiers.None;
+        var capturedKey = 0;
+        string? capturedKeyName = null;
+
+        var hint = new TextBlock
+        {
+            Text = "请按下新的组合键。至少按住 Ctrl / Alt / Shift / Win 之一；Esc 取消。",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12
+        };
+
+        var textBox = new TextBox
+        {
+            IsReadOnly = true,
+            Text = "等待按键…",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = "设置浮窗快捷键",
+            Content = new StackPanel { Spacing = 8, Children = { textBox, hint } },
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        dialog.Opened += (_, _) => textBox.Focus(FocusState.Programmatic);
+        textBox.KeyDown += (_, e) =>
+        {
+            e.Handled = true;
+
+            if (e.Key == VirtualKey.Escape)
+            {
+                dialog.Hide();
+                return;
+            }
+
+            if (IsModifierKey(e.Key))
+            {
+                textBox.Text = "已按下修饰键，请再按主键…";
+                return;
+            }
+
+            var modifiers = ReadModifiers();
+            if (modifiers == HotkeyModifiers.None)
+            {
+                textBox.Text = "至少需要 Ctrl / Alt / Shift / Win 之一";
+                return;
+            }
+
+            capturedModifiers = modifiers;
+            capturedKey = (ushort)e.Key;
+            capturedKeyName = FormatKeyName(e.Key);
+            dialog.Hide();
+        };
+
+        await _windowManagerService.ShowDialogAsync(dialog);
+
+        if (capturedKey == 0)
+            return;
+
+        var candidate = new OverlayHotkeyCandidate(
+            capturedModifiers, (ushort)capturedKey, capturedKeyName ?? $"VK{capturedKey:X2}");
+
+        var overlayService = App.GetService<OverlayWindowService>();
+        var result = await overlayService.TryChangeToggleHotkeyAsync(candidate);
+
+        if (!result.Success)
+        {
+            OverlayHotkeyStatusMessage = result.Error ?? "快捷键设置失败";
+            return;
+        }
+
+        var settings = await _localSettingsService.ReadOrCreateSettingAsync<OverlaySettings>(
+            OverlaySettings.Key, SettingScope.App);
+        settings.OverlayHotkeyModifiers = (int)capturedModifiers;
+        settings.OverlayHotkeyVirtualKey = capturedKey;
+        settings.OverlayHotkeyKeyName = candidate.KeyDisplayName;
+        await _localSettingsService.SaveSettingAsync(OverlaySettings.Key, settings, SettingScope.App);
+
+        OverlayHotkeyDisplay = result.EffectiveHotkey ?? candidate.FriendlyName;
+        OverlayHotkeyStatusMessage = overlayService.IsInitializedForSupportedGame
+            ? $"快捷键已更新为 {OverlayHotkeyDisplay}"
+            : "已保存；切换到鸣潮后生效";
+    }
+
+    private static bool IsModifierKey(VirtualKey key) =>
+        key is VirtualKey.Control or VirtualKey.Shift or VirtualKey.Menu
+            or VirtualKey.LeftWindows or VirtualKey.RightWindows;
+
+    private static HotkeyModifiers ReadModifiers()
+    {
+        var modifiers = HotkeyModifiers.None;
+
+        if (IsDown(VirtualKey.Control))
+            modifiers |= HotkeyModifiers.Control;
+        if (IsDown(VirtualKey.Menu))
+            modifiers |= HotkeyModifiers.Alt;
+        if (IsDown(VirtualKey.Shift))
+            modifiers |= HotkeyModifiers.Shift;
+        if (IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows))
+            modifiers |= HotkeyModifiers.Win;
+
+        return modifiers;
+    }
+
+    private static bool IsDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
+    private static string FormatKeyName(VirtualKey key)
+    {
+        var code = (int)key;
+
+        if (key >= VirtualKey.A && key <= VirtualKey.Z)
+            return ((char)('A' + code - (int)VirtualKey.A)).ToString();
+        if (key >= VirtualKey.Number0 && key <= VirtualKey.Number9)
+            return ((char)('0' + code - (int)VirtualKey.Number0)).ToString();
+        if (key >= VirtualKey.F1 && key <= VirtualKey.F24)
+            return "F" + (code - (int)VirtualKey.F1 + 1);
+
+        return key switch
+        {
+            VirtualKey.Space => "Space",
+            VirtualKey.Tab => "Tab",
+            VirtualKey.Enter => "Enter",
+            VirtualKey.Left => "Left",
+            VirtualKey.Right => "Right",
+            VirtualKey.Up => "Up",
+            VirtualKey.Down => "Down",
+            _ => key.ToString()
+        };
     }
 
     /// <summary>选浮窗截图的输出目录。选完立刻落盘 —— 它是个独立的小设置，不值得再让用户点一次「更新」。</summary>
