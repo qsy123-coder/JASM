@@ -1077,6 +1077,14 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 中键在 WinUI 里没有默认行为（不会触发选中或滚动），标 Handled 免得它继续往上传。
     /// </summary>
     /// <summary>
+    /// <summary>行尾垃圾桶：只弹确认卡，真正删除在 ViewModel 的 ConfirmDeleteCommand 里。</summary>
+    private void OnDeleteModClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: OverlayModItemViewModel item })
+            ViewModel.RequestDeleteMod(item);
+    }
+
+    /// <summary>
     /// 行尾「下一个」按钮：勾上列表里的下一件。
     /// 实际切换走 <see cref="OverlayViewModel.SelectNextModAsync"/>，与手动点勾选框同一条路。
     /// </summary>
@@ -1244,9 +1252,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     private void RootGrid_OnDragOver(object sender, DragEventArgs e)
     {
-        // 修复页也接受拖入：Drop 时会切回 Mod 页。唯一拒绝的场景是修复任务正在跑 ——
-        // 那时安装与修复会同时动 Mod 目录，且页签/角色已被锁住，切不回 Mod 页。
-        if (ViewModel.FixSession.IsRunning)
+        // 修复页也接受拖入：Drop 时会切回 Mod 页。拒绝两个场景：
+        // 修复任务正在跑（安装与修复同时动 Mod 目录）、删除确认卡正盖着（用户还没决定）。
+        if (ViewModel.FixSession.IsRunning || ViewModel.IsDeleteConfirmVisible)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.Handled = true;
@@ -1320,7 +1328,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
     private async void RootGrid_OnDrop(object sender, DragEventArgs e)
     {
-        if (ViewModel.FixSession.IsRunning)
+        if (ViewModel.FixSession.IsRunning || ViewModel.IsDeleteConfirmVisible)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.Handled = true;
@@ -1386,7 +1394,8 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 所以这里不必再判一次 —— 真的没有文件时根本不会问到。
     /// </para>
     /// </summary>
-    bool IExternalDropSurface.CanAcceptDropAt(Point point) => !ViewModel.FixSession.IsRunning;
+    bool IExternalDropSurface.CanAcceptDropAt(Point point) =>
+        !ViewModel.FixSession.IsRunning && !ViewModel.IsDeleteConfirmVisible;
 
     /// <summary>
     /// 外部通道送来的落下。走到这一步已经确认有文件，所以不走
@@ -1395,7 +1404,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     async Task IExternalDropSurface.HandleExternalDropAsync(IReadOnlyList<string> paths, Point point)
     {
-        if (ViewModel.FixSession.IsRunning)
+        if (ViewModel.FixSession.IsRunning || ViewModel.IsDeleteConfirmVisible)
             return;
 
         // 与 XAML 那条路一致：修复页落下也切回 Mod 页再安装
