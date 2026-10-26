@@ -120,7 +120,6 @@
                     FontSize="10"
                     DisplayMemberPath="DisplayName"
                     ItemsSource="{x:Bind ViewModel.SizeOptions}"
-                    IsEnabled="{x:Bind ViewModel.IsModTabActive, Mode=OneWay}"
                     SelectedIndex="{x:Bind ViewModel.SelectedSizeIndex, Mode=TwoWay}"
                     ToolTipService.ToolTip="浮窗大小" />
 
@@ -161,7 +160,7 @@
 
             <!--  页签：Mod 切换 / 修复。单独占一行而不是塞进拖动条 ——
                   拖动条整条挂着 PointerPressed，可点控件冒泡上去会顺带开始拖窗；
-                  而且小档 320 宽时标题条已经被尺寸下拉、两个截图键、关闭键占满了。  -->
+                  而且小档 380 宽时标题条已经被尺寸下拉、两个截图键、关闭键占满了。  -->
             <controls:Segmented
                 Grid.Row="1"
                 Margin="10,0,10,6"
@@ -395,7 +394,7 @@
             </StackPanel>
 
             <!--  x:Name 是给代码后置用的：键盘选中换行时要把那一行滚进视野，
-                  而浮窗只有 440 高、列表比它长，选中的行可能整行都在屏幕外。  -->
+                  而列表通常比窗口高，选中的行可能整行都在屏幕外。  -->
             <ListView
                 x:Name="ModList"
                 Grid.Row="6"
@@ -662,8 +661,8 @@
                 Visibility="{x:Bind ViewModel.ShowModListEmpty, Mode=OneWay}" />
 
             <!--  ───────── 修复页 ─────────
-                  与 ModList 同一行互斥显示。整页放 ScrollViewer：520×660 在 1366×768 上也可能被
-                  KeepOnScreen 夹矮，用户得能滚到主按钮与底栏。  -->
+                  与 ModList 同一行互斥显示。整页放 ScrollViewer：大档 520×660 在 1366×768 上也可能被
+                  KeepOnScreen 夹矮，用户切到小/中档时更需要滚动到主按钮与底栏。  -->
             <ScrollViewer
                 Grid.Row="6"
                 Margin="10,0,10,8"
