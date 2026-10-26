@@ -2630,4 +2630,9 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   </data>
   <data name="Overlay_FixAeroMode2.Content" xml:space="preserve">
     <value>贴图镜像反转</value>
-  </data></root>
+  </data>
+  <data name="Characters_OpenOverlayButton.Content" xml:space="preserve">
+    <value>打开浮窗</value>
+  </data>
+</root>
+
