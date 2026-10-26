@@ -507,6 +507,47 @@
 
                 <TextBlock
                     Style="{ThemeResource SubtitleTextBlockStyle}"
+                    Text="浮窗" />
+                <StackPanel Margin="{StaticResource SmallTopBottomMargin}" Spacing="8">
+                    <TextBlock
+                        MaxWidth="600"
+                        HorizontalAlignment="Left"
+                        IsTextSelectionEnabled="True"
+                        TextWrapping="WrapWholeWords"
+                        Text="打开浮窗的全局快捷键。默认 Ctrl+Alt+J；被其它程序占用时，这里显示实际生效的键并给出提示。" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Padding="10,6"
+                            HorizontalAlignment="Left"
+                            Background="#1AFFFFFF"
+                            BorderBrush="#33FFFFFF"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                            <TextBlock
+                                FontFamily="Consolas"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.OverlayHotkeyDisplay, Mode=OneWay}" />
+                        </Border>
+                        <Button
+                            Grid.Column="1"
+                            Command="{x:Bind ViewModel.RecordOverlayHotkeyCommand}"
+                            Content="录制快捷键" />
+                    </Grid>
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="#FFE8A33D"
+                        Text="{x:Bind ViewModel.OverlayHotkeyStatusMessage, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords"
+                        Visibility="{x:Bind ViewModel.HasOverlayHotkeyStatus, Mode=OneWay}" />
+                </StackPanel>
+
+                <TextBlock
+                    Style="{ThemeResource SubtitleTextBlockStyle}"
                     Text="浮窗截图" />
                 <StackPanel Margin="{StaticResource SmallTopBottomMargin}" Spacing="8">
                     <TextBlock
