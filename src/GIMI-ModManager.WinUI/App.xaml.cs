@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Reflection;
 using System.Threading.RateLimiting;
 using GIMI_ModManager.Core.Contracts.Services;
@@ -27,10 +27,12 @@ using GIMI_ModManager.WinUI.Services.GameDataSync;
 using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModEnv;
 using GIMI_ModManager.WinUI.Services.Notifications;
+using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.ViewModels;
 using GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels;
 using GIMI_ModManager.WinUI.ViewModels.CharacterGalleryViewModels;
 using GIMI_ModManager.WinUI.ViewModels.CharacterManagerViewModels;
+using GIMI_ModManager.WinUI.ViewModels.Overlay;
 using GIMI_ModManager.WinUI.ViewModels.SettingsViewModels;
 using GIMI_ModManager.WinUI.Views;
 using GIMI_ModManager.WinUI.Views.CharacterManager;
@@ -154,6 +156,16 @@ public partial class App : Application
                 // 必须共用同一次刷新，各持一份就会出现"两边状态不一致"和重复刷新。
                 services.AddSingleton<Services.Overlay.OverlayRefreshCoordinator>();
                 services.AddSingleton<Services.Overlay.OverlayScreenshotService>();
+
+                // 浮窗「修复」页签的内置引擎。会话是单例：浮窗会被隐藏、角色列表会刷新，
+                // 但正在跑的修复任务必须活着，重开浮窗还能看到进度与结果。
+                services.AddSingleton<WuwaModFixerProvisioner>();
+                services.AddSingleton<WuwaModFixerConfigService>();
+                services.AddSingleton<WuwaModCliRunner>();
+                services.AddSingleton<WuwaModFixerEngine>();
+                services.AddSingleton<WuwaFixSession>();
+                services.AddSingleton<WuwaRollbackService>();
+
                 services.AddSingleton<Services.Overlay.OverlayWindowService>();
 
                 // 拖放投递通道：关掉 UAC 的机器上 WinUI 3 收不到外部拖放，由它挂自有落点顶上。
@@ -349,6 +361,19 @@ public partial class App : Application
                             .WaitAndRetryAsync(Backoff.DecorrelatedJitterBackoffV2(
                                 TimeSpan.FromMilliseconds(500), 3, null, true))
                     );
+
+                // 浮窗修复配置（Gitee 优先、GitHub raw 回退）。只拉 ~150KB 的 JSON，短超时即可；
+                // 不挂 Polly：配置更新失败是静默的，重试只会让用户多等。
+                services.AddHttpClient(WuwaModFixerConfigService.HttpClientName, client =>
+                    {
+                        client.DefaultRequestHeaders.Add("User-Agent", "JASM-Just_Another_Skin_Manager");
+                        client.DefaultRequestHeaders.Add("Accept", "application/json");
+                        client.Timeout = TimeSpan.FromSeconds(30);
+                    })
+                    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+                    {
+                        PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+                    });
 
                 // Mod 商店的下载（GameBanana CDN）。具名 client 的理由与 ModEnv 那份一样：
                 // 下载要的是长超时，而上面那个 API client 挂着限流与短超时。
