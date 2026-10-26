@@ -161,7 +161,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
         InitializePageBindings();
 
-        // 键盘选中换行时把那一行滚进视野：浮窗只有 440 DIP 高，列表比它长，而游戏里用户看不到鼠标，
+        // 键盘选中换行时把那一行滚进视野：列表通常比窗口高，而游戏里用户看不到鼠标，
         // 「选中的那行在不在屏幕里」只能靠这一下滚动告诉他。
         // 挂在 ViewModel 的属性变更上而不是逐个赋值点去调：改选中的入口不止一个
         // （导航热键、过滤之后的重定位），挂在这里它们都自动得到同一件事。
@@ -336,20 +336,12 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
             return;
         }
 
-        // 切到修复页/切回 Mod 页：窗口尺寸随 CurrentSizeOption 变；列表相关的滚动与拖放全部停用。
+        // 切到修复页/切回 Mod 页：列表相关的滚动逻辑要停用。
         // 修复页的列表是隐藏的，对它做 ContainerFromItem / BringItemIntoView 只会白滚一场。
         if (e.PropertyName == nameof(OverlayViewModel.IsFixTabActive))
         {
-            RootGrid.AllowDrop = ViewModel.IsModTabActive;
             _scrollAnchor = null;
             CancelPendingScrollAdjustments();
-            ReassertSize();
-            KeepOnScreen();
-            return;
-        }
-
-        if (e.PropertyName == nameof(OverlayViewModel.CurrentSizeOption))
-        {
             ReassertSize();
             KeepOnScreen();
             return;
@@ -1252,9 +1244,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     private void RootGrid_OnDragOver(object sender, DragEventArgs e)
     {
-        // 修复页不接受拖入：那页没有“装到哪个角色”的语义，且主按钮可能正在跑任务。
-        // 三层都要挡（AllowDrop / DragOver / 外部通道），因为关 UAC 的机器走的是另一条投递路。
-        if (!ViewModel.IsModTabActive)
+        // 修复页也接受拖入：Drop 时会切回 Mod 页。唯一拒绝的场景是修复任务正在跑 ——
+        // 那时安装与修复会同时动 Mod 目录，且页签/角色已被锁住，切不回 Mod 页。
+        if (ViewModel.FixSession.IsRunning)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.Handled = true;
@@ -1328,12 +1320,17 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
     private async void RootGrid_OnDrop(object sender, DragEventArgs e)
     {
-        if (!ViewModel.IsModTabActive)
+        if (ViewModel.FixSession.IsRunning)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.Handled = true;
             return;
         }
+
+        // 在修复页落下：先切回 Mod 切换页，安装进度与结果才看得见。
+        // 必须在 await 之前切 —— 安装收尾会刷新角色/列表，界面那时应该在 Mod 页。
+        if (!ViewModel.IsModTabActive)
+            ViewModel.ActiveTabIndex = 0;
 
         // 这一轮拖拽到此结束，把诊断重新武装，下一次拖拽才会再留下一行（见 _dragProbeLogged）。
         // 放在最前面：下面"读不出文件就早返回"那条路同样是一轮拖拽的收尾。
@@ -1389,7 +1386,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 所以这里不必再判一次 —— 真的没有文件时根本不会问到。
     /// </para>
     /// </summary>
-    bool IExternalDropSurface.CanAcceptDropAt(Point point) => ViewModel.IsModTabActive;
+    bool IExternalDropSurface.CanAcceptDropAt(Point point) => !ViewModel.FixSession.IsRunning;
 
     /// <summary>
     /// 外部通道送来的落下。走到这一步已经确认有文件，所以不走
@@ -1398,8 +1395,12 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     async Task IExternalDropSurface.HandleExternalDropAsync(IReadOnlyList<string> paths, Point point)
     {
-        if (!ViewModel.IsModTabActive)
+        if (ViewModel.FixSession.IsRunning)
             return;
+
+        // 与 XAML 那条路一致：修复页落下也切回 Mod 页再安装
+        if (!ViewModel.IsModTabActive)
+            ViewModel.ActiveTabIndex = 0;
 
         var storageItems = new List<IStorageItem>(paths.Count);
 
