@@ -15,6 +15,13 @@ import sys
 import urllib.request
 from pathlib import Path
 
+# GitHub Actions 的 Windows 控制台是 GBK/cmd 代码页，直接 print 中文会抛
+# UnicodeEncodeError（charmap），整个 Release.py 会因此中断。把标准输出钉成 UTF-8。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 CLI_VERSION = "3.7.0"
 CLI_SHA256 = "737c71507a8bc43a0794cace0aba07bccee6967de95cfb29291c9700cc85a370"
 CLI_URL = (
