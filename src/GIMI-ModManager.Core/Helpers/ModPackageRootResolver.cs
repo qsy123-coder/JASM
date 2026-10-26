@@ -33,6 +33,86 @@ public static class ModPackageRootResolver
     private const int MaxWrapperDepth = 8;
 
     /// <summary>
+    /// 拖拽安装的落盘根：从 <c>JASM_TMP\&lt;guid&gt;</c> 一路剥到「自己带 ini 的那一层」，
+    /// 再把它改名叫包名（<c>&lt;guid&gt;</c> 下面那一层，已由 Scanner 去掉容器后缀）。
+    ///
+    /// <para>
+    /// <b>为什么要剥到 ini 那一层</b>：多一层目录，XXMI 就扫不到 mod 根上的 ini —— 实机表现是
+    /// <b>启动直接崩溃</b>（用户实测：<c>DISABLED_xxx.exe\xxx\PebbleRox-…\single_layer_depth.ini</c>
+    /// 这样三层，把嵌套去掉就正常）。SFX 装出来的包常常是「包名\包名\真内容」这种形状，
+    /// 只剥 <c>&lt;guid&gt;</c> 一层不够。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>为什么还要改名</b>：内容根往往是作者自己的目录名（实测有 <c>Sigrika Ball Full</c> 这种），
+    /// 直接拿来当 Mod 目录名既认不出是哪个包，也和「整个包当一个 Mod 装」对不上。内容一个字节都不动，
+    /// 只换最外层的名字；改不了名（撞名 / 被占用）就保留原名 —— 名字难看也比丢内容好。
+    /// </para>
+    ///
+    /// <para>
+    /// 认不出「包名那一层」时（<c>&lt;guid&gt;</c> 下没有唯一的目录）不改名，只剥包装层 —— 那种形状
+    /// 没有可信的包名可用，名字留给安装向导里的目录树。
+    /// </para>
+    /// </summary>
+    public static DirectoryInfo ResolveInstallRoot(DirectoryInfo extractedRoot)
+    {
+        ArgumentNullException.ThrowIfNull(extractedRoot);
+
+        // <guid> 这层是 JASM 自己造的纯包装：下面恰好一个目录时，那就是用户拖进来的包本身
+        var packageRoot = GetSingleSubFolder(extractedRoot);
+
+        var contentRoot = ResolveContentRoot(packageRoot ?? extractedRoot);
+
+        return packageRoot is null
+            ? contentRoot
+            : RenameToPackageName(contentRoot, packageRoot);
+    }
+
+    /// <summary>
+    /// 把内容根改名叫包名。<c>contentRoot</c> 已经是包名那一层（或更上层）时原样返回。
+    /// <b>绝不抛异常</b>：改不了名只是名字不好看，不能因此让整单安装失败。
+    /// </summary>
+    private static DirectoryInfo RenameToPackageName(DirectoryInfo contentRoot, DirectoryInfo packageRoot)
+    {
+        if (string.Equals(contentRoot.FullName, packageRoot.FullName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(contentRoot.Name, packageRoot.Name, StringComparison.OrdinalIgnoreCase))
+            return contentRoot;
+
+        try
+        {
+            if (contentRoot.Parent is not { } parent)
+                return contentRoot;
+
+            var target = Path.Combine(parent.FullName, packageRoot.Name);
+
+            // 撞名（同层已有同名的文件/目录）就不动：那多半是这一层本来就摆着别的东西
+            if (Directory.Exists(target) || File.Exists(target))
+                return contentRoot;
+
+            contentRoot.MoveTo(target);
+            return new DirectoryInfo(target);
+        }
+        catch (Exception)
+        {
+            return contentRoot;
+        }
+    }
+
+    /// <summary>恰好一个子目录时返回它，零个或多个（读不动也算）返回 <c>null</c>。不抛异常。</summary>
+    private static DirectoryInfo? GetSingleSubFolder(DirectoryInfo folder)
+    {
+        try
+        {
+            var subFolders = folder.GetDirectories();
+            return subFolders.Length == 1 ? subFolders[0] : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// 顺着「只有一个子目录」的链条往下走，返回真正的包内容根；没有可剥的层时原样返回入参。
     ///
     /// <para>
