@@ -78,6 +78,12 @@ public class OverlaySettings
     /// <summary>「修复」页的二级视图：0 = 修复、1 = 回滚。<c>null</c> = 修复。</summary>
     public int? FixSubTab { get; set; }
 
+    /// <summary>
+    /// 是否已经做过「首次进入修复页自动选大档」。
+    /// 只做一次：之后用户手动选小/中，再进修复页不能被再次覆盖。
+    /// </summary>
+    public bool FixSizeInitialized { get; set; }
+
     /// <summary>日志区是否展开。<c>null</c>/false = 折叠。</summary>
     public bool FixLogExpanded { get; set; }
 
