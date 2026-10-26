@@ -225,9 +225,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </summary>
     public IReadOnlyList<OverlaySizeOption> SizeOptions { get; } =
     [
-        new("小", 320, 300),
-        new("中", 380, 360),
-        new("大", 460, 480)
+        new("小", 380, 360),
+        new("中", 460, 480),
+        new("大", 520, 660)
     ];
 
     /// <summary>当前档位序号（0/1/2）。界面双向绑定到标题栏的下拉框。</summary>
@@ -235,13 +235,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
     /// <summary>
     /// 当前尺寸（DIP）。窗口自己读它来定宽高。
-    /// 修复页有专用的 520×660：五开关 + 勾选列表 + 日志塞不进 460×480 的大档；
-    /// 离开修复页自动回到用户原来的档位（<see cref="SelectedSizeIndex"/> 本身不被改写）。
+    /// 修复页不再有专用尺寸：大档本身就是 520×660，首次进入修复页会自动选中它。
     /// </summary>
     public OverlaySizeOption CurrentSizeOption =>
-        IsFixTabActive
-            ? RepairSizeOption
-            : SizeOptions[Math.Clamp(SelectedSizeIndex, 0, SizeOptions.Count - 1)];
+        SizeOptions[Math.Clamp(SelectedSizeIndex, 0, SizeOptions.Count - 1)];
 
     partial void OnSelectedSizeIndexChanged(int value)
     {
@@ -1253,7 +1250,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         var unique = GetUniqueCheckedMod();
 
-        // 先摆位置：除目标行外全部隐藏。目标行从隐藏变为显示时会自动展开（见 SetKeyPanelVisible）。
+        // 先摆位置：除目标行外全部隐藏。目标行从隐藏变为显示时保持折叠（见 SetKeyPanelVisible）；
+        // 展开必须由用户点标题行，安装/重建列表都不该把面板顶出来。
         foreach (var row in _allMods)
             row.SetKeyPanelVisible(ReferenceEquals(row, unique));
 
