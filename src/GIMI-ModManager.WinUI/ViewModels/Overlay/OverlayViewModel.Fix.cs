@@ -18,9 +18,6 @@ namespace GIMI_ModManager.WinUI.ViewModels.Overlay;
 /// </summary>
 internal sealed partial class OverlayViewModel
 {
-    /// <summary>修复页专用尺寸：五开关 + 勾选列表 + 日志，460×480 的大档装不下。</summary>
-    public static OverlaySizeOption RepairSizeOption { get; } = new("修复", 520, 660);
-
     private bool _loadingFixSettings;
     private bool _configCheckedThisSession;
     private List<WuwaBackupGroup> _lastBackupGroups = [];
@@ -54,10 +51,29 @@ internal sealed partial class OverlayViewModel
         OnPropertyChanged(nameof(IsModTabActive));
         OnPropertyChanged(nameof(IsFixTabActive));
         OnPropertyChanged(nameof(ShowModListEmpty));
-        OnPropertyChanged(nameof(CurrentSizeOption));
 
         if (IsFixTabActive)
+        {
+            ApplyDefaultFixSize();
             _ = EnterFixTabAsync();
+        }
+    }
+
+    /// <summary>
+    /// 首次进修复页自动选大档（520×660）。只做一次并落盘：
+    /// 用户之后手动选小/中，再进修复页不能被重新推回大档。
+    /// </summary>
+    private void ApplyDefaultFixSize()
+    {
+        if (Settings.FixSizeInitialized)
+            return;
+
+        Settings.FixSizeInitialized = true;
+
+        if (SelectedSizeIndex < SizeOptions.Count - 1)
+            SelectedSizeIndex = SizeOptions.Count - 1;
+
+        _ = SaveSettingsAsync();
     }
 
     // ── 修复 / 回滚子视图 ───────────────────────────────────────────────
