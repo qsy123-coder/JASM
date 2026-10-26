@@ -687,3 +687,6 @@ Testing_ZZZ/
 /SingleFile_JASM_*/
 /提示截图/
 /屏幕截图 *.png
+
+# 浮窗修复引擎：由 Build/FetchWuwaModFixer.py 下载并校验，不入库
+/src/GIMI-ModManager.WinUI/Assets/WuwaModFixer/

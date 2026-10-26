@@ -60,6 +60,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     private readonly ModSettingsService _modSettingsService;
     private readonly IGameKeySender _gameKeySender;
     private readonly NotificationManager _notificationManager;
+    private readonly WuwaModFixerEngine _fixerEngine;
+    private readonly WuwaRollbackService _rollbackService;
     private readonly ILogger _logger;
 
     /// <summary>上一个显示行内按键面板的 Mod。用来判断"目标换人了"，好让列表把它滚进视野。</summary>
@@ -223,15 +225,18 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </summary>
     public IReadOnlyList<OverlaySizeOption> SizeOptions { get; } =
     [
-        new("小", 320, 300),
-        new("中", 380, 360),
-        new("大", 460, 480)
+        new("小", 380, 360),
+        new("中", 460, 480),
+        new("大", 520, 660)
     ];
 
     /// <summary>当前档位序号（0/1/2）。界面双向绑定到标题栏的下拉框。</summary>
     [ObservableProperty] private int _selectedSizeIndex = 1;
 
-    /// <summary>当前档位的像素尺寸（DIP）。窗口自己读它来定宽高。</summary>
+    /// <summary>
+    /// 当前尺寸（DIP）。窗口自己读它来定宽高。
+    /// 修复页不再有专用尺寸：大档本身就是 520×660，首次进入修复页会自动选中它。
+    /// </summary>
     public OverlaySizeOption CurrentSizeOption =>
         SizeOptions[Math.Clamp(SelectedSizeIndex, 0, SizeOptions.Count - 1)];
 
@@ -313,7 +318,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         OverlayRefreshCoordinator refreshCoordinator, ILocalSettingsService localSettingsService,
         ModDragAndDropService dragAndDropService, OverlayScreenshotService screenshotService,
         ModSettingsService modSettingsService, IGameKeySender gameKeySender,
-        NotificationManager notificationManager, ILogger logger)
+        NotificationManager notificationManager, WuwaModFixerEngine fixerEngine,
+        WuwaFixSession fixSession, WuwaRollbackService rollbackService, ILogger logger)
     {
         _skinManagerService = skinManagerService;
         _gameService = gameService;
@@ -324,10 +330,17 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         _modSettingsService = modSettingsService;
         _gameKeySender = gameKeySender;
         _notificationManager = notificationManager;
+        _fixerEngine = fixerEngine;
+        FixSession = fixSession;
+        _rollbackService = rollbackService;
         _logger = logger.ForContext<OverlayViewModel>();
 
         // 状态行是否占位置的判据跨在协调器上：它一变，HasRefreshStatus 就要重新算
         RefreshCoordinator.PropertyChanged += OnRefreshCoordinatorPropertyChanged;
+
+        // 修复任务是单例：浮窗关掉再开、角色列表刷新，都不影响它继续跑
+        FixSession.RunCompleted += OnFixRunCompleted;
+        InitializeFixSession();
     }
 
     private void OnRefreshCoordinatorPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -599,6 +612,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         Settings = await _localSettingsService
             .ReadOrCreateSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App);
 
+        // 修复页的开关/子页也是 App 作用域，和坐标、档位同一次读回来
+        LoadFixSettings();
+
         // 尺寸档位：初始化阶段不触发 OnSelectedSizeIndexChanged 的那次落盘
         _loadingOverlaySettings = true;
         try
@@ -629,6 +645,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         UpdateSeenSummary();
 
         RefreshCharacters();
+        RefreshFixTargets();
     }
 
     /// <summary>
@@ -689,7 +706,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         await SaveSettingsAsync();
     }
 
-    private async Task SaveSettingsAsync()
+    internal async Task SaveSettingsAsync()
     {
         try
         {
@@ -719,6 +736,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     partial void OnSelectedCharacterChanged(OverlayCharacterItem? value)
     {
         LoadMods(value?.Character);
+        RefreshFixTargets();
+        RefreshRollbackForCharacterChange();
 
         if (value is null) return;
 
@@ -1231,7 +1250,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         var unique = GetUniqueCheckedMod();
 
-        // 先摆位置：除目标行外全部隐藏。目标行从隐藏变为显示时会自动展开（见 SetKeyPanelVisible）。
+        // 先摆位置：除目标行外全部隐藏。目标行从隐藏变为显示时保持折叠（见 SetKeyPanelVisible）；
+        // 展开必须由用户点标题行，安装/重建列表都不该把面板顶出来。
         foreach (var row in _allMods)
             row.SetKeyPanelVisible(ReferenceEquals(row, unique));
 
@@ -1440,6 +1460,6 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// 拿当前的角色 Mod 列表。每次现取而不是把 <c>ICharacterModList</c> 缓存在字段里：
     /// 关掉一个角色会让它的列表被 Dispose 并摘出集合，缓存下来的引用就成了一把悬空的枪。
     /// </summary>
-    private ICharacterModList? ResolveModList(IModdableObject? character) =>
+    internal ICharacterModList? ResolveModList(IModdableObject? character) =>
         character is null ? null : _skinManagerService.GetCharacterModListOrDefault(character.InternalName);
 }

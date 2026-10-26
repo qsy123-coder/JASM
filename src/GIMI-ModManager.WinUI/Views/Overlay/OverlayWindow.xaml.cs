@@ -161,7 +161,7 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
         InitializePageBindings();
 
-        // 键盘选中换行时把那一行滚进视野：浮窗只有 440 DIP 高，列表比它长，而游戏里用户看不到鼠标，
+        // 键盘选中换行时把那一行滚进视野：列表通常比窗口高，而游戏里用户看不到鼠标，
         // 「选中的那行在不在屏幕里」只能靠这一下滚动告诉他。
         // 挂在 ViewModel 的属性变更上而不是逐个赋值点去调：改选中的入口不止一个
         // （导航热键、过滤之后的重定位），挂在这里它们都自动得到同一件事。
@@ -336,7 +336,21 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
             return;
         }
 
+        // 切到修复页/切回 Mod 页：列表相关的滚动逻辑要停用。
+        // 修复页的列表是隐藏的，对它做 ContainerFromItem / BringItemIntoView 只会白滚一场。
+        if (e.PropertyName == nameof(OverlayViewModel.IsFixTabActive))
+        {
+            _scrollAnchor = null;
+            CancelPendingScrollAdjustments();
+            ReassertSize();
+            KeepOnScreen();
+            return;
+        }
+
         if (e.PropertyName != nameof(OverlayViewModel.SelectedMod))
+            return;
+
+        if (!ViewModel.IsModTabActive)
             return;
 
         // 键盘逐行走：只做最小滚动（行已在可视区里就不动），别每按一下都把整屏跳一遍
@@ -362,7 +376,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
 
         // 把列表滚回隐藏前的落点（用户要求：重开浮窗不跳动）。排进队列、不能当场做，理由见该方法。
-        ScheduleScrollAnchorRestore();
+        // 修复页没有列表可滚，直接跳过（锚点在切页时已清空）。
+        if (ViewModel.IsModTabActive)
+            ScheduleScrollAnchorRestore();
 
         // 首次显示才做的收尾，刻意放在 ShowWindow **之后**：
         //   1. 构造阶段 AppWindow.Size 不可信（原型实测：那时算出来的"居中"会跑到屏幕左上角）；
@@ -755,7 +771,12 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 不滚的话它可能整块落在列表可视区下面，看起来像"勾了但没出面板"。
     /// </summary>
     private void OnKeyPanelTargetChanged(OverlayModItemViewModel item)
-        => App.MainWindow.DispatcherQueue.TryEnqueue(() => BringItemIntoView(item));
+    {
+        if (!ViewModel.IsModTabActive)
+            return;
+
+        App.MainWindow.DispatcherQueue.TryEnqueue(() => BringItemIntoView(item));
+    }
 
     /// <summary>
     /// 把一行滚进视野。分几拍：行内按键面板是**先出现、后撑高**的，按键绑定还会再解析回来长一截，
@@ -767,6 +788,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </param>
     private void BringItemIntoView(OverlayModItemViewModel item, bool alignToTop = true)
     {
+        if (!ViewModel.IsModTabActive)
+            return;
+
         // 连着按上下键时，每一行都会排上三拍；只认最后那一次 ——
         // 否则前一行的延迟对齐会在 150ms 后把列表拽回去。
         var epoch = ++_scrollIntoViewEpoch;
@@ -883,6 +907,9 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     private void CaptureScrollAnchor()
     {
         _scrollAnchor = null;
+
+        if (!ViewModel.IsModTabActive)
+            return;
 
         if (FindScrollViewer(ModList) is not { } scrollViewer)
             return;
@@ -1049,6 +1076,14 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 与右键 NSFW 分开：右键判内容、中键记进度，两件事互相独立。
     /// 中键在 WinUI 里没有默认行为（不会触发选中或滚动），标 Handled 免得它继续往上传。
     /// </summary>
+    /// <summary>
+    /// <summary>行尾垃圾桶：只弹确认卡，真正删除在 ViewModel 的 ConfirmDeleteCommand 里。</summary>
+    private void OnDeleteModClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: OverlayModItemViewModel item })
+            ViewModel.RequestDeleteMod(item);
+    }
+
     /// <summary>
     /// 行尾「下一个」按钮：勾上列表里的下一件。
     /// 实际切换走 <see cref="OverlayViewModel.SelectNextModAsync"/>，与手动点勾选框同一条路。
@@ -1217,6 +1252,15 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     private void RootGrid_OnDragOver(object sender, DragEventArgs e)
     {
+        // 修复页也接受拖入：Drop 时会切回 Mod 页。拒绝两个场景：
+        // 修复任务正在跑（安装与修复同时动 Mod 目录）、删除确认卡正盖着（用户还没决定）。
+        if (ViewModel.FixSession.IsRunning || ViewModel.IsDeleteConfirmVisible)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.Handled = true;
+            return;
+        }
+
         var hasItems = e.DataView.Contains(StandardDataFormats.StorageItems);
 
         LogDragProbeOnce(hasItems, e);
@@ -1284,6 +1328,18 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
 
     private async void RootGrid_OnDrop(object sender, DragEventArgs e)
     {
+        if (ViewModel.FixSession.IsRunning || ViewModel.IsDeleteConfirmVisible)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.Handled = true;
+            return;
+        }
+
+        // 在修复页落下：先切回 Mod 切换页，安装进度与结果才看得见。
+        // 必须在 await 之前切 —— 安装收尾会刷新角色/列表，界面那时应该在 Mod 页。
+        if (!ViewModel.IsModTabActive)
+            ViewModel.ActiveTabIndex = 0;
+
         // 这一轮拖拽到此结束，把诊断重新武装，下一次拖拽才会再留下一行（见 _dragProbeLogged）。
         // 放在最前面：下面"读不出文件就早返回"那条路同样是一轮拖拽的收尾。
         _dragProbeLogged = false;
@@ -1338,7 +1394,8 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// 所以这里不必再判一次 —— 真的没有文件时根本不会问到。
     /// </para>
     /// </summary>
-    bool IExternalDropSurface.CanAcceptDropAt(Point point) => true;
+    bool IExternalDropSurface.CanAcceptDropAt(Point point) =>
+        !ViewModel.FixSession.IsRunning && !ViewModel.IsDeleteConfirmVisible;
 
     /// <summary>
     /// 外部通道送来的落下。走到这一步已经确认有文件，所以不走
@@ -1347,6 +1404,13 @@ public sealed partial class OverlayWindow : WindowEx, IExternalDropSurface
     /// </summary>
     async Task IExternalDropSurface.HandleExternalDropAsync(IReadOnlyList<string> paths, Point point)
     {
+        if (ViewModel.FixSession.IsRunning || ViewModel.IsDeleteConfirmVisible)
+            return;
+
+        // 与 XAML 那条路一致：修复页落下也切回 Mod 页再安装
+        if (!ViewModel.IsModTabActive)
+            ViewModel.ActiveTabIndex = 0;
+
         var storageItems = new List<IStorageItem>(paths.Count);
 
         foreach (var path in paths)

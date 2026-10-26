@@ -50,7 +50,8 @@ public class OverlaySettings
     [JsonIgnore] public bool HasSavedPosition => XPosition.HasValue && YPosition.HasValue;
 
     /// <summary>喂给 <c>OverlayPlacement.ResolveTopLeft</c> 的入参；没存过时为 <c>null</c>。</summary>
-    [JsonIgnore] public (int X, int Y)? SavedTopLeft =>
+    [JsonIgnore]
+    public (int X, int Y)? SavedTopLeft =>
         HasSavedPosition ? (XPosition!.Value, YPosition!.Value) : null;
 
     /// <summary>
@@ -58,6 +59,51 @@ public class OverlaySettings
     /// <c>null</c> = 没存过 → 中档。
     /// </summary>
     public int? SizePreset { get; set; }
+
+    /// <summary>「修复」页：补全贴图状态。与 <see cref="FixStableTexture"/> 互斥，默认关。</summary>
+    public bool FixDerivedHashes { get; set; }
+
+    /// <summary>「修复」页：应用稳定纹理。与 <see cref="FixDerivedHashes"/> 互斥，默认关。</summary>
+    public bool FixStableTexture { get; set; }
+
+    /// <summary>「修复」页：模组破洞/部位缺失修复（Rendering 3.3）。默认关。</summary>
+    public bool FixRendering33 { get; set; }
+
+    /// <summary>「修复」页：修复爱弥斯机兵形态的模型异常。默认关。</summary>
+    public bool FixAemeathMech { get; set; }
+
+    /// <summary>「修复」页：女漂-风主眼部修复模式，0 = 关、1 = TexCoord 覆盖、2 = 贴图镜像反转。</summary>
+    public int? FixAeroMode { get; set; }
+
+    /// <summary>「修复」页的二级视图：0 = 修复、1 = 回滚。<c>null</c> = 修复。</summary>
+    public int? FixSubTab { get; set; }
+
+    /// <summary>
+    /// 是否已经做过「首次进入修复页自动选大档」。
+    /// 只做一次：之后用户手动选小/中，再进修复页不能被再次覆盖。
+    /// </summary>
+    public bool FixSizeInitialized { get; set; }
+
+    /// <summary>日志区是否展开。<c>null</c>/false = 折叠。</summary>
+    public bool FixLogExpanded { get; set; }
+
+    /// <summary>
+    /// 上次静默检查配置更新的 UTC 时间（ISO 8601）。用于 12 小时节流；
+    /// 解析失败当作没查过，不影响修复功能。
+    /// </summary>
+    public string? LastConfigCheckUtc { get; set; }
+
+    /// <summary>
+    /// 用户自定义的浮窗唤出热键：修饰键（<c>HotkeyModifiers</c> 的位组合）。
+    /// 三项任一为空 = 没自定义过，沿用默认候选表。
+    /// </summary>
+    public int? OverlayHotkeyModifiers { get; set; }
+
+    /// <summary>自定义热键的主键虚拟键码。</summary>
+    public int? OverlayHotkeyVirtualKey { get; set; }
+
+    /// <summary>自定义热键主键的显示名（<c>J</c> / <c>F9</c> / <c>Space</c>）。</summary>
+    public string? OverlayHotkeyKeyName { get; set; }
 
     /// <summary>
     /// 截图输出目录。<c>null</c> = 没配过，用
@@ -78,14 +124,16 @@ public class OverlaySettings
     /// 四项都存过且宽高够用才算数。只存下一半时宁可当没存过、让用户重新框选 ——
     /// 拿半份坐标去截图只会截到一块没人预期的地方。
     /// </summary>
-    [JsonIgnore] public bool HasSavedCaptureRegion =>
+    [JsonIgnore]
+    public bool HasSavedCaptureRegion =>
         CaptureRegionX.HasValue && CaptureRegionY.HasValue
         && CaptureRegionWidth.HasValue && CaptureRegionHeight.HasValue
         && CaptureRegionWidth.Value >= OverlayCaptureRegion.MinimumSide
         && CaptureRegionHeight.Value >= OverlayCaptureRegion.MinimumSide;
 
     /// <summary>喂给截图流程的入参；没存过时为 <c>null</c>。</summary>
-    [JsonIgnore] public OverlayCaptureRegion? SavedCaptureRegion =>
+    [JsonIgnore]
+    public OverlayCaptureRegion? SavedCaptureRegion =>
         HasSavedCaptureRegion
             ? new OverlayCaptureRegion(CaptureRegionX!.Value, CaptureRegionY!.Value,
                 CaptureRegionWidth!.Value, CaptureRegionHeight!.Value)

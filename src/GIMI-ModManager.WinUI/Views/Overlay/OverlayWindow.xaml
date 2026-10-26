@@ -62,6 +62,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -157,10 +158,25 @@
                 </Button>
             </Grid>
 
-            <ComboBox
+            <!--  页签：Mod 切换 / 修复。单独占一行而不是塞进拖动条 ——
+                  拖动条整条挂着 PointerPressed，可点控件冒泡上去会顺带开始拖窗；
+                  而且小档 380 宽时标题条已经被尺寸下拉、两个截图键、关闭键占满了。  -->
+            <controls:Segmented
                 Grid.Row="1"
+                Margin="10,0,10,6"
+                HorizontalAlignment="Stretch"
+                IsEnabled="{x:Bind ViewModel.CanSwitchTabs, Mode=OneWay}"
+                SelectedIndex="{x:Bind ViewModel.ActiveTabIndex, Mode=TwoWay}"
+                SelectionMode="Single">
+                <controls:SegmentedItem Content="Mod 切换" l:Uids.Uid="Overlay_TabMods" />
+                <controls:SegmentedItem Content="修复" l:Uids.Uid="Overlay_TabFix" />
+            </controls:Segmented>
+
+            <ComboBox
+                Grid.Row="2"
                 Margin="12,0,12,8"
                 HorizontalAlignment="Stretch"
+                IsEnabled="{x:Bind ViewModel.CanSwitchCharacter, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.Characters}"
                 SelectedItem="{x:Bind ViewModel.SelectedCharacter, Mode=TwoWay}">
                 <!--  头像 + 名字。DisplayMemberPath 与 ItemTemplate 互斥（同时给会抛异常），要头像就只能改用模板。
@@ -182,10 +198,11 @@
             </ComboBox>
 
             <TextBox
-                Grid.Row="2"
+                Grid.Row="3"
                 Margin="12,0,12,8"
                 PlaceholderText="Search mods"
                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                Visibility="{x:Bind ViewModel.IsModTabActive, Mode=OneWay}"
                 l:Uids.Uid="Overlay_SearchPlaceholder" />
 
             <!--  模式 + 手动刷新。模式决定"勾了之后什么时候刷"：
@@ -194,9 +211,10 @@
                   不然用户为了重试还得去动某个 Mod 的勾。
                   单独占一行而不是挤在搜索框右边：俄语「Несколько」这类长词会把搜索框挤到没法用。  -->
             <Grid
-                Grid.Row="3"
+                Grid.Row="4"
                 Margin="12,0,12,8"
-                ColumnSpacing="8">
+                ColumnSpacing="8"
+                Visibility="{x:Bind ViewModel.IsModTabActive, Mode=OneWay}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -233,7 +251,11 @@
 
             <!--  状态区：刷新那边的成败（协调器）与勾选失败（ViewModel）各占一行，
                   都为空时这两行自己塌掉，不占地方。  -->
-            <StackPanel Grid.Row="4" Margin="12,0,12,6" Spacing="2">
+            <StackPanel
+                Grid.Row="5"
+                Margin="12,0,12,6"
+                Spacing="2"
+                Visibility="{x:Bind ViewModel.IsModTabActive, Mode=OneWay}">
                 <!--  拖拽安装的进度行：转圈（解压 / 落盘）→ 换成绿勾（装好了）。
                       与下面那些状态行同一套排法（图标对齐顶部、文字用 * 列拿真实剩余宽度），
                       只是这一行由 ViewModel 直接控制显隐与文案。  -->
@@ -275,6 +297,15 @@
                         TextTrimming="CharacterEllipsis"
                         TextWrapping="Wrap" />
                 </Grid>
+
+                <!--  删除成功后的绿色状态行（失败走 ErrorMessage 的琥珀色）。  -->
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#FF6CCB5F"
+                    Text="{x:Bind ViewModel.DeleteStatusMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasDeleteStatus, Mode=OneWay}" />
+
                 <!--  图标 + 文字用 Grid 而不是横向 StackPanel：StackPanel 给子元素的可用宽度是"无限"，
                       于是文字的 TextWrapping="Wrap" 永远等不到该换行的宽度 —— 实测长文案（"提权助手没在运行…"）
                       就这样被窗口右边缘硬生生切掉。Grid 的 * 列才会把真实剩余宽度交给 TextBlock。  -->
@@ -372,13 +403,14 @@
             </StackPanel>
 
             <!--  x:Name 是给代码后置用的：键盘选中换行时要把那一行滚进视野，
-                  而浮窗只有 440 高、列表比它长，选中的行可能整行都在屏幕外。  -->
+                  而列表通常比窗口高，选中的行可能整行都在屏幕外。  -->
             <ListView
                 x:Name="ModList"
-                Grid.Row="5"
+                Grid.Row="6"
                 Margin="6,0,6,8"
                 ItemsSource="{x:Bind ViewModel.Mods}"
-                SelectionMode="None">
+                SelectionMode="None"
+                Visibility="{x:Bind ViewModel.IsModTabActive, Mode=OneWay}">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="MinHeight" Value="0" />
@@ -407,6 +439,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
                             <!--  键盘选中行的高亮：铺在最底层（先声明的在下层），横跨三列、不参与布局。
@@ -415,7 +448,7 @@
                                   为两态去写转换器或 VisualState 都不如一层可显隐的底直白。  -->
                             <Border
                                 Grid.Column="0"
-                                Grid.ColumnSpan="6"
+                                Grid.ColumnSpan="7"
                                 Margin="-4,-2"
                                 Background="#33FFFFFF"
                                 BorderBrush="#FFE8A33D"
@@ -504,6 +537,25 @@
                                 Tag="{x:Bind}"
                                 ToolTipService.ToolTip="勾选下一件 Mod（当前这件会自动收起）"
                                 Visibility="{x:Bind ShowNextButton, Mode=OneWay}" />
+
+                            <!--  删除：整件 Mod 文件夹移至 Windows 回收站。常驻显示，小档也放得下；
+                                  点击只弹浮窗内的确认卡，不直接动盘。  -->
+                            <Button
+                                Grid.Column="6"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Margin="2,0,0,0"
+                                Padding="5,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="OnDeleteModClick"
+                                Tag="{x:Bind}"
+                                ToolTipService.ToolTip="删除 Mod（移至回收站）">
+                                <FontIcon
+                                    FontSize="12"
+                                    Foreground="#FFE06A6A"
+                                    Glyph="&#xE74D;" />
+                            </Button>
                             </Grid>
 
                             <!--  行内按键映射。只有唯一勾选的那一行显示（IsKeyPanelVisible）；
@@ -626,7 +678,7 @@
             </ListView>
 
             <TextBlock
-                Grid.Row="5"
+                Grid.Row="6"
                 Margin="24"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -635,7 +687,454 @@
                 Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}"
                 TextAlignment="Center"
                 TextWrapping="Wrap"
-                Visibility="{x:Bind ViewModel.IsListEmpty, Mode=OneWay}" />
+                Visibility="{x:Bind ViewModel.ShowModListEmpty, Mode=OneWay}" />
+
+            <!--  ───────── 修复页 ─────────
+                  与 ModList 同一行互斥显示。整页放 ScrollViewer：大档 520×660 在 1366×768 上也可能被
+                  KeepOnScreen 夹矮，用户切到小/中档时更需要滚动到主按钮与底栏。  -->
+            <ScrollViewer
+                Grid.Row="6"
+                Margin="10,0,10,8"
+                VerticalScrollBarVisibility="Auto"
+                Visibility="{x:Bind ViewModel.IsFixTabActive, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <controls:Segmented
+                        HorizontalAlignment="Stretch"
+                        SelectedIndex="{x:Bind ViewModel.FixSubTabIndex, Mode=TwoWay}"
+                        SelectionMode="Single">
+                        <controls:SegmentedItem Content="一键修复" l:Uids.Uid="Overlay_FixSubRepair" />
+                        <controls:SegmentedItem Content="备份回滚" l:Uids.Uid="Overlay_FixSubRollback" />
+                    </controls:Segmented>
+
+                    <!--  ── 修复视图 ──  -->
+                    <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsFixViewActive, Mode=OneWay}">
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="#E6FFFFFF"
+                            Text="{x:Bind ViewModel.FixScopeText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="#B3FFFFFF"
+                            Text="先在「Mod 切换」页选择角色，或该角色暂无 Mod。"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasNoFixTargets, Mode=OneWay}" />
+
+                        <Grid ColumnSpacing="6" Visibility="{x:Bind ViewModel.HasFixTargets, Mode=OneWay}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                HorizontalAlignment="Stretch"
+                                Command="{x:Bind ViewModel.ToggleFixTargetListCommand}"
+                                Content="{x:Bind ViewModel.FixTargetListToggleText, Mode=OneWay}"
+                                FontSize="11" />
+                            <Button
+                                Grid.Column="1"
+                                Command="{x:Bind ViewModel.SelectAllFixTargetsCommand}"
+                                Content="全选"
+                                FontSize="11"
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}" />
+                            <Button
+                                Grid.Column="2"
+                                Command="{x:Bind ViewModel.DeselectAllFixTargetsCommand}"
+                                Content="全不选"
+                                FontSize="11"
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}" />
+                        </Grid>
+
+                        <ListView
+                            MaxHeight="150"
+                            ItemsSource="{x:Bind ViewModel.FixTargets}"
+                            SelectionMode="None"
+                            Visibility="{x:Bind ViewModel.IsFixTargetListExpanded, Mode=OneWay}">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="4,1" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="overlayVm:OverlayFixTargetItem">
+                                    <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock FontSize="12" Text="{x:Bind Name}" />
+                                            <TextBlock
+                                                FontSize="10"
+                                                Foreground="#99FFFFFF"
+                                                Text="已禁用"
+                                                VerticalAlignment="Center"
+                                                Visibility="{x:Bind ShowDisabledHint}" />
+                                        </StackPanel>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <!--  开关。互斥由 ViewModel 兜底（两个都存成 true 时也只生效一个）。  -->
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="1">
+                                <TextBlock FontSize="12" Text="补全贴图状态" l:Uids.Uid="Overlay_FixDerived" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#99FFFFFF"
+                                    Text="为缺状态的贴图补哈希（坎特蕾拉湿身、千咲强化 E 等）"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}"
+                                IsOn="{x:Bind ViewModel.FixDerivedHashes, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="1">
+                                <TextBlock FontSize="12" Text="应用稳定纹理" l:Uids.Uid="Overlay_FixStable" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#99FFFFFF"
+                                    Text="需安装最新 RabbitFX（目前仅部分角色）"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}"
+                                IsOn="{x:Bind ViewModel.FixStableTexture, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="1">
+                                <TextBlock FontSize="12" Text="模组破洞/部位缺失修复" l:Uids.Uid="Overlay_FixRendering33" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#FFE8A33D"
+                                    Text="仅在模组出现身体部位缺失或破洞时开启！"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}"
+                                IsOn="{x:Bind ViewModel.FixRendering33, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="1">
+                                <TextBlock FontSize="12" Text="修复爱弥斯机兵形态的模型异常" l:Uids.Uid="Overlay_FixAemeath" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#99FFFFFF"
+                                    Text="正常的爱弥斯机兵模组不要开启，也不要重复修复"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}"
+                                IsOn="{x:Bind ViewModel.FixAemeathMech, Mode=TwoWay}" />
+                        </Grid>
+
+                        <StackPanel Spacing="4">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="1">
+                                    <TextBlock FontSize="12" Text="女漂-风主形态眼部修复" l:Uids.Uid="Overlay_FixAero" />
+                                    <TextBlock
+                                        FontSize="10"
+                                        Foreground="#FFE8A33D"
+                                        Text="确认 mod 存在此问题再开启！"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    MinWidth="0"
+                                    OffContent=""
+                                    OnContent=""
+                                    IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}"
+                                    IsOn="{x:Bind ViewModel.FixAeroEnabled, Mode=TwoWay}" />
+                            </Grid>
+                            <controls:Segmented
+                                HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}"
+                                SelectedIndex="{x:Bind ViewModel.FixAeroModeIndex, Mode=TwoWay}"
+                                SelectionMode="Single"
+                                Visibility="{x:Bind ViewModel.FixAeroEnabled, Mode=OneWay}">
+                                <controls:SegmentedItem Content="TexCoord 覆盖" l:Uids.Uid="Overlay_FixAeroMode1" />
+                                <controls:SegmentedItem Content="贴图镜像反转" l:Uids.Uid="Overlay_FixAeroMode2" />
+                            </controls:Segmented>
+                            <TextBlock
+                                FontSize="10"
+                                Foreground="#99FFFFFF"
+                                Text="一种方式修完仍有问题，请先回滚再换另一种。"
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind ViewModel.FixAeroEnabled, Mode=OneWay}" />
+                        </StackPanel>
+
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            Command="{x:Bind ViewModel.StartFixCommand}"
+                            Content="开始修复"
+                            FontSize="12"
+                            IsEnabled="{x:Bind ViewModel.CanStartFix, Mode=OneWay}" />
+
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            Command="{x:Bind ViewModel.TerminateFixCommand}"
+                            Content="终止"
+                            FontSize="11"
+                            Visibility="{x:Bind ViewModel.FixSession.IsRunning, Mode=OneWay}" />
+
+                        <StackPanel
+                            Spacing="2"
+                            Visibility="{x:Bind ViewModel.FixSession.IsRunning, Mode=OneWay}">
+                            <ProgressBar Maximum="100" Value="{x:Bind ViewModel.FixSession.Percent, Mode=OneWay}" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="#E6FFFFFF"
+                                Text="{x:Bind ViewModel.FixSession.CurrentModName, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock FontSize="10" Foreground="#99FFFFFF" Text="成功" />
+                                <TextBlock FontSize="10" Text="{x:Bind ViewModel.FixSession.SuccessCount, Mode=OneWay}" />
+                                <TextBlock FontSize="10" Foreground="#99FFFFFF" Text="跳过" />
+                                <TextBlock FontSize="10" Text="{x:Bind ViewModel.FixSession.SkippedCount, Mode=OneWay}" />
+                                <TextBlock FontSize="10" Foreground="#99FFFFFF" Text="失败" />
+                                <TextBlock FontSize="10" Text="{x:Bind ViewModel.FixSession.FailedCount, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="#E6FFFFFF"
+                            Text="{x:Bind ViewModel.FixMessage, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasFixMessage, Mode=OneWay}" />
+
+                        <ToggleSwitch
+                            MinWidth="0"
+                            FontSize="11"
+                            Header="日志"
+                            OffContent=""
+                            OnContent=""
+                            IsOn="{x:Bind ViewModel.IsLogExpanded, Mode=TwoWay}" />
+                        <ScrollViewer
+                            MaxHeight="150"
+                            Visibility="{x:Bind ViewModel.IsLogExpanded, Mode=OneWay}">
+                            <TextBlock
+                                FontFamily="Consolas"
+                                FontSize="10"
+                                Foreground="#CCFFFFFF"
+                                IsTextSelectionEnabled="True"
+                                Text="{x:Bind ViewModel.FixSession.LogText, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                        </ScrollViewer>
+
+                        <!--  修复完成后的 F10 结果仍要能看到；Mod 页的状态区在修复页是隐藏的。  -->
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="#E6FFFFFF"
+                            Text="{x:Bind ViewModel.RefreshCoordinator.StatusMessage, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasRefreshStatus, Mode=OneWay}" />
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="#99FFFFFF"
+                                Text="{x:Bind ViewModel.ConfigVersionText, Mode=OneWay}" />
+                            <Button
+                                Grid.Column="1"
+                                Command="{x:Bind ViewModel.UpdateConfigCommand}"
+                                Content="更新配置"
+                                FontSize="11"
+                                IsEnabled="{x:Bind ViewModel.CanEditFixOptions, Mode=OneWay}" />
+                            <Ellipse
+                                Grid.Column="2"
+                                Width="6"
+                                Height="6"
+                                Margin="2,0,0,0"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Fill="#FFE8A33D"
+                                Visibility="{x:Bind ViewModel.HasConfigUpdate, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!--  ── 回滚视图 ──  -->
+                    <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsRollbackViewActive, Mode=OneWay}">
+                        <StackPanel
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            Visibility="{x:Bind ViewModel.IsRollbackScanning, Mode=OneWay}">
+                            <ProgressRing Width="14" Height="14" IsActive="True" />
+                            <TextBlock FontSize="11" Text="正在扫描备份…" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="#B3FFFFFF"
+                            Text="无历史备份 (.BAK)"
+                            Visibility="{x:Bind ViewModel.HasNoRestorePoints, Mode=OneWay}" />
+
+                        <ListView
+                            MaxHeight="280"
+                            ItemsSource="{x:Bind ViewModel.RestorePoints}"
+                            SelectedItem="{x:Bind ViewModel.SelectedRestorePoint, Mode=TwoWay}"
+                            SelectionMode="Single"
+                            Visibility="{x:Bind ViewModel.HasRestorePoints, Mode=OneWay}">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="4,3" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="overlayVm:OverlayRestorePointItem">
+                                    <StackPanel Spacing="1">
+                                        <TextBlock FontSize="12" Text="{x:Bind DisplayTime}" />
+                                        <TextBlock FontSize="10" Foreground="#99FFFFFF" Text="{x:Bind SummaryText}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            Command="{x:Bind ViewModel.RollbackSelectedCommand}"
+                            Content="回滚到此还原点"
+                            FontSize="11"
+                            IsEnabled="{x:Bind ViewModel.CanRollbackSelected, Mode=OneWay}" />
+
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                HorizontalAlignment="Stretch"
+                                Command="{x:Bind ViewModel.RestoreEarliestCommand}"
+                                Content="还原到最早"
+                                FontSize="11"
+                                IsEnabled="{x:Bind ViewModel.CanRollback, Mode=OneWay}" />
+                            <Button
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                Command="{x:Bind ViewModel.CleanBackupsCommand}"
+                                Content="{x:Bind ViewModel.CleanBackupsLabel, Mode=OneWay}"
+                                FontSize="11"
+                                IsEnabled="{x:Bind ViewModel.CanRollback, Mode=OneWay}" />
+                        </Grid>
+
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            Command="{x:Bind ViewModel.RefreshRestorePointsCommand}"
+                            Content="刷新还原点"
+                            FontSize="11" />
+
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="#E6FFFFFF"
+                            Text="{x:Bind ViewModel.RollbackMessage, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasRollbackMessage, Mode=OneWay}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!--  删除确认：盖住整个浮窗（含标题条），背景吃掉指针。必须留在浮窗内部 ——
+                  主窗口 ContentDialog 会激活主窗口、把游戏踢出前台。  -->
+            <Grid
+                Grid.RowSpan="7"
+                Background="#A6000000"
+                Visibility="{x:Bind ViewModel.IsDeleteConfirmVisible, Mode=OneWay}">
+                <Border
+                    MaxWidth="360"
+                    Margin="20"
+                    Padding="16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="#FF1B1C22"
+                    BorderBrush="#40FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Foreground="White"
+                            Text="删除这个 Mod？" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="#E6FFFFFF"
+                            Text="{x:Bind ViewModel.DeleteConfirmModName, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="#FFE8A33D"
+                            Text="整个 Mod 文件夹会移至 Windows 回收站，可从回收站恢复。"
+                            TextWrapping="Wrap" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                HorizontalAlignment="Stretch"
+                                Command="{x:Bind ViewModel.CancelDeleteCommand}"
+                                Content="取消"
+                                IsEnabled="{x:Bind ViewModel.CanConfirmDelete, Mode=OneWay}" />
+                            <Button
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                Background="#FFC62828"
+                                BorderThickness="0"
+                                Command="{x:Bind ViewModel.ConfirmDeleteCommand}"
+                                Content="{x:Bind ViewModel.ConfirmDeleteButtonText, Mode=OneWay}"
+                                Foreground="White"
+                                IsEnabled="{x:Bind ViewModel.CanConfirmDelete, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </Grid>
     </Page>
 </winUiEx:WindowEx>

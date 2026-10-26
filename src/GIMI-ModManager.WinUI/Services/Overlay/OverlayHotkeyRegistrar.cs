@@ -210,6 +210,24 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     }
 
     /// <summary>
+    /// 探测一个候选组合当前是否可用（注册一下立刻注销，不改变现有热键）。
+    ///
+    /// 用在「用户改键」：先探再拆旧的，避免新键被占用时把旧键也弄丢。
+    /// 与当前已注册的键相同的情况由调用方先排除，否则这里必然会失败。
+    /// </summary>
+    public bool IsCandidateAvailable(OverlayHotkeyCandidate candidate)
+    {
+        const int probeHotkeyId = 0x4A71;
+
+        var flags = (HOT_KEY_MODIFIERS)OverlayHotkeyCandidates.ToRegisterHotKeyFlags(candidate.Modifiers);
+        if (!PInvoke.RegisterHotKey(_hwnd, probeHotkeyId, flags, candidate.VirtualKey))
+            return false;
+
+        PInvoke.UnregisterHotKey(_hwnd, probeHotkeyId);
+        return true;
+    }
+
+    /// <summary>
     /// 真正调用 <c>RegisterHotKey</c>。交给 <see cref="OverlayHotkeyCandidates.TrySelect"/> 逐项调用，
     /// 这里只报「成没成、系统给的原因是什么」。失败原因取系统文案（最常见是「已被占用」）——
     /// 换成自己的措辞就会把「被谁占了」这个关键信息抹掉。

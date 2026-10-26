@@ -2598,4 +2598,41 @@ Mods/Category/Character/&lt;Mod 文件夹&gt;
   <data name="ModDrop_FailedBody" xml:space="preserve">
     <value>这个包解不开。</value>
   </data>
+  <data name="Overlay_TabMods.Content" xml:space="preserve">
+    <value>Mod 切换</value>
+  </data>
+  <data name="Overlay_TabFix.Content" xml:space="preserve">
+    <value>修复</value>
+  </data>
+  <data name="Overlay_FixSubRepair.Content" xml:space="preserve">
+    <value>一键修复</value>
+  </data>
+  <data name="Overlay_FixSubRollback.Content" xml:space="preserve">
+    <value>备份回滚</value>
+  </data>
+  <data name="Overlay_FixDerived.Text" xml:space="preserve">
+    <value>补全贴图状态</value>
+  </data>
+  <data name="Overlay_FixStable.Text" xml:space="preserve">
+    <value>应用稳定纹理</value>
+  </data>
+  <data name="Overlay_FixRendering33.Text" xml:space="preserve">
+    <value>模组破洞/部位缺失修复</value>
+  </data>
+  <data name="Overlay_FixAemeath.Text" xml:space="preserve">
+    <value>修复爱弥斯机兵形态的模型异常</value>
+  </data>
+  <data name="Overlay_FixAero.Text" xml:space="preserve">
+    <value>女漂-风主形态眼部修复</value>
+  </data>
+  <data name="Overlay_FixAeroMode1.Content" xml:space="preserve">
+    <value>TexCoord 覆盖</value>
+  </data>
+  <data name="Overlay_FixAeroMode2.Content" xml:space="preserve">
+    <value>贴图镜像反转</value>
+  </data>
+  <data name="Characters_OpenOverlayButton.Content" xml:space="preserve">
+    <value>打开浮窗</value>
+  </data>
 </root>
+

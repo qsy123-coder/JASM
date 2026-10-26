@@ -19,6 +19,11 @@ JASM_Updater_FolderName = "JASM - Auto Updater_New"
 RELEASE_DIR = "output"
 JASM_RELEASE_DIR = "output/JASM"
 
+WUWA_FIXER_ASSETS = [
+    "src/GIMI-ModManager.WinUI/Assets/WuwaModFixer/wuwa-mod-cli.exe",
+    "src/GIMI-ModManager.WinUI/Assets/WuwaModFixer/config.json",
+]
+
 SelfContained = sys.argv[1] == "SelfContained" if len(sys.argv) > 1 else False
 ExcludeElevator = "ExcludeElevator" in sys.argv
 SingleFile = "SingleFile" in sys.argv
@@ -45,6 +50,21 @@ if versionNumber is None or len(versionNumber) == 0:
     print("Failed to extract version number from " + JASM_CSPROJ)
     exit(1)
 versionNumber = versionNumber[0]
+
+# 浮窗修复引擎（CLI + config）必须嵌进主 exe。资源不入库，缺失时先取一次；
+# 取不到就直接失败 —— 不能发一个「修复页签永远提示引擎不可用」的包。
+missing_wuwa_fixer = [path for path in WUWA_FIXER_ASSETS
+                      if not os.path.isfile(path) or os.path.getsize(path) == 0]
+if missing_wuwa_fixer:
+    print("Fetching Wuwa Mod Fixer assets...")
+    checkSuccessfulExitCode(os.system(f'"{sys.executable}" Build/FetchWuwaModFixer.py'))
+    missing_wuwa_fixer = [path for path in WUWA_FIXER_ASSETS
+                          if not os.path.isfile(path) or os.path.getsize(path) == 0]
+    if missing_wuwa_fixer:
+        print("ERROR: missing Wuwa Mod Fixer assets: " + ", ".join(missing_wuwa_fixer))
+        exit(1)
+    print("Finished fetching Wuwa Mod Fixer assets")
+    print()
 
 if ExcludeElevator == False:
     print("Building Elevator...")
@@ -129,6 +149,11 @@ if SelfContained == False and SingleFile == False:
 print("Copying text files to RELEASE_DIR...")
 shutil.copy("Build/README.txt", RELEASE_DIR)
 shutil.copy("CHANGELOG.md", os.path.join(RELEASE_DIR, "CHANGELOG.txt"))
+
+# 内置了上游 GPL-3.0 的修复引擎，发布目录里带上许可与第三方声明
+for notice in ("LICENSE", "THIRD-PARTY-NOTICES"):
+    if os.path.isfile(notice):
+        shutil.copy(notice, RELEASE_DIR)
 
 print("Finished copying text files to release directory")
 
