@@ -103,7 +103,7 @@ public sealed class DragAndDropScanner
     {
         PrepareWorkFolder();
 
-        _workFolder = Path.Combine(_workFolderRoot, Path.GetFileName(path));
+        _workFolder = Path.Combine(_workFolderRoot, GetExtractionFolderName(path));
 
         // 扩展名不在白名单里也可能是个自解压包（.exe），但**必须**先按文件头确认它真的追加了归档：
         // 实测 7-Zip 对普通 PE 也会「成功」（把 PE 的节当文件抽出来），只看「7z 能打开」等于把任何 exe 都收下
@@ -172,6 +172,25 @@ public sealed class DragAndDropScanner
     {
         Directory.CreateDirectory(_tmpFolder);
         Directory.CreateDirectory(_workFolderRoot);
+    }
+
+    /// <summary>
+    /// 解压目录该叫什么。
+    ///
+    /// <para>
+    /// 容器文件的扩展名（<c>.exe</c> / <c>.zip</c> / <c>.rar</c> / <c>.7z</c>）<b>不是 Mod 名字的一部分</b>：
+    /// 这一层会被当成包的目录名一路带到 Mods 目录里（实测装出来叫 <c>xxx.exe</c>）。载荷自己带顶层目录时
+    /// 这层名字会被剥掉，但「散文件摊在载荷根」的包会直接拿它当 Mod 目录名 —— 所以后缀必须在这里去掉。
+    /// </para>
+    ///
+    /// <para>
+    /// 拖进来的是<b>文件夹</b>时原样保留：文件夹名里的点不是扩展名（<c>Mod v1.2</c> 不能被截成 <c>Mod v1</c>）。
+    /// </para>
+    /// </summary>
+    public static string GetExtractionFolderName(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return Directory.Exists(path) ? fileName : Path.GetFileNameWithoutExtension(fileName);
     }
 
     private bool IsArchive(string path)
