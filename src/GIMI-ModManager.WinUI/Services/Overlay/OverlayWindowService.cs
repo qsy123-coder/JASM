@@ -1,7 +1,9 @@
 using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.GamesService;
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Contracts.Services;
+using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModHandling;
@@ -38,6 +40,7 @@ internal sealed class OverlayWindowService : IDisposable
     private readonly OverlayScreenshotService _screenshotService;
     private readonly SelectedGameService _selectedGameService;
     private readonly NotificationManager _notificationManager;
+    private readonly ILocalSettingsService _localSettingsService;
     private readonly ILogger _logger;
 
     /// <summary>
@@ -77,6 +80,7 @@ internal sealed class OverlayWindowService : IDisposable
         _selectedGameService = selectedGameService;
         _screenshotService = screenshotService;
         _notificationManager = notificationManager;
+        _localSettingsService = localSettingsService;
         _logger = logger.ForContext<OverlayWindowService>();
 
         // ViewModel 不经过 DI：它是 internal 的、且 DI 的 ActivatorUtilities 只认公开构造函数。
@@ -168,8 +172,9 @@ internal sealed class OverlayWindowService : IDisposable
             window.HideOverlay();
         }
 
-        // 热键是注册在浮窗自己身上的，所以窗口必须先存在
-        var hotkeys = new OverlayHotkeyRegistrar(window, _logger);
+        // 热键是注册在浮窗自己身上的，所以窗口必须先存在。
+        // 用户自定义键排在最前；它被占用时仍按默认候选表兜底（设置页会显示实际生效的是哪个）。
+        var hotkeys = new OverlayHotkeyRegistrar(window, _logger, await BuildToggleCandidatesAsync());
 
         if (!hotkeys.IsRegistered)
         {
@@ -191,20 +196,189 @@ internal sealed class OverlayWindowService : IDisposable
             return;
         }
 
-        _hotkeys = hotkeys;
-
-        hotkeys.Pressed += ToggleOverlay;
-        hotkeys.NavigationPressed += OnNavigationPressed;
-        hotkeys.ScreenshotPressed += OnScreenshotPressed;
-
-        // 热键名由这里填：只有注册完才知道最终用的是首选键还是被挤到了备选键
-        window.SetHotkeyHint(hotkeys.Description);
-        window.SetScreenshotHotkeyHint(hotkeys.ScreenshotDescription);
+        AttachHotkeys(hotkeys, registerNavigation: false);
 
         if (hotkeys.IsFallback)
             _logger.Warning("[浮窗] 首发热键被占用，已自动改用备选键 {Hotkey}", hotkeys.Description);
 
         _logger.Information("[浮窗] 已就绪，热键 {Hotkey}（游戏在前台时也可用；再按一次隐藏）", hotkeys.Description);
+    }
+
+    /// <summary>当前实际生效的唤出键；未注册时为 <c>(未注册)</c>。</summary>
+    public string ToggleHotkeyDescription => _hotkeys?.Description ?? "(未注册)";
+
+    /// <summary>当前用的不是候选表第一个（自定义键被占用退到了默认键）。设置页据此提示。</summary>
+    public bool IsToggleHotkeyFallback => _hotkeys?.IsFallback == true;
+
+    /// <summary>唤出键当前是否注册着（<c>false</c> + 窗口存在 = 全部候选被占用）。</summary>
+    public bool IsToggleHotkeyRegistered => _hotkeys is not null;
+
+    /// <summary>浮窗窗口是否已建出来（用来区分“还没初始化”和“初始化了但热键全失败”）。</summary>
+    public bool IsOverlayWindowCreated => _window is not null;
+
+    /// <summary>浮窗是否已经为当前选中游戏初始化过。</summary>
+    public bool IsInitializedForSupportedGame =>
+        _initializedForGame == SupportedGame && _window is not null;
+
+    /// <summary>
+    /// 供主窗口「打开浮窗」按钮使用：按当前游戏初始化后直接显示浮窗。
+    /// 不要求热键注册成功 —— 热键被占时按钮仍应能用。
+    /// </summary>
+    public async Task<bool> ShowOverlayAsync()
+    {
+        if (_disposed)
+            return false;
+
+        var selectedGame = await _selectedGameService.GetSelectedGameAsync();
+        if (selectedGame != SupportedGame)
+            return false;
+
+        await InitializeAsync();
+
+        return await App.MainWindow.DispatcherQueue.EnqueueAsync(() =>
+        {
+            if (_window is null)
+                return false;
+
+            ShowOverlay();
+            return true;
+        });
+    }
+
+    /// <summary>
+    /// 换唤出热键。新键先探测、再拆旧键：被占用时旧键原样保留，设置也不用改。
+    /// 当前不是鸣潮时只回「保存后生效」——真正的注册等切到鸣潮初始化时再做。
+    /// </summary>
+    public async Task<OverlayHotkeyChangeResult> TryChangeToggleHotkeyAsync(OverlayHotkeyCandidate candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        if (candidate.Modifiers == HotkeyModifiers.None)
+            return new OverlayHotkeyChangeResult(false, "快捷键至少需要 Ctrl / Alt / Shift / Win 之一", null);
+
+        if (_disposed)
+            return new OverlayHotkeyChangeResult(false, "浮窗已关闭", null);
+
+        var selectedGame = await _selectedGameService.GetSelectedGameAsync();
+        if (selectedGame != SupportedGame)
+            return new OverlayHotkeyChangeResult(true, null, candidate.FriendlyName);
+
+        await InitializeAsync();
+        return await App.MainWindow.DispatcherQueue.EnqueueAsync(() => ApplyHotkeyChange(candidate));
+    }
+
+    private OverlayHotkeyChangeResult ApplyHotkeyChange(OverlayHotkeyCandidate candidate)
+    {
+        var window = _window;
+        if (window is null)
+            return new OverlayHotkeyChangeResult(false, "浮窗尚未初始化", null);
+
+        var current = _hotkeys;
+        if (current?.RegisteredCandidate is { } registered &&
+            registered.Modifiers == candidate.Modifiers && registered.VirtualKey == candidate.VirtualKey)
+            return new OverlayHotkeyChangeResult(true, null, registered.FriendlyName);
+
+        if (current is not null && !current.IsCandidateAvailable(candidate))
+            return new OverlayHotkeyChangeResult(false, "该组合键已被其他程序占用", current.Description);
+
+        var previous = current?.RegisteredCandidate;
+        var wasVisible = window.IsOverlayVisible;
+        ReleaseHotkeys();
+
+        var replacement = new OverlayHotkeyRegistrar(window, _logger, [candidate]);
+        if (!replacement.IsRegistered)
+        {
+            var error = replacement.FailureMessage ?? "该组合键无法注册";
+            replacement.Dispose();
+            RestoreHotkeys(window, previous, wasVisible);
+            return new OverlayHotkeyChangeResult(false, error, _hotkeys?.Description);
+        }
+
+        AttachHotkeys(replacement, wasVisible);
+        _logger.Information("[浮窗] 唤出热键已切换为 {Hotkey}", replacement.Description);
+        return new OverlayHotkeyChangeResult(true, null, replacement.Description);
+    }
+
+    private void RestoreHotkeys(OverlayWindow window, OverlayHotkeyCandidate? previous, bool wasVisible)
+    {
+        if (previous is null)
+            return;
+
+        var restored = new OverlayHotkeyRegistrar(window, _logger, [previous]);
+        if (!restored.IsRegistered)
+        {
+            var reason = restored.FailureMessage;
+            restored.Dispose();
+            _logger.Warning("[浮窗] 新热键失败后恢复旧热键也失败: {Reason}", reason);
+            return;
+        }
+
+        AttachHotkeys(restored, wasVisible);
+    }
+
+    private void AttachHotkeys(OverlayHotkeyRegistrar hotkeys, bool registerNavigation)
+    {
+        _hotkeys = hotkeys;
+        hotkeys.Pressed += ToggleOverlay;
+        hotkeys.NavigationPressed += OnNavigationPressed;
+        hotkeys.ScreenshotPressed += OnScreenshotPressed;
+
+        if (registerNavigation)
+            hotkeys.RegisterNavigationHotkeys();
+
+        var window = _window;
+        if (window is null)
+            return;
+
+        // 热键名由这里填：只有注册完才知道最终用的是首选键还是被挤到了备选键
+        window.SetHotkeyHint(hotkeys.Description);
+        window.SetScreenshotHotkeyHint(hotkeys.ScreenshotDescription);
+    }
+
+    /// <summary>
+    /// 自定义键在前、默认候选在后。自定义键被占用时仍至少有默认键可用，
+    /// 设置页通过 <see cref="IsToggleHotkeyFallback"/> 把「实际用的不是你要的键」说出来。
+    /// </summary>
+    private async Task<IReadOnlyList<OverlayHotkeyCandidate>> BuildToggleCandidatesAsync()
+    {
+        var defaults = OverlayHotkeyCandidates.CreateDefaults();
+        var custom = await ReadCustomHotkeyAsync();
+        if (custom is null)
+            return defaults;
+
+        var candidates = new List<OverlayHotkeyCandidate>(defaults.Count + 1) { custom };
+        candidates.AddRange(defaults.Where(candidate =>
+            candidate.Modifiers != custom.Modifiers || candidate.VirtualKey != custom.VirtualKey));
+        return candidates;
+    }
+
+    private async Task<OverlayHotkeyCandidate?> ReadCustomHotkeyAsync()
+    {
+        try
+        {
+            var settings = await _localSettingsService
+                .ReadOrCreateSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App);
+
+            _logger.Information("[浮窗] 自定义热键设置: mods={Modifiers}, vk={VirtualKey}, name={Name}",
+                settings.OverlayHotkeyModifiers, settings.OverlayHotkeyVirtualKey, settings.OverlayHotkeyKeyName);
+
+            if (settings.OverlayHotkeyModifiers is not { } modifiers
+                || settings.OverlayHotkeyVirtualKey is not { } virtualKey
+                || modifiers == 0
+                || virtualKey is <= 0 or > 0xFF)
+                return null;
+
+            var displayName = string.IsNullOrWhiteSpace(settings.OverlayHotkeyKeyName)
+                ? $"VK{virtualKey:X2}"
+                : settings.OverlayHotkeyKeyName;
+
+            return new OverlayHotkeyCandidate((HotkeyModifiers)(uint)modifiers, (ushort)virtualKey, displayName);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗] 读取自定义热键失败，沿用默认候选");
+            return null;
+        }
     }
 
     /// <summary>
@@ -350,3 +524,6 @@ internal sealed class OverlayWindowService : IDisposable
         _logger.Debug("[浮窗] 已停止（热键已注销）");
     }
 }
+
+/// <summary>改键结果。<see cref="EffectiveHotkey"/> 是当前实际生效的键（失败时用于提示）。</summary>
+public sealed record OverlayHotkeyChangeResult(bool Success, string? Error, string? EffectiveHotkey);
