@@ -212,6 +212,100 @@ public class ModPackageRootResolverTests : IDisposable
         Assert.True(ModPackageRootResolver.LooksLikeSelfContainedModRoot(contentRoot));
     }
 
+    // ---------- 拖拽安装的落盘根（ResolveInstallRoot） ----------
+
+    /// <summary>
+    /// 实机样本（鸣潮 WWMI，xinyuehu）：<c>&lt;包名&gt;\&lt;包名&gt;\&lt;作者目录&gt;\single_layer_depth.ini</c>
+    /// —— 解压目录名已由 Scanner 去掉 <c>.exe</c>。
+    ///
+    /// <para>
+    /// 以前装成 <c>DISABLED_包名.exe\包名\作者目录\</c> 三层，XXMI 扫不到 mod 根上的 ini、启动直接崩溃；
+    /// 用户手动去掉嵌套后才正常。要的是：落盘名是包名，ini 直接摆在落盘根下。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TheSelfExtractingPackageIsFlattenedToItsIniLayer()
+    {
+        const string package = "心(含大招)-点绛唇v2.4（内附切换）by PebbleRox";
+        const string modRoot = "PebbleRox-Hsin Rouged Lips DLC V2.4 (心-点绛唇-DLC V2.4)";
+
+        MakeFile($@"{package}\{package}\{modRoot}\single_layer_depth.ini");
+        MakeDirectory($@"{package}\{package}\{modRoot}\legdeco");
+        MakeDirectory($@"{package}\{package}\{modRoot}\ult");
+        MakeFile($@"{package}\{package}\preview.jpg");
+        MakeFile($@"{package}\{package}\mod主站网址.url");
+
+        var installRoot = ModPackageRootResolver.ResolveInstallRoot(_extractedRoot);
+
+        Assert.Equal(package, installRoot.Name);
+        Assert.True(File.Exists(Path.Combine(installRoot.FullName, "single_layer_depth.ini")));
+        Assert.False(Directory.Exists(Path.Combine(installRoot.FullName, modRoot)),
+            "作者那层目录就是被改名的那一层，不该再在底下套一次");
+    }
+
+    /// <summary>
+    /// 实机样本的另一种形状：载荷顶层是「一堆变体子目录」的包装（自己不带 ini），
+    /// 变体直接摆到落盘根下 —— 与单层 Mod 同理，多一层 XXMI 就认不出。
+    /// </summary>
+    [Fact]
+    public void TheMultiVariantWrapperIsFlattenedSoTheVariantsSitAtTheRoot()
+    {
+        const string package = "心(含大招)-绀星绮愿v1.1（0）by 辉映星辰允如光";
+        const string variants = "Hsin - Indigo Oath v1.1";
+
+        MakeFile($@"{package}\{package}\{variants}\Hsin the Moon Fox - Indigo Oath V1.1\mod.ini");
+        MakeFile($@"{package}\{package}\{variants}\Astrite Accessories\mod.ini");
+        MakeFile($@"{package}\{package}\preview.png");
+
+        var installRoot = ModPackageRootResolver.ResolveInstallRoot(_extractedRoot);
+
+        Assert.Equal(package, installRoot.Name);
+        Assert.True(File.Exists(Path.Combine(installRoot.FullName, "Hsin the Moon Fox - Indigo Oath V1.1",
+            "mod.ini")));
+        Assert.True(File.Exists(Path.Combine(installRoot.FullName, "Astrite Accessories", "mod.ini")));
+    }
+
+    /// <summary>包目录自己就是 Mod 根（顶层有 ini 和子目录）：不改名、不再往下剥。</summary>
+    [Fact]
+    public void APackageThatIsItselfTheModRootKeepsItsName()
+    {
+        const string package = "Xuanling_Pyroath";
+        MakeFile($@"{package}\mod.ini");
+        MakeDirectory($@"{package}\Meshes");
+
+        var installRoot = ModPackageRootResolver.ResolveInstallRoot(_extractedRoot);
+
+        Assert.Equal(package, installRoot.Name);
+        Assert.True(File.Exists(Path.Combine(installRoot.FullName, "mod.ini")));
+    }
+
+    /// <summary>一堆互不相干的 Mod 打成一个包：不往里剥（否则只会装到其中一个）。</summary>
+    [Fact]
+    public void SeveralUnrelatedModsStayInOneFolder()
+    {
+        const string package = "杂包";
+        MakeFile($@"{package}\ModA\mod.ini");
+        MakeFile($@"{package}\ModB\mod.ini");
+
+        var installRoot = ModPackageRootResolver.ResolveInstallRoot(_extractedRoot);
+
+        Assert.Equal(package, installRoot.Name);
+        Assert.True(Directory.Exists(Path.Combine(installRoot.FullName, "ModA")));
+        Assert.True(Directory.Exists(Path.Combine(installRoot.FullName, "ModB")));
+    }
+
+    /// <summary><c>&lt;guid&gt;</c> 下没有唯一的目录（散文件 / 多个并列目录）时没有可信的包名可用，不改名。</summary>
+    [Fact]
+    public void ScatteredRootsAreNotRenamedAfterTheWorkFolder()
+    {
+        MakeFile(@"ModA\mod.ini");
+        MakeFile(@"ModB\mod.ini");
+
+        var installRoot = ModPackageRootResolver.ResolveInstallRoot(_extractedRoot);
+
+        Assert.Equal(_extractedRoot.Name, installRoot.Name);
+    }
+
     // ---------- 夹具 ----------
 
     private DirectoryInfo MakeDirectory(string relativePath)
