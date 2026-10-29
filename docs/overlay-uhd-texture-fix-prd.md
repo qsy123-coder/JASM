@@ -24,7 +24,8 @@
 **Current Situation**
 - 浮窗「修复」= 上游 `wuwa-mod-cli` 重写 Mod 包内 ini 的组件哈希与贴图引用，**整套代码没有任何资源档位概念**，只按一套哈希/引用去修。
 - 玩家切到 UHD 后，同一批 Mod 出现整体贴图错乱，现有修复跑完无效，且浮窗不会提示「当前档位下这个修复不适用」。
-- 参考实现（第三方管理器 Rocket）在 UHD 问题上的做法是**运行时钉 LOD0 + 材质 mip 常驻 + 流送档位强制=4**；2026-10-29 的 v2.9 更新**保留了这套引擎且未改动**，只是另外加了 PakMod 加载器与游戏内 HUD（见 `rocket-injection-and-uhd-texture-analysis.md` §10）。它没有告诉我们「UHD 的错到底是不是哈希错」——这也正是本 PRD 必须先做 Phase 0 的原因。
+- 参考实现（第三方管理器 Rocket）是**双管齐下**：运行时钉 LOD0 + 材质 mip 常驻 + 流送档位强制=4（旧引擎，v2.9 完整保留），**外加**一张内嵌的 `UHD-to-HD` 别名表 —— 2026-10-29 的 v2.9 在 RCDATA 里带着 **6118 行、18 个角色**的 UHD↔HD 纹理/组件哈希对照（见 `rocket-injection-and-uhd-texture-analysis.md` §10.5）。
+- 这基本回答了「UHD 的错是不是哈希错」：**是**，至少作者是这么认为并且专门维护了数据。本 PRD 的 Phase 0 因此从"判断根因"改为"**验证这张表的语义、确认我们能不能自己生成**"。
 
 **Proposed Solution**
 1. **Phase 0（开发期线下取证，不进产品）**：用 3DMigoto hunting/dump 对比同一 Mod 在 HD 与 UHD 下的贴图绑定与 `TextureOverride` 命中情况，给出根因分类与最小可验证改动。
@@ -172,10 +173,18 @@
 ## MVP Scope & Phasing
 
 ### Phase 0: 取证（必须先做，不在产品内）
-- 用 3DMigoto hunting/dump 采集同一 Mod 在 HD 与 UHD 下的贴图绑定与 TextureOverride 命中差异。
-- 结论必须回答：错在**哈希/引用**、**LOD 选择**、**流送驱逐**，还是组合；并给出「改这一处即恢复」的最小证据。
-- 产出：`docs/uhd-texture-diagnosis.md`（结论 + 证据 + 建议修法）。
-- **Gate**：若结论不是「文件级可修」，停止编码，回到方案复评。
+
+**目标已更新**：不再是"判断是哈希还是 LOD"，而是「**验证别名语义**」——
+Rocket v2.9 已在 RCDATA 里带了一张 6118 行的 `UHD-to-HD` 对照表（18 个角色，见逆向文档 §10.5），
+说明作者认定根因就是哈希错位。我们要确认的是：
+
+1. 同一角色、同一组件、同一槽位在 **HD dump** 与 **UHD dump** 里绑定的纹理哈希，是否正好对应表里的两列；
+2. 表里的 B/C/D 三列各自是什么语义（UHD 侧 / 共享 / 变体）；
+3. 我们能否**自己从游戏 dump 生成同样的表**（不依赖第三方数据）。
+
+- 素材：同一 Mod 在 HD 与 UHD 下各一次 3DMigoto hunting dump（`log.txt` + 绑定槽位）。
+- 产出：`docs/uhd-texture-diagnosis.md`（结论 + 证据 + 建议修法 + 生成脚本）。
+- **Gate**：若 HD/UHD 两套哈希的差异与表对不上（或根本不是哈希问题），停止编码，回到方案复评。
 
 ### Phase 1: MVP
 - 档位选择（SD/HD/UHD）+ 持久化。
@@ -199,8 +208,9 @@
 
 | Risk | Probability | Impact | Mitigation Strategy |
 |---|---|---|---|
-| 上游 `config.json` / CLI 不含 UHD 数据 | High | High | Phase 0 先验证上游能力；若缺失，提供「本地上传/覆盖补丁表」过渡，并同步向上游提 PR；同时在 UI 明确提示缺口 |
-| UHD 根因不是哈希（是 LOD/流送） | Medium-High | High | Phase 0 判据同时覆盖 LOD 与流送；若结论为 LOD，则 MVP 停止，回归方案复评（本 PRD 的「文件级」前提不成立） |
+| 上游 `config.json` / CLI 不含 UHD 数据 | High | High | 第三方已有现成对照表（逆向文档 §10.5）可验证"这条路走得通"，但**不直接搬运**（来源/授权）；过渡方案：用同一方法自建表并随 JASM 发版，同时向上游提 PR 归并 |
+| UHD 根因不是哈希（是 LOD/流送） | Low-Medium | High | 已找到作者自标 `UHD-to-HD` 的 6118 行对照表，哈希路径有实物支撑；仍保留 Phase 0 的对照验证，若对不上则停止编码 |
+| 别名表语义理解错误导致"修坏" | Medium | High | 先用单角色最小样本验证（1 个角色 × 1 个组件 × 1 个槽位），确认后逐角色放量；全部改动仍走 `.BAK` 回滚 |
 | 上游 config 每周更新引入回归 | Medium | Medium | 版本门禁 + 配置校验 + 修复前后抽样比对；保留可回滚备份 |
 | 用户选错档位 | Medium | Medium | 手选 + 记忆 + 文案说明 + 结果卡显示「按哪个档位修」 |
 | 修完仍个别角色异常 | Medium | Medium | 结果摘要按角色列出未成功项，可单角色重试；保留完整日志 |
