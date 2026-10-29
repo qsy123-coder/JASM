@@ -29,6 +29,13 @@ dotnet run -c Release -p:Platform=x64 --project . -- apply --pid 12345 --dll a.d
 # 加 --verbose 看每一步的地址与错误码
 ```
 
+Hook 通道（Phase A2，需要一个导出 `CBTProc` 的 DLL，CI 产出见 [`native/README.md`](native/README.md)）：
+
+```powershell
+dotnet run -c Release -p:Platform=x64 --project . -- hook --dll .\cbtprobe.dll --timeout 12
+# 日志（UTF-16）：Get-Content "$env:TEMP\jasm-cbtprobe.log" -Encoding Unicode
+```
+
 `plan` / `apply` 是 Phase B 的作业模型（`InjectionJob` → `InjectionRunner`）：
 - **纯数据 + 纯校验**：目标、DLL 列表、通道、延迟、是否冻结线程；
 - **同名进程多开直接拒绝**而不是随便挑一个（挑错目标比失败更糟）；
@@ -113,8 +120,8 @@ dotnet run -c Release -p:Platform=x64 --project . -- apply --pid 12345 --dll a.d
 
 - ✅ **Phase A1**：直接注入通道验证通过（50/50、10/10）。
 - ✅ **Phase B（第一段）**：作业模型 + 执行层 + dry-run（`plan`）落地；通道以 `InjectionChannelKind` 抽象。
-- 🟡 **Phase A2（Hook 通道）**：C# 侧已实现（`hook` 子命令 + `CbtHookInjector` + 建窗子进程）；
-  原生 DLL 源码与 CI 工作流已就绪，但**还没编出产物、没跑过端到端** —— 需要一个导出 `CBTProc` 的 `cbtprobe.dll`
-  （本机无 C++ 编译器，见 [`native/README.md`](native/README.md)）。
-  已验证的部分：DLL 不存在 / DLL 没有 `CBTProc` 两条失败路径分类正确；建窗子进程能正常建窗并自动退出。
+- ✅ **Phase A2（Hook 通道）**：2026-10-29 端到端打通。
+  CI 产出 `cbtprobe-x64` → 下载 → `hook --dll <cbtprobe.dll>` → 目标进程模块表出现该 DLL，
+  `%TEMP%\jasm-cbtprobe.log` 同时记录 `DLL_PROCESS_ATTACH` 与 `CBTProc called (HCBT_CREATEWND)`。
+  注意全局钩子会进入**所有**建窗进程（日志里能看到无关 PID），这是 WH_CBT 的固有行为，不是串味。
 - ⛔ **插件本体（UE 反射 / LOD / mip）**：不在本工具范围，见分析文档 §7。
