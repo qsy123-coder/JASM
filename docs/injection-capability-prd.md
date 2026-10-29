@@ -185,7 +185,12 @@ JASM 现在能改的是**文件**（Mod 包 ini、配置）和**输入**（Eleva
 - 用自建的**同名测试进程**（`cmd.exe` 改名）做靶子，不动真实游戏。
 - 验证：`OpenProcess` 权限矩阵、`VirtualAllocEx/WriteProcessMemory/CreateRemoteThread` 序列、退出码判定、模块枚举核对、超时与清理。
 
-**A2：验证 Hook 通道（需要导出 `CBTProc` 的原生 DLL）**
+**A2：验证 Hook 通道（需要导出 `CBTProc` 的原生 DLL）** —— ✅ **2026-10-29 已完成**
+
+> 原生 DLL 由 `.github/workflows/injector-probe-native.yml` 构建（本机无 C++ 编译器），
+> 产物 `cbtprobe-x64` 下载后 `hook --dll <path>` 跑通：目标进程模块表出现该 DLL，
+> DLL 侧日志同时记录了 `DLL_PROCESS_ATTACH` 与 `CBTProc called (HCBT_CREATEWND)`。
+> 已知副作用：全局 CBT 钩子会进入所有建窗进程（日志里会看到无关 PID），属 WH_CBT 固有行为。
 - 需要一个真正的原生 DLL。本机编不了 → 二选一：装 VS Build Tools，或走 CI 产出（与 `Elevator` 相同的路径）。
 - 只有在 A1 全绿之后才做 A2；A2 未完成不影响把"直接注入"作为第一版通道。
 
