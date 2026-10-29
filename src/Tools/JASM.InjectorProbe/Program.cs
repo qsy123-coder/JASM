@@ -419,11 +419,20 @@ internal static class Program
     /// </summary>
     private static string? ResolveDll(string dll)
     {
+        // 绝对路径：原样校验
         if (Path.IsPathRooted(dll))
         {
             return File.Exists(dll) ? dll : null;
         }
 
+        // 带目录分隔符的相对路径（.\cbtprobe.dll）：相对当前目录解析
+        if (dll.Contains('\\') || dll.Contains('/'))
+        {
+            var full = Path.GetFullPath(dll);
+            return File.Exists(full) ? full : null;
+        }
+
+        // 裸文件名：一律到 system32 找，避免命中同目录同名文件
         var system32 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), dll);
         return File.Exists(system32) ? system32 : null;
     }
