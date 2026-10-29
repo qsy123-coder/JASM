@@ -154,12 +154,21 @@ internal static class InjectionRunner
         return true;
     }
 
-    /// <summary>裸名字一律解析到 system32，避免命中同目录同名文件。</summary>
+    /// <summary>
+    /// 解析 DLL 路径：绝对路径原样；带分隔符的相对路径按当前目录展开；
+    /// 裸名字一律到 system32 找（避免命中同目录同名文件）。
+    /// </summary>
     private static string? ResolveDllPath(string dll)
     {
         if (Path.IsPathRooted(dll))
         {
             return File.Exists(dll) ? dll : null;
+        }
+
+        if (dll.Contains('\\') || dll.Contains('/'))
+        {
+            var full = Path.GetFullPath(dll);
+            return File.Exists(full) ? full : null;
         }
 
         var system32 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), dll);
