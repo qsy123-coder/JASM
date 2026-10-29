@@ -601,7 +601,37 @@ v2.9 的 PE 资源表里有两块关键数据（全部 3 个资源，无其他�
 
 **结论修正**：§10.4 里"Rocket 只做运行时、不碰哈希"**对旧版成立、对 v2.9 不成立**。v2.9 内置了一张作者自标 `UHD-to-HD` 的对照表，还带 `sourceSha256`（说明是从某次 dump 生成的）与版本号（20261025.1）。
 
-**仍未确定**：B/C/D 三列各自的准确语义（是 UHD 侧 / 共享 / 变体？），必须用一次 HD 与 UHD 的 dump 对照才能定；表只覆盖 18 个角色，属"做到哪算哪"的增量数据；这是第三方数据，直接搬运有来源与授权问题——合理用法是**拿它验证假设**，然后自行从游戏 dump 生成我们自己的表。
+**尚未确定**的部分（列语义）见下一节，已用本机社区数据做了第一轮交叉验证。
+
+### 10.5.1 交叉验证：拿社区哈希表（woju 修复器 v3.7.0.2）对撞
+
+本机 `D:\BaiduNetdiskDownload\MC-MOD整合包\…\鸣潮mod woju修复器v3.7.0.2以及asset文件\` 里有四份表
+（`StableHashes.json` / `HighLodHashes.json` / `hashes.json` / `Derived.json`，见 `docs/wuwa-mod-hash-fix.md`）。
+用它们与 Rocket 的 6118 行做集合对撞，结果：
+
+| Rocket 列 | 命中 `StableHashes`（41 角色 / 582 个当前哈希） | 命中 `HighLodHashes.lod_high` |
+|---|---|---|
+| **B（第 21 列）** | **2228 / 6118** | 0 |
+| A（第 13 列） | 4 | 0 |
+| C（第 22 列） | 4 | 0 |
+| D（第 23 列） | 0 | 0 |
+
+**推论（中等置信）**：
+- **B 列 = HD/常规档位的纹理哈希**——它与社区"当前哈希"表大量重合，是唯一"能对上号"的一列。
+- **A/C/D 三列在社区表里几乎不存在**（合计 8 行命中）——说明它们记录的是社区表根本不跟踪的另一套值，与清单自称的 `mapping: UHD-to-HD` 吻合，即 **UHD 档位那一侧**。
+- `A == C` 占 86%，可理解为"同一贴图在 UHD 侧的两种记录方式（或两个变体）落到同一个 HD 哈希"。
+
+**角色名互通**：Rocket 第 1 列的角色哈希与 `hashes.json` 的 `Jinhsi24/Jinhsi26/Shorekeeper26…` 是同一套编号，
+可直接映射 11/18 个角色：
+
+```
+千咲→Chisa  女漂→Rover F  守岸人→Shorekeeper  洛瑟菈→LucillaOW1  珂莱塔→CarlottaHairNormal
+琳奈→Lynae  秧秧·玄翎→YangyangSP  穗穗→Suisui  莫宁→Mornye  赞妮→ZaniMenu  陆赫斯→Luuk
+```
+
+**结论**：Rocket 的表基本可以判定为「UHD 侧哈希 → HD 侧哈希」，但**还差一次实机 dump 做最终确认**
+（取一个角色一个槽位，看 HD dump 的哈希是否落在 B、UHD dump 的哈希是否落在 A/C）。
+社区表里 `HighLodHashes` 的 `lod_high` 与 Rocket 的 A/C **完全没有交集**，说明 woju 的"高 LOD"与 Rocket 的"UHD"是两回事，不能互相替代。
 
 ### 10.6 对 JASM 的含义
 
