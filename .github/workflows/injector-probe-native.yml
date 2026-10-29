@@ -5,8 +5,10 @@ name: injector-probe-native
 # 触发条件限定在该目录，避免每次 push 都白跑一次。
 
 on:
+  # 任意分支都可能要构建这个 DLL（特性分支上就要拿到产物）；
+  # 路径过滤保证只有动到 native/ 或本文件时才跑。
   push:
-    branches: [master]
+    branches: ['**']
     paths:
       - 'src/Tools/JASM.InjectorProbe/native/**'
       - '.github/workflows/injector-probe-native.yml'
