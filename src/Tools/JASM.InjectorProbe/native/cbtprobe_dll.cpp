@@ -5,7 +5,14 @@
 //
 // 构建：见同目录 CMakeLists.txt。本机没有 MSVC，需要 VS Build Tools 或 CI。
 
+// 注意：<windows.h> 在 WIN32_LEAN_AND_MEAN 下不会带进 swprintf_s，
+// 必须自己包含 <stdio.h>（CI 第一次构建就是栽在这里）。
+#include <stdio.h>
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <windows.h>
 
 // 探针用它判断"DLL 真的被映射进来了"；命名与其他全局对象保持一致的前缀风格。
