@@ -1,0 +1,48 @@
+name: injector-probe-native
+
+# 只构建「注入探针」用的最小原生 DLL（Phase A2）。
+# 与发布链路完全无关：不参与 Release.py，不产出发版包，只上传 CI artifact。
+# 触发条件限定在该目录，避免每次 push 都白跑一次。
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/Tools/JASM.InjectorProbe/native/**'
+      - '.github/workflows/injector-probe-native.yml'
+  pull_request:
+    paths:
+      - 'src/Tools/JASM.InjectorProbe/native/**'
+      - '.github/workflows/injector-probe-native.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (x64)
+        run: cmake -S src/Tools/JASM.InjectorProbe/native -B build/native -A x64
+
+      - name: Build (Release)
+        run: cmake --build build/native --config Release
+
+      - name: Verify export table
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Path build/native -Filter cbtprobe.dll -Recurse | Select-Object -First 1
+          if (-not $dll) { throw '找不到 cbtprobe.dll' }
+          Write-Host "产物: $($dll.FullName) ($($dll.Length) 字节)"
+
+          # 用 PE 导出表直接确认 CBTProc 存在（不依赖 dumpbin 是否在 PATH）
+          $bytes = [IO.File]::ReadAllBytes($dll.FullName)
+          $text = [Text.Encoding]::ASCII.GetString($bytes)
+          if ($text -notmatch 'CBTProc') { throw '导出表里没有 CBTProc' }
+          Write-Host '导出 CBTProc ✓'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbtprobe-x64
+          path: build/native/**/cbtprobe.dll
+          if-no-files-found: error
