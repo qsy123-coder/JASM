@@ -506,32 +506,40 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
     {
         void** contextVtable = *reinterpret_cast<void***>(context);
 
-        // ID3D11DeviceContext 方法在 vtable 中的位置（前面是 IUnknown + DeviceChild 共 7 个）：
-        // 8 PSSetShaderResources、15 Map、16 Unmap、17 CopySubresourceRegion、18 CopyResource、19 UpdateSubresource。
+        // ID3D11DeviceContext 真实 vtable 顺序（前面是 IUnknown + DeviceChild 共 7 个），
+        // 以 d3d11.h 为准 —— 注意 PSSetConstantBuffers 在 Unmap 之后，不是紧跟 PSSetSamplers：
+        //   8  PSSetShaderResources
+        //   12 DrawIndexed      （M3 用）
+        //   14 Map
+        //   15 Unmap
+        //   46 CopySubresourceRegion
+        //   47 CopyResource
+        //   48 UpdateSubresource
+        // 索引错一位就会用错误签名调用别的管线方法，直接崩游戏。
         contextHooks += PatchVtableSlot(contextVtable, 8,
                                         reinterpret_cast<void*>(&DetourPSSetShaderResources),
                                         reinterpret_cast<void**>(&g_origPSSetShaderResources))
                             ? 1
                             : 0;
-        contextHooks += PatchVtableSlot(contextVtable, 15, reinterpret_cast<void*>(&DetourMap),
+        contextHooks += PatchVtableSlot(contextVtable, 14, reinterpret_cast<void*>(&DetourMap),
                                         reinterpret_cast<void**>(&g_origMap))
                             ? 1
                             : 0;
-        contextHooks += PatchVtableSlot(contextVtable, 16, reinterpret_cast<void*>(&DetourUnmap),
+        contextHooks += PatchVtableSlot(contextVtable, 15, reinterpret_cast<void*>(&DetourUnmap),
                                         reinterpret_cast<void**>(&g_origUnmap))
                             ? 1
                             : 0;
-        contextHooks += PatchVtableSlot(contextVtable, 17,
+        contextHooks += PatchVtableSlot(contextVtable, 46,
                                         reinterpret_cast<void*>(&DetourCopySubresourceRegion),
                                         reinterpret_cast<void**>(&g_origCopySubresourceRegion))
                             ? 1
                             : 0;
-        contextHooks += PatchVtableSlot(contextVtable, 18,
+        contextHooks += PatchVtableSlot(contextVtable, 47,
                                         reinterpret_cast<void*>(&DetourCopyResource),
                                         reinterpret_cast<void**>(&g_origCopyResource))
                             ? 1
                             : 0;
-        contextHooks += PatchVtableSlot(contextVtable, 19,
+        contextHooks += PatchVtableSlot(contextVtable, 48,
                                         reinterpret_cast<void*>(&DetourUpdateSubresource),
                                         reinterpret_cast<void**>(&g_origUpdateSubresource))
                             ? 1
