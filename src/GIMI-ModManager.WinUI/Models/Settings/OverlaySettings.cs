@@ -75,6 +75,13 @@ public class OverlaySettings
     /// <summary>「修复」页：女漂-风主眼部修复模式，0 = 关、1 = TexCoord 覆盖、2 = 贴图镜像反转。</summary>
     public int? FixAeroMode { get; set; }
 
+    /// <summary>
+    /// 鸣潮资源档位：0 = 自动、1 = SD、2 = HD、3 = UHD。
+    /// <c>null</c> = 没设置过 → 自动。用于启动参数与 UHD 修复提示；换游戏不该共用，
+    /// 但浮窗一次只服务一个游戏，且这个字段只在鸣潮页面显示。
+    /// </summary>
+    public int? UhdResourceTierIndex { get; set; }
+
     /// <summary>「修复」页的二级视图：0 = 修复、1 = 回滚。<c>null</c> = 修复。</summary>
     public int? FixSubTab { get; set; }
 
