@@ -1,11 +1,15 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.Services.WuwaModFixer;
 using GIMI_ModManager.Core.Services.WuwaUhd;
+using GIMI_ModManager.WinUI.Models.Settings;
+using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.Overlay;
 
 namespace GIMI_ModManager.WinUI.ViewModels.Overlay;
@@ -24,8 +28,16 @@ internal sealed partial class OverlayViewModel
     private List<WuwaBackupGroup> _lastBackupGroups = [];
     private string? _rollbackAllowedRoot;
 
-    /// <summary>本次修复是不是由“UHD 推荐哈希修复”按钮触发的；完成时把结果写回 UHD 状态行。</summary>
+    /// <summary>本次修复是不是由 UHD 面板的“执行 UHD 修复”触发的；完成时把结果写回 UHD 状态行。</summary>
     private bool _uhdHashFixPending;
+
+    // ── UHD 学习向导状态 ───────────────────────────────────────────────
+    private CancellationTokenSource? _uhdLearningCts;
+    private string? _uhdLearningRole;
+    private ICharacterModList? _uhdLearningModList;
+    private List<Guid> _uhdLearningOriginallyEnabledIds = [];
+    private List<string> _uhdLearningTargetPaths = [];
+    private int _uhdLearningBaselineUhd;
 
     /// <summary>女漂修复上次用的模式（1/2）。关掉再打开时恢复，不默认退回模式 1。</summary>
     private int _lastAeroMode = 1;
@@ -130,13 +142,49 @@ internal sealed partial class OverlayViewModel
 
     public IReadOnlyList<string> UhdTierOptions { get; } = ["自动识别", "流畅 SD", "高清 HD", "极致 UHD"];
 
+    /// <summary>
+    /// UHD 修复方式。三者的适用面不同，别默认走 RabbitFX：
+    /// <list type="bullet">
+    /// <item>基础哈希：普通 mod 的 hash 过期，最安全；</item>
+    /// <item>稳定纹理：部分角色 + 最新 RabbitFX；</item>
+    /// <item>补全状态贴图：只给依赖 RabbitFX 的状态贴图（湿身、强化 E 等）补绑定，普通 mod 加了反而可能变绿。</item>
+    /// </list>
+    /// </summary>
+    public IReadOnlyList<string> UhdFixModeOptions { get; } =
+        ["基础哈希修复", "稳定纹理修复", "补全状态贴图（RabbitFX）"];
+
+    [ObservableProperty] private int _uhdFixModeIndex;
+    [ObservableProperty] private bool _isUhdLearning;
+    [ObservableProperty] private bool _useInjectionLaunch;
+    private bool _loadingInjectionLaunchSetting;
+
+    partial void OnUseInjectionLaunchChanged(bool value)
+    {
+        if (_loadingInjectionLaunchSetting)
+            return;
+
+        _ = SaveInjectionLaunchSettingAsync(value);
+    }
+
+    public bool CanStartUhdLearning =>
+        !IsUhdLearning && !IsUhdBusy && SelectedCharacter is not null && SelectedFixTargetCount > 0;
+    public bool CanFinishUhdLearning => IsUhdLearning && !IsUhdBusy;
+
+    partial void OnIsUhdLearningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanStartUhdLearning));
+        OnPropertyChanged(nameof(CanFinishUhdLearning));
+        OnPropertyChanged(nameof(CanRunUhdActions));
+        OnPropertyChanged(nameof(CanSwitchCharacter));
+    }
+
     [ObservableProperty] private int _uhdTierIndex;
     [ObservableProperty] private bool _isUhdBusy;
     [ObservableProperty] private string? _uhdStatusMessage;
     [ObservableProperty] private bool _isUhdStatusError;
 
     public bool HasUhdStatus => !string.IsNullOrWhiteSpace(UhdStatusMessage);
-    public bool CanRunUhdActions => !IsUhdBusy && !FixSession.IsRunning;
+    public bool CanRunUhdActions => !IsUhdBusy && !FixSession.IsRunning && !IsUhdLearning;
     public WuwaResourceTier SelectedUhdTier => WuwaResourceTierExtensions.FromIndex(UhdTierIndex);
 
     partial void OnUhdTierIndexChanged(int value)
@@ -155,8 +203,29 @@ internal sealed partial class OverlayViewModel
         _ = SaveSettingsAsync();
     }
 
-    partial void OnIsUhdBusyChanged(bool value) => OnPropertyChanged(nameof(CanRunUhdActions));
+    partial void OnIsUhdBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanRunUhdActions));
+        OnPropertyChanged(nameof(CanFinishUhdLearning));
+        OnPropertyChanged(nameof(CanStartUhdLearning));
+    }
     partial void OnUhdStatusMessageChanged(string? value) => OnPropertyChanged(nameof(HasUhdStatus));
+
+    partial void OnUhdFixModeIndexChanged(int value)
+    {
+        var clamped = Math.Clamp(value, 0, 2);
+        if (clamped != value)
+        {
+            UhdFixModeIndex = clamped;
+            return;
+        }
+
+        if (_loadingFixSettings)
+            return;
+
+        Settings.UhdFixModeIndex = clamped;
+        _ = SaveSettingsAsync();
+    }
 
     /// <summary>女漂修复的总开关。关掉时把模式归零；打开时默认 TexCoord 覆盖。</summary>
     public bool FixAeroEnabled
@@ -240,7 +309,7 @@ internal sealed partial class OverlayViewModel
 
     /// <summary>修复运行中锁定页签与角色：目标路径已经快照，切角色/回 Mod 页只会让用户误以为改的是同一批。</summary>
     public bool CanSwitchTabs => !FixSession.IsRunning;
-    public bool CanSwitchCharacter => !FixSession.IsRunning;
+    public bool CanSwitchCharacter => !FixSession.IsRunning && !IsUhdLearning;
 
     // ── 目标勾选 ────────────────────────────────────────────────────────
 
@@ -319,6 +388,7 @@ internal sealed partial class OverlayViewModel
             FixSubTabIndex = Settings.FixSubTab == 1 ? 1 : 0;
             IsLogExpanded = Settings.FixLogExpanded;
             UhdTierIndex = Math.Clamp(Settings.UhdResourceTierIndex ?? 0, 0, 3);
+            UhdFixModeIndex = Math.Clamp(Settings.UhdFixModeIndex ?? 0, 0, 2);
         }
         finally
         {
@@ -329,6 +399,47 @@ internal sealed partial class OverlayViewModel
     private void InitializeFixSession()
     {
         FixSession.PropertyChanged += OnFixSessionPropertyChanged;
+        _ = LoadInjectionLaunchSettingAsync();
+    }
+
+    private async Task LoadInjectionLaunchSettingAsync()
+    {
+        try
+        {
+            var settings = await _localSettingsService
+                .ReadOrCreateSettingAsync<GameLaunchInjectionSettings>(GameLaunchInjectionSettings.Key,
+                    SettingScope.App);
+            _loadingInjectionLaunchSetting = true;
+            UseInjectionLaunch = settings.Enabled;
+            _loadingInjectionLaunchSetting = false;
+        }
+        catch (Exception e)
+        {
+            _loadingInjectionLaunchSetting = false;
+            _logger.Debug(e, "[浮窗修复] 读取内置注入启动设置失败");
+        }
+    }
+
+    private async Task SaveInjectionLaunchSettingAsync(bool enabled)
+    {
+        try
+        {
+            var settings = await _localSettingsService
+                .ReadOrCreateSettingAsync<GameLaunchInjectionSettings>(GameLaunchInjectionSettings.Key,
+                    SettingScope.App);
+            settings.Enabled = enabled;
+            await _localSettingsService.SaveSettingAsync(GameLaunchInjectionSettings.Key, settings,
+                SettingScope.App);
+            SetUhdStatus(enabled
+                    ? "内置注入启动已开启：下次启动游戏由 JASM 挂起直启并注入 WWMI。"
+                    : "内置注入启动已关闭：恢复 XXMI Launcher 启动。",
+                isError: false);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗修复] 保存内置注入启动设置失败");
+            SetUhdStatus("保存内置注入启动设置失败：" + e.Message, isError: true);
+        }
     }
 
     private void OnFixSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -515,8 +626,10 @@ internal sealed partial class OverlayViewModel
     // ── 命令：UHD 贴图修复 ────────────────────────────────────────────
 
     /// <summary>
-    /// UHD 推荐修复：用 <c>--derived-hashes</c>（LOD Bias High/Medium 的派生哈希）重写所选 Mod 的贴图引用。
-    /// 与“应用稳定纹理”互斥，先关掉它再开派生哈希，避免用户上次留下的设置互相打架。
+    /// 执行 UHD 修复，按 <see cref="UhdFixModeIndex"/> 三选一：
+    /// 基础哈希（默认，普通 mod）/ 稳定纹理（部分角色 + 最新 RabbitFX）/
+    /// 补全状态贴图（仅依赖 RabbitFX 的状态贴图）。
+    /// 与“应用稳定纹理”互斥的规则由 <see cref="WuwaFixOptions.Normalize"/> 兜底。
     /// </summary>
     [RelayCommand]
     private async Task RunUhdHashFixAsync()
@@ -536,11 +649,18 @@ internal sealed partial class OverlayViewModel
             return;
         }
 
-        FixStableTexture = false;
-        FixDerivedHashes = true;
+        var mode = Math.Clamp(UhdFixModeIndex, 0, 2);
+        FixStableTexture = mode == 1;
+        FixDerivedHashes = mode == 2;
 
         _uhdHashFixPending = true;
-        SetUhdStatus("正在用 UHD/LOD Bias 派生哈希修复贴图引用…", isError: false);
+        var modeLabel = mode switch
+        {
+            1 => "稳定纹理",
+            2 => "状态贴图补全（RabbitFX）",
+            _ => "基础哈希"
+        };
+        SetUhdStatus($"正在用{modeLabel}修复贴图引用…", isError: false);
         try
         {
             await StartFixAsync();
@@ -603,6 +723,316 @@ internal sealed partial class OverlayViewModel
         }
     }
 
+    /// <summary>
+    /// 从 Rocket RoleHash 学习库导入 UHD→HD 映射，为所选 Mod 生成
+    /// <c>[TextureOverrideTexture*_UHD_*]</c> 段。需要先用新版 Rocket 在 UHD 下学习过该角色。
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportUhdAliasesAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        if (SelectedCharacter is null)
+        {
+            SetUhdStatus("请先选择角色。", isError: true);
+            return;
+        }
+
+        var targets = FixTargets
+            .Where(item => item.IsSelected)
+            .Select(item => item.ModPath)
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            SetUhdStatus("请先在列表里勾选要修复的 Mod（至少一个）。", isError: true);
+            return;
+        }
+
+        IsUhdBusy = true;
+        SetUhdStatus("正在读取 Rocket 学习库并生成 UHD 覆盖段…", isError: false);
+        try
+        {
+            var result = await _uhdAliasImportService.ApplyAsync(SelectedCharacter.DisplayName, targets);
+            SetUhdStatus(result.Message, isError: !result.Success);
+
+            if (result.Success)
+                await RefreshCoordinator.RequestRefreshAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗修复] 导入 Rocket UHD 映射失败");
+            SetUhdStatus("导入 UHD 映射失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            IsUhdBusy = false;
+        }
+    }
+
+    // ── 命令：UHD 学习向导 ─────────────────────────────────────────────
+    //
+    // 流程：只启用所选 Mod（其余停用）→ 启动新版 Rocket → 用户在 UHD 下展示角色，
+    // RoleHash 学习该 mod 的 HD/UHD 配对 → 退出游戏/Rocket → 完成：恢复原启用状态、导入 aliases、F10。
+    //
+    // 注意：这里必须让**目标 mod 处于启用状态**再学。原版角色的学习只能拿到游戏原生 hash，
+    // 这些 mod 用的是启用时才绑定的 HD hash，原版学习配对不出来。
+
+    [RelayCommand]
+    private async Task StartUhdLearningAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        if (SelectedCharacter is null)
+        {
+            SetUhdStatus("请先选择角色。", isError: true);
+            return;
+        }
+
+        var modList = ResolveModList(SelectedCharacter.Character);
+        if (modList is null)
+        {
+            SetUhdStatus("当前角色没有可用的 Mod 列表。", isError: true);
+            return;
+        }
+
+        var selectedTargets = FixTargets.Where(item => item.IsSelected).ToList();
+        if (selectedTargets.Count == 0)
+        {
+            SetUhdStatus("请先勾选要学习的 Mod（建议一次只勾一个，避免多个 mod 抢同一个槽位）。", isError: true);
+            return;
+        }
+
+        var roleName = SelectedCharacter.DisplayName;
+        var rocket = await Task.Run(() => RocketLearningCatalog.FindUpdatedRocket()).ConfigureAwait(true);
+        if (rocket is null)
+        {
+            SetUhdStatus("没有找到新版 Rocket（Lod0_texture.dll ≥ 5 MB）。请把更新后的 Rocket 放到常见目录，或手动启动它学习后直接点「导入 Rocket UHD 映射」。",
+                isError: true);
+            return;
+        }
+
+        var entries = modList.Mods.ToList();
+        var originallyEnabledIds = entries
+            .Where(entry => entry.IsEnabled)
+            .Select(entry => entry.Id)
+            .ToList();
+        var selectedIds = selectedTargets.Select(item => item.Id).ToHashSet();
+
+        _uhdLearningRole = roleName;
+        _uhdLearningModList = modList;
+        _uhdLearningOriginallyEnabledIds = originallyEnabledIds;
+        _uhdLearningTargetPaths = selectedTargets
+            .Select(item => item.ModPath)
+            .Where(Directory.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        IsUhdBusy = true;
+        try
+        {
+            SetUhdStatus($"正在切换为只启用所选的 {selectedTargets.Count} 个 Mod（其余停用）…", isError: false);
+            await Task.Run(() =>
+            {
+                foreach (var entry in entries)
+                {
+                    var shouldBeEnabled = selectedIds.Contains(entry.Id);
+                    if (shouldBeEnabled && !entry.IsEnabled)
+                        modList.EnableMod(entry.Id);
+                    else if (!shouldBeEnabled && entry.IsEnabled)
+                        modList.DisableMod(entry.Id);
+                }
+            }).ConfigureAwait(true);
+
+            var baseline = RocketLearningCatalog.ReadStatus(roleName)?.UhdReady ?? 0;
+            _uhdLearningBaselineUhd = baseline;
+
+            var alreadyRunning = Process.GetProcessesByName("Rocket").Length > 0;
+            if (!alreadyRunning)
+            {
+                Process.Start(new ProcessStartInfo(rocket)
+                {
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    WorkingDirectory = Path.GetDirectoryName(rocket) ?? string.Empty
+                });
+            }
+
+            IsUhdLearning = true;
+            SetUhdStatus(
+                (alreadyRunning ? "Rocket 已在运行。" : "已启动 Rocket。")
+                + $"请在 Rocket 里以 UHD 启动游戏，让「{roleName}」穿着所选 Mod 出现在画面中并保持一会儿。"
+                + "退出游戏和 Rocket 后点「完成学习并导入」。",
+                isError: false);
+
+            _uhdLearningCts = new CancellationTokenSource();
+            _ = PollUhdLearningAsync(roleName, baseline, _uhdLearningCts.Token);
+        }
+        catch (Win32Exception e) when (e.NativeErrorCode == 1223)
+        {
+            RestoreUhdLearningMods();
+            SetUhdStatus("已取消 UAC，学习没有开始；Mod 已恢复。", isError: true);
+            ClearUhdLearningState();
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[UHD学习] 启动失败");
+            RestoreUhdLearningMods();
+            SetUhdStatus("启动学习向导失败，Mod 已恢复：" + e.Message, isError: true);
+            ClearUhdLearningState();
+        }
+        finally
+        {
+            IsUhdBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task FinishUhdLearningAsync()
+    {
+        if (!IsUhdLearning)
+            return;
+
+        if (Process.GetProcessesByName("Client-Win64-Shipping").Length > 0
+            || Process.GetProcessesByName("Wuthering Waves").Length > 0)
+        {
+            SetUhdStatus("请先完全退出游戏和 Rocket，再点「完成学习并导入」——否则 Rocket 的 DLL 会继续钉住旧贴图。",
+                isError: true);
+            return;
+        }
+
+        IsUhdBusy = true;
+        StopUhdLearningPolling();
+        var roleName = _uhdLearningRole;
+        var targetPaths = _uhdLearningTargetPaths;
+        RestoreUhdLearningMods();
+        IsUhdLearning = false;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(roleName) || targetPaths.Count == 0)
+            {
+                SetUhdStatus("学习结束，但缺少角色或 Mod 路径，未导入映射。", isError: true);
+                return;
+            }
+
+            SetUhdStatus("正在导入 Rocket UHD 映射…", isError: false);
+            var result = await _uhdAliasImportService.ApplyAsync(roleName, targetPaths);
+            SetUhdStatus(result.Message + "（Mod 已恢复）", isError: !result.Success);
+
+            if (result.Success)
+                await RefreshCoordinator.RequestRefreshAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[UHD学习] 导入映射失败");
+            SetUhdStatus("导入 UHD 映射失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            IsUhdBusy = false;
+            ClearUhdLearningState();
+        }
+    }
+
+    [RelayCommand]
+    private void CancelUhdLearning()
+    {
+        if (!IsUhdLearning)
+            return;
+
+        StopUhdLearningPolling();
+        RestoreUhdLearningMods();
+        IsUhdLearning = false;
+        ClearUhdLearningState();
+        SetUhdStatus("已取消学习，Mod 已恢复。", isError: false);
+    }
+
+    private async Task PollUhdLearningAsync(string roleName, int baseline, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3), token).ConfigureAwait(true);
+
+                var status = RocketLearningCatalog.ReadStatus(roleName);
+                if (status is null)
+                {
+                    SetUhdStatus($"等待 Rocket 学习库…请确认游戏已启动、原版「{roleName}」在画面中。", isError: false);
+                    continue;
+                }
+
+                var delta = status.UhdReady - baseline;
+                var progress = delta > 0 ? $"已新增 {delta} 条 UHD" : "尚未新增 UHD";
+                SetUhdStatus(
+                    $"学习中：{roleName} uhd_ready={status.UhdReady}（{progress}）。"
+                    + "让角色保持在画面中；退出游戏和 Rocket 后点「完成学习并导入」。",
+                    isError: false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常取消
+        }
+        catch (Exception e)
+        {
+            _logger.Debug(e, "[UHD学习] 轮询学习状态失败");
+        }
+    }
+
+    private void StopUhdLearningPolling()
+    {
+        try
+        {
+            _uhdLearningCts?.Cancel();
+            _uhdLearningCts?.Dispose();
+        }
+        catch
+        {
+            // 取消本身失败不影响后续恢复
+        }
+
+        _uhdLearningCts = null;
+    }
+
+    private void RestoreUhdLearningMods()
+    {
+        if (_uhdLearningModList is null)
+            return;
+
+        var originallyEnabled = _uhdLearningOriginallyEnabledIds.ToHashSet();
+        foreach (var entry in _uhdLearningModList.Mods.ToList())
+        {
+            var shouldBeEnabled = originallyEnabled.Contains(entry.Id);
+            try
+            {
+                if (shouldBeEnabled && !entry.IsEnabled)
+                    _uhdLearningModList.EnableMod(entry.Id);
+                else if (!shouldBeEnabled && entry.IsEnabled)
+                    _uhdLearningModList.DisableMod(entry.Id);
+            }
+            catch (Exception e)
+            {
+                _logger.Warning(e, "[UHD学习] 恢复 Mod {Id} 失败", entry.Id);
+            }
+        }
+
+        _uhdLearningOriginallyEnabledIds = [];
+        RefreshFixTargets();
+    }
+
+    private void ClearUhdLearningState()
+    {
+        _uhdLearningRole = null;
+        _uhdLearningModList = null;
+        _uhdLearningOriginallyEnabledIds = [];
+        _uhdLearningTargetPaths = [];
+        _uhdLearningBaselineUhd = 0;
+    }
+
     /// <summary>刷新“当前配置是否已应用”的状态行；进修复页时调用一次。</summary>
     [RelayCommand]
     private async Task RefreshUhdStatusAsync()
@@ -639,7 +1069,7 @@ internal sealed partial class OverlayViewModel
 
             var applied = await _uhdRepairService.IsAppliedAsync();
             var configNote = applied
-                ? "配置修复：已应用。若仍有贴图错误，请再执行「UHD 推荐哈希修复」。"
+                ? "配置修复：已应用。若仍有贴图错误，请再执行「执行 UHD 修复」。"
                 : "配置修复：未应用。UHD 档位建议先应用配置，再做哈希修复。";
 
             SetUhdStatus(tierNote + configNote, isError: false);
@@ -903,6 +1333,7 @@ internal sealed partial class OverlayViewModel
         OnPropertyChanged(nameof(SelectedFixTargetCount));
         OnPropertyChanged(nameof(FixTargetListToggleText));
         OnPropertyChanged(nameof(CanStartFix));
+        OnPropertyChanged(nameof(CanStartUhdLearning));
     }
 
     private void NotifyRestorePointState()
