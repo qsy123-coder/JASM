@@ -106,21 +106,34 @@ static void TestTextureHashIgnoresPadding()
 
     uint32_t hashFirst = 0;
     uint32_t hashSecond = 0;
-    CHECK(ComputeTextureHash(desc, &dataFirst, &hashFirst));
-    CHECK(ComputeTextureHash(desc, &dataSecond, &hashSecond));
+    CHECK(ComputeTextureDataHash(desc, &dataFirst, &hashFirst));
+    CHECK(ComputeTextureDataHash(desc, &dataSecond, &hashSecond));
     CHECK(hashFirst == hashSecond);
 
+    // 数据 hash 只覆盖有效行宽（padding 不参与）
     uint32_t running = Crc32cUpdate(0xFFFFFFFFu, first.data(), 32);
     running = Crc32cUpdate(running, first.data() + 64, 32);
     CHECK(hashFirst == ~running);
 
-    // 没有初始数据 / 多 array / MSAA 一律不计算
-    CHECK(!ComputeTextureHash(desc, nullptr, &hashFirst));
+    // 最终 hash = CRC32C(desc 字节, seed=data hash)
+    uint32_t full = 0;
+    CHECK(ComputeTextureHash(desc, &dataFirst, 0, 0, &full));
+    CHECK(full == CombineDescHash(hashFirst, desc, 0, 0));
+
+    // 宽高等于屏幕分辨率时，desc hash 用 'SRES' 替换宽高
+    uint32_t screenSized = 0;
+    CHECK(ComputeTextureHash(desc, &dataFirst, 8, 8, &screenSized));
+    CHECK(screenSized != full);
+
+    // 没有初始数据时不计算
+    CHECK(!ComputeTextureDataHash(desc, nullptr, &hashFirst));
+
+    // array / MSAA 纹理仍按 mip0 首 slice 计算（与 3DMigoto 一致）
     desc.ArraySize = 2;
-    CHECK(!ComputeTextureHash(desc, &dataFirst, &hashFirst));
+    CHECK(ComputeTextureDataHash(desc, &dataFirst, &hashFirst));
     desc.ArraySize = 1;
     desc.SampleDesc.Count = 4;
-    CHECK(!ComputeTextureHash(desc, &dataFirst, &hashFirst));
+    CHECK(ComputeTextureDataHash(desc, &dataFirst, &hashFirst));
 }
 
 static void TestJson()
