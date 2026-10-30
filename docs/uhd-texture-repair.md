@@ -22,12 +22,53 @@
 - 启动参数为 `-krqlv=SD|HD|UHD`（社区工具约定）；UI 里的档位选择会持久化，后续「直启 + 注入」会带上它。
 - **档位必须与官方启动器一致**，JASM 只记录、不修改启动器的资源选择。
 
-## 3. UHD 推荐哈希修复
+## 3. 执行 UHD 修复（三种方式）
 
-- 复用内置 `wuwa-mod-cli`（Wuwa_Mod_Fixer），参数为 `--derived-hashes`（补全贴图状态：LOD Bias High/Medium 的派生哈希）。
-- 与「应用稳定纹理」（`--stable-texture`）互斥；按钮会自动关掉稳定纹理再开派生哈希。
-- 只处理列表里**已勾选**的 mod；修复前按现有机制备份为 `.BEFORE_<日期>_hashfix`。
-- 上游没有单独的“UHD 开关”，UHD 差异就是靠派生哈希覆盖的。
+按目标 mod 选，**普通 mod 默认用基础哈希**：
+
+| 方式 | CLI 参数 | 适用 |
+|---|---|---|
+| 基础哈希修复（默认） | 无 | 普通 WWMI mod 的 `hash =` 过期；最安全 |
+| 稳定纹理修复 | `--stable-texture` | 部分角色，且需要**最新 RabbitFX** |
+| 补全状态贴图（RabbitFX） | `--derived-hashes` | 只给依赖 RabbitFX 的状态贴图（湿身、千咲强化 E 等）补绑定；普通 mod 加了可能变绿 |
+
+- 只处理列表里**已勾选**的 mod；修复前按现有机制备份 `.BAK`（可回滚）。
+- 基础哈希与稳定纹理/派生哈希是不同作用面，不是“越全越好”。
+- 如果三种都试过仍绿，通常是 mod 本身不支持 UHD 资源包（贴图/着色器按 HD 制作），只能换 HD 档位或等 mod/上游更新；JASM 不做内存注入。
+
+## 3.1 从 Rocket RoleHash 学习库导入（UHD hash 表未覆盖时）
+
+新版 Rocket（`Lod0_texture.dll` 5.96 MB，2026-10 更新）内置 **RoleHash 自动学习**：运行时观察游戏实际绑定的
+HD/UHD 贴图 hash，写入 `%LOCALAPPDATA%\Rocket\Wuwa\AutoLearning\RoleHash.aliases.tsv`。
+
+JASM 的「导入 Rocket UHD 映射」按钮只**读取这份学习结果**，把 mod 的 HD 覆盖段补成 UHD 覆盖段：
+
+```ini
+[TextureOverrideTexture8_UHD_dd1f9bc8]
+hash = dd1f9bc8
+match_priority = 0
+if $object_detected
+    this = ResourceDiffuse
+endif
+```
+
+**前提（必须按顺序）**
+1. 在浮窗里勾选**一个**目标 Mod，点「UHD 学习向导 → 开始 UHD 学习」：
+   JASM 会只启用这个 Mod（其余停用），并启动**新版 Rocket**（`Lod0_texture.dll` ≥ 5 MB 那份）。
+   注意：必须让**目标 mod 处于启用状态**再学；原版角色只能学到游戏原生 hash，配对不出 mod 的 HD hash。
+2. 在 Rocket 里以 **UHD** 启动游戏，让角色穿着这个 Mod 出现、保持一段时间，等
+   `learning-status.tsv` 里该角色的 `uhd_ready` 增长。
+3. **完全退出游戏和 Rocket**，回浮窗点「完成学习并导入」：
+   JASM 恢复原来的 Mod 启用状态，读取学习库，只给所选 Mod 生成 UHD 覆盖段（每个 ini 先备份为
+   `.BEFORE_<时间戳>_uhd.bak`），然后发 F10。
+4. 换下一个没修好的 Mod，重复 1–3。Rocket 与 JASM 共用同一个 `Mods` 文件夹，不需要把 mod 另加到 Rocket。
+5. 日常启动/切换请用 **XXMI Launcher / JASM**，不要从 Rocket 启动——Rocket 的 DLL 会运行时“钉住”它学过的
+   mod，和 JASM 的 DISABLED_ 切换冲突。
+
+**局限**
+- 学习结果绑定“学习时启用的那个 mod”的 HD hash；每个覆盖不全的 mod 需要单独学习一次。
+- 不要在 JASM 日常启动流程里注入 Rocket 的 DLL；两者会抢同一个角色的贴图。
+- 本文只描述文件层修复；不注入、不修改游戏内存。
 
 ## 4. 应用配置修复（XXMI 方式）
 
