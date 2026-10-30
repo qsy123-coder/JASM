@@ -149,6 +149,8 @@ public partial class App : Application
                 // 单 exe 版的提权助手只能从主 exe 内嵌资源释放出来，先于 ElevatorService 注册（后者构造时注入）
                 services.AddSingleton<ElevatorProvisioner>();
                 services.AddSingleton<ElevatorService>();
+                // 鸣潮「内置注入启动」：解析 shipping exe + WWMI d3d11，交给 Elevator 挂起创建并注入
+                services.AddSingleton<Services.Injection.GameLaunchInjectionService>();
                 services.AddSingleton<GenshinProcessManager>();
                 services.AddSingleton<ThreeDMigtoProcessManager>();
 
@@ -167,6 +169,8 @@ public partial class App : Application
                 services.AddSingleton<WuwaRollbackService>();
                 // UHD 贴图修复的配置侧（Engine.ini / GameUserSettings.ini，带备份/恢复）
                 services.AddSingleton<WuwaUhdRepairService>();
+                // 读取 Rocket RoleHash 学习库，离线生成 UHD 覆盖段（不注入 Rocket 的 DLL）
+                services.AddSingleton<UhdAliasImportService>();
 
                 services.AddSingleton<Services.Overlay.OverlayWindowService>();
 
