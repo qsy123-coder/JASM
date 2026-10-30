@@ -58,6 +58,9 @@ public partial class ElevatorService : ObservableRecipient
     /// </summary>
     private bool _supportsForegroundHandback;
 
+    /// <summary>助手认不认「挂起启动 + 注入」命令 <c>"5"</c>；不认识就只能回退 XXMI 启动器。</summary>
+    private bool _supportsLaunchInject;
+
     public string? ErrorMessage { get; private set; }
 
     private bool _exitHandlerRegistered;
@@ -103,11 +106,13 @@ public partial class ElevatorService : ObservableRecipient
             _supportsKeySend = ElevatorKeySendProtocol.SupportsKeySend(_elevatorFileVersion);
             _supportsForegroundHandback =
                 ElevatorForegroundHandbackProtocol.SupportsForegroundHandback(_elevatorFileVersion);
+            _supportsLaunchInject =
+                ElevatorLaunchInjectProtocol.SupportsLaunchInject(_elevatorFileVersion);
             _logger.Information(
                 "[ElevatorService] {ProcessName} FileVersion={FileVersion}（路径 {Path}），支持带目标窗口的刷新={SupportsTargetedRefresh}，"
-                + "支持代发按键={SupportsKeySend}，支持归还前台={SupportsForegroundHandback}",
+                + "支持代发按键={SupportsKeySend}，支持归还前台={SupportsForegroundHandback}，支持启动注入={SupportsLaunchInject}",
                 ElevatorProcessName, _elevatorFileVersion ?? "(读不到)", _elevatorPath, _supportsTargetedRefresh,
-                _supportsKeySend, _supportsForegroundHandback);
+                _supportsKeySend, _supportsForegroundHandback, _supportsLaunchInject);
             App.MainWindow.DispatcherQueue.TryEnqueue(() => CanStartElevator = true);
             _IsInitialized = true;
             return;
@@ -555,6 +560,81 @@ public partial class ElevatorService : ObservableRecipient
         {
             _logger.Error(ex, "Elevated copy {Src} -> {Dst} failed", sourceDir, targetDir);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// 请提权助手挂起创建游戏进程并注入 DLL（命令 <c>5</c>）。
+    ///
+    /// 游戏必须以高完整性运行（WWMI 注入需要），而主程序是中完整性；只有助手能
+    /// <c>CreateProcessW(CREATE_SUSPENDED)</c> 后再注入。助手版本低于 <c>5.0.0.0</c> 时返回
+    /// <c>elevator-old</c>，由调用方回退 XXMI 启动器。
+    /// </summary>
+    internal async Task<ElevatorLaunchInjectResult> TryLaunchAndInjectAsync(
+        ElevatorLaunchInjectRequest request, CancellationToken ct = default)
+    {
+        if (!_supportsLaunchInject)
+        {
+            _logger.Warning("[ElevatorService] 助手不支持启动注入命令 5（FileVersion={Version}）",
+                _elevatorFileVersion ?? "(读不到)");
+            return new ElevatorLaunchInjectResult(ElevatorLaunchInjectReply.Failure, 0, "elevator-old");
+        }
+
+        if (_elevatorProcess is not { HasExited: false })
+        {
+            if (!CanStartElevator)
+                return new ElevatorLaunchInjectResult(ElevatorLaunchInjectReply.Failure, 0, "elevator-unavailable");
+
+            try
+            {
+                StartElevator();
+            }
+            catch (Exception ex)
+            {
+                _logger.Information(ex, "[ElevatorService] 启动提权助手被取消或失败，无法执行启动注入");
+                return new ElevatorLaunchInjectResult(ElevatorLaunchInjectReply.Failure, 0, "elevator-unavailable");
+            }
+
+            if (_elevatorProcess is not { HasExited: false })
+                return new ElevatorLaunchInjectResult(ElevatorLaunchInjectReply.Failure, 0, "elevator-unavailable");
+        }
+
+        try
+        {
+            await using var pipeClient = new NamedPipeClientStream(".", ElevatorPipeName, PipeDirection.InOut);
+
+            // 挂起创建 + 两次 10s 注入等待，40s 覆盖正常路径并能在助手卡住时退出
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            await pipeClient.ConnectAsync(linkedCts.Token).ConfigureAwait(false);
+
+            using var reader = new StreamReader(pipeClient);
+            await using var writer = new StreamWriter(pipeClient) { AutoFlush = true };
+
+            foreach (var line in ElevatorLaunchInjectProtocol.BuildPayload(request))
+                await writer.WriteLineAsync(line.AsMemory(), linkedCts.Token).ConfigureAwait(false);
+
+            var reply = await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+            var result = ElevatorLaunchInjectProtocol.ParseReply(reply);
+
+            switch (result.Kind)
+            {
+                case ElevatorLaunchInjectReply.Ok:
+                    _logger.Information("[ElevatorService] 助手已启动并注入 pid={Pid}", result.ProcessId);
+                    return result;
+                case ElevatorLaunchInjectReply.Failure:
+                    _logger.Warning("[ElevatorService] 助手拒绝启动注入：{Reason}", result.FailureReason);
+                    return result;
+                default:
+                    _logger.Warning("[ElevatorService] 助手没有回执启动注入命令 5（可能版本过旧或已退出）");
+                    return new ElevatorLaunchInjectResult(ElevatorLaunchInjectReply.Failure, 0,
+                        "elevator-no-reply");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or OperationCanceledException)
+        {
+            _logger.Warning(ex, "[ElevatorService] 启动注入失败");
+            return new ElevatorLaunchInjectResult(ElevatorLaunchInjectReply.Failure, 0, "elevator-io");
         }
     }
 
