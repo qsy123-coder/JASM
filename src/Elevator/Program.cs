@@ -267,6 +267,10 @@ internal class Program
                     writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(injectReason));
                     return;
                 }
+
+                // 映射 DLL 的工作线程装好 D3D11 钩子后会 SetEvent；等它再恢复主线程，
+                // 避免游戏在钩子就绪前创建 D3D11 设备。没有事件的旧 DLL 直接放行。
+                WaitForMapperReady((int)processInfo.dwProcessId);
             }
 
             if (ResumeThread(processInfo.hThread) == uint.MaxValue)
@@ -380,6 +384,43 @@ internal class Program
         finally
         {
             VirtualFreeEx(process, remotePath, 0, MEM_RELEASE);
+        }
+    }
+
+    /// <summary>
+    /// 等映射 DLL 的就绪事件。DLL 由它自己的工作线程创建，LoadLibrary 返回时事件可能还没建好，
+    /// 所以先在 5 秒内重试 OpenEvent，再等 SetEvent。拿不到事件（旧版 DLL）也继续恢复线程。
+    /// </summary>
+    static void WaitForMapperReady(int processId)
+    {
+        const uint SYNCHRONIZE = 0x00100000;
+        var name = ElevatorLaunchInjectProtocol.BuildReadyEventName(processId);
+        var deadline = Environment.TickCount64 + 5000;
+        var ready = IntPtr.Zero;
+
+        while (Environment.TickCount64 < deadline)
+        {
+            ready = OpenEventW(SYNCHRONIZE, false, name);
+            if (ready != IntPtr.Zero)
+                break;
+            Thread.Sleep(50);
+        }
+
+        if (ready == IntPtr.Zero)
+        {
+            LogLine("映射 DLL 就绪事件未出现，直接恢复主线程");
+            return;
+        }
+
+        try
+        {
+            var remaining = (uint)Math.Max(0, deadline - Environment.TickCount64);
+            var wait = WaitForSingleObject(ready, remaining);
+            LogLine(wait == 0 ? "映射 DLL 已就绪" : "映射 DLL 就绪超时，继续恢复主线程");
+        }
+        finally
+        {
+            CloseHandle(ready);
         }
     }
 
@@ -526,6 +567,9 @@ internal class Program
 
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern IntPtr OpenEventW(uint dwDesiredAccess, bool bInheritHandle, string lpName);
 
     [DllImport("User32.dll")]
     static extern int SetForegroundWindow(IntPtr point);
