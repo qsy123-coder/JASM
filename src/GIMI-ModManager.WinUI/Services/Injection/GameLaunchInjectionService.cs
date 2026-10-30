@@ -32,6 +32,7 @@ public sealed class GameLaunchInjectionService
     private readonly GameInstallPathDetector _gameInstallPathDetector;
     private readonly ElevatorService _elevatorService;
     private readonly SelectedGameService _selectedGameService;
+    private readonly UhdActiveModService _uhdActiveModService;
     private readonly ILogger _logger;
 
     public GameLaunchInjectionService(
@@ -39,12 +40,14 @@ public sealed class GameLaunchInjectionService
         GameInstallPathDetector gameInstallPathDetector,
         ElevatorService elevatorService,
         SelectedGameService selectedGameService,
+        UhdActiveModService uhdActiveModService,
         ILogger logger)
     {
         _localSettingsService = localSettingsService;
         _gameInstallPathDetector = gameInstallPathDetector;
         _elevatorService = elevatorService;
         _selectedGameService = selectedGameService;
+        _uhdActiveModService = uhdActiveModService;
         _logger = logger.ForContext<GameLaunchInjectionService>();
     }
 
@@ -108,7 +111,15 @@ public sealed class GameLaunchInjectionService
         if (!File.Exists(mapperPath))
             mapperPath = null;
 
-        var arguments = await BuildArgumentsAsync(settings.LaunchArguments, ct).ConfigureAwait(false);
+        var overlay = await _localSettingsService
+            .ReadSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App)
+            .ConfigureAwait(false);
+
+        // 先落盘 active-mod.json：映射 DLL 在进程启动时就会读它，必须早于 CreateProcess。
+        // 没有注入就不需要这份清单；写失败只记日志，不阻断启动。
+        _uhdActiveModService.WriteForCharacter(overlay?.LastSelectedCharacter);
+
+        var arguments = BuildArguments(settings.LaunchArguments, overlay);
         var workingDirectory = Path.GetDirectoryName(gameExe) ?? install.InstallDir;
         var request = new ElevatorLaunchInjectRequest(gameExe, d3d11Path, workingDirectory, arguments, mapperPath);
 
@@ -146,7 +157,7 @@ public sealed class GameLaunchInjectionService
     }
 
     /// <summary>直接启动必须显式带 <c>-dx11</c>（WWMI 只支持 DX11）；资源档位沿用浮窗里的选择。</summary>
-    private async Task<string> BuildArgumentsAsync(string userArguments, CancellationToken ct)
+    private static string BuildArguments(string userArguments, OverlaySettings? overlay)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(userArguments))
@@ -155,9 +166,6 @@ public sealed class GameLaunchInjectionService
         if (!parts.Any(p => p.Contains("-dx11", StringComparison.OrdinalIgnoreCase)))
             parts.Add("-dx11");
 
-        var overlay = await _localSettingsService
-            .ReadSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App)
-            .ConfigureAwait(false);
         var tierArg = overlay is null
             ? null
             : WuwaResourceTierExtensions.FromIndex(overlay.UhdResourceTierIndex ?? 0).ToLaunchArgument();
