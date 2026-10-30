@@ -313,12 +313,16 @@ public static class UhdActiveModManifestBuilder
         foreach (var raw in text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
             var trimmed = raw.Trim();
-            if (trimmed.Length >= 2 && trimmed[0] == '[' && trimmed[^1] == ']')
+
+            // 段头可能带同行注释："[TextureOverrideTexture4];; comp 3"（韩文 WWMI mod 常见）。
+            // 只认第一个 ']' 之前的部分，否则整份 ini 的段都会被漏掉。
+            var closing = trimmed.IndexOf(']');
+            if (trimmed.Length >= 2 && trimmed[0] == '[' && closing > 1)
             {
                 if (current is not null)
                     yield return current;
 
-                current = new IniSection(trimmed[1..^1].Trim(), new List<string>(), filePath);
+                current = new IniSection(trimmed[1..closing].Trim(), new List<string>(), filePath);
                 continue;
             }
 
