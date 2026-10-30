@@ -233,11 +233,14 @@ internal class Program
                 ref startupInfo, out var processInfo))
         {
             var error = Marshal.GetLastWin32Error();
+            LogLine($"CreateProcessW 失败 err={error} exe={request.GameExecutablePath}");
             Console.Error.WriteLine($"CreateProcessW failed: {error}");
             writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
                 ElevatorLaunchInjectProtocol.ReasonCreateProcess));
             return;
         }
+
+        LogLine($"CreateProcessW ok pid={processInfo.dwProcessId} args={request.Arguments} dll={request.DllPath} mapper={request.MapperDllPath ?? "(无)"}");
 
         try
         {
@@ -268,12 +271,14 @@ internal class Program
 
             if (ResumeThread(processInfo.hThread) == uint.MaxValue)
             {
+                LogLine($"ResumeThread 失败 err={Marshal.GetLastWin32Error()}");
                 TerminateProcess(processInfo.hProcess, 1);
                 writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
                     ElevatorLaunchInjectProtocol.ReasonResumeFailed));
                 return;
             }
 
+            LogLine($"ResumeThread ok pid={processInfo.dwProcessId}");
             Console.WriteLine($"Injected and resumed pid={processInfo.dwProcessId}");
             writer.WriteLine(ElevatorLaunchInjectProtocol.BuildOkReply((int)processInfo.dwProcessId));
         }
@@ -290,25 +295,49 @@ internal class Program
         failureReason = ElevatorLaunchInjectProtocol.ReasonInjectFailed;
 
         var kernel32 = GetModuleHandleW("kernel32.dll");
-        var loadLibrary = kernel32 == IntPtr.Zero ? IntPtr.Zero : GetProcAddress(kernel32, "LoadLibraryW");
-        if (loadLibrary == IntPtr.Zero)
+        if (kernel32 == IntPtr.Zero)
+        {
+            LogLine($"InjectDll: GetModuleHandle(kernel32) 失败 err={Marshal.GetLastWin32Error()}");
             return false;
+        }
+
+        // 让目标进程的依赖搜索也包含 DLL 自己所在目录（WWMI 的 d3d11.dll 旁边有
+        // d3dcompiler_47.dll 等配套文件，游戏目录里没有）。失败不致命，继续注入。
+        var dllDirectory = Path.GetDirectoryName(dllPath);
+        if (!string.IsNullOrEmpty(dllDirectory) && !SetRemoteDllDirectory(process, dllDirectory))
+            LogLine($"InjectDll: 远程 SetDllDirectory('{dllDirectory}') 失败，继续");
+
+        var loadLibrary = GetProcAddress(kernel32, "LoadLibraryW");
+        if (loadLibrary == IntPtr.Zero)
+        {
+            LogLine($"InjectDll: GetProcAddress(LoadLibraryW) 失败 err={Marshal.GetLastWin32Error()}");
+            return false;
+        }
 
         var pathBytes = Encoding.Unicode.GetBytes(dllPath + '\0');
         var remotePath = VirtualAllocEx(process, IntPtr.Zero, (nuint)pathBytes.Length,
             MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (remotePath == IntPtr.Zero)
+        {
+            LogLine($"InjectDll: VirtualAllocEx 失败 err={Marshal.GetLastWin32Error()}");
             return false;
+        }
 
         try
         {
             if (!WriteProcessMemory(process, remotePath, pathBytes, (nuint)pathBytes.Length, out var written)
                 || written != (nuint)pathBytes.Length)
+            {
+                LogLine($"InjectDll: WriteProcessMemory 失败 err={Marshal.GetLastWin32Error()} written={written}");
                 return false;
+            }
 
             var thread = CreateRemoteThread(process, IntPtr.Zero, 0, loadLibrary, remotePath, 0, out _);
             if (thread == IntPtr.Zero)
+            {
+                LogLine($"InjectDll: CreateRemoteThread 失败 err={Marshal.GetLastWin32Error()}");
                 return false;
+            }
 
             try
             {
@@ -316,12 +345,30 @@ internal class Program
                 if (wait == WAIT_TIMEOUT)
                 {
                     failureReason = ElevatorLaunchInjectProtocol.ReasonInjectTimeout;
+                    LogLine($"InjectDll: 等待远程线程超时 path={dllPath}");
                     return false;
                 }
 
-                if (wait != 0 || !GetExitCodeThread(thread, out var exitCode) || exitCode == 0)
+                if (wait != 0)
+                {
+                    LogLine($"InjectDll: WaitForSingleObject 返回 {wait}");
                     return false;
+                }
 
+                if (!GetExitCodeThread(thread, out var exitCode))
+                {
+                    LogLine($"InjectDll: GetExitCodeThread 失败 err={Marshal.GetLastWin32Error()}");
+                    return false;
+                }
+
+                if (exitCode == 0)
+                {
+                    // 远程 LoadLibrary 返回 NULL：目标进程里加载失败（依赖缺失 / 被拦截 / 代理 DLL 拒绝）。
+                    LogLine($"InjectDll: 远程 LoadLibraryW 返回 NULL path={dllPath}");
+                    return false;
+                }
+
+                LogLine($"InjectDll: 已加载 {dllPath} hModule=0x{exitCode:X}");
                 failureReason = string.Empty;
                 return true;
             }
@@ -333,6 +380,71 @@ internal class Program
         finally
         {
             VirtualFreeEx(process, remotePath, 0, MEM_RELEASE);
+        }
+    }
+
+    /// <summary>远程调用 kernel32!SetDllDirectoryW，把目录加进目标进程的依赖搜索路径。</summary>
+    static bool SetRemoteDllDirectory(IntPtr process, string directory)
+    {
+        var kernel32 = GetModuleHandleW("kernel32.dll");
+        if (kernel32 == IntPtr.Zero)
+            return false;
+
+        var setDllDirectory = GetProcAddress(kernel32, "SetDllDirectoryW");
+        if (setDllDirectory == IntPtr.Zero)
+            return false;
+
+        var bytes = Encoding.Unicode.GetBytes(directory + '\0');
+        var remote = VirtualAllocEx(process, IntPtr.Zero, (nuint)bytes.Length,
+            MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (remote == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            if (!WriteProcessMemory(process, remote, bytes, (nuint)bytes.Length, out var written)
+                || written != (nuint)bytes.Length)
+                return false;
+
+            var thread = CreateRemoteThread(process, IntPtr.Zero, 0, setDllDirectory, remote, 0, out _);
+            if (thread == IntPtr.Zero)
+                return false;
+
+            try
+            {
+                if (WaitForSingleObject(thread, 10_000) != 0)
+                    return false;
+
+                return GetExitCodeThread(thread, out var exitCode) && exitCode != 0;
+            }
+            finally
+            {
+                CloseHandle(thread);
+            }
+        }
+        finally
+        {
+            VirtualFreeEx(process, remote, 0, MEM_RELEASE);
+        }
+    }
+
+    /// <summary>
+    /// 注入相关的诊断日志。只写文件：助手由主程序以 runas 拉起，stdout 通常不可见。
+    /// 任何写失败都吞掉 —— 诊断不能变成新的故障源。
+    /// </summary>
+    static void LogLine(string message)
+    {
+        try
+        {
+            var directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JASM");
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(Path.Combine(directory, "Elevator.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // ignore
         }
     }
 
@@ -404,7 +516,9 @@ internal class Program
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    // 必须显式 CharSet.Unicode：默认 ANSI 编组会把宽字符 API 收到的模块名读错，
+    // GetModuleHandleW 返回 NULL + ERROR_MOD_NOT_FOUND(126)，注入直接失败。
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern IntPtr GetModuleHandleW(string lpModuleName);
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
