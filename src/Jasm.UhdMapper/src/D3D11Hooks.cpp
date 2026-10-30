@@ -78,6 +78,10 @@ std::atomic<uint64_t> g_uhdBinds{0};
 std::atomic<uint64_t> g_failures{0};
 std::atomic<uint64_t> g_substitutions{0};
 
+// 屏幕分辨率：3DMigoto 的 desc hash 会用它对特定宽高做 'SRES'/'SR*2' 等替换。
+std::atomic<UINT> g_screenWidth{0};
+std::atomic<UINT> g_screenHeight{0};
+
 constexpr std::size_t kMaxLoggedHashes = 96;
 
 std::mutex g_logMutex;
@@ -157,15 +161,15 @@ bool GetLiveTextureDesc(ID3D11Resource* resource, D3D11_TEXTURE2D_DESC* desc)
 }
 
 // 哈希读取可能碰到畸形 pitch/尺寸；SEH 兜底，任何异常都退化成「没有 hash」。
-bool SafeComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const void* data, UINT rowPitch,
-                            uint32_t* hash)
+bool SafeComputeTextureDataHash(const D3D11_TEXTURE2D_DESC& desc, const void* data, UINT rowPitch,
+                                uint32_t* dataHash)
 {
     __try
     {
         D3D11_SUBRESOURCE_DATA source{};
         source.pSysMem = data;
         source.SysMemPitch = rowPitch;
-        return ComputeTextureHash(desc, &source, hash);
+        return ComputeTextureDataHash(desc, &source, dataHash);
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
@@ -173,13 +177,19 @@ bool SafeComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const void* data, 
     }
 }
 
-bool HashMappedResource(ID3D11Resource* resource, const MapRecord& record, uint32_t* hash)
+// 取实时描述并计算 data hash（最终 hash 由注册表叠加 desc hash）。
+bool HashMappedResource(ID3D11Resource* resource, const MapRecord& record,
+                        D3D11_TEXTURE2D_DESC* descOut, uint32_t* dataHash)
 {
     D3D11_TEXTURE2D_DESC desc{};
     if (!GetLiveTextureDesc(resource, &desc))
         return false;
 
-    return SafeComputeTextureHash(desc, record.data, record.rowPitch, hash);
+    if (!SafeComputeTextureDataHash(desc, record.data, record.rowPitch, dataHash))
+        return false;
+
+    *descOut = desc;
+    return true;
 }
 
 // ── vtable 打点 ──────────────────────────────────────────────────────────
@@ -219,7 +229,9 @@ HRESULT STDMETHODCALLTYPE DetourCreateTexture2D(ID3D11Device* self, const D3D11_
     {
         try
         {
-            TextureRegistry::Instance().OnTextureCreated(*texture, *desc, initialData);
+            TextureRegistry::Instance().OnTextureCreated(*texture, *desc, initialData,
+                                                         g_screenWidth.load(),
+                                                         g_screenHeight.load());
         }
         catch (...)
         {
@@ -375,7 +387,7 @@ void STDMETHODCALLTYPE DetourUnmap(ID3D11DeviceContext* self, ID3D11Resource* re
 
     // 必须在调用原 Unmap 之前读完映射内存：Unmap 之后该地址就失效了（读它会直接崩游戏）。
     MapRecord record;
-    uint32_t hash = 0;
+    uint32_t dataHash = 0;
     bool hashed = false;
     D3D11_TEXTURE2D_DESC desc{};
 
@@ -383,11 +395,7 @@ void STDMETHODCALLTYPE DetourUnmap(ID3D11DeviceContext* self, ID3D11Resource* re
     {
         try
         {
-            if (HashMappedResource(resource, record, &hash))
-            {
-                hashed = true;
-                GetLiveTextureDesc(resource, &desc);
-            }
+            hashed = HashMappedResource(resource, record, &desc, &dataHash);
         }
         catch (...)
         {
@@ -401,8 +409,13 @@ void STDMETHODCALLTYPE DetourUnmap(ID3D11DeviceContext* self, ID3D11Resource* re
     {
         try
         {
-            TextureRegistry::Instance().SetTextureHash(resource, hash, &desc);
-            LogTextureOnce(hash, desc);
+            TextureRegistry::Instance().SetTextureDataHash(resource, dataHash, &desc,
+                                                           g_screenWidth.load(),
+                                                           g_screenHeight.load());
+
+            uint32_t finalHash = 0;
+            if (TextureRegistry::Instance().TryGetTextureHash(resource, &finalHash))
+                LogTextureOnce(finalHash, desc);
         }
         catch (...)
         {
@@ -428,11 +441,16 @@ void STDMETHODCALLTYPE DetourUpdateSubresource(ID3D11DeviceContext* self, ID3D11
         if (!GetLiveTextureDesc(resource, &desc))
             return;
 
-        uint32_t hash = 0;
-        if (SafeComputeTextureHash(desc, data, rowPitch, &hash))
+        uint32_t dataHash = 0;
+        if (SafeComputeTextureDataHash(desc, data, rowPitch, &dataHash))
         {
-            TextureRegistry::Instance().SetTextureHash(resource, hash, &desc);
-            LogTextureOnce(hash, desc);
+            TextureRegistry::Instance().SetTextureDataHash(resource, dataHash, &desc,
+                                                           g_screenWidth.load(),
+                                                           g_screenHeight.load());
+
+            uint32_t finalHash = 0;
+            if (TextureRegistry::Instance().TryGetTextureHash(resource, &finalHash))
+                LogTextureOnce(finalHash, desc);
         }
     }
     catch (...)
@@ -456,7 +474,9 @@ void STDMETHODCALLTYPE DetourCopySubresourceRegion(ID3D11DeviceContext* self,
     {
         try
         {
-            TextureRegistry::Instance().CopyTextureHash(destination, source);
+            TextureRegistry::Instance().CopyTextureDataHash(destination, source,
+                                                            g_screenWidth.load(),
+                                                            g_screenHeight.load());
         }
         catch (...)
         {
@@ -473,7 +493,9 @@ void STDMETHODCALLTYPE DetourCopyResource(ID3D11DeviceContext* self, ID3D11Resou
 
     try
     {
-        TextureRegistry::Instance().CopyTextureHash(destination, source);
+        TextureRegistry::Instance().CopyTextureDataHash(destination, source,
+                                                        g_screenWidth.load(),
+                                                        g_screenHeight.load());
     }
     catch (...)
     {
@@ -547,8 +569,9 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
     }
 
     LogWrite(LogLevel::Info,
-             "device created vtable=%p context=%p deviceHooks=%d/%d contextHooks=%d/6",
-             deviceVtable, context, textureHook ? 1 : 0, srvHook ? 1 : 0, contextHooks);
+             "device created vtable=%p context=%p deviceHooks=%d/%d contextHooks=%d/6 screen=%ux%u",
+             deviceVtable, context, textureHook ? 1 : 0, srvHook ? 1 : 0, contextHooks,
+             g_screenWidth.load(), g_screenHeight.load());
 }
 
 HRESULT WINAPI DetourCreateDeviceAndSwapChain(
@@ -557,6 +580,14 @@ HRESULT WINAPI DetourCreateDeviceAndSwapChain(
     const DXGI_SWAP_CHAIN_DESC* swapChainDesc, IDXGISwapChain** swapChain, ID3D11Device** device,
     D3D_FEATURE_LEVEL* chosenLevel, ID3D11DeviceContext** context)
 {
+    // 记录屏幕分辨率：3DMigoto 的 desc hash 对等于屏幕尺寸的宽高会做特殊替换。
+    if (swapChainDesc != nullptr && swapChainDesc->BufferDesc.Width != 0
+        && swapChainDesc->BufferDesc.Height != 0)
+    {
+        g_screenWidth.store(swapChainDesc->BufferDesc.Width, std::memory_order_relaxed);
+        g_screenHeight.store(swapChainDesc->BufferDesc.Height, std::memory_order_relaxed);
+    }
+
     const auto original = g_origCreateDeviceAndSwapChain;
     const HRESULT result = original(adapter, driverType, software, flags, levels, levelCount,
                                     sdkVersion, swapChainDesc, swapChain, device, chosenLevel,
