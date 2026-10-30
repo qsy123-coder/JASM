@@ -29,7 +29,8 @@ public sealed record ElevatorLaunchInjectRequest(
     string GameExecutablePath,
     string DllPath,
     string WorkingDirectory,
-    string Arguments)
+    string Arguments,
+    string? MapperDllPath = null)
 {
     /// <summary>把参数编成 base64：命令行里可能有空格、引号、中文，逐行协议不该再自己解析一次。</summary>
     public string EncodedArguments => Convert.ToBase64String(Encoding.UTF8.GetBytes(Arguments ?? string.Empty));
@@ -48,7 +49,8 @@ public sealed record ElevatorLaunchInjectRequest(
 /// 客户端 → 助手                    助手 → 客户端
 /// 5                               OK &lt;pid&gt;
 /// &lt;游戏 exe 绝对路径&gt;              FAIL:&lt;reason&gt;
-/// &lt;dll 绝对路径&gt;
+/// &lt;d3d11.dll 绝对路径&gt;
+/// &lt;Jasm.UhdMapper.dll 绝对路径，可为空&gt;
 /// &lt;工作目录 绝对路径&gt;
 /// &lt;参数 base64(UTF-8)，可为空&gt;
 /// </code>
@@ -71,6 +73,12 @@ public static class ElevatorLaunchInjectProtocol
 
     /// <summary>DLL 必须位于名为 WWMI 的导入器目录下，避免被当成通用注入器。</summary>
     public const string ImporterDirectoryName = "WWMI";
+
+    /// <summary>可选注入的 JASM UHD 映射 DLL 文件名（Phase 2 使用；为空表示只注入 d3d11）。</summary>
+    public const string MapperDllFileName = "Jasm.UhdMapper.dll";
+
+    /// <summary>映射 DLL 必须放在名为 UhdRuntime 的 JASM 管理目录下，避免被当成通用注入器。</summary>
+    public const string MapperDirectoryName = "UhdRuntime";
 
     /// <summary>允许启动的游戏 exe。不要加入 Launcher.exe —— 往启动器里注入 d3d11 代理没有意义。</summary>
     public static readonly string[] AllowedGameExecutableNames =
@@ -103,7 +111,7 @@ public static class ElevatorLaunchInjectProtocol
                && actual >= minimum;
     }
 
-    /// <summary>编成五行载荷，交给管道逐行写。</summary>
+    /// <summary>编成六行载荷，交给管道逐行写。</summary>
     public static string[] BuildPayload(ElevatorLaunchInjectRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -113,13 +121,14 @@ public static class ElevatorLaunchInjectProtocol
             LaunchInjectCommand,
             request.GameExecutablePath,
             request.DllPath,
+            request.MapperDllPath ?? string.Empty,
             request.WorkingDirectory,
             request.EncodedArguments
         ];
     }
 
     /// <summary>
-    /// 解析四行载荷并做完整校验。任何一项不合法都返回 false，<paramref name="failureReason"/> 是
+    /// 解析五行载荷并做完整校验。任何一项不合法都返回 false，<paramref name="failureReason"/> 是
     /// <see cref="ReasonBadPayload"/> 或 <see cref="ReasonPathNotAllowed"/>。
     /// </summary>
     public static bool TryParsePayload(IReadOnlyList<string?> payloadLines,
@@ -128,7 +137,7 @@ public static class ElevatorLaunchInjectProtocol
         request = null;
         failureReason = null;
 
-        if (payloadLines.Count < 4)
+        if (payloadLines.Count < 5)
         {
             failureReason = ReasonBadPayload;
             return false;
@@ -136,10 +145,11 @@ public static class ElevatorLaunchInjectProtocol
 
         var exe = payloadLines[0]?.Trim();
         var dll = payloadLines[1]?.Trim();
-        var workingDirectory = payloadLines[2]?.Trim();
-        var encodedArguments = payloadLines[3]?.Trim() ?? string.Empty;
+        var mapper = payloadLines[2]?.Trim();
+        var workingDirectory = payloadLines[3]?.Trim();
+        var encodedArguments = payloadLines[4]?.Trim() ?? string.Empty;
 
-        if (!TryValidatePaths(exe, dll, workingDirectory, out failureReason))
+        if (!TryValidatePaths(exe, dll, workingDirectory, mapper, out failureReason))
             return false;
 
         if (!TryDecodeArguments(encodedArguments, out var arguments))
@@ -148,13 +158,14 @@ public static class ElevatorLaunchInjectProtocol
             return false;
         }
 
-        request = new ElevatorLaunchInjectRequest(exe!, dll!, workingDirectory!, arguments);
+        request = new ElevatorLaunchInjectRequest(exe!, dll!, workingDirectory!, arguments,
+            string.IsNullOrEmpty(mapper) ? null : mapper);
         return true;
     }
 
     /// <summary>路径校验：绝对、本地（非 UNC）、长度受限、DLL 名/父目录与 exe 名都在白名单内。</summary>
     public static bool TryValidatePaths(string? gameExecutablePath, string? dllPath, string? workingDirectory,
-        out string? failureReason)
+        string? mapperDllPath, out string? failureReason)
     {
         failureReason = null;
 
@@ -189,6 +200,29 @@ public static class ElevatorLaunchInjectProtocol
         {
             failureReason = ReasonPathNotAllowed;
             return false;
+        }
+
+        if (!string.IsNullOrEmpty(mapperDllPath))
+        {
+            if (!IsUsableLocalAbsolutePath(mapperDllPath))
+            {
+                failureReason = ReasonPathNotAllowed;
+                return false;
+            }
+
+            if (!string.Equals(Path.GetFileName(mapperDllPath), MapperDllFileName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                failureReason = ReasonPathNotAllowed;
+                return false;
+            }
+
+            var mapperDirectory = Path.GetFileName(Path.GetDirectoryName(mapperDllPath));
+            if (!string.Equals(mapperDirectory, MapperDirectoryName, StringComparison.OrdinalIgnoreCase))
+            {
+                failureReason = ReasonPathNotAllowed;
+                return false;
+            }
         }
 
         return true;
