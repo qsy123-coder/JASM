@@ -82,6 +82,12 @@ public class OverlaySettings
     /// </summary>
     public int? UhdResourceTierIndex { get; set; }
 
+    /// <summary>
+    /// UHD 修复方式：0 = 基础哈希、1 = 稳定纹理、2 = 补全状态贴图（RabbitFX）。
+    /// <c>null</c> = 没设置过 → 基础哈希。普通 mod 不应默认走 RabbitFX 派生哈希。
+    /// </summary>
+    public int? UhdFixModeIndex { get; set; }
+
     /// <summary>「修复」页的二级视图：0 = 修复、1 = 回滚。<c>null</c> = 修复。</summary>
     public int? FixSubTab { get; set; }
 
