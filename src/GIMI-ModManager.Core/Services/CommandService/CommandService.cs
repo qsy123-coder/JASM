@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
 using GIMI_ModManager.Core.Services.CommandService.JsonModels;
@@ -144,6 +145,48 @@ public sealed class CommandService(ILogger logger)
             SpecialVariablesInput = specialVariables,
             ExecutionOptions = definition.ExecutionOptions.Clone()
         });
+    }
+
+    /// <summary>
+    /// 把提权助手启动并注入后的 PID 包装成 <see cref="ProcessCommand"/>，让现有的
+    /// 运行状态/退出事件/命令列表继续工作。拿不到进程句柄（权限不足）时返回 null，由调用方回退。
+    /// </summary>
+    public ProcessCommand? AttachToRunningProcess(CommandDefinition definition, int processId,
+        SpecialVariablesInput? specialVariables = null)
+    {
+        if (specialVariables is not null)
+            specialVariables.IsReadOnly = true;
+
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+
+        var command = InternalCreateCommand(new InternalCreateCommandOptions
+        {
+            DisplayName = definition.CommandDisplayName,
+            CommandDefinitionId = definition.Id,
+            KillOnMainAppExit = definition.KillOnMainAppExit,
+            SpecialVariablesInput = specialVariables,
+            ExecutionOptions = definition.ExecutionOptions.Clone()
+        });
+
+        try
+        {
+            command.AttachToRunningProcess(process);
+        }
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException or ObjectDisposedException)
+        {
+            process.Dispose();
+            return null;
+        }
+
+        return command;
     }
 
     public Task SaveCommandDefinitionAsync(CommandDefinition commandDefinition)
