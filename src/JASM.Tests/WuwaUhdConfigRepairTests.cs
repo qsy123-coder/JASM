@@ -17,6 +17,9 @@ public class WuwaUhdConfigRepairTests
         Assert.Contains("r.RayTracing.LoadConfig=0", result);
         Assert.Contains("r.MaxAnisotropy=1", result);
         Assert.Contains("r.Streaming.HiddenPrimitiveScale=20", result);
+        Assert.Contains("[ConsoleVariables]", result);
+        Assert.Contains("r.Kuro.SkeletalMesh.LODDistanceScale=25", result);
+        Assert.Contains("r.Streaming.FullyLoadUsedTextures=1", result);
         Assert.True(WuwaUhdConfigRepair.IsApplied(result, WuwaUhdConfigRepair.EngineSettings));
     }
 
@@ -69,6 +72,22 @@ public class WuwaUhdConfigRepairTests
     }
 
     [Fact]
+    public void AddsTheConsoleVariablesSectionToAnExistingEngineIni()
+    {
+        const string original = """
+                                [/Script/Engine.RendererSettings]
+                                r.MaxAnisotropy=1
+                                """;
+
+        var result = WuwaUhdConfigRepair.Apply(original, WuwaUhdConfigRepair.EngineSettings);
+
+        Assert.Contains("[ConsoleVariables]", result);
+        Assert.Contains("r.Kuro.SkeletalMesh.LODDistanceScale=25", result);
+        Assert.Contains("r.Streaming.FullyLoadUsedTextures=1", result);
+        Assert.True(WuwaUhdConfigRepair.IsApplied(result, WuwaUhdConfigRepair.EngineSettings));
+    }
+
+    [Fact]
     public void IsIdempotent()
     {
         var once = WuwaUhdConfigRepair.Apply(string.Empty, WuwaUhdConfigRepair.GameUserSettingsSettings);
@@ -98,6 +117,7 @@ public class WuwaUhdConfigRepairTests
         var result = WuwaUhdConfigRepair.Apply(original, WuwaUhdConfigRepair.EngineSettings);
 
         Assert.Contains("\r\n", result);
-        Assert.DoesNotContain("\n\n", result.Replace("\r\n", "\n"));
+        // 所有换行都必须是 CRLF；保留段之间的空行（新段前会插一个）
+        Assert.DoesNotContain("\n", result.Replace("\r\n", string.Empty, StringComparison.Ordinal));
     }
 }
