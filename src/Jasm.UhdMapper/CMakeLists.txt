@@ -35,7 +35,18 @@ FetchContent_Declare(
     GIT_TAG v1.3.3
     GIT_SHALLOW TRUE
 )
+# v1.3.3 仓库里没有 CMakeLists（只有 VS 工程），MakeAvailable 只会把源码拉下来，
+# 不会生成 target —— 这里手动建静态库。
 FetchContent_MakeAvailable(minhook)
+
+add_library(minhook STATIC
+    ${minhook_SOURCE_DIR}/src/buffer.c
+    ${minhook_SOURCE_DIR}/src/hook.c
+    ${minhook_SOURCE_DIR}/src/trampoline.c
+    ${minhook_SOURCE_DIR}/src/hde/hde64.c
+)
+target_include_directories(minhook PUBLIC ${minhook_SOURCE_DIR}/include)
+target_compile_definitions(minhook PUBLIC MH_STATIC)
 
 # ── 可从测试直接链接的纯逻辑 ───────────────────────────────────────────
 add_library(jasm_mapper_core STATIC
