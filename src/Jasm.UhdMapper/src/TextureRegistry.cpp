@@ -49,9 +49,27 @@ void TextureRegistry::OnTextureCreated(ID3D11Texture2D* texture, const D3D11_TEX
 
     _textures[texture] = entry;
     if (entry.valid)
+    {
         ++_hashed;
+        RecordObservedLocked(entry.hash, entry);
+    }
     else
+    {
         ++_unknown;
+    }
+}
+
+void TextureRegistry::RecordObservedLocked(uint32_t hash, const TextureEntry& entry)
+{
+    if (_observed.size() >= kMaxObserved || !_observedSet.insert(hash).second)
+        return;
+
+    ObservedTexture item;
+    item.hash = hash;
+    item.format = static_cast<uint32_t>(entry.format);
+    item.width = entry.width;
+    item.height = entry.height;
+    _observed.push_back(item);
 }
 
 void TextureRegistry::RememberSrv(ID3D11ShaderResourceView* srv, ID3D11Resource* resource)
@@ -155,7 +173,8 @@ bool TextureRegistry::TryGetTextureDesc(ID3D11Resource* resource, D3D11_TEXTURE2
     return true;
 }
 
-void TextureRegistry::SetTextureHash(ID3D11Resource* resource, uint32_t hash)
+void TextureRegistry::SetTextureHash(ID3D11Resource* resource, uint32_t hash,
+                                     const D3D11_TEXTURE2D_DESC* desc)
 {
     if (resource == nullptr)
         return;
@@ -175,13 +194,22 @@ void TextureRegistry::SetTextureHash(ID3D11Resource* resource, uint32_t hash)
         TextureEntry entry;
         entry.hash = hash;
         entry.valid = true;
+        if (desc != nullptr)
+        {
+            entry.format = desc->Format;
+            entry.width = desc->Width;
+            entry.height = desc->Height;
+            entry.mips = desc->MipLevels;
+            entry.arraySize = desc->ArraySize;
+        }
         _textures[texture.Get()] = entry;
         ++_hashed;
         ++_updatedHashes;
+        RecordObservedLocked(hash, entry);
         return;
     }
 
-    if (it->second.valid && it->second.hash == hash)
+    if (it->second.valid && it->second.hash == hash && desc == nullptr)
         return;
 
     if (!it->second.valid)
@@ -192,7 +220,31 @@ void TextureRegistry::SetTextureHash(ID3D11Resource* resource, uint32_t hash)
 
     it->second.hash = hash;
     it->second.valid = true;
+    if (desc != nullptr)
+    {
+        it->second.format = desc->Format;
+        it->second.width = desc->Width;
+        it->second.height = desc->Height;
+        it->second.mips = desc->MipLevels;
+        it->second.arraySize = desc->ArraySize;
+    }
     ++_updatedHashes;
+    RecordObservedLocked(hash, it->second);
+}
+
+std::vector<TextureRegistry::ObservedTexture> TextureRegistry::SnapshotObserved(
+    std::size_t max) const
+{
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    if (max == 0 || max > _observed.size())
+        return _observed;
+    return std::vector<ObservedTexture>(_observed.begin(), _observed.begin() + max);
+}
+
+std::size_t TextureRegistry::ObservedCount() const
+{
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    return _observed.size();
 }
 
 void TextureRegistry::CopyTextureHash(ID3D11Resource* destination, ID3D11Resource* source)
