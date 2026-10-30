@@ -25,6 +25,7 @@ public sealed record WuwaIniSetting(string Section, string Key, string Value);
 public static class WuwaUhdConfigRepair
 {
     public const string RendererSection = "[/Script/Engine.RendererSettings]";
+    public const string ConsoleVariablesSection = "[ConsoleVariables]";
     public const string GameUserSettingsSection = "[/Script/Engine.GameUserSettings]";
 
     /// <summary>Engine.ini 的修复项。</summary>
@@ -32,7 +33,20 @@ public static class WuwaUhdConfigRepair
     [
         new(RendererSection, "r.RayTracing.LoadConfig", "0"),
         new(RendererSection, "r.MaxAnisotropy", "1"),
-        new(RendererSection, "r.Streaming.HiddenPrimitiveScale", "20")
+        new(RendererSection, "r.Streaming.HiddenPrimitiveScale", "20"),
+        // WWMI 官方 README 的 LOD/流送设置：UHD 资源包下贴图被按低 LOD/低 mip 加载时，
+        // 这两个键分别拉远 LOD 距离、强制已用贴图常驻。显存占用会上升，低配机型慎用。
+        new(ConsoleVariablesSection, "r.Kuro.SkeletalMesh.LODDistanceScale", "25"),
+        new(ConsoleVariablesSection, "r.Streaming.FullyLoadUsedTextures", "1"),
+        // 2025-06 补丁后 FullyLoadUsedTextures 被游戏忽略（XXMI 1.8.6 说明）；用 Boost/MipBias/
+        // UseAllMips 这组替代，强制高质量 mip 且不主动丢弃。数值偏激进，低配可下调 Boost。
+        new(ConsoleVariablesSection, "r.Streaming.Boost", "50"),
+        new(ConsoleVariablesSection, "r.Streaming.MipBias", "-3"),
+        new(ConsoleVariablesSection, "r.Streaming.DropMips", "0"),
+        new(ConsoleVariablesSection, "r.Streaming.UseAllMips", "1"),
+        new(ConsoleVariablesSection, "r.Streaming.HLODStrategy", "2"),
+        new(ConsoleVariablesSection, "r.ForceLOD", "0"),
+        new(ConsoleVariablesSection, "r.SkeletalMeshLODBias", "-1")
     ];
 
     /// <summary>GameUserSettings.ini 的修复项。</summary>
