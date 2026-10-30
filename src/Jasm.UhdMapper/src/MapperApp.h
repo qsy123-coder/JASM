@@ -33,6 +33,7 @@ private:
     bool ReloadManifest();
     void UpdateDisableFlag();
     void LogSummary();
+    void WriteObservedTextures();
 
     MapperConfig _config;
     std::unique_ptr<AliasTable> _alias;
@@ -40,6 +41,7 @@ private:
     std::vector<std::unique_ptr<AliasTable>> _retiredAliases;
     bool _manifestLoaded = false;
     bool _disableLogged = false;
+    std::size_t _lastObservedCount = 0;
     HANDLE _readyEvent = nullptr;
     FILETIME _manifestWriteTime{};
     std::atomic<bool> _running{false};
