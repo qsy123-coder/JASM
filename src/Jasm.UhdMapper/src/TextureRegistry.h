@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <shared_mutex>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -36,7 +38,20 @@ public:
     bool TryGetTextureDesc(ID3D11Resource* resource, D3D11_TEXTURE2D_DESC* desc) const;
 
     // 纹理创建后通过 Map/Unmap、UpdateSubresource、Copy* 才拿到内容时补写 hash。
-    void SetTextureHash(ID3D11Resource* resource, uint32_t hash);
+    // desc 可选：更新路径能拿到实时描述时传进来，观测清单里就有格式/尺寸。
+    void SetTextureHash(ID3D11Resource* resource, uint32_t hash,
+                        const D3D11_TEXTURE2D_DESC* desc = nullptr);
+
+    // M1 诊断：导出所有算过 hash 的纹理（去重，最多 20 万条）。
+    struct ObservedTexture
+    {
+        uint32_t hash = 0;
+        uint32_t format = 0;
+        uint32_t width = 0;
+        uint32_t height = 0;
+    };
+    std::vector<ObservedTexture> SnapshotObserved(std::size_t max) const;
+    std::size_t ObservedCount() const;
     void CopyTextureHash(ID3D11Resource* destination, ID3D11Resource* source);
 
     bool IsSrvRegistered(ID3D11ShaderResourceView* srv) const;
@@ -71,6 +86,9 @@ private:
     };
 
     static constexpr std::size_t kMaxEntries = 200000;
+    static constexpr std::size_t kMaxObserved = 200000;
+
+    void RecordObservedLocked(uint32_t hash, const TextureEntry& entry);
 
     mutable std::shared_mutex _mutex;
     std::unordered_map<ID3D11Texture2D*, TextureEntry> _textures;
@@ -78,6 +96,8 @@ private:
     std::size_t _hashed = 0;
     std::size_t _unknown = 0;
     uint64_t _updatedHashes = 0;
+    std::unordered_set<uint32_t> _observedSet;
+    std::vector<ObservedTexture> _observed;
 };
 
 }  // namespace jasm::uhd
