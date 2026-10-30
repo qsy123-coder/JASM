@@ -34,6 +34,13 @@ jobs:
     - name: Test
       run: dotnet test ${{ github.workspace }}\src
 
+    # UHD 映射 DLL 必须先于主程序构建：主程序 csproj 用 Exists 条件内嵌
+    # src/Jasm.UhdMapper/build/Release/Jasm.UhdMapper.dll（运行时释放到 %LOCALAPPDATA%\JASM\UhdRuntime）。
+    - name: Build UHD Mapper DLL
+      run: |
+        cmake -S src/Jasm.UhdMapper -B src/Jasm.UhdMapper/build -A x64
+        cmake --build src/Jasm.UhdMapper/build --config Release
+
     # 不传 ExcludeElevator：SingleFile 模式同样要先构建助手，它会被内嵌进主 exe，
     # 运行时由 ElevatorProvisioner 释放到 %LOCALAPPDATA%\JASM（单 exe 版没有散文件可放）。
     # 产物名 SingleFile_JASM_v*.zip 与 SingleFileSelfUpdater 认的前缀一致，用户端自更新才认。
