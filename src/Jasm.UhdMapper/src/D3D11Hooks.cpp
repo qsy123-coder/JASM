@@ -177,8 +177,8 @@ void InstrumentBindings(UINT start, UINT count, ID3D11ShaderResourceView* const*
         {
             // 没登记过（例如 WWMI 内部创建）：回退一次 GetResource 补齐。
             ComPtr<ID3D11Resource> resource;
-            if (SUCCEEDED(view->GetResource(resource.GetAddressOf())))
-                registry.RememberSrv(view, resource.Get());
+            view->GetResource(resource.GetAddressOf()); // 返回 void，不是 HRESULT
+            registry.RememberSrv(view, resource.Get());
 
             if (!registry.TryGetSrvHash(view, &hash, &isReplacement))
             {
@@ -238,8 +238,8 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
     ComPtr<ID3D11DeviceContext> immediate;
     if (context == nullptr)
     {
-        if (SUCCEEDED(device->GetImmediateContext(immediate.GetAddressOf())))
-            context = immediate.Get();
+        device->GetImmediateContext(immediate.GetAddressOf()); // 返回 void
+        context = immediate.Get();
     }
 
     void** deviceVtable = *reinterpret_cast<void***>(device);
