@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.Services.WuwaModFixer;
+using GIMI_ModManager.Core.Services.WuwaUhd;
 using GIMI_ModManager.WinUI.Services.Overlay;
 
 namespace GIMI_ModManager.WinUI.ViewModels.Overlay;
@@ -22,6 +23,9 @@ internal sealed partial class OverlayViewModel
     private bool _configCheckedThisSession;
     private List<WuwaBackupGroup> _lastBackupGroups = [];
     private string? _rollbackAllowedRoot;
+
+    /// <summary>本次修复是不是由“UHD 推荐哈希修复”按钮触发的；完成时把结果写回 UHD 状态行。</summary>
+    private bool _uhdHashFixPending;
 
     /// <summary>女漂修复上次用的模式（1/2）。关掉再打开时恢复，不默认退回模式 1。</summary>
     private int _lastAeroMode = 1;
@@ -114,6 +118,45 @@ internal sealed partial class OverlayViewModel
     [ObservableProperty] private bool _fixAemeathMech;
     [ObservableProperty] private int _fixAeroMode;
     [ObservableProperty] private bool _isLogExpanded;
+
+    // ── UHD 贴图修复（资源档位 + 配置侧） ──────────────────────────────
+    //
+    // 上游 Wuwa_Mod_Fixer 没有“UHD 开关”：UHD 档位下的贴图差异靠 --derived-hashes
+    // （LOD Bias High/Medium 的派生哈希）与 --stable-texture 处理；档位本身由启动参数
+    // -krqlv=UHD|HD|SD 决定。这里把三件事放到用户面前：
+    //   1) 记录当前档位（后续直启/注入时带上启动参数）；
+    //   2) 一键用派生哈希修复贴图引用；
+    //   3) 按 Rocket 的 XXMI 方式修复 Engine.ini/GameUserSettings.ini（带备份/恢复）。
+
+    public IReadOnlyList<string> UhdTierOptions { get; } = ["自动识别", "流畅 SD", "高清 HD", "极致 UHD"];
+
+    [ObservableProperty] private int _uhdTierIndex;
+    [ObservableProperty] private bool _isUhdBusy;
+    [ObservableProperty] private string? _uhdStatusMessage;
+    [ObservableProperty] private bool _isUhdStatusError;
+
+    public bool HasUhdStatus => !string.IsNullOrWhiteSpace(UhdStatusMessage);
+    public bool CanRunUhdActions => !IsUhdBusy && !FixSession.IsRunning;
+    public WuwaResourceTier SelectedUhdTier => WuwaResourceTierExtensions.FromIndex(UhdTierIndex);
+
+    partial void OnUhdTierIndexChanged(int value)
+    {
+        var clamped = Math.Clamp(value, 0, 3);
+        if (clamped != value)
+        {
+            UhdTierIndex = clamped;
+            return;
+        }
+
+        if (_loadingFixSettings)
+            return;
+
+        Settings.UhdResourceTierIndex = clamped;
+        _ = SaveSettingsAsync();
+    }
+
+    partial void OnIsUhdBusyChanged(bool value) => OnPropertyChanged(nameof(CanRunUhdActions));
+    partial void OnUhdStatusMessageChanged(string? value) => OnPropertyChanged(nameof(HasUhdStatus));
 
     /// <summary>女漂修复的总开关。关掉时把模式归零；打开时默认 TexCoord 覆盖。</summary>
     public bool FixAeroEnabled
@@ -275,6 +318,7 @@ internal sealed partial class OverlayViewModel
             FixAeroMode = Math.Clamp(Settings.FixAeroMode ?? 0, 0, 2);
             FixSubTabIndex = Settings.FixSubTab == 1 ? 1 : 0;
             IsLogExpanded = Settings.FixLogExpanded;
+            UhdTierIndex = Math.Clamp(Settings.UhdResourceTierIndex ?? 0, 0, 3);
         }
         finally
         {
@@ -297,6 +341,7 @@ internal sealed partial class OverlayViewModel
             OnPropertyChanged(nameof(CanRollbackSelected));
             OnPropertyChanged(nameof(CanSwitchTabs));
             OnPropertyChanged(nameof(CanSwitchCharacter));
+            OnPropertyChanged(nameof(CanRunUhdActions));
         }
     }
 
@@ -316,6 +361,7 @@ internal sealed partial class OverlayViewModel
             RefreshFixTargets();
 
         await EnsureEngineAsync();
+        _ = RefreshUhdStatusAsync();
 
         if (IsRollbackViewActive)
             await RefreshRestorePointsAsync();
@@ -466,6 +512,158 @@ internal sealed partial class OverlayViewModel
         SetFixMessage("正在终止…", isError: false);
     }
 
+    // ── 命令：UHD 贴图修复 ────────────────────────────────────────────
+
+    /// <summary>
+    /// UHD 推荐修复：用 <c>--derived-hashes</c>（LOD Bias High/Medium 的派生哈希）重写所选 Mod 的贴图引用。
+    /// 与“应用稳定纹理”互斥，先关掉它再开派生哈希，避免用户上次留下的设置互相打架。
+    /// </summary>
+    [RelayCommand]
+    private async Task RunUhdHashFixAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        if (!IsEngineReady)
+        {
+            SetUhdStatus("修复引擎未就绪，请先在修复页等待引擎初始化完成。", isError: true);
+            return;
+        }
+
+        if (!CanStartFix)
+        {
+            SetUhdStatus("请先在列表里勾选要修复的 Mod（至少一个）。", isError: true);
+            return;
+        }
+
+        FixStableTexture = false;
+        FixDerivedHashes = true;
+
+        _uhdHashFixPending = true;
+        SetUhdStatus("正在用 UHD/LOD Bias 派生哈希修复贴图引用…", isError: false);
+        try
+        {
+            await StartFixAsync();
+        }
+        catch (Exception e)
+        {
+            _uhdHashFixPending = false;
+            _logger.Warning(e, "[浮窗修复] UHD 哈希修复启动失败");
+            SetUhdStatus("启动修复失败：" + e.Message, isError: true);
+        }
+    }
+
+    /// <summary>按 Rocket 的 XXMI 方式写入 Engine.ini / GameUserSettings.ini（先备份）。</summary>
+    [RelayCommand]
+    private async Task ApplyUhdConfigAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        IsUhdBusy = true;
+        SetUhdStatus("正在写入 Engine.ini / GameUserSettings.ini…", isError: false);
+        try
+        {
+            var result = await _uhdRepairService.ApplyAsync();
+            SetUhdStatus(result.Message, isError: !result.Success);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗修复] UHD 配置修复失败");
+            SetUhdStatus("写入配置失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            IsUhdBusy = false;
+        }
+    }
+
+    /// <summary>恢复最近一次 UHD 配置修复的备份。</summary>
+    [RelayCommand]
+    private async Task RestoreUhdConfigAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        IsUhdBusy = true;
+        SetUhdStatus("正在恢复配置备份…", isError: false);
+        try
+        {
+            var result = await _uhdRepairService.RestoreLatestAsync();
+            SetUhdStatus(result.Message, isError: !result.Success);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗修复] 恢复 UHD 配置失败");
+            SetUhdStatus("恢复配置失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            IsUhdBusy = false;
+        }
+    }
+
+    /// <summary>刷新“当前配置是否已应用”的状态行；进修复页时调用一次。</summary>
+    [RelayCommand]
+    private async Task RefreshUhdStatusAsync()
+    {
+        if (IsUhdBusy)
+            return;
+
+        try
+        {
+            // 档位：自动模式下按已安装目录推断；多档位并存时要求用户按官方启动器选择。
+            var detection = await _uhdRepairService.DetectTierAsync();
+            var tierNote = detection.Kind switch
+            {
+                WuwaTierDetectionKind.Detected when UhdTierIndex == 0 && detection.Tier is { } detected =>
+                    AutoPickTier(detected),
+                WuwaTierDetectionKind.Detected when detection.Tier is { } detected &&
+                                                     detection.Tier != SelectedUhdTier =>
+                    $"注意：已安装档位是 {detected.ToDisplayName()}，与当前选择 {SelectedUhdTier.ToDisplayName()} 不一致，请与官方启动器保持一致。 ",
+                WuwaTierDetectionKind.Ambiguous =>
+                    $"检测到多个已安装档位（{string.Join("、", detection.Installed.Select(t => t.ToDisplayName()))}），"
+                    + "请按官方启动器当前选择手动指定。 ",
+                WuwaTierDetectionKind.NotInstalled => "未检测到已安装的资源档位目录，请手动选择。 ",
+                WuwaTierDetectionKind.NotFound => "未能定位 Client\\Content，无法自动检测档位，请手动选择。 ",
+                _ => string.Empty
+            };
+
+            var paths = await _uhdRepairService.ResolveConfigPathsAsync();
+            if (paths is null)
+            {
+                SetUhdStatus(tierNote + "未找到游戏配置目录（Client\\Saved\\Config\\WindowsNoEditor），请确认游戏路径。",
+                    isError: true);
+                return;
+            }
+
+            var applied = await _uhdRepairService.IsAppliedAsync();
+            var configNote = applied
+                ? "配置修复：已应用。若仍有贴图错误，请再执行「UHD 推荐哈希修复」。"
+                : "配置修复：未应用。UHD 档位建议先应用配置，再做哈希修复。";
+
+            SetUhdStatus(tierNote + configNote, isError: false);
+        }
+        catch (Exception e)
+        {
+            _logger.Debug(e, "[浮窗修复] 读取 UHD 配置状态失败");
+            SetUhdStatus("读取配置状态失败：" + e.Message, isError: true);
+        }
+    }
+
+    /// <summary>自动模式识别到唯一档位时落到设置里；返回一句给状态行用的说明。</summary>
+    private string AutoPickTier(WuwaResourceTier tier)
+    {
+        UhdTierIndex = tier.ToIndex();
+        return $"已自动识别资源档位：{tier.ToDisplayName()}。 ";
+    }
+
+    private void SetUhdStatus(string? message, bool isError)
+    {
+        UhdStatusMessage = message;
+        IsUhdStatusError = isError;
+    }
+
     private async void OnFixRunCompleted(object? sender, WuwaFixRunSummary summary)
     {
         try
@@ -473,6 +671,13 @@ internal sealed partial class OverlayViewModel
             SetFixMessage(summary.ToSummaryText(), isError: summary.Failed > 0);
             OnPropertyChanged(nameof(CanStartFix));
             OnPropertyChanged(nameof(CanEditFixOptions));
+            OnPropertyChanged(nameof(CanRunUhdActions));
+
+            if (_uhdHashFixPending)
+            {
+                _uhdHashFixPending = false;
+                SetUhdStatus(summary.ToSummaryText(), isError: summary.Failed > 0);
+            }
 
             if (summary.HasChanges)
             {
