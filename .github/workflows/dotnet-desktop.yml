@@ -40,6 +40,14 @@ jobs:
     - name: Test
       run: dotnet test ${{ github.workspace }}\src
 
+    # UHD 映射 DLL 必须先于主程序构建：主程序 csproj 用 Exists 条件内嵌
+    # src/Jasm.UhdMapper/build/Release/Jasm.UhdMapper.dll（运行时释放到 %LOCALAPPDATA%\JASM\UhdRuntime）。
+    # windows-latest 自带 VS + C++ 工作负载，CMake 能直接找到 MSVC。
+    - name: Build UHD Mapper DLL
+      run: |
+        cmake -S src/Jasm.UhdMapper -B src/Jasm.UhdMapper/build -A x64
+        cmake --build src/Jasm.UhdMapper/build --config Release
+
     # 不传 ExcludeElevator：Elevator.exe 必须进包。它是提权刷新（F10）与代发按键的唯一执行体，
     # 而 AutoUpdater 的 doNotDeleteFiles 只能"保留"旧助手、靠解压覆盖来更新它 ——
     # zip 里没有就永远更新不了，用户手上会一直是 1.0.0.0 的旧版（不认识新命令）。
