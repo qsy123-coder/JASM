@@ -58,7 +58,21 @@ jobs:
         $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
         if (-not $vs) { throw "No Visual Studio with C++ tools found" }
 
-        $output = & cmd /c "`"call `"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && dumpbin /dependents src\Jasm.UhdMapper\build\Release\Jasm.UhdMapper.dll`""
+        # 用临时 .bat 调 vcvars + dumpbin，避免 PowerShell 里多层引号转义
+        $bat = Join-Path $env:TEMP 'check-static-crt.bat'
+        $lines = @(
+          '@echo off'
+          ('call "' + $vs + '\VC\Auxiliary\Build\vcvars64.bat" >nul')
+          'dumpbin /dependents src\Jasm.UhdMapper\build\Release\Jasm.UhdMapper.dll'
+        )
+        Set-Content -Path $bat -Value $lines -Encoding ascii
+
+        try {
+          $output = & cmd /c $bat
+        } finally {
+          Remove-Item $bat -ErrorAction SilentlyContinue
+        }
+
         $output | Write-Output
         if ($output -match 'VCRUNTIME|MSVCP') {
           throw "dynamic CRT dependency detected; static CRT (/MT) is required"
