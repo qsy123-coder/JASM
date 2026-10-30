@@ -17,9 +17,18 @@ bool ParseHashHex(const std::string& text, uint32_t* hash);
 // 按 DXGI 格式计算 mip0 的单行字节数与行数。未知格式返回 false。
 bool GetRowLayout(DXGI_FORMAT format, UINT width, UINT height, UINT* rowBytes, UINT* rowCount);
 
-// 计算纹理 mip0 的 CRC32C hash（行 pitch 感知，padding 不参与）。
-// 只在「2D、array=1、非 MSAA、有 mip0 初始数据」时返回 true。
+// mip0 数据 hash：逐行 CRC32C，跳过行 padding（3DMigoto 的 data_hash）。
+bool ComputeTextureDataHash(const D3D11_TEXTURE2D_DESC& desc, const D3D11_SUBRESOURCE_DATA* initialData,
+                            uint32_t* dataHash);
+
+// 3DMigoto 用于匹配的最终 hash：CRC32C(desc 字节, seed = dataHash)。
+// 宽高等于屏幕分辨率（或其 2/4/8 倍、1/2）时替换成特殊标记 —— 与 3DMigoto 的
+// AdjustForConstResolution 完全一致。screenWidth/Height 为 0 时不做替换。
+uint32_t CombineDescHash(uint32_t dataHash, const D3D11_TEXTURE2D_DESC& desc, UINT screenWidth,
+                         UINT screenHeight);
+
+// 一步到位（数据 hash + desc hash）。
 bool ComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const D3D11_SUBRESOURCE_DATA* initialData,
-                        uint32_t* hash);
+                        UINT screenWidth, UINT screenHeight, uint32_t* hash);
 
 }  // namespace jasm::uhd
