@@ -124,14 +124,10 @@ bool GetRowLayout(DXGI_FORMAT format, UINT width, UINT height, UINT* rowBytes, U
     return true;
 }
 
-bool ComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const D3D11_SUBRESOURCE_DATA* initialData,
-                        uint32_t* hash)
+bool ComputeTextureDataHash(const D3D11_TEXTURE2D_DESC& desc, const D3D11_SUBRESOURCE_DATA* initialData,
+                            uint32_t* dataHash)
 {
-    if (hash == nullptr || initialData == nullptr || initialData->pSysMem == nullptr)
-        return false;
-
-    // 只处理单 array slice、非 MSAA 的普通 2D 纹理；其余在 M1 里记为 unknown。
-    if (desc.ArraySize != 1 || desc.SampleDesc.Count != 1)
+    if (dataHash == nullptr || initialData == nullptr || initialData->pSysMem == nullptr)
         return false;
 
     UINT rowBytes = 0;
@@ -153,7 +149,69 @@ bool ComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const D3D11_SUBRESOURC
     for (UINT row = 0; row < rowCount; ++row)
         crc = Crc32cUpdate(crc, bytes + static_cast<std::size_t>(row) * pitch, rowBytes);
 
-    *hash = ~crc;
+    *dataHash = ~crc;
+    return true;
+}
+
+namespace {
+
+// 与 3DMigoto ResourceHash.cpp 的 AdjustForConstResolution 一致：
+// 宽高正好等于屏幕分辨率（或 2/4/8 倍、1/2）时替换成特殊标记，避免分辨率变化导致 hash 抖动。
+void AdjustForConstResolution(UINT* width, UINT* height, UINT screenWidth, UINT screenHeight)
+{
+    if (screenWidth == 0 || screenHeight == 0)
+        return;
+
+    if (*width == screenWidth && *height == screenHeight)
+    {
+        *width = static_cast<UINT>('SRES');
+        *height = static_cast<UINT>('SRES');
+    }
+    else if (*width == screenWidth * 2 && *height == screenHeight * 2)
+    {
+        *width = static_cast<UINT>('SR*2');
+        *height = static_cast<UINT>('SR*2');
+    }
+    else if (*width == screenWidth * 4 && *height == screenHeight * 4)
+    {
+        *width = static_cast<UINT>('SR*4');
+        *height = static_cast<UINT>('SR*4');
+    }
+    else if (*width == screenWidth * 8 && *height == screenHeight * 8)
+    {
+        *width = static_cast<UINT>('SR*8');
+        *height = static_cast<UINT>('SR*8');
+    }
+    else if (*width == screenWidth / 2 && *height == screenHeight / 2)
+    {
+        *width = static_cast<UINT>('SR/2');
+        *height = static_cast<UINT>('SR/2');
+    }
+}
+
+}  // namespace
+
+uint32_t CombineDescHash(uint32_t dataHash, const D3D11_TEXTURE2D_DESC& desc, UINT screenWidth,
+                         UINT screenHeight)
+{
+    D3D11_TEXTURE2D_DESC adjusted = desc;
+    AdjustForConstResolution(&adjusted.Width, &adjusted.Height, screenWidth, screenHeight);
+
+    // crc32c_hw(seed = dataHash, desc bytes)：内部先 ~seed，处理完再取反。
+    return ~Crc32cUpdate(dataHash ^ 0xFFFFFFFFu, &adjusted, sizeof(adjusted));
+}
+
+bool ComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const D3D11_SUBRESOURCE_DATA* initialData,
+                        UINT screenWidth, UINT screenHeight, uint32_t* hash)
+{
+    if (hash == nullptr)
+        return false;
+
+    uint32_t dataHash = 0;
+    if (!ComputeTextureDataHash(desc, initialData, &dataHash))
+        return false;
+
+    *hash = CombineDescHash(dataHash, desc, screenWidth, screenHeight);
     return true;
 }
 
