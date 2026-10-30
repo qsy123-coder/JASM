@@ -4,6 +4,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
 using GIMI_ModManager.Core.Helpers;
 using WindowsInput;
 
@@ -21,6 +22,7 @@ using WindowsInput;
 // 2: TargetedRefresh (<hwnd> follows on its own line; replies "OK" or "FAIL:<reason>")
 // 3: SendKey (<vk>, <mods> and <hwnd> follow on their own lines; replies "OK" or "FAIL:<reason>")
 // 4: ForegroundHandback (<hwnd> follows on its own line; replies "OK" or "FAIL:<reason>")
+// 5: LaunchAndInject (<exe>, <d3d11.dll>, <mapper dll or empty>, <cwd>, <args base64> follow; replies "OK <pid>" or "FAIL:<reason>")
 
 internal class Program
 {
@@ -111,6 +113,10 @@ internal class Program
                         Console.WriteLine("Handing the foreground back");
                         HandleForegroundHandbackCommand(pipeServer, reader);
                         break;
+                    case "5":
+                        Console.WriteLine("Launching the game and injecting DLLs");
+                        HandleLaunchInjectCommand(pipeServer, reader);
+                        break;
 
                     default:
                         // 旧版主程序以外的未知命令照旧只记日志：新加命令时别在这里报错给客户端，
@@ -170,6 +176,242 @@ internal class Program
             DirectoryCopy(subDir, Path.Combine(destDir, Path.GetFileName(subDir)), overwrite);
         }
     }
+
+    // ── Command 5: launch suspended + inject ────────────────────────────
+
+    const uint CREATE_SUSPENDED = 0x00000004;
+    const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+    const uint MEM_COMMIT = 0x00001000;
+    const uint MEM_RESERVE = 0x00002000;
+    const uint MEM_RELEASE = 0x00008000;
+    const uint PAGE_READWRITE = 0x04;
+    const uint WAIT_TIMEOUT = 0x00000102;
+
+    /// <summary>
+    /// 挂起创建游戏进程 → 依次 LoadLibraryW 注入 d3d11.dll 与可选的 Jasm.UhdMapper.dll → 恢复主线程。
+    /// 任何一步失败都 TerminateProcess，绝不留下“挂起的孤儿游戏进程”。
+    /// </summary>
+    static void HandleLaunchInjectCommand(PipeStream pipe, StreamReader reader)
+    {
+        using var writer = new StreamWriter(pipe) { AutoFlush = true };
+
+        var lines = new string?[5];
+        for (var i = 0; i < lines.Length; i++)
+            lines[i] = reader.ReadLine();
+
+        if (!ElevatorLaunchInjectProtocol.TryParsePayload(lines, out var request, out var failureReason)
+            || request is null)
+        {
+            writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
+                failureReason ?? ElevatorLaunchInjectProtocol.ReasonBadPayload));
+            return;
+        }
+
+        if (!File.Exists(request.GameExecutablePath))
+        {
+            writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
+                ElevatorLaunchInjectProtocol.ReasonExeMissing));
+            return;
+        }
+
+        if (!File.Exists(request.DllPath))
+        {
+            writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
+                ElevatorLaunchInjectProtocol.ReasonDllMissing));
+            return;
+        }
+
+        var startupInfo = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+        var commandLine = new StringBuilder(request.GameExecutablePath.Length + request.Arguments.Length + 8);
+        commandLine.Append('"').Append(request.GameExecutablePath).Append('"');
+        if (!string.IsNullOrWhiteSpace(request.Arguments))
+            commandLine.Append(' ').Append(request.Arguments);
+
+        if (!CreateProcessW(request.GameExecutablePath, commandLine, IntPtr.Zero, IntPtr.Zero, false,
+                CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT, IntPtr.Zero,
+                string.IsNullOrWhiteSpace(request.WorkingDirectory) ? null : request.WorkingDirectory,
+                ref startupInfo, out var processInfo))
+        {
+            var error = Marshal.GetLastWin32Error();
+            Console.Error.WriteLine($"CreateProcessW failed: {error}");
+            writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
+                ElevatorLaunchInjectProtocol.ReasonCreateProcess));
+            return;
+        }
+
+        try
+        {
+            if (!InjectDll(processInfo.hProcess, request.DllPath, out var injectReason))
+            {
+                TerminateProcess(processInfo.hProcess, 1);
+                writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(injectReason));
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(request.MapperDllPath))
+            {
+                if (!File.Exists(request.MapperDllPath))
+                {
+                    TerminateProcess(processInfo.hProcess, 1);
+                    writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
+                        ElevatorLaunchInjectProtocol.ReasonDllMissing));
+                    return;
+                }
+
+                if (!InjectDll(processInfo.hProcess, request.MapperDllPath, out injectReason))
+                {
+                    TerminateProcess(processInfo.hProcess, 1);
+                    writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(injectReason));
+                    return;
+                }
+            }
+
+            if (ResumeThread(processInfo.hThread) == uint.MaxValue)
+            {
+                TerminateProcess(processInfo.hProcess, 1);
+                writer.WriteLine(ElevatorLaunchInjectProtocol.BuildFailureReply(
+                    ElevatorLaunchInjectProtocol.ReasonResumeFailed));
+                return;
+            }
+
+            Console.WriteLine($"Injected and resumed pid={processInfo.dwProcessId}");
+            writer.WriteLine(ElevatorLaunchInjectProtocol.BuildOkReply((int)processInfo.dwProcessId));
+        }
+        finally
+        {
+            CloseHandle(processInfo.hThread);
+            CloseHandle(processInfo.hProcess);
+        }
+    }
+
+    /// <summary>在目标进程中远程调用 kernel32!LoadLibraryW。成功判据是远程线程退出码非 0（HMODULE）。</summary>
+    static bool InjectDll(IntPtr process, string dllPath, out string failureReason)
+    {
+        failureReason = ElevatorLaunchInjectProtocol.ReasonInjectFailed;
+
+        var kernel32 = GetModuleHandleW("kernel32.dll");
+        var loadLibrary = kernel32 == IntPtr.Zero ? IntPtr.Zero : GetProcAddress(kernel32, "LoadLibraryW");
+        if (loadLibrary == IntPtr.Zero)
+            return false;
+
+        var pathBytes = Encoding.Unicode.GetBytes(dllPath + '\0');
+        var remotePath = VirtualAllocEx(process, IntPtr.Zero, (nuint)pathBytes.Length,
+            MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (remotePath == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            if (!WriteProcessMemory(process, remotePath, pathBytes, (nuint)pathBytes.Length, out var written)
+                || written != (nuint)pathBytes.Length)
+                return false;
+
+            var thread = CreateRemoteThread(process, IntPtr.Zero, 0, loadLibrary, remotePath, 0, out _);
+            if (thread == IntPtr.Zero)
+                return false;
+
+            try
+            {
+                var wait = WaitForSingleObject(thread, 10_000);
+                if (wait == WAIT_TIMEOUT)
+                {
+                    failureReason = ElevatorLaunchInjectProtocol.ReasonInjectTimeout;
+                    return false;
+                }
+
+                if (wait != 0 || !GetExitCodeThread(thread, out var exitCode) || exitCode == 0)
+                    return false;
+
+                failureReason = string.Empty;
+                return true;
+            }
+            finally
+            {
+                CloseHandle(thread);
+            }
+        }
+        finally
+        {
+            VirtualFreeEx(process, remotePath, 0, MEM_RELEASE);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct STARTUPINFO
+    {
+        public int cb;
+        public string? lpReserved;
+        public string? lpDesktop;
+        public string? lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool CreateProcessW(string? lpApplicationName, StringBuilder lpCommandLine,
+        IntPtr lpProcessAttributes, IntPtr lpThreadAttributes, bool bInheritHandles, uint dwCreationFlags,
+        IntPtr lpEnvironment, string? lpCurrentDirectory, ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr VirtualAllocEx(IntPtr hProcess, IntPtr lpAddress, nuint dwSize, uint flAllocationType,
+        uint flProtect);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool VirtualFreeEx(IntPtr hProcess, IntPtr lpAddress, nuint dwSize, uint dwFreeType);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool WriteProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, nuint nSize,
+        out nuint lpNumberOfBytesWritten);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr CreateRemoteThread(IntPtr hProcess, IntPtr lpThreadAttributes, nuint dwStackSize,
+        IntPtr lpStartAddress, IntPtr lpParameter, uint dwCreationFlags, out uint lpThreadId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetExitCodeThread(IntPtr hThread, out uint lpExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint ResumeThread(IntPtr hThread);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetModuleHandleW(string lpModuleName);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+    static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CloseHandle(IntPtr hObject);
 
     [DllImport("User32.dll")]
     static extern int SetForegroundWindow(IntPtr point);
