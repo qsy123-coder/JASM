@@ -15,6 +15,10 @@
 #include "AliasTable.h"
 #include "Log.h"
 #include "Manifest.h"
+
+#ifdef JASM_UHD_MAPPER_WITH_DDS
+#include "DdsCache.h"
+#endif
 #include "TextureHash.h"
 #include "TextureRegistry.h"
 
@@ -81,6 +85,13 @@ std::atomic<uint64_t> g_substitutions{0};
 // 屏幕分辨率：3DMigoto 的 desc hash 会用它对特定宽高做 'SRES'/'SR*2' 等替换。
 std::atomic<UINT> g_screenWidth{0};
 std::atomic<UINT> g_screenHeight{0};
+
+// 游戏持有的 device（进程生命周期内有效），替换贴图时用来创建 DDS 纹理。
+std::atomic<ID3D11Device*> g_device{nullptr};
+
+std::mutex g_substituteLogMutex;
+std::unordered_set<uint32_t> g_substitutedLogged;
+constexpr std::size_t kMaxLoggedSubstitutions = 48;
 
 constexpr std::size_t kMaxLoggedHashes = 96;
 
@@ -338,22 +349,115 @@ void InstrumentBindings(UINT start, UINT count, ID3D11ShaderResourceView* const*
     }
 }
 
+#ifdef JASM_UHD_MAPPER_WITH_DDS
+bool TrySubstitute(ID3D11ShaderResourceView* view, ID3D11ShaderResourceView** replacement)
+{
+    if (view == nullptr || replacement == nullptr)
+        return false;
+
+    auto& registry = TextureRegistry::Instance();
+
+    uint32_t hash = 0;
+    bool isReplacement = false;
+    if (!registry.TryGetSrvHash(view, &hash, &isReplacement))
+    {
+        ComPtr<ID3D11Resource> resource;
+        view->GetResource(resource.GetAddressOf());
+        registry.RememberSrv(view, resource.Get());
+        if (!registry.TryGetSrvHash(view, &hash, &isReplacement))
+            return false;
+    }
+
+    if (isReplacement)
+        return false; // 已经是我们替换过的 SRV，避免递归
+
+    const AliasTable* table = g_aliasTable.load(std::memory_order_acquire);
+    ID3D11Device* device = g_device.load(std::memory_order_acquire);
+    if (table == nullptr || device == nullptr)
+        return false;
+
+    AliasTarget target;
+    if (!table->TryGet(hash, &target))
+        return false;
+
+    ID3D11ShaderResourceView* created = nullptr;
+    if (!DdsCache::Instance().GetOrCreate(device, hash, target, &created))
+        return false;
+
+    // 标记为替换 SRV：后续重新绑定时不再二次替换。
+    registry.MarkReplacement(created, true);
+    *replacement = created;
+
+    {
+        std::lock_guard<std::mutex> lock(g_substituteLogMutex);
+        if (g_substitutedLogged.size() < kMaxLoggedSubstitutions
+            && g_substitutedLogged.insert(hash).second)
+        {
+            LogWrite(LogLevel::Info, "substitute hash=%s dds=%s", HashToHex(hash).c_str(),
+                     WideToUtf8(target.ddsPath).c_str());
+        }
+    }
+
+    return true;
+}
+#endif
+
 void STDMETHODCALLTYPE DetourPSSetShaderResources(ID3D11DeviceContext* self, UINT start, UINT count,
                                                   ID3D11ShaderResourceView* const* views)
 {
     const auto original = g_origPSSetShaderResources;
 
-    if (views != nullptr && count > 0)
+    if (views == nullptr || count == 0 || start + count > D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT)
     {
+        original(self, start, count, views);
+        return;
+    }
+
+    try
+    {
+        InstrumentBindings(start, count, views);
+    }
+    catch (...)
+    {
+        g_failures.fetch_add(1, std::memory_order_relaxed);
+    }
+
+#ifdef JASM_UHD_MAPPER_WITH_DDS
+    if (g_applyMode.load(std::memory_order_acquire))
+    {
+        ID3D11ShaderResourceView* local[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+        ComPtr<ID3D11ShaderResourceView> holds[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+        bool changed = false;
+
         try
         {
-            InstrumentBindings(start, count, views);
+            for (UINT i = 0; i < count; ++i)
+            {
+                local[i] = views[i];
+                ID3D11ShaderResourceView* replacement = nullptr;
+                if (TrySubstitute(views[i], &replacement))
+                {
+                    holds[i].Attach(replacement); // 本次调用期间持有
+                    local[i] = replacement;
+                    changed = true;
+                    g_substitutions.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
         }
         catch (...)
         {
             g_failures.fetch_add(1, std::memory_order_relaxed);
+            original(self, start, count, views);
+            return;
+        }
+
+        if (changed)
+        {
+            original(self, start, count, local);
+            return;
         }
     }
+#endif
 
     original(self, start, count, views);
 }
@@ -515,6 +619,7 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
         context = immediate.Get();
     }
 
+    g_device.store(device, std::memory_order_release);
     void** deviceVtable = *reinterpret_cast<void***>(device);
     const bool textureHook = PatchVtableSlot(deviceVtable, 5,
                                              reinterpret_cast<void*>(&DetourCreateTexture2D),
