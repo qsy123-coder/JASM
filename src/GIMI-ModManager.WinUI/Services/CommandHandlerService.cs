@@ -4,16 +4,19 @@ using Windows.Win32.Foundation;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services.CommandService;
 using GIMI_ModManager.Core.Services.CommandService.Models;
+using GIMI_ModManager.WinUI.Services.Injection;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Services;
 
-public class CommandHandlerService(CommandService commandService, ILogger logger)
+public class CommandHandlerService(CommandService commandService, GameLaunchInjectionService injectionService,
+    ILogger logger)
 {
     private readonly ILogger _logger = logger.ForContext<CommandHandlerService>();
     private readonly CommandService _commandService = commandService;
+    private readonly GameLaunchInjectionService _injectionService = injectionService;
 
 
     public async Task<ICollection<string>> CanRunCommandAsync(Guid commandId, SpecialVariablesInput? variablesInput,
@@ -156,6 +159,31 @@ public class CommandHandlerService(CommandService commandService, ILogger logger
         }
 
         var processCommand = _commandService.CreateCommand(command, variablesInput);
+
+        // 鸣潮 game-start 命令：开关打开时尝试「挂起直启 + 注入 WWMI d3d11」；
+        // 任何失败都回退到原来的 XXMI Launcher 命令，绝不因为新路径失败就禁止启动游戏。
+        if (command.IsGameStartCommand && await _injectionService.IsEnabledAsync(cancellationToken))
+        {
+            var injection = await _injectionService.TryLaunchAsync(cancellationToken);
+            if (injection.Success)
+            {
+                var attached = _commandService.AttachToRunningProcess(command, injection.ProcessId, variablesInput);
+                if (attached is not null)
+                {
+                    _logger.Information("[注入启动] 已启动并附着 pid={Pid}", injection.ProcessId);
+                    return Result<ProcessCommand>.Success(attached,
+                        new SimpleNotification("Command started",
+                            $"Command '{command.CommandDisplayName}' started (injected)"));
+                }
+
+                // 游戏已经起来了，不能再回退（否则会双开）；只报无法监控。
+                _logger.Warning("[注入启动] 游戏已启动 pid={Pid}，但无法附着进程，跳过回退", injection.ProcessId);
+                return Result<ProcessCommand>.Error(new SimpleNotification("Game started but not monitored",
+                    $"Game started (pid {injection.ProcessId}) but could not be attached for monitoring."));
+            }
+
+            _logger.Warning("[注入启动] 失败，回退原启动命令：{Reason} {Error}", injection.Reason, injection.Error);
+        }
 
         processCommand.Start();
 
