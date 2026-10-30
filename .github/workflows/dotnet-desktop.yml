@@ -10,11 +10,14 @@ on:
     branches: [ master ]
     paths:
       - 'src/**'
+      - '.github/workflows/dotnet-desktop.yml'
   push:
     branches: [ master ]
     paths:
       - 'src/**'
       - 'CHANGELOG.md'
+      # 改本 workflow 也要跑一次：打包步骤（如先构建 UHD 映射 DLL）只能靠真实构建验证
+      - '.github/workflows/dotnet-desktop.yml'
 
 jobs:
   build:
