@@ -26,6 +26,7 @@ struct HookCounters
     uint64_t uhdBinds = 0;
     uint64_t failures = 0;
     uint64_t substitutions = 0;
+    uint64_t updatedHashes = 0;
 };
 
 HookCounters GetHookCounters();
