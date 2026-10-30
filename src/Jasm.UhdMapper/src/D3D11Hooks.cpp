@@ -143,16 +143,43 @@ bool TakeMap(ID3D11Resource* resource, UINT subresource, MapRecord* out)
     return false;
 }
 
+bool GetLiveTextureDesc(ID3D11Resource* resource, D3D11_TEXTURE2D_DESC* desc)
+{
+    if (resource == nullptr || desc == nullptr)
+        return false;
+
+    ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(resource->QueryInterface(IID_PPV_ARGS(texture.GetAddressOf()))))
+        return false;
+
+    texture->GetDesc(desc); // 实时读，避免注册表里指针复用导致的旧描述
+    return true;
+}
+
+// 哈希读取可能碰到畸形 pitch/尺寸；SEH 兜底，任何异常都退化成「没有 hash」。
+bool SafeComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const void* data, UINT rowPitch,
+                            uint32_t* hash)
+{
+    __try
+    {
+        D3D11_SUBRESOURCE_DATA source{};
+        source.pSysMem = data;
+        source.SysMemPitch = rowPitch;
+        return ComputeTextureHash(desc, &source, hash);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
 bool HashMappedResource(ID3D11Resource* resource, const MapRecord& record, uint32_t* hash)
 {
     D3D11_TEXTURE2D_DESC desc{};
-    if (!TextureRegistry::Instance().TryGetTextureDesc(resource, &desc))
+    if (!GetLiveTextureDesc(resource, &desc))
         return false;
 
-    D3D11_SUBRESOURCE_DATA data{};
-    data.pSysMem = record.data;
-    data.SysMemPitch = record.rowPitch;
-    return ComputeTextureHash(desc, &data, hash);
+    return SafeComputeTextureHash(desc, record.data, record.rowPitch, hash);
 }
 
 // ── vtable 打点 ──────────────────────────────────────────────────────────
@@ -346,25 +373,36 @@ void STDMETHODCALLTYPE DetourUnmap(ID3D11DeviceContext* self, ID3D11Resource* re
 {
     const auto original = g_origUnmap;
 
-    // Unmap 之后映射内存就不再有效，先取记录再调用原函数。
+    // 必须在调用原 Unmap 之前读完映射内存：Unmap 之后该地址就失效了（读它会直接崩游戏）。
     MapRecord record;
-    const bool hasRecord = TakeMap(resource, subresource, &record);
+    uint32_t hash = 0;
+    bool hashed = false;
+    D3D11_TEXTURE2D_DESC desc{};
 
-    original(self, resource, subresource);
-
-    if (hasRecord && subresource == 0)
+    if (subresource == 0 && TakeMap(resource, subresource, &record))
     {
         try
         {
-            uint32_t hash = 0;
             if (HashMappedResource(resource, record, &hash))
             {
-                TextureRegistry::Instance().SetTextureHash(resource, hash);
-
-                D3D11_TEXTURE2D_DESC desc{};
-                if (TextureRegistry::Instance().TryGetTextureDesc(resource, &desc))
-                    LogTextureOnce(hash, desc);
+                hashed = true;
+                GetLiveTextureDesc(resource, &desc);
             }
+        }
+        catch (...)
+        {
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    original(self, resource, subresource);
+
+    if (hashed)
+    {
+        try
+        {
+            TextureRegistry::Instance().SetTextureHash(resource, hash);
+            LogTextureOnce(hash, desc);
         }
         catch (...)
         {
@@ -387,15 +425,11 @@ void STDMETHODCALLTYPE DetourUpdateSubresource(ID3D11DeviceContext* self, ID3D11
     try
     {
         D3D11_TEXTURE2D_DESC desc{};
-        if (!TextureRegistry::Instance().TryGetTextureDesc(resource, &desc))
+        if (!GetLiveTextureDesc(resource, &desc))
             return;
 
-        D3D11_SUBRESOURCE_DATA source{};
-        source.pSysMem = data;
-        source.SysMemPitch = rowPitch;
-
         uint32_t hash = 0;
-        if (ComputeTextureHash(desc, &source, &hash))
+        if (SafeComputeTextureHash(desc, data, rowPitch, &hash))
         {
             TextureRegistry::Instance().SetTextureHash(resource, hash);
             LogTextureOnce(hash, desc);
