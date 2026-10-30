@@ -4,6 +4,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -42,12 +43,28 @@ using CreateShaderResourceViewFn = HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*, ID
 using PSSetShaderResourcesFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT,
                                                         ID3D11ShaderResourceView* const*);
 
+using MapFn = HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_MAP,
+                                          UINT, D3D11_MAPPED_SUBRESOURCE*);
+using UnmapFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT);
+using CopySubresourceRegionFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT,
+                                                         UINT, UINT, UINT, ID3D11Resource*, UINT,
+                                                         const D3D11_BOX*);
+using CopyResourceFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*,
+                                                ID3D11Resource*);
+using UpdateSubresourceFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT,
+                                                     const D3D11_BOX*, const void*, UINT, UINT);
+
 CreateDeviceAndSwapChainFn g_origCreateDeviceAndSwapChain = nullptr;
 CreateDeviceFn g_origCreateDevice = nullptr;
 
 CreateTexture2DFn g_origCreateTexture2D = nullptr;
 CreateShaderResourceViewFn g_origCreateShaderResourceView = nullptr;
 PSSetShaderResourcesFn g_origPSSetShaderResources = nullptr;
+MapFn g_origMap = nullptr;
+UnmapFn g_origUnmap = nullptr;
+CopySubresourceRegionFn g_origCopySubresourceRegion = nullptr;
+CopyResourceFn g_origCopyResource = nullptr;
+UpdateSubresourceFn g_origUpdateSubresource = nullptr;
 
 std::atomic<bool> g_installed{false};
 std::atomic<bool> g_applyMode{false};
@@ -65,6 +82,78 @@ constexpr std::size_t kMaxLoggedHashes = 96;
 
 std::mutex g_logMutex;
 std::unordered_set<uint32_t> g_loggedHashes;
+
+// M1 诊断：记录少量通过更新路径算出的 hash + 格式/尺寸，便于和 Rocket 学习记录比对。
+std::mutex g_textureLogMutex;
+std::unordered_set<uint32_t> g_textureLogged;
+constexpr std::size_t kMaxLoggedTextures = 32;
+
+void LogTextureOnce(uint32_t hash, const D3D11_TEXTURE2D_DESC& desc)
+{
+    {
+        std::lock_guard<std::mutex> lock(g_textureLogMutex);
+        if (g_textureLogged.size() >= kMaxLoggedTextures || !g_textureLogged.insert(hash).second)
+            return;
+    }
+
+    LogWrite(LogLevel::Info, "tex hash=%s fmt=%d %ux%u mips=%u src=update",
+             HashToHex(hash).c_str(), static_cast<int>(desc.Format), desc.Width, desc.Height,
+             desc.MipLevels);
+}
+
+// Map/Unmap 配对：UE 大量纹理是先创建空纹理、再写映射内存，创建时没有初始数据。
+struct MapRecord
+{
+    ID3D11Resource* resource = nullptr;
+    UINT subresource = 0;
+    void* data = nullptr;
+    UINT rowPitch = 0;
+};
+
+std::mutex g_mapMutex;
+std::vector<MapRecord> g_maps;
+
+void RememberMap(ID3D11Resource* resource, UINT subresource, void* data, UINT rowPitch)
+{
+    std::lock_guard<std::mutex> lock(g_mapMutex);
+    for (auto& record : g_maps)
+    {
+        if (record.resource == resource && record.subresource == subresource)
+        {
+            record.data = data;
+            record.rowPitch = rowPitch;
+            return;
+        }
+    }
+    g_maps.push_back(MapRecord{resource, subresource, data, rowPitch});
+}
+
+bool TakeMap(ID3D11Resource* resource, UINT subresource, MapRecord* out)
+{
+    std::lock_guard<std::mutex> lock(g_mapMutex);
+    for (auto it = g_maps.begin(); it != g_maps.end(); ++it)
+    {
+        if (it->resource == resource && it->subresource == subresource)
+        {
+            *out = *it;
+            g_maps.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool HashMappedResource(ID3D11Resource* resource, const MapRecord& record, uint32_t* hash)
+{
+    D3D11_TEXTURE2D_DESC desc{};
+    if (!TextureRegistry::Instance().TryGetTextureDesc(resource, &desc))
+        return false;
+
+    D3D11_SUBRESOURCE_DATA data{};
+    data.pSysMem = record.data;
+    data.SysMemPitch = record.rowPitch;
+    return ComputeTextureHash(desc, &data, hash);
+}
 
 // ── vtable 打点 ──────────────────────────────────────────────────────────
 
@@ -230,6 +319,134 @@ void STDMETHODCALLTYPE DetourPSSetShaderResources(ID3D11DeviceContext* self, UIN
     original(self, start, count, views);
 }
 
+HRESULT STDMETHODCALLTYPE DetourMap(ID3D11DeviceContext* self, ID3D11Resource* resource,
+                                    UINT subresource, D3D11_MAP mapType, UINT mapFlags,
+                                    D3D11_MAPPED_SUBRESOURCE* mapped)
+{
+    const auto original = g_origMap;
+    const HRESULT result = original(self, resource, subresource, mapType, mapFlags, mapped);
+
+    if (SUCCEEDED(result) && mapped != nullptr && mapped->pData != nullptr && subresource == 0)
+    {
+        try
+        {
+            RememberMap(resource, subresource, mapped->pData, mapped->RowPitch);
+        }
+        catch (...)
+        {
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    return result;
+}
+
+void STDMETHODCALLTYPE DetourUnmap(ID3D11DeviceContext* self, ID3D11Resource* resource,
+                                   UINT subresource)
+{
+    const auto original = g_origUnmap;
+
+    // Unmap 之后映射内存就不再有效，先取记录再调用原函数。
+    MapRecord record;
+    const bool hasRecord = TakeMap(resource, subresource, &record);
+
+    original(self, resource, subresource);
+
+    if (hasRecord && subresource == 0)
+    {
+        try
+        {
+            uint32_t hash = 0;
+            if (HashMappedResource(resource, record, &hash))
+            {
+                TextureRegistry::Instance().SetTextureHash(resource, hash);
+
+                D3D11_TEXTURE2D_DESC desc{};
+                if (TextureRegistry::Instance().TryGetTextureDesc(resource, &desc))
+                    LogTextureOnce(hash, desc);
+            }
+        }
+        catch (...)
+        {
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+}
+
+void STDMETHODCALLTYPE DetourUpdateSubresource(ID3D11DeviceContext* self, ID3D11Resource* resource,
+                                               UINT subresource, const D3D11_BOX* box,
+                                               const void* data, UINT rowPitch, UINT depthPitch)
+{
+    const auto original = g_origUpdateSubresource;
+    original(self, resource, subresource, box, data, rowPitch, depthPitch);
+
+    // 只认整块 mip0；部分 box 更新无法还原完整 hash。
+    if (subresource != 0 || box != nullptr || data == nullptr || rowPitch == 0)
+        return;
+
+    try
+    {
+        D3D11_TEXTURE2D_DESC desc{};
+        if (!TextureRegistry::Instance().TryGetTextureDesc(resource, &desc))
+            return;
+
+        D3D11_SUBRESOURCE_DATA source{};
+        source.pSysMem = data;
+        source.SysMemPitch = rowPitch;
+
+        uint32_t hash = 0;
+        if (ComputeTextureHash(desc, &source, &hash))
+        {
+            TextureRegistry::Instance().SetTextureHash(resource, hash);
+            LogTextureOnce(hash, desc);
+        }
+    }
+    catch (...)
+    {
+        g_failures.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+void STDMETHODCALLTYPE DetourCopySubresourceRegion(ID3D11DeviceContext* self,
+                                                   ID3D11Resource* destination,
+                                                   UINT destinationSubresource, UINT destinationX,
+                                                   UINT destinationY, UINT destinationZ,
+                                                   ID3D11Resource* source, UINT sourceSubresource,
+                                                   const D3D11_BOX* box)
+{
+    const auto original = g_origCopySubresourceRegion;
+    original(self, destination, destinationSubresource, destinationX, destinationY, destinationZ,
+             source, sourceSubresource, box);
+
+    if (destinationSubresource == 0 && sourceSubresource == 0)
+    {
+        try
+        {
+            TextureRegistry::Instance().CopyTextureHash(destination, source);
+        }
+        catch (...)
+        {
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+}
+
+void STDMETHODCALLTYPE DetourCopyResource(ID3D11DeviceContext* self, ID3D11Resource* destination,
+                                          ID3D11Resource* source)
+{
+    const auto original = g_origCopyResource;
+    original(self, destination, source);
+
+    try
+    {
+        TextureRegistry::Instance().CopyTextureHash(destination, source);
+    }
+    catch (...)
+    {
+        g_failures.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
 void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
 {
     if (device == nullptr)
@@ -250,17 +467,46 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
                                          reinterpret_cast<void*>(&DetourCreateShaderResourceView),
                                          reinterpret_cast<void**>(&g_origCreateShaderResourceView));
 
-    bool contextHook = false;
+    int contextHooks = 0;
     if (context != nullptr)
     {
         void** contextVtable = *reinterpret_cast<void***>(context);
-        contextHook = PatchVtableSlot(contextVtable, 8,
-                                      reinterpret_cast<void*>(&DetourPSSetShaderResources),
-                                      reinterpret_cast<void**>(&g_origPSSetShaderResources));
+
+        // ID3D11DeviceContext 方法在 vtable 中的位置（前面是 IUnknown + DeviceChild 共 7 个）：
+        // 8 PSSetShaderResources、15 Map、16 Unmap、17 CopySubresourceRegion、18 CopyResource、19 UpdateSubresource。
+        contextHooks += PatchVtableSlot(contextVtable, 8,
+                                        reinterpret_cast<void*>(&DetourPSSetShaderResources),
+                                        reinterpret_cast<void**>(&g_origPSSetShaderResources))
+                            ? 1
+                            : 0;
+        contextHooks += PatchVtableSlot(contextVtable, 15, reinterpret_cast<void*>(&DetourMap),
+                                        reinterpret_cast<void**>(&g_origMap))
+                            ? 1
+                            : 0;
+        contextHooks += PatchVtableSlot(contextVtable, 16, reinterpret_cast<void*>(&DetourUnmap),
+                                        reinterpret_cast<void**>(&g_origUnmap))
+                            ? 1
+                            : 0;
+        contextHooks += PatchVtableSlot(contextVtable, 17,
+                                        reinterpret_cast<void*>(&DetourCopySubresourceRegion),
+                                        reinterpret_cast<void**>(&g_origCopySubresourceRegion))
+                            ? 1
+                            : 0;
+        contextHooks += PatchVtableSlot(contextVtable, 18,
+                                        reinterpret_cast<void*>(&DetourCopyResource),
+                                        reinterpret_cast<void**>(&g_origCopyResource))
+                            ? 1
+                            : 0;
+        contextHooks += PatchVtableSlot(contextVtable, 19,
+                                        reinterpret_cast<void*>(&DetourUpdateSubresource),
+                                        reinterpret_cast<void**>(&g_origUpdateSubresource))
+                            ? 1
+                            : 0;
     }
 
-    LogWrite(LogLevel::Info, "device created vtable=%p context=%p deviceHooks=%d/%d contextHook=%d",
-             deviceVtable, context, textureHook ? 1 : 0, srvHook ? 1 : 0, contextHook ? 1 : 0);
+    LogWrite(LogLevel::Info,
+             "device created vtable=%p context=%p deviceHooks=%d/%d contextHooks=%d/6",
+             deviceVtable, context, textureHook ? 1 : 0, srvHook ? 1 : 0, contextHooks);
 }
 
 HRESULT WINAPI DetourCreateDeviceAndSwapChain(
@@ -406,6 +652,7 @@ HookCounters GetHookCounters()
     counters.uhdBinds = g_uhdBinds.load(std::memory_order_relaxed);
     counters.failures = g_failures.load(std::memory_order_relaxed);
     counters.substitutions = g_substitutions.load(std::memory_order_relaxed);
+    counters.updatedHashes = TextureRegistry::Instance().UpdatedHashCount();
     return counters;
 }
 
