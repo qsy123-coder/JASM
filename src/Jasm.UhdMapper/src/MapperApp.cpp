@@ -135,14 +135,15 @@ void MapperApp::LogSummary()
     const HookCounters counters = GetHookCounters();
     LogWrite(LogLevel::Info,
              "summary binds=%llu hashed=%llu unknown=%llu hd=%llu uhd=%llu substitutions=%llu "
-             "failures=%llu",
+             "failures=%llu updatedHashes=%llu",
              static_cast<unsigned long long>(counters.binds),
              static_cast<unsigned long long>(counters.hashedBinds),
              static_cast<unsigned long long>(counters.unknownBinds),
              static_cast<unsigned long long>(counters.hdBinds),
              static_cast<unsigned long long>(counters.uhdBinds),
              static_cast<unsigned long long>(counters.substitutions),
-             static_cast<unsigned long long>(counters.failures));
+             static_cast<unsigned long long>(counters.failures),
+             static_cast<unsigned long long>(counters.updatedHashes));
 }
 
 void MapperApp::WorkerMain()
