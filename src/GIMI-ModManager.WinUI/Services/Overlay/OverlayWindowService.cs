@@ -75,7 +75,7 @@ internal sealed class OverlayWindowService : IDisposable
         ModSettingsService modSettingsService, IGameKeySender gameKeySender,
         SelectedGameService selectedGameService, NotificationManager notificationManager,
         WuwaModFixerEngine fixerEngine, WuwaFixSession fixSession, WuwaRollbackService rollbackService,
-        ILogger logger)
+        WuwaUhdRepairService uhdRepairService, ILogger logger)
     {
         _selectedGameService = selectedGameService;
         _screenshotService = screenshotService;
@@ -87,7 +87,8 @@ internal sealed class OverlayWindowService : IDisposable
         // 依赖项由本类转交，顺带保证"浮窗与设置页共用同一个刷新协调器"这件事是显式的。
         _viewModel = new OverlayViewModel(skinManagerService, gameService, refreshCoordinator,
             localSettingsService, dragAndDropService, screenshotService, modSettingsService,
-            gameKeySender, notificationManager, fixerEngine, fixSession, rollbackService, logger);
+            gameKeySender, notificationManager, fixerEngine, fixSession, rollbackService,
+            uhdRepairService, logger);
     }
 
     /// <summary>
