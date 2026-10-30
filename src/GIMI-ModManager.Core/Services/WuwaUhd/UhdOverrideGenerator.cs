@@ -115,8 +115,12 @@ public static class UhdOverrideGenerator
         for (var i = 0; i < lines.Count; i++)
         {
             var trimmed = lines[i].Trim();
-            if (trimmed.Length >= 2 && trimmed[0] == '[' && trimmed[^1] == ']')
-                headerIndexes.Add((i, trimmed[1..^1].Trim()));
+
+            // 段头后面可能跟同行注释（很多韩文 WWMI mod 写成 "[TextureOverrideTexture4];; comp 3"），
+            // 不能要求最后一个字符是 ']'，否则整份 ini 一个段都解析不出来。
+            var closing = trimmed.IndexOf(']');
+            if (trimmed.Length >= 2 && trimmed[0] == '[' && closing > 1)
+                headerIndexes.Add((i, trimmed[1..closing].Trim()));
         }
 
         for (var i = 0; i < headerIndexes.Count; i++)
