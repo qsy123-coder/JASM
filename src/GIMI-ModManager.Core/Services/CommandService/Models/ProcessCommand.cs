@@ -8,7 +8,7 @@ namespace GIMI_ModManager.Core.Services.CommandService.Models;
 /// </summary>
 public sealed class ProcessCommand
 {
-    private readonly Process _process;
+    private Process _process;
     private readonly CommandContext _context;
 
     internal InternalCreateCommandOptions InternalCreateOptions { get; }
@@ -101,6 +101,34 @@ public sealed class ProcessCommand
 
         _process.Refresh();
         return result;
+    }
+
+    /// <summary>
+    /// 附着到一个已经在运行的外部进程（提权助手挂起创建并注入后回传的 PID）。
+    ///
+    /// 这条路径不经过 <see cref="Start"/>：进程不是本对象创建的，没有可用的 StartInfo/重定向，
+    /// 但仍要挂上 <c>Exited</c>、标记 Started，让 <see cref="CommandService"/> 的运行中命令表与
+    /// 进程管理器看到同一份状态。
+    /// </summary>
+    internal void AttachToRunningProcess(Process process)
+    {
+        if (HasBeenStarted)
+            throw new InvalidOperationException("Cannot attach a command that has already been started");
+
+        // 构造时创建的占位 Process 没有启动过，直接换掉
+        _process.Dispose();
+        _process = process;
+        _process.Exited += ExitHandler;
+        _process.EnableRaisingEvents = true;
+
+        CanWriteInputReadOutput = false;
+        HasBeenStarted = true;
+        _context.StartTime = DateTime.Now;
+        Started?.Invoke(this, EventArgs.Empty);
+
+        _process.Refresh();
+        if (_process.HasExited)
+            ExitHandler(this, EventArgs.Empty);
     }
 
     private void ExitHandler(object? sender, EventArgs args)
