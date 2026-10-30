@@ -16,6 +16,15 @@ public class ElevatorLaunchInjectProtocolTests
         Assert.Equal("5.0.0.0", ElevatorLaunchInjectProtocol.MinimumFileVersionForLaunchInject);
     }
 
+    [Fact]
+    public void ReadyEventNameMatchesTheNativeDll()
+    {
+        // 原生侧 MapperApp.cpp 的 kReadyEventPrefix 必须与这个前缀完全一致
+        Assert.Equal(@"Local\Jasm.UhdMapper.Ready.", ElevatorLaunchInjectProtocol.ReadyEventNamePrefix);
+        Assert.Equal(@"Local\Jasm.UhdMapper.Ready.1234",
+            ElevatorLaunchInjectProtocol.BuildReadyEventName(1234));
+    }
+
     [Theory]
     [InlineData(null, false)]
     [InlineData("4.0.0.0", false)]
