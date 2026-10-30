@@ -23,7 +23,7 @@ endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 option(JASM_UHD_MAPPER_BUILD_TESTS "Build native unit tests" OFF)
-option(JASM_UHD_MAPPER_WITH_DDS "Link DirectXTex for DDS replacement (M2)" OFF)
+option(JASM_UHD_MAPPER_WITH_DDS "Link DirectXTex for DDS replacement (M2)" ON)
 
 # ── MinHook（BSD-2-Clause）──────────────────────────────────────────────
 # 只用来挂 d3d11.dll 的两个创建导出；游戏自己的 COM vtable 用指针替换，不经过 MinHook。
@@ -68,12 +68,18 @@ target_compile_options(jasm_mapper_core PRIVATE /utf-8 /W4 /permissive- /EHsc)
 target_link_libraries(jasm_mapper_core PUBLIC d3d11 dxguid kernel32)
 
 # ── 注入的 DLL ─────────────────────────────────────────────────────────
-add_library(JasmUhdMapper SHARED
+set(JASM_UHD_MAPPER_SOURCES
     src/dllmain.cpp
     src/MapperApp.cpp
     src/D3D11Hooks.cpp
     src/TextureRegistry.cpp
 )
+
+if(JASM_UHD_MAPPER_WITH_DDS)
+    list(APPEND JASM_UHD_MAPPER_SOURCES src/DdsCache.cpp)
+endif()
+
+add_library(JasmUhdMapper SHARED ${JASM_UHD_MAPPER_SOURCES})
 
 set_target_properties(JasmUhdMapper PROPERTIES
     OUTPUT_NAME "Jasm.UhdMapper"
@@ -91,14 +97,18 @@ target_compile_options(JasmUhdMapper PRIVATE /utf-8 /W4 /permissive- /EHsc)
 target_link_libraries(JasmUhdMapper PRIVATE jasm_mapper_core minhook)
 
 if(JASM_UHD_MAPPER_WITH_DDS)
-    # M2 使用：DirectXTex（MIT）。固定 tag + 显式关闭样例/测试。
+    # M2 使用：DirectXTex（MIT），只用来解析 DDS；纹理仍由我们自己 CreateTexture2D。
+    # 固定 tag；关掉工具/样例/DX11/DX12 扩展，避免引入 fxc 与额外依赖。
     FetchContent_Declare(
         directxtex
         GIT_REPOSITORY https://github.com/microsoft/DirectXTex.git
-        GIT_TAG 2026.01.01
+        GIT_TAG oct2024
         GIT_SHALLOW TRUE
     )
+    set(BUILD_TOOLS OFF CACHE BOOL "" FORCE)
     set(BUILD_SAMPLE OFF CACHE BOOL "" FORCE)
+    set(BUILD_DX11 OFF CACHE BOOL "" FORCE)
+    set(BUILD_DX12 OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(directxtex)
     target_compile_definitions(JasmUhdMapper PRIVATE JASM_UHD_MAPPER_WITH_DDS)
