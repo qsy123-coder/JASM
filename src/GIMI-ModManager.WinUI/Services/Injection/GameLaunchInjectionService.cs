@@ -25,14 +25,12 @@ public sealed record InjectionLaunchResult(bool Success, int ProcessId, string? 
 /// </summary>
 public sealed class GameLaunchInjectionService
 {
-    private const string MapperDllName = "Jasm.UhdMapper.dll";
-    private const string MapperDirectoryName = "UhdRuntime";
-
     private readonly ILocalSettingsService _localSettingsService;
     private readonly GameInstallPathDetector _gameInstallPathDetector;
     private readonly ElevatorService _elevatorService;
     private readonly SelectedGameService _selectedGameService;
     private readonly UhdActiveModService _uhdActiveModService;
+    private readonly UhdMapperProvisioner _uhdMapperProvisioner;
     private readonly ILogger _logger;
 
     public GameLaunchInjectionService(
@@ -41,6 +39,7 @@ public sealed class GameLaunchInjectionService
         ElevatorService elevatorService,
         SelectedGameService selectedGameService,
         UhdActiveModService uhdActiveModService,
+        UhdMapperProvisioner uhdMapperProvisioner,
         ILogger logger)
     {
         _localSettingsService = localSettingsService;
@@ -48,6 +47,7 @@ public sealed class GameLaunchInjectionService
         _elevatorService = elevatorService;
         _selectedGameService = selectedGameService;
         _uhdActiveModService = uhdActiveModService;
+        _uhdMapperProvisioner = uhdMapperProvisioner;
         _logger = logger.ForContext<GameLaunchInjectionService>();
     }
 
@@ -105,11 +105,8 @@ public sealed class GameLaunchInjectionService
         if (!File.Exists(d3d11Path))
             return InjectionLaunchResult.Fail("找不到 WWMI 的 d3d11.dll，请先完成 Mod 环境配置", "no-d3d11");
 
-        var mapperPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "JASM", MapperDirectoryName, MapperDllName);
-        if (!File.Exists(mapperPath))
-            mapperPath = null;
+        // 映射 DLL 由内嵌资源按需释放；没有映射 DLL 时 Phase 1 仍可只注入 d3d11
+        var mapperPath = _uhdMapperProvisioner.EnsureProvisioned();
 
         var overlay = await _localSettingsService
             .ReadSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App)
