@@ -165,6 +165,8 @@ public partial class App : Application
                 services.AddSingleton<WuwaModFixerEngine>();
                 services.AddSingleton<WuwaFixSession>();
                 services.AddSingleton<WuwaRollbackService>();
+                // UHD 贴图修复的配置侧（Engine.ini / GameUserSettings.ini，带备份/恢复）
+                services.AddSingleton<WuwaUhdRepairService>();
 
                 services.AddSingleton<Services.Overlay.OverlayWindowService>();
 
