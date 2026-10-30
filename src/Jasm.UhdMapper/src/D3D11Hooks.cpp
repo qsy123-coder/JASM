@@ -401,7 +401,7 @@ void STDMETHODCALLTYPE DetourUnmap(ID3D11DeviceContext* self, ID3D11Resource* re
     {
         try
         {
-            TextureRegistry::Instance().SetTextureHash(resource, hash);
+            TextureRegistry::Instance().SetTextureHash(resource, hash, &desc);
             LogTextureOnce(hash, desc);
         }
         catch (...)
@@ -431,7 +431,7 @@ void STDMETHODCALLTYPE DetourUpdateSubresource(ID3D11DeviceContext* self, ID3D11
         uint32_t hash = 0;
         if (SafeComputeTextureHash(desc, data, rowPitch, &hash))
         {
-            TextureRegistry::Instance().SetTextureHash(resource, hash);
+            TextureRegistry::Instance().SetTextureHash(resource, hash, &desc);
             LogTextureOnce(hash, desc);
         }
     }
