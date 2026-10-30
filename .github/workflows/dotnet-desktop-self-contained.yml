@@ -35,6 +35,13 @@ jobs:
     - name: Test
       run: dotnet test ${{ github.workspace }}\src
 
+    # UHD 映射 DLL 必须先于主程序构建：主程序 csproj 用 Exists 条件内嵌
+    # src/Jasm.UhdMapper/build/Release/Jasm.UhdMapper.dll（运行时释放到 %LOCALAPPDATA%\JASM\UhdRuntime）。
+    - name: Build UHD Mapper DLL
+      run: |
+        cmake -S src/Jasm.UhdMapper -B src/Jasm.UhdMapper/build -A x64
+        cmake --build src/Jasm.UhdMapper/build --config Release
+
     # 不传 ExcludeElevator：自包含版同样需要提权助手（理由见 dotnet-desktop.yml 的同一处注释）。
     # Release.py 的构建门就是「非 ExcludeElevator」，助手会被构建并复制到包内、同时内嵌进主 exe。
     #
