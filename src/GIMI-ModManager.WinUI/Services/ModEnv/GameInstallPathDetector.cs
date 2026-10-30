@@ -158,7 +158,10 @@ public class GameInstallPathDetector
                 if (!MatchesGame(displayName) && !MatchesGame(displayIcon)) continue;
 
                 var installLocation = sub.GetValue("InstallLocation") as string;
-                if (!string.IsNullOrWhiteSpace(installLocation) && Directory.Exists(installLocation))
+                // 注册表里还有反作弊（AntiCheatExpert）等条目，DisplayName/DisplayIcon 同样包含
+                // "Wuthering Waves"，但 InstallLocation 下没有游戏 exe。只看目录存在会把反作弊目录
+                // 当成游戏根，后续“UHD 配置修复”就会去改那边的 Engine.ini。必须同时验证是可启动的游戏安装。
+                if (!string.IsNullOrWhiteSpace(installLocation) && LooksLikeGameInstall(installLocation))
                     return installLocation;
             }
             catch (Exception ex)
