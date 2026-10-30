@@ -63,6 +63,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     private readonly WuwaModFixerEngine _fixerEngine;
     private readonly WuwaRollbackService _rollbackService;
     private readonly WuwaUhdRepairService _uhdRepairService;
+    private readonly UhdAliasImportService _uhdAliasImportService;
     private readonly ILogger _logger;
 
     /// <summary>上一个显示行内按键面板的 Mod。用来判断"目标换人了"，好让列表把它滚进视野。</summary>
@@ -321,7 +322,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         ModSettingsService modSettingsService, IGameKeySender gameKeySender,
         NotificationManager notificationManager, WuwaModFixerEngine fixerEngine,
         WuwaFixSession fixSession, WuwaRollbackService rollbackService,
-        WuwaUhdRepairService uhdRepairService, ILogger logger)
+        WuwaUhdRepairService uhdRepairService, UhdAliasImportService uhdAliasImportService, ILogger logger)
     {
         _skinManagerService = skinManagerService;
         _gameService = gameService;
@@ -336,6 +337,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         FixSession = fixSession;
         _rollbackService = rollbackService;
         _uhdRepairService = uhdRepairService;
+        _uhdAliasImportService = uhdAliasImportService;
         _logger = logger.ForContext<OverlayViewModel>();
 
         // 状态行是否占位置的判据跨在协调器上：它一变，HasRefreshStatus 就要重新算
