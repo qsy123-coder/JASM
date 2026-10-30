@@ -150,6 +150,7 @@ public partial class App : Application
                 services.AddSingleton<ElevatorProvisioner>();
                 services.AddSingleton<ElevatorService>();
                 // 鸣潮「内置注入启动」：解析 shipping exe + WWMI d3d11，交给 Elevator 挂起创建并注入
+                services.AddSingleton<Services.Injection.UhdActiveModService>();
                 services.AddSingleton<Services.Injection.GameLaunchInjectionService>();
                 services.AddSingleton<GenshinProcessManager>();
                 services.AddSingleton<ThreeDMigtoProcessManager>();
