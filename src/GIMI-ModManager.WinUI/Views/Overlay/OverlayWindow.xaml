@@ -902,6 +902,74 @@
                                 Visibility="{x:Bind ViewModel.FixAeroEnabled, Mode=OneWay}" />
                         </StackPanel>
 
+                        <!--  UHD 贴图修复：档位 + 配置侧修复。哈希侧复用上面的“补全贴图状态”，
+                              配置侧按 Rocket 的 XXMI 方式改 Engine.ini / GameUserSettings.ini（先备份）。  -->
+                        <Border
+                            Padding="8"
+                            Background="#14FFFFFF"
+                            CornerRadius="6">
+                            <StackPanel Spacing="6">
+                                <TextBlock
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Text="UHD 贴图修复" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#99FFFFFF"
+                                    Text="UHD 档位下的贴图错误分两类：贴图 hash 过期用「UHD 推荐哈希修复」；贴图被流送/光追降级用「应用配置修复」（改 Engine.ini/GameUserSettings.ini，会强制高画质，低配慎用，先备份）。档位请与官方启动器保持一致。"
+                                    TextWrapping="Wrap" />
+                                <ComboBox
+                                    HorizontalAlignment="Stretch"
+                                    Header="资源档位"
+                                    ItemsSource="{x:Bind ViewModel.UhdTierOptions}"
+                                    SelectedIndex="{x:Bind ViewModel.UhdTierIndex, Mode=TwoWay}" />
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        HorizontalAlignment="Stretch"
+                                        Command="{x:Bind ViewModel.RunUhdHashFixCommand}"
+                                        Content="UHD 推荐哈希修复"
+                                        FontSize="11"
+                                        IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+                                    <Button
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Stretch"
+                                        Command="{x:Bind ViewModel.ApplyUhdConfigCommand}"
+                                        Content="应用配置修复"
+                                        FontSize="11"
+                                        IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+                                </Grid>
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        HorizontalAlignment="Stretch"
+                                        Command="{x:Bind ViewModel.RestoreUhdConfigCommand}"
+                                        Content="恢复配置备份"
+                                        FontSize="11"
+                                        IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+                                    <Button
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Stretch"
+                                        Command="{x:Bind ViewModel.RefreshUhdStatusCommand}"
+                                        Content="刷新状态"
+                                        FontSize="11"
+                                        IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+                                </Grid>
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#CCFFFFFF"
+                                    Text="{x:Bind ViewModel.UhdStatusMessage, Mode=OneWay}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{x:Bind ViewModel.HasUhdStatus, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+
                         <Button
                             HorizontalAlignment="Stretch"
                             Command="{x:Bind ViewModel.StartFixCommand}"
