@@ -91,7 +91,11 @@ public class GameInstallPathDetector
         }
     }
 
-    private string? FindGameExecutable(string installDir)
+    /// <summary>
+    /// Finds the actual game executable under <paramref name="installDir"/>. Public because the
+    /// UHD repair needs the exe path to walk up to <c>Client\Saved\Config\WindowsNoEditor</c>.
+    /// </summary>
+    public string? FindGameExecutable(string installDir)
     {
         var targets = new[]
         {
