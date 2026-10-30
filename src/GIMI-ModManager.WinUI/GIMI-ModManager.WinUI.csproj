@@ -326,6 +326,19 @@
 		</EmbeddedResource>
 	</ItemGroup>
 
+	<!-- UHD 运行时映射 DLL（Phase 2）内嵌进主 exe：与助手同理，单 exe 版磁盘上只有一个文件，
+	     运行时由 UhdMapperProvisioner 释放到 %LOCALAPPDATA%\JASM\UhdRuntime。见 UhdMapperProvisioning。
+
+	     Condition 同样是必需的：本机日常 dotnet build 不会先跑 CMake（本机通常没有 MSVC），
+	     没有产物时那些构建不能失败 —— 产出的 exe 没有内嵌映射 DLL，注入启动只注入 d3d11。
+
+	     产物位置由 .github/workflows/uhd-mapper.yml 决定（build/Release 下）。 -->
+	<ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\Jasm.UhdMapper\build\Release\Jasm.UhdMapper.dll')">
+		<EmbeddedResource Include="..\Jasm.UhdMapper\build\Release\Jasm.UhdMapper.dll">
+			<LogicalName>JASM.UhdMapper.dll</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
 	<ItemGroup>
 		<PRIResource Remove="Views\ModInstaller\**" />
 	</ItemGroup>
