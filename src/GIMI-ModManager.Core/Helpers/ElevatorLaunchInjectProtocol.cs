@@ -80,6 +80,17 @@ public static class ElevatorLaunchInjectProtocol
     /// <summary>映射 DLL 必须放在名为 UhdRuntime 的 JASM 管理目录下，避免被当成通用注入器。</summary>
     public const string MapperDirectoryName = "UhdRuntime";
 
+    /// <summary>
+    /// 映射 DLL 装好 D3D11 钩子后会 SetEvent 的就绪事件名前缀（后接游戏 pid）。
+    /// 助手在 ResumeThread 之前等待它，避免游戏在钩子就绪前创建 D3D11 设备。
+    /// 原生侧 `MapperApp.cpp` 的 `kReadyEventPrefix` 必须与此完全一致。
+    /// </summary>
+    public const string ReadyEventNamePrefix = @"Local\Jasm.UhdMapper.Ready.";
+
+    /// <summary>拼出映射 DLL 的就绪事件名。</summary>
+    public static string BuildReadyEventName(int processId) =>
+        ReadyEventNamePrefix + processId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>允许启动的游戏 exe。不要加入 Launcher.exe —— 往启动器里注入 d3d11 代理没有意义。</summary>
     public static readonly string[] AllowedGameExecutableNames =
     [
