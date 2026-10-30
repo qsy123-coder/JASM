@@ -26,7 +26,10 @@ public class GameServiceInitializationTests : IDisposable
 
     private async Task<IGameService> InitGameService(string gamePath, bool characterSkinsAsCharacters = false)
     {
-        Log.Logger = _logger;
+        // 不要写全局 Log.Logger：xUnit 默认并行跑测试类，而 ModIniKeyBindingParser 等组件用的是
+        // 静态 Log.ForContext。覆盖全局 logger 会把并行测试的日志也收进本收集器，
+        // 让 CheckFor_ErrorsOrWarnings 的「无警告」断言随机失败（CI 上已实际撞到）。
+        // GameService 及其依赖都使用注入的 logger，本收集器只应看到本次初始化产生的事件。
         var path = GetGameDirectory(gamePath).FullName;
 
         var genshinService = new GameService(_logger, new MockLocalizer());
