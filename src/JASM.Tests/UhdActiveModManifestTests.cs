@@ -46,6 +46,24 @@ public class UhdActiveModManifestTests
     }
 
     [Fact]
+    public void ParsesSectionHeadersWithTrailingComments()
+    {
+        const string ini = """
+                           [ResourceDiffuse]
+                           filename = Texture\Diffuse.dds
+
+                           [TextureOverrideTexture4];; comp 3
+                           hash = 179ec8b9
+                           this = ResourceDiffuse
+                           """;
+
+        var texture = Assert.Single(Build(ini).Mods[0].Textures);
+
+        Assert.Equal("179ec8b9", texture.HdHash);
+        Assert.Equal("TextureOverrideTexture4", texture.OverrideSection);
+    }
+
+    [Fact]
     public void SkipsComponentSectionsThatDoNotBindAResource()
     {
         var manifest = Build(SampleIni);
