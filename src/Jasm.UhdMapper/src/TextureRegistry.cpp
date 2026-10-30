@@ -91,6 +91,12 @@ void TextureRegistry::RememberSrv(ID3D11ShaderResourceView* srv, ID3D11Resource*
 
     std::unique_lock<std::shared_mutex> lock(_mutex);
 
+    // 保留「这是我们的替换 SRV」标记：替换后用 GetResource 回填时不能把它清掉，
+    // 否则下一帧会再次替换自己。
+    const auto previous = _srvs.find(srv);
+    if (previous != _srvs.end())
+        entry.replacement = previous->second.replacement;
+
     if (_srvs.size() >= kMaxEntries)
     {
         _srvs.clear();
