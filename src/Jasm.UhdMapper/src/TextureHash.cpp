@@ -143,6 +143,11 @@ bool ComputeTextureHash(const D3D11_TEXTURE2D_DESC& desc, const D3D11_SUBRESOURC
     if (pitch < rowBytes)
         return false;
 
+    // 防御性上限：畸形描述/超巨纹理不参与 hash，避免一次巨大的越界读。
+    constexpr unsigned long long kMaxHashBytes = 512ull * 1024 * 1024;
+    if (static_cast<unsigned long long>(rowBytes) * rowCount > kMaxHashBytes)
+        return false;
+
     const auto* bytes = static_cast<const uint8_t*>(initialData->pSysMem);
     uint32_t crc = 0xFFFFFFFFu;
     for (UINT row = 0; row < rowCount; ++row)
