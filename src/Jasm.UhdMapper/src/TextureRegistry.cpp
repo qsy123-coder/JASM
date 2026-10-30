@@ -131,6 +131,86 @@ bool TextureRegistry::TryGetTextureHash(ID3D11Resource* resource, uint32_t* hash
     return true;
 }
 
+bool TextureRegistry::TryGetTextureDesc(ID3D11Resource* resource, D3D11_TEXTURE2D_DESC* desc) const
+{
+    if (resource == nullptr || desc == nullptr)
+        return false;
+
+    ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(resource->QueryInterface(IID_PPV_ARGS(texture.GetAddressOf()))))
+        return false;
+
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    const auto it = _textures.find(texture.Get());
+    if (it == _textures.end())
+        return false;
+
+    desc->Width = it->second.width;
+    desc->Height = it->second.height;
+    desc->MipLevels = it->second.mips;
+    desc->ArraySize = it->second.arraySize;
+    desc->Format = it->second.format;
+    desc->SampleDesc.Count = 1;
+    desc->SampleDesc.Quality = 0;
+    return true;
+}
+
+void TextureRegistry::SetTextureHash(ID3D11Resource* resource, uint32_t hash)
+{
+    if (resource == nullptr)
+        return;
+
+    ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(resource->QueryInterface(IID_PPV_ARGS(texture.GetAddressOf()))))
+        return;
+
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+
+    auto it = _textures.find(texture.Get());
+    if (it == _textures.end())
+    {
+        if (_textures.size() >= kMaxEntries)
+            return;
+
+        TextureEntry entry;
+        entry.hash = hash;
+        entry.valid = true;
+        _textures[texture.Get()] = entry;
+        ++_hashed;
+        ++_updatedHashes;
+        return;
+    }
+
+    if (it->second.valid && it->second.hash == hash)
+        return;
+
+    if (!it->second.valid)
+    {
+        --_unknown;
+        ++_hashed;
+    }
+
+    it->second.hash = hash;
+    it->second.valid = true;
+    ++_updatedHashes;
+}
+
+void TextureRegistry::CopyTextureHash(ID3D11Resource* destination, ID3D11Resource* source)
+{
+    uint32_t hash = 0;
+    if (TryGetTextureHash(source, &hash))
+        SetTextureHash(destination, hash);
+}
+
+bool TextureRegistry::IsSrvRegistered(ID3D11ShaderResourceView* srv) const
+{
+    if (srv == nullptr)
+        return false;
+
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    return _srvs.find(srv) != _srvs.end();
+}
+
 void TextureRegistry::MarkReplacement(ID3D11ShaderResourceView* srv, bool replacement)
 {
     if (srv == nullptr)
