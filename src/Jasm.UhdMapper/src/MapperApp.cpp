@@ -2,10 +2,14 @@
 
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "D3D11Hooks.h"
 #include "Log.h"
+#include "TextureHash.h"
+#include "TextureRegistry.h"
 
 namespace jasm::uhd {
 namespace {
@@ -130,6 +134,26 @@ void MapperApp::UpdateDisableFlag()
     SetApplyMode(_config.applyMode && _manifestLoaded);
 }
 
+void MapperApp::WriteObservedTextures()
+{
+    const auto observed = TextureRegistry::Instance().SnapshotObserved(0);
+    if (observed.size() == _lastObservedCount)
+        return;
+
+    _lastObservedCount = observed.size();
+
+    const std::wstring path = _config.runtimeDirectory + L"\\observed-textures.tsv";
+    std::ofstream file(std::filesystem::path(path),
+                       std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!file.is_open())
+        return;
+
+    file << "hash\tformat\twidth\theight\n";
+    for (const auto& item : observed)
+        file << HashToHex(item.hash) << '\t' << item.format << '\t' << item.width << '\t'
+             << item.height << '\n';
+}
+
 void MapperApp::LogSummary()
 {
     const HookCounters counters = GetHookCounters();
@@ -201,6 +225,7 @@ void MapperApp::WorkerMain()
         if (now - lastSummary >= kSummaryInterval)
         {
             LogSummary();
+            WriteObservedTextures();
             lastSummary = now;
         }
     }
