@@ -101,6 +101,30 @@ public class UhdOverrideGeneratorTests
         Assert.Equal(SampleIni, result.Text);
     }
 
+    [Fact]
+    public void ParsesSectionHeadersWithTrailingComments()
+    {
+        const string ini = """
+                           [ResourceDiffuse]
+                           filename = Texture\Diffuse.dds
+
+                           [TextureOverrideTexture4];; comp 3
+                           hash = 179ec8b9
+                           this = ResourceDiffuse
+                           """;
+
+        var map = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["179ec8b9"] = ["e2adee4a"]
+        };
+
+        var result = UhdOverrideGenerator.Generate(ini, map);
+
+        Assert.True(result.HasChanges);
+        Assert.Contains("[TextureOverrideTexture4_UHD_e2adee4a]", result.Text);
+        Assert.Contains("hash = e2adee4a", result.Text);
+    }
+
     [Theory]
     [InlineData("hash = 1998df83", "1998df83")]
     [InlineData("  hash=DD1F9BC8", "dd1f9bc8")]
