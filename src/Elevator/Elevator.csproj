@@ -20,7 +20,7 @@
 		     主程序靠版本号判断助手认不认这些命令。旧版 Elevator.exe 没有版本信息，读出来天然是 1.0.0.0，
 		     于是「低于某能力的最低版本」==「不认识那条命令」。
 		     注意正在运行的 exe 无法被覆盖（文件被锁），所以磁盘上的版本 == 正在跑的那个进程的版本。 -->
-		<FileVersion>4.0.0.0</FileVersion>
+		<FileVersion>5.0.0.0</FileVersion>
 	</PropertyGroup>
 
 	<!-- 按键协议与危险组合键护栏从 Core 链接进来，而不是 ProjectReference：
@@ -31,6 +31,7 @@
 	<ItemGroup>
 		<Compile Include="..\GIMI-ModManager.Core\Helpers\KeyChordGuard.cs" Link="Linked\KeyChordGuard.cs" />
 		<Compile Include="..\GIMI-ModManager.Core\Helpers\KeyHelperProtocol.cs" Link="Linked\KeyHelperProtocol.cs" />
+		<Compile Include="..\GIMI-ModManager.Core\Helpers\ElevatorLaunchInjectProtocol.cs" Link="Linked\ElevatorLaunchInjectProtocol.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
