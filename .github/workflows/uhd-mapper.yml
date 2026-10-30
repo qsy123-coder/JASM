@@ -1,0 +1,54 @@
+# 构建注入用的 UHD 运行时映射 DLL（src/Jasm.UhdMapper）。
+#
+# 这台项目的主机通常没有 MSVC，所以原生 DLL 只在这里产出。
+# 产物由主程序 csproj 的 Exists 条件内嵌（见 GIMI-ModManager.WinUI.csproj），
+# 运行时再释放到 %LOCALAPPDATA%\JASM\UhdRuntime\Jasm.UhdMapper.dll。
+#
+# 注意：本 workflow 只上传 artifact，不会把 DLL 打进 release 包；
+# 发版前需要把这一步接到 dotnet-desktop*.yml 的主程序构建之前。
+
+name: Build UHD Mapper DLL
+
+on:
+  workflow_dispatch:
+
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'src/Jasm.UhdMapper/**'
+      - '.github/workflows/uhd-mapper.yml'
+
+  push:
+    branches: [ master ]
+    paths:
+      - 'src/Jasm.UhdMapper/**'
+      - '.github/workflows/uhd-mapper.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # windows-latest 自带 VS + C++ 工作负载，CMake 能直接找到 MSVC
+    - name: Configure
+      run: cmake -S src/Jasm.UhdMapper -B src/Jasm.UhdMapper/build -A x64
+
+    - name: Build
+      run: cmake --build src/Jasm.UhdMapper/build --config Release
+
+    - name: Verify output
+      shell: pwsh
+      run: |
+        $dll = 'src/Jasm.UhdMapper/build/Release/Jasm.UhdMapper.dll'
+        if (-not (Test-Path $dll)) { throw "missing $dll" }
+        Get-Item $dll | Format-List Name, Length, LastWriteTime
+
+    - name: Upload DLL
+      uses: actions/upload-artifact@v4
+      with:
+        name: Jasm.UhdMapper-x64
+        path: src/Jasm.UhdMapper/build/Release/Jasm.UhdMapper.dll
+        if-no-files-found: error
