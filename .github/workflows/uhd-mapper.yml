@@ -5,7 +5,7 @@
 # 运行时再释放到 %LOCALAPPDATA%\JASM\UhdRuntime\Jasm.UhdMapper.dll。
 #
 # 注意：本 workflow 只上传 artifact，不会把 DLL 打进 release 包；
-# 发版前需要把这一步接到 dotnet-desktop*.yml 的主程序构建之前。
+# 发版用的 dotnet-desktop*.yml 已在主程序构建前调用同一套 CMake 步骤。
 
 name: Build UHD Mapper DLL
 
@@ -34,10 +34,13 @@ jobs:
 
     # windows-latest 自带 VS + C++ 工作负载，CMake 能直接找到 MSVC
     - name: Configure
-      run: cmake -S src/Jasm.UhdMapper -B src/Jasm.UhdMapper/build -A x64
+      run: cmake -S src/Jasm.UhdMapper -B src/Jasm.UhdMapper/build -A x64 -DJASM_UHD_MAPPER_BUILD_TESTS=ON
 
     - name: Build
       run: cmake --build src/Jasm.UhdMapper/build --config Release
+
+    - name: Run native tests
+      run: ctest --test-dir src/Jasm.UhdMapper/build -C Release --output-on-failure
 
     - name: Verify output
       shell: pwsh
@@ -45,6 +48,21 @@ jobs:
         $dll = 'src/Jasm.UhdMapper/build/Release/Jasm.UhdMapper.dll'
         if (-not (Test-Path $dll)) { throw "missing $dll" }
         Get-Item $dll | Format-List Name, Length, LastWriteTime
+
+    # 静态 CRT 是硬要求：注入进游戏进程后不能再依赖 VCRUNTIME/MSVCP。
+    - name: Verify static CRT
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+        $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $vs) { throw "No Visual Studio with C++ tools found" }
+
+        $output = & cmd /c "`"call `"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && dumpbin /dependents src\Jasm.UhdMapper\build\Release\Jasm.UhdMapper.dll`""
+        $output | Write-Output
+        if ($output -match 'VCRUNTIME|MSVCP') {
+          throw "dynamic CRT dependency detected; static CRT (/MT) is required"
+        }
 
     - name: Upload DLL
       uses: actions/upload-artifact@v4
