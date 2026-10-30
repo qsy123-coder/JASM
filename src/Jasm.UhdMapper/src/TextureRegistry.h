@@ -33,6 +33,16 @@ public:
 
     bool TryGetTextureHash(ID3D11Resource* resource, uint32_t* hash) const;
 
+    bool TryGetTextureDesc(ID3D11Resource* resource, D3D11_TEXTURE2D_DESC* desc) const;
+
+    // 纹理创建后通过 Map/Unmap、UpdateSubresource、Copy* 才拿到内容时补写 hash。
+    void SetTextureHash(ID3D11Resource* resource, uint32_t hash);
+    void CopyTextureHash(ID3D11Resource* destination, ID3D11Resource* source);
+
+    bool IsSrvRegistered(ID3D11ShaderResourceView* srv) const;
+
+    uint64_t UpdatedHashCount() const { return _updatedHashes; }
+
     void MarkReplacement(ID3D11ShaderResourceView* srv, bool replacement);
 
     RegistryStats GetStats() const;
@@ -67,6 +77,7 @@ private:
     std::unordered_map<ID3D11ShaderResourceView*, SrvEntry> _srvs;
     std::size_t _hashed = 0;
     std::size_t _unknown = 0;
+    uint64_t _updatedHashes = 0;
 };
 
 }  // namespace jasm::uhd
