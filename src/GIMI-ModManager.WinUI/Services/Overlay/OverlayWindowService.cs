@@ -75,7 +75,7 @@ internal sealed class OverlayWindowService : IDisposable
         ModSettingsService modSettingsService, IGameKeySender gameKeySender,
         SelectedGameService selectedGameService, NotificationManager notificationManager,
         WuwaModFixerEngine fixerEngine, WuwaFixSession fixSession, WuwaRollbackService rollbackService,
-        WuwaUhdRepairService uhdRepairService, ILogger logger)
+        WuwaUhdRepairService uhdRepairService, UhdAliasImportService uhdAliasImportService, ILogger logger)
     {
         _selectedGameService = selectedGameService;
         _screenshotService = screenshotService;
@@ -88,7 +88,7 @@ internal sealed class OverlayWindowService : IDisposable
         _viewModel = new OverlayViewModel(skinManagerService, gameService, refreshCoordinator,
             localSettingsService, dragAndDropService, screenshotService, modSettingsService,
             gameKeySender, notificationManager, fixerEngine, fixSession, rollbackService,
-            uhdRepairService, logger);
+            uhdRepairService, uhdAliasImportService, logger);
     }
 
     /// <summary>
