@@ -11,6 +11,10 @@
 #include "TextureHash.h"
 #include "TextureRegistry.h"
 
+#ifdef JASM_UHD_MAPPER_WITH_DDS
+#include "DdsCache.h"
+#endif
+
 namespace jasm::uhd {
 namespace {
 
@@ -177,6 +181,11 @@ void MapperApp::WorkerMain()
 
     _config = BuildDefaultConfig();
     LoadConfigFile(_config);
+
+#ifdef JASM_UHD_MAPPER_WITH_DDS
+    DdsCache::Instance().SetLimits(_config.maxCacheMb * 1024ull * 1024ull,
+                                   _config.maxTextureMb * 1024ull * 1024ull);
+#endif
 
     LogInit(_config.logPath, _config.debugLog);
     LogWrite(LogLevel::Info, "mapper start pid=%lu abi=2 mode=%s runtime=%s",
