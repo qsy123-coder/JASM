@@ -14,9 +14,16 @@ namespace GIMI_ModManager.Core.Services.WuwaUhd;
 /// 0 角色名（中文）  1 组件 hash  2 ?  3 match_first_index  4 match_index_count
 /// 5 ?  6/7 draw key  8-10 0  11 "ps"  12 槽位
 /// 13 UHD hash（主）  14 格式  15 宽  16 高  17 mips …
-/// 21 HD/original hash  22 UHD 变体 hash（可为 0 或与 13 相同）  23 data hash
+/// 21 HD/original hash  22 UHD 变体 hash（见下）  23 data hash
 /// </code>
 /// 只认「HD → UHD」这一方向；HD 为空/全 0 的行跳过。
+///
+/// <para>
+/// 第 22 列**不作为映射使用**：600 行里只有 58 行与第 13 列不同，且这些值全是共享框架
+/// 贴图（`6b454451` = DLightmap、`e70c65f8` = PinkHairMap、`ecfa79d1` = Shadowramp …，
+/// 见 3DMigoto 的 `TextureOverride\RabbitFX\*` 段）。把它们当成 UHD 别名会把共享光照图
+/// 换成某个 mod 的贴图；Rocket 自己也用状态列（24）把这类行标成 2（推断，非直配）。
+/// </para>
 /// </summary>
 public static class RoleHashAliasLibrary
 {
@@ -52,7 +59,6 @@ public static class RoleHashAliasLibrary
             var role = columns[0].Trim();
             var uhd = NormalizeHash(columns[13]);
             var hd = NormalizeHash(columns[21]);
-            var uhdVariant = NormalizeHash(columns[22]);
 
             if (role.Length == 0 || hd is null || uhd is null)
                 continue;
@@ -70,8 +76,6 @@ public static class RoleHashAliasLibrary
             }
 
             variants.Add(uhd);
-            if (uhdVariant is not null && !string.Equals(uhdVariant, hd, StringComparison.OrdinalIgnoreCase))
-                variants.Add(uhdVariant);
         }
 
         return result.ToDictionary(
