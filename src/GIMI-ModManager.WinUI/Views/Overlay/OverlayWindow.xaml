@@ -916,7 +916,7 @@
                                 <TextBlock
                                     FontSize="10"
                                     Foreground="#99FFFFFF"
-                                    Text="一键完成 HD/UHD 两次观察并生成映射；不需要 Rocket，也不需要手动改 ini。"
+                                    Text="一键完成 HD/UHD 两次观察并生成映射；不需要 Rocket，也不需要手动改 ini。档位只对「内置注入启动」生效；用「Start Wuthering Waves (XXMI)」启动时以 XXMI 自己的设置为准。"
                                     TextWrapping="Wrap" />
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
@@ -944,6 +944,12 @@
                                             IsOn="{x:Bind ViewModel.UseInjectionLaunch, Mode=TwoWay}" />
                                     </StackPanel>
                                 </Grid>
+                                <Button
+                                    HorizontalAlignment="Stretch"
+                                    Command="{x:Bind ViewModel.LaunchWithTierCommand}"
+                                    Content="按所选档位启动游戏（内置注入）"
+                                    FontSize="11"
+                                    IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
                                 <Button
                                     Height="34"
                                     HorizontalAlignment="Stretch"
