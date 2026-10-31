@@ -109,24 +109,20 @@ public sealed class UhdActiveModService
 
     public void Clear() => UhdActiveModStore.Clear();
 
-    /// <summary>Rocket 学习库里的已知 UHD 配对（可没有：DLL 会自己学）。角色名对不上就返回 null。</summary>
+    /// <summary>
+    /// 已知 UHD 配对：Rocket aliases（可缺）+ JASM 自学习结果（<see cref="UhdLearningStore"/>）。
+    /// 两者都没有该角色的数据时返回 null。
+    /// </summary>
     private IReadOnlyDictionary<string, IReadOnlyCollection<string>>? TryLoadAliases(string roleName)
     {
-        var aliasesPath = Path.Combine(RoleHashAliasLibrary.DefaultDirectory,
-            RoleHashAliasLibrary.AliasesFileName);
-
-        if (!File.Exists(aliasesPath))
-            return null;
-
         try
         {
-            var library = RoleHashAliasLibrary.Load(aliasesPath);
-            var mappings = RoleHashAliasLibrary.GetForRole(library, roleName);
+            var mappings = UhdLearningStore.LoadMappingsForRole(roleName);
             return mappings.Count == 0 ? null : mappings;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _logger.Debug(e, "[UHD映射] 读取 Rocket 学习库失败，清单将不含预置 UHD 配对");
+            _logger.Debug(e, "[UHD映射] 读取 UHD 学习数据失败，清单将不含预置 UHD 配对");
             return null;
         }
     }
