@@ -959,6 +959,12 @@
                                     Content="导入 Rocket UHD 映射（需先学习）"
                                     FontSize="11"
                                     IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+                                <Button
+                                    HorizontalAlignment="Stretch"
+                                    Command="{x:Bind ViewModel.ImportRocketBuiltinCommand}"
+                                    Content="导入 Rocket 内置映射（选 Lod0_texture.dll，无需运行 Rocket）"
+                                    FontSize="11"
+                                    IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
 
                                 <!--  UHD 学习向导：停用本角色 Mod → 新版 Rocket 学习 → 恢复并导入  -->
                                 <Border
