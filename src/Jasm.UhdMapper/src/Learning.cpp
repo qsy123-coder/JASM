@@ -12,6 +12,26 @@
 namespace jasm::uhd {
 namespace {
 
+// 从游戏内存拷数据：源指针可能已经失效（缓冲区/映射指针会被复用），
+// 用 SEH 兜底 —— 读坏了只丢这次采样，绝不能把游戏打崩。
+bool SafeAssign(std::vector<uint8_t>& target, const void* source, std::size_t count)
+{
+    if (source == nullptr || count == 0)
+        return false;
+
+    __try
+    {
+        const auto* bytes = static_cast<const uint8_t*>(source);
+        target.assign(bytes, bytes + count);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        target.clear();
+        return false;
+    }
+}
+
 uint32_t ReadIndexValue(const uint8_t* data, DXGI_FORMAT format)
 {
     if (format == DXGI_FORMAT_R16_UINT)
@@ -78,11 +98,20 @@ uint32_t Learning::ComputeBufferHash(const std::vector<uint8_t>& data)
 void Learning::OnBufferCreated(ID3D11Buffer* buffer, const D3D11_BUFFER_DESC& desc,
                                const D3D11_SUBRESOURCE_DATA* initialData)
 {
-    if (buffer == nullptr || (desc.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0)
+    if (buffer == nullptr)
         return;
 
     std::lock_guard<std::mutex> lock(_mutex);
-    if (!_enabled || desc.ByteWidth == 0 || desc.ByteWidth > kMaxBufferBytes)
+    if (!_enabled)
+        return;
+
+    // 指针复用：同一个地址上可能是新的资源。旧影子/旧映射指针必须先清掉，
+    // 否则会拿旧缓冲的尺寸去拷贝新映射（实测会读越界崩 UE）。
+    _buffers.erase(buffer);
+    _mappedBuffers.erase(buffer);
+
+    if ((desc.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0 || desc.ByteWidth == 0
+        || desc.ByteWidth > kMaxBufferBytes)
         return;
 
     if (_buffers.size() >= kMaxBuffers)
@@ -95,11 +124,7 @@ void Learning::OnBufferCreated(ID3D11Buffer* buffer, const D3D11_BUFFER_DESC& de
     BufferShadow shadow;
     shadow.byteWidth = desc.ByteWidth;
     if (initialData != nullptr && initialData->pSysMem != nullptr)
-    {
-        const auto* bytes = static_cast<const uint8_t*>(initialData->pSysMem);
-        shadow.data.assign(bytes, bytes + desc.ByteWidth);
-        shadow.known = true;
-    }
+        shadow.known = SafeAssign(shadow.data, initialData->pSysMem, desc.ByteWidth);
 
     _buffers[buffer] = std::move(shadow);
 }
@@ -117,9 +142,8 @@ void Learning::OnBufferUpdated(ID3D11Buffer* buffer, const void* data)
     if (!EnsureShadowLocked(buffer, &shadow) || shadow->byteWidth == 0)
         return;
 
-    const auto* bytes = static_cast<const uint8_t*>(data);
-    shadow->data.assign(bytes, bytes + shadow->byteWidth);
-    shadow->known = true;
+    if (SafeAssign(shadow->data, data, shadow->byteWidth))
+        shadow->known = true;
     shadow->hashValid = false;
     _dirty = true;
 }
@@ -153,9 +177,8 @@ void Learning::OnBufferUnmapped(ID3D11Buffer* buffer)
     BufferShadow* shadow = nullptr;
     if (EnsureShadowLocked(buffer, &shadow) && shadow->byteWidth != 0)
     {
-        const auto* bytes = static_cast<const uint8_t*>(mapped->second);
-        shadow->data.assign(bytes, bytes + shadow->byteWidth);
-        shadow->known = true;
+        if (SafeAssign(shadow->data, mapped->second, shadow->byteWidth))
+            shadow->known = true;
         shadow->hashValid = false;
         _dirty = true;
     }
