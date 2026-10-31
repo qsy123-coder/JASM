@@ -834,6 +834,380 @@ internal sealed partial class OverlayViewModel
         }
     }
 
+    // ── 命令：JASM 自研 UHD 学习（不依赖 Rocket）────────────────────────
+    //
+    // 一键流程：HD 启动 → 用户让角色出现并退出 → 自动换 UHD 再启动 → 再退出 →
+    // 配对两份 learn.tsv → 合并学习库 → 为所选 Mod 生成 _UHD_ 段 → 恢复现场。
+    //
+    // 原生 DLL 在 learn=1 时只观察、不替换；配对使用 (IB hash, StartIndexLocation, 槽位)，
+    // 与 Rocket 的数据语义一致（实测与内置表重叠）。
+
+    private enum SelfLearnPhase
+    {
+        None,
+        Hd,
+        Uhd,
+        Finishing,
+    }
+
+    private SelfLearnPhase _selfLearnPhase = SelfLearnPhase.None;
+    private CancellationTokenSource? _selfLearnCts;
+    private string? _selfLearnRole;
+    private ICharacterModList? _selfLearnModList;
+    private List<Guid> _selfLearnOriginallyEnabledIds = [];
+    private List<string> _selfLearnTargetPaths = [];
+    private int? _selfLearnOriginalTier;
+    private int? _selfLearnPid;
+
+    [ObservableProperty] private bool _isSelfLearning;
+    [ObservableProperty] private string? _selfLearnStatus;
+    [ObservableProperty] private int _selfLearnSamples;
+
+    public bool HasSelfLearnStatus => !string.IsNullOrWhiteSpace(SelfLearnStatus);
+
+    public bool CanStartSelfLearning => CanRunUhdActions && !IsSelfLearning;
+
+    partial void OnIsSelfLearningChanged(bool value) => OnPropertyChanged(nameof(CanStartSelfLearning));
+
+    partial void OnSelfLearnStatusChanged(string? value) => OnPropertyChanged(nameof(HasSelfLearnStatus));
+
+    [RelayCommand]
+    private async Task StartSelfLearningAsync()
+    {
+        if (!CanStartSelfLearning)
+            return;
+
+        if (SelectedCharacter is null)
+        {
+            SetUhdStatus("请先选择角色。", isError: true);
+            return;
+        }
+
+        if (!UseInjectionLaunch)
+        {
+            SetUhdStatus("自研学习需要「内置注入启动」：请先打开上面的开关（学习依赖注入的映射 DLL 观察）。",
+                isError: true);
+            return;
+        }
+
+        if (IsGameRunning())
+        {
+            SetUhdStatus("请先完全退出游戏再开始学习 —— 向导要切换档位并启动两次游戏。", isError: true);
+            return;
+        }
+
+        var modList = ResolveModList(SelectedCharacter.Character);
+        if (modList is null)
+        {
+            SetUhdStatus("当前角色没有可用的 Mod 列表。", isError: true);
+            return;
+        }
+
+        var selectedTargets = FixTargets.Where(item => item.IsSelected).ToList();
+        if (selectedTargets.Count == 0)
+        {
+            SetUhdStatus("请先勾选要学习的 Mod（建议一次只勾一个，避免多个 Mod 抢同一个槽位）。",
+                isError: true);
+            return;
+        }
+
+        _selfLearnRole = SelectedCharacter.DisplayName;
+        _selfLearnModList = modList;
+        _selfLearnOriginallyEnabledIds = modList.Mods
+            .Where(entry => entry.IsEnabled)
+            .Select(entry => entry.Id)
+            .ToList();
+        _selfLearnTargetPaths = selectedTargets
+            .Select(item => item.ModPath)
+            .Where(Directory.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        _selfLearnOriginalTier = Settings.UhdResourceTierIndex;
+
+        var selectedIds = selectedTargets.Select(item => item.Id).ToHashSet();
+
+        try
+        {
+            // 一次只留所选 Mod，避免其它 Mod 的贴图混进观察。
+            await Task.Run(() =>
+            {
+                foreach (var entry in modList.Mods)
+                {
+                    var shouldBeEnabled = selectedIds.Contains(entry.Id);
+                    if (shouldBeEnabled && !entry.IsEnabled)
+                        modList.EnableMod(entry.Id);
+                    else if (!shouldBeEnabled && entry.IsEnabled)
+                        modList.DisableMod(entry.Id);
+                }
+            }).ConfigureAwait(true);
+
+            // HD 档位 + learn 模式：DLL 只记录观察，不替换任何贴图。
+            Settings.UhdResourceTierIndex = 2;
+            await SaveSettingsAsync();
+            UhdMapperConfig.SetLearnMode(true);
+            UhdMapperConfig.ClearLearnFile();
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[UHD自学习] 准备阶段失败");
+            RestoreSelfLearningState();
+            SetUhdStatus("准备学习失败：" + e.Message, isError: true);
+            return;
+        }
+
+        IsSelfLearning = true;
+        SelfLearnSamples = 0;
+        _selfLearnPhase = SelfLearnPhase.Hd;
+        SelfLearnStatus = "正在以 HD 启动游戏…";
+
+        var launch = await _gameLaunchInjectionService.TryLaunchAsync().ConfigureAwait(true);
+        if (!launch.Success)
+        {
+            RestoreSelfLearningState();
+            IsSelfLearning = false;
+            _selfLearnPhase = SelfLearnPhase.None;
+            SetUhdStatus("启动学习失败：" + launch.Error + "（学习已取消）", isError: true);
+            return;
+        }
+
+        _selfLearnPid = launch.ProcessId;
+        _selfLearnCts = new CancellationTokenSource();
+        _ = RunSelfLearnLoopAsync(_selfLearnCts.Token);
+    }
+
+    [RelayCommand]
+    private void CancelSelfLearning()
+    {
+        if (!IsSelfLearning)
+            return;
+
+        StopSelfLearnLoop();
+        IsSelfLearning = false;
+        _selfLearnPhase = SelfLearnPhase.None;
+        RestoreSelfLearningState();
+        SetUhdStatus("已取消学习；Mod 启用状态、档位与映射模式已恢复（已启动的游戏不会被关闭）。",
+            isError: false);
+    }
+
+    private async Task RunSelfLearnLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), token).ConfigureAwait(true);
+
+                SelfLearnSamples = UhdMapperConfig.CountLearnSamples();
+
+                if (IsPidRunning(_selfLearnPid) || IsGameRunning())
+                {
+                    SelfLearnStatus = _selfLearnPhase == SelfLearnPhase.Hd
+                        ? $"HD 观察中：{SelfLearnSamples} 条采样。让角色出现在画面里，然后退出游戏，向导会自动继续。"
+                        : $"UHD 观察中：{SelfLearnSamples} 条采样。同样让角色出现，然后退出游戏即可完成。";
+                    continue;
+                }
+
+                if (_selfLearnPhase == SelfLearnPhase.Hd)
+                {
+                    if (SelfLearnSamples < 50)
+                    {
+                        await FailSelfLearningAsync(
+                            $"HD 观察样本只有 {SelfLearnSamples} 条，角色可能没出现在画面里。学习已取消。");
+                        return;
+                    }
+
+                    UhdMapperConfig.ArchiveLearnFile(UhdMapperConfig.HdLearnPath);
+                    UhdMapperConfig.ClearLearnFile();
+                    Settings.UhdResourceTierIndex = 3;
+                    await SaveSettingsAsync();
+                    _selfLearnPhase = SelfLearnPhase.Uhd;
+                    SelfLearnStatus = "HD 完成，正在以 UHD 启动游戏…";
+                    SetUhdStatus("HD 观察完成，已切换到 UHD。", isError: false);
+
+                    var launch = await _gameLaunchInjectionService.TryLaunchAsync().ConfigureAwait(true);
+                    if (!launch.Success)
+                    {
+                        await FailSelfLearningAsync("UHD 启动失败：" + launch.Error);
+                        return;
+                    }
+
+                    _selfLearnPid = launch.ProcessId;
+                    continue;
+                }
+
+                if (_selfLearnPhase == SelfLearnPhase.Uhd)
+                {
+                    if (SelfLearnSamples < 50)
+                    {
+                        await FailSelfLearningAsync(
+                            $"UHD 观察样本只有 {SelfLearnSamples} 条，角色可能没出现在画面里。学习已取消。");
+                        return;
+                    }
+
+                    UhdMapperConfig.ArchiveLearnFile(UhdMapperConfig.UhdLearnPath);
+                    _selfLearnPhase = SelfLearnPhase.Finishing;
+                    SelfLearnStatus = "两次观察完成，正在配对并生成映射…";
+                    IsSelfLearning = false;
+                    await FinishSelfLearningAsync();
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[UHD自学习] 监听循环失败");
+            await FailSelfLearningAsync("学习失败：" + e.Message);
+        }
+    }
+
+    private async Task FinishSelfLearningAsync()
+    {
+        var role = _selfLearnRole;
+        var targetPaths = _selfLearnTargetPaths;
+
+        try
+        {
+            SetUhdStatus("正在配对 HD/UHD 观察…", isError: false);
+            var pairs = await Task.Run(() =>
+                UhdLearningStore.JoinFiles(UhdMapperConfig.HdLearnPath, UhdMapperConfig.UhdLearnPath))
+                .ConfigureAwait(true);
+
+            if (pairs.Count == 0)
+            {
+                SetUhdStatus("没有配对出任何 HD→UHD 映射 —— 两次观察里角色是否都在画面中出现过？",
+                    isError: true);
+                return;
+            }
+
+            var added = UhdLearningStore.Merge(role ?? string.Empty, pairs);
+            var import = await _uhdAliasImportService.ApplyAsync(role ?? string.Empty, targetPaths)
+                .ConfigureAwait(true);
+
+            SetUhdStatus($"学习完成：配对 {pairs.Count} 条（学习库新增 {added} 条）。{import.Message}",
+                isError: !import.Success);
+
+            if (import.Success)
+                await RefreshCoordinator.RequestRefreshAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[UHD自学习] 配对/生成失败");
+            SetUhdStatus("学习完成但生成映射失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            RestoreSelfLearningState();
+        }
+    }
+
+    private async Task FailSelfLearningAsync(string message)
+    {
+        StopSelfLearnLoop();
+        IsSelfLearning = false;
+        _selfLearnPhase = SelfLearnPhase.None;
+        RestoreSelfLearningState();
+        SetUhdStatus(message, isError: true);
+        await Task.CompletedTask;
+    }
+
+    private void StopSelfLearnLoop()
+    {
+        try
+        {
+            _selfLearnCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        _selfLearnCts?.Dispose();
+        _selfLearnCts = null;
+    }
+
+    /// <summary>恢复进入学习前的 Mod 启用状态、档位与映射模式（learn 关闭）。可重复调用。</summary>
+    private void RestoreSelfLearningState()
+    {
+        if (_selfLearnModList is { } modList)
+        {
+            try
+            {
+                foreach (var entry in modList.Mods)
+                {
+                    var shouldBeEnabled = _selfLearnOriginallyEnabledIds.Contains(entry.Id);
+                    if (shouldBeEnabled && !entry.IsEnabled)
+                        modList.EnableMod(entry.Id);
+                    else if (!shouldBeEnabled && entry.IsEnabled)
+                        modList.DisableMod(entry.Id);
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.Warning(e, "[UHD自学习] 恢复 Mod 启用状态失败");
+            }
+        }
+
+        try
+        {
+            if (_selfLearnOriginalTier is not null)
+            {
+                Settings.UhdResourceTierIndex = _selfLearnOriginalTier;
+                _ = SaveSettingsAsync();
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[UHD自学习] 恢复档位失败");
+        }
+
+        try
+        {
+            UhdMapperConfig.SetLearnMode(false);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _logger.Warning(e, "[UHD自学习] 关闭 learn 模式失败");
+        }
+
+        UhdMapperConfig.ClearLearnFile();
+        _selfLearnModList = null;
+        _selfLearnOriginallyEnabledIds = [];
+        _selfLearnTargetPaths = [];
+        _selfLearnRole = null;
+        _selfLearnPid = null;
+        _selfLearnOriginalTier = null;
+    }
+
+    /// <summary>
+    /// 「游戏是否还在跑」只认 UE 的 shipping 进程：启动器/XXMI 窗口关不关不代表游戏退出了，
+    /// 把它们算进来会让向导永远等不到「本遍结束」。
+    /// </summary>
+    private static bool IsGameRunning() =>
+        Process.GetProcessesByName("Client-Win64-Shipping").Length > 0;
+
+    private static bool IsPidRunning(int? pid)
+    {
+        if (pid is null)
+            return false;
+
+        try
+        {
+            using var process = Process.GetProcessById(pid.Value);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     // ── 命令：UHD 学习向导 ─────────────────────────────────────────────
     //
     // 流程：只启用所选 Mod（其余停用）→ 启动新版 Rocket → 用户在 UHD 下展示角色，
