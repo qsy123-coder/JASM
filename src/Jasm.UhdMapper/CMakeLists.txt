@@ -55,6 +55,7 @@ add_library(jasm_mapper_core STATIC
     src/Json.cpp
     src/Manifest.cpp
     src/AliasTable.cpp
+    src/DdsFormat.cpp
     src/PathSafety.cpp
     src/Config.cpp
     src/Log.cpp
