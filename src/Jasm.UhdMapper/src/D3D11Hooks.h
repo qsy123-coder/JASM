@@ -24,6 +24,7 @@ struct HookCounters
     uint64_t unknownBinds = 0;
     uint64_t hdBinds = 0;
     uint64_t uhdBinds = 0;
+    uint64_t ambiguousBinds = 0;
     uint64_t failures = 0;
     uint64_t substitutions = 0;
     uint64_t updatedHashes = 0;
