@@ -120,7 +120,7 @@ public sealed class GameLaunchInjectionService
         // 这条路径由 3DMigoto 在 draw 时接管，是本项目实机验证过的可靠路径；
         // 只写有变化的文件（每个文件先备份），失败不影响启动。
         // 这样用户不需要每次手动点「导入 Rocket UHD 映射」。
-        await EnsureUhdSectionsAsync(overlay?.LastSelectedCharacter, ct).ConfigureAwait(false);
+        await EnsureUhdSectionsAsync(overlay, ct).ConfigureAwait(false);
 
         // 再落盘 active-mod.json：映射 DLL 在进程启动时就会读它，必须早于 CreateProcess。
         // 已被 _UHD_ 段覆盖的 hash 会在清单里被排除；写失败只记日志，不阻断启动。
@@ -147,11 +147,15 @@ public sealed class GameLaunchInjectionService
     /// 对当前角色所有已启用的 mod 补齐 UHD 覆盖段。学习库缺失/该角色没学过/mod 不需要补，
     /// 都只是「没变化」，不当作启动失败。真正写盘时由导入服务逐个文件备份。
     /// </summary>
-    private async Task EnsureUhdSectionsAsync(string? characterInternalName, CancellationToken ct)
+    private async Task EnsureUhdSectionsAsync(OverlaySettings? overlay, CancellationToken ct)
     {
         try
         {
-            var selection = _uhdActiveModService.ResolveSelection(characterInternalName);
+            // 内置映射表优先：Rocket 的 Lod0_texture.dll 里内嵌了官方 HD→UHD 表，
+            // 读出来并进学习库（无需运行 Rocket）。只在用户选过 DLL 路径时执行。
+            await ImportRocketBuiltinAsync(overlay, ct).ConfigureAwait(false);
+
+            var selection = _uhdActiveModService.ResolveSelection(overlay?.LastSelectedCharacter);
             if (selection is null)
                 return;
 
@@ -171,6 +175,26 @@ public sealed class GameLaunchInjectionService
             // 自动补齐只是「让 mod 在 UHD 下正确显示」的优化，绝不能阻断游戏启动。
             _logger.Warning(e, "[UHD映射] 启动前自动补齐失败，继续启动");
         }
+    }
+
+    /// <summary>
+    /// 读取用户指定的 Rocket <c>Lod0_texture.dll</c> 内嵌映射表，合并进学习库。
+    /// 文件没选、读不了、表为空都只是「没新增」，不影响启动。
+    /// </summary>
+    private async Task ImportRocketBuiltinAsync(OverlaySettings? overlay, CancellationToken ct)
+    {
+        var path = overlay?.RocketLod0TextureDllPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        var aliases = await Task.Run(() => RocketBuiltinAliasExtractor.ExtractFromDll(path), ct)
+            .ConfigureAwait(false);
+        if (aliases.Count == 0)
+            return;
+
+        var added = RocketBuiltinAliasExtractor.MergeIntoLibrary(aliases);
+        _logger.Information("[UHD映射] Rocket 内置表：roles={Roles} added={Added}", aliases.Count,
+            added);
     }
 
     /// <summary>
