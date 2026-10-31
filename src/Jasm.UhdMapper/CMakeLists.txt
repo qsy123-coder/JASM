@@ -73,6 +73,7 @@ set(JASM_UHD_MAPPER_SOURCES
     src/dllmain.cpp
     src/MapperApp.cpp
     src/D3D11Hooks.cpp
+    src/Learning.cpp
     src/TextureRegistry.cpp
 )
 
