@@ -12,6 +12,9 @@ struct MapperConfig
     bool debugLog = false;
     bool readbackHash = false;
 
+    // M3 观察学习：记录 draw 身份 + 槽位贴图 hash 到 learn.tsv（不替换任何贴图）。
+    bool learnMode = false;
+
     uint64_t maxCacheMb = 1024;
     uint64_t maxTextureMb = 256;
 
