@@ -165,19 +165,30 @@ static void TestDdsFormat()
     CHECK(ClassifyTextureFormat(DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
           == TextureFormatMatch::Compatible);
 
-    // 不共享数据位：必须放弃替换，不能硬换格式
+    // 跨族但同为 8 位 UNORM 色彩贴图、sRGB 语义一致：可以替换，用 DDS 自身格式
+    // （实机案例：游戏 MT 是 BC3_UNORM，mod 是 BC7_UNORM）。
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC3_UNORM)
+          == TextureFormatMatch::Compatible);
+    CHECK(ChooseReplacementFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC3_UNORM)
+          == DXGI_FORMAT_BC7_UNORM);
     CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC1_UNORM)
+          == TextureFormatMatch::Compatible);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM)
+          == TextureFormatMatch::Compatible);
+    CHECK(ChooseReplacementFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC1_UNORM)
+          == DXGI_FORMAT_BC7_UNORM);
+
+    // sRGB 语义不一致、或数值语义不同（SNORM / HDR）：必须放弃替换
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC3_UNORM_SRGB)
+          == TextureFormatMatch::Unsupported);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM_SRGB, DXGI_FORMAT_BC3_UNORM)
           == TextureFormatMatch::Unsupported);
     CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC4_UNORM, DXGI_FORMAT_BC4_SNORM)
           == TextureFormatMatch::Unsupported);
     CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC5_UNORM, DXGI_FORMAT_BC5_SNORM)
           == TextureFormatMatch::Unsupported);
-    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC6H_UF16, DXGI_FORMAT_BC6H_SF16)
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC6H_UF16, DXGI_FORMAT_BC7_UNORM)
           == TextureFormatMatch::Unsupported);
-    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM)
-          == TextureFormatMatch::Unsupported);
-    CHECK(ChooseReplacementFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC1_UNORM)
-          == DXGI_FORMAT_BC7_UNORM);
 }
 
 static void TestJson()
