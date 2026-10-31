@@ -37,6 +37,11 @@ public:
 
     bool TryGetSrvHash(ID3D11ShaderResourceView* srv, uint32_t* hash, bool* isReplacement) const;
 
+    // 原始 SRV 的视图格式与维度：替换贴图时必须按它创建，否则 sRGB/线性语义会翻转
+    // （整张贴图发白或发黑）。未知的 SRV 返回 false。
+    bool TryGetSrvView(ID3D11ShaderResourceView* srv, DXGI_FORMAT* format,
+                       bool* isTexture2D) const;
+
     bool TryGetTextureHash(ID3D11Resource* resource, uint32_t* hash) const;
 
     bool TryGetTextureDesc(ID3D11Resource* resource, D3D11_TEXTURE2D_DESC* desc) const;
@@ -86,6 +91,8 @@ private:
         uint32_t hash = 0;
         bool valid = false;
         bool replacement = false;
+        DXGI_FORMAT viewFormat = DXGI_FORMAT_UNKNOWN;
+        bool viewIsTexture2D = false;
     };
 
     static constexpr std::size_t kMaxEntries = 200000;
