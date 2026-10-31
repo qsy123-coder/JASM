@@ -79,6 +79,7 @@ std::atomic<uint64_t> g_hashedBinds{0};
 std::atomic<uint64_t> g_unknownBinds{0};
 std::atomic<uint64_t> g_hdBinds{0};
 std::atomic<uint64_t> g_uhdBinds{0};
+std::atomic<uint64_t> g_ambiguousBinds{0};
 std::atomic<uint64_t> g_failures{0};
 std::atomic<uint64_t> g_substitutions{0};
 
@@ -275,7 +276,7 @@ HRESULT STDMETHODCALLTYPE DetourCreateShaderResourceView(
     return result;
 }
 
-void LogHashOnce(uint32_t hash, UINT slot, const AliasTarget* target, bool isHd)
+void LogHashOnce(uint32_t hash, UINT slot, const char* reason, const AliasTarget* target)
 {
     {
         std::lock_guard<std::mutex> lock(g_logMutex);
@@ -287,13 +288,12 @@ void LogHashOnce(uint32_t hash, UINT slot, const AliasTarget* target, bool isHd)
     const std::string hex = HashToHex(hash);
     if (target != nullptr)
     {
-        LogWrite(LogLevel::Info, "bind slot=%u hash=%s match=uhd dds=%s", slot, hex.c_str(),
+        LogWrite(LogLevel::Info, "bind slot=%u hash=%s match=%s dds=%s", slot, hex.c_str(), reason,
                  WideToUtf8(target->ddsPath).c_str());
     }
     else
     {
-        LogWrite(LogLevel::Info, "bind slot=%u hash=%s match=%s", slot, hex.c_str(),
-                 isHd ? "hd" : "none");
+        LogWrite(LogLevel::Info, "bind slot=%u hash=%s match=%s", slot, hex.c_str(), reason);
     }
 }
 
@@ -334,7 +334,16 @@ void InstrumentBindings(UINT start, UINT count, ID3D11ShaderResourceView* const*
         if (table->IsHdHash(hash))
         {
             g_hdBinds.fetch_add(1, std::memory_order_relaxed);
-            LogHashOnce(hash, start + i, nullptr, true);
+            LogHashOnce(hash, start + i, "hd", nullptr);
+            continue;
+        }
+
+        // 同一个 UHD hash 指向不同 mod 的 DDS（常见于共享框架贴图，如 DLightmap）：
+        // 无法判定该换成哪张，整条跳过。日志里打出来，便于判断视觉问题是否由它引起。
+        if (table->IsAmbiguous(hash))
+        {
+            g_ambiguousBinds.fetch_add(1, std::memory_order_relaxed);
+            LogHashOnce(hash, start + i, "uhd-ambiguous", nullptr);
             continue;
         }
 
@@ -342,7 +351,7 @@ void InstrumentBindings(UINT start, UINT count, ID3D11ShaderResourceView* const*
         if (table->TryGet(hash, &target))
         {
             g_uhdBinds.fetch_add(1, std::memory_order_relaxed);
-            LogHashOnce(hash, start + i, &target, false);
+            LogHashOnce(hash, start + i, "uhd", &target);
 
             // M2：在这里替换 SRV；M1 只记录。
         }
@@ -380,8 +389,14 @@ bool TrySubstitute(ID3D11ShaderResourceView* view, ID3D11ShaderResourceView** re
     if (!table->TryGet(hash, &target))
         return false;
 
+    // 原始 SRV 的视图格式决定替换纹理的 sRGB/线性语义；数组/立方体视图不按 2D 替换。
+    DXGI_FORMAT viewFormat = DXGI_FORMAT_UNKNOWN;
+    bool viewIsTexture2D = false;
+    if (registry.TryGetSrvView(view, &viewFormat, &viewIsTexture2D) && !viewIsTexture2D)
+        return false;
+
     ID3D11ShaderResourceView* created = nullptr;
-    if (!DdsCache::Instance().GetOrCreate(device, hash, target, &created))
+    if (!DdsCache::Instance().GetOrCreate(device, hash, target, viewFormat, &created))
         return false;
 
     // 标记为替换 SRV：后续重新绑定时不再二次替换。
@@ -393,7 +408,8 @@ bool TrySubstitute(ID3D11ShaderResourceView* view, ID3D11ShaderResourceView** re
         if (g_substitutedLogged.size() < kMaxLoggedSubstitutions
             && g_substitutedLogged.insert(hash).second)
         {
-            LogWrite(LogLevel::Info, "substitute hash=%s dds=%s", HashToHex(hash).c_str(),
+            LogWrite(LogLevel::Info, "substitute hash=%s view_fmt=%d dds=%s",
+                     HashToHex(hash).c_str(), static_cast<int>(viewFormat),
                      WideToUtf8(target.ddsPath).c_str());
         }
     }
@@ -828,6 +844,7 @@ HookCounters GetHookCounters()
     counters.unknownBinds = g_unknownBinds.load(std::memory_order_relaxed);
     counters.hdBinds = g_hdBinds.load(std::memory_order_relaxed);
     counters.uhdBinds = g_uhdBinds.load(std::memory_order_relaxed);
+    counters.ambiguousBinds = g_ambiguousBinds.load(std::memory_order_relaxed);
     counters.failures = g_failures.load(std::memory_order_relaxed);
     counters.substitutions = g_substitutions.load(std::memory_order_relaxed);
     counters.updatedHashes = TextureRegistry::Instance().UpdatedHashCount();
