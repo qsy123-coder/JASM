@@ -199,29 +199,75 @@ public class UhdActiveModManifestTests
     }
 
     [Fact]
-    public void BuildFromDirectoryReadsTopLevelIniAndSkipsBackups()
+    public void BuildFromDirectoryReadsNestedIniAndSkipsBackups()
     {
         var root = Path.Combine(Path.GetTempPath(), "jasmtests-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "Main"));
 
         try
         {
             File.WriteAllText(Path.Combine(root, "mod.ini"), SampleIni);
-            File.WriteAllText(Path.Combine(root, "mod.ini.BEFORE_20261030_uhd.bak"), SampleIni);
+            File.WriteAllText(Path.Combine(root, "Main", "mod.ini"), """
+                [ResourceTexture0]
+                filename = Textures/Nested.dds
+
+                [TextureOverrideTexture0]
+                hash = aaaa1111
+                this = ResourceTexture0
+                """);
+            File.WriteAllText(Path.Combine(root, "Main", "mod.ini.BEFORE_20261030_uhd.bak"), SampleIni);
             File.WriteAllText(Path.Combine(root, "notes.txt"), "ignored");
 
             var manifest = UhdActiveModManifestBuilder.BuildFromDirectory(
                 "琳奈", "linnai", [("Linnai", root)]);
 
             var mod = Assert.Single(manifest.Mods);
-            Assert.Single(mod.IniFiles);
-            Assert.EndsWith("mod.ini", mod.IniFiles[0], StringComparison.OrdinalIgnoreCase);
-            Assert.Single(mod.Textures);
+            Assert.Equal(2, mod.IniFiles.Count);
+            Assert.Equal(2, mod.Textures.Count);
+
+            // 子目录 ini 的相对 filename 必须按**它自己所在目录**解析，而不是 mod 根目录。
+            var nested = Assert.Single(mod.Textures, t => t.HdHash == "aaaa1111");
+            Assert.Equal(Path.GetFullPath(Path.Combine(root, "Main", @"Textures\Nested.dds")),
+                nested.DdsPath);
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void ResolvesSameResourceNamePerIniFile()
+    {
+        // Main\ 与 NPC\ 常各有 [ResourceTexture0]，不能互相覆盖。
+        var root = ModRoot;
+        var sources = new[]
+        {
+            new UhdIniSource(Path.Combine(root, "Main", "mod.ini"), """
+                [ResourceTexture0]
+                filename = Textures/Main.dds
+
+                [TextureOverrideTexture0]
+                hash = aaaa1111
+                this = ResourceTexture0
+                """),
+            new UhdIniSource(Path.Combine(root, "NPC", "mod.ini"), """
+                [ResourceTexture0]
+                filename = Textures/Npc.dds
+
+                [TextureOverrideTexture0]
+                hash = bbbb2222
+                this = ResourceTexture0
+                """)
+        };
+
+        var input = new UhdActiveModInput("Linnai", root, sources);
+        var manifest = UhdActiveModManifestBuilder.Build("琳奈", "linnai", [input]);
+
+        var main = Assert.Single(manifest.Mods[0].Textures, t => t.HdHash == "aaaa1111");
+        var npc = Assert.Single(manifest.Mods[0].Textures, t => t.HdHash == "bbbb2222");
+        Assert.Equal(Path.GetFullPath(Path.Combine(root, @"Main\Textures\Main.dds")), main.DdsPath);
+        Assert.Equal(Path.GetFullPath(Path.Combine(root, @"NPC\Textures\Npc.dds")), npc.DdsPath);
     }
 
     [Fact]
