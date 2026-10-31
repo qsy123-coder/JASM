@@ -26,6 +26,33 @@ public sealed class UhdActiveModService
 
     public static string ManifestPath => UhdActiveModStore.ActiveModPath;
 
+    /// <summary>当前角色的显示名 + 已启用 mod 的根目录（启动前自动补齐 UHD 段用）。</summary>
+    public sealed record Selection(string RoleName, IReadOnlyList<string> EnabledModPaths);
+
+    /// <summary>
+    /// 解析「当前角色 + 已启用 mod」。角色未选、没有 mod 列表、全部停用时返回 null。
+    /// 与 <see cref="WriteForCharacter"/> 使用同一套筛选规则，但不动清单文件。
+    /// </summary>
+    public Selection? ResolveSelection(string? characterInternalName)
+    {
+        if (string.IsNullOrWhiteSpace(characterInternalName))
+            return null;
+
+        var modList = _skinManagerService.GetCharacterModListOrDefault(characterInternalName);
+        if (modList is null)
+            return null;
+
+        var enabledModPaths = modList.Mods
+            .Where(entry => entry.IsEnabled)
+            .Select(entry => entry.Mod.FullPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+
+        return enabledModPaths.Length == 0
+            ? null
+            : new Selection(modList.Character.DisplayName, enabledModPaths);
+    }
+
     /// <summary>
     /// 为角色写入清单，返回写入路径；找不到角色 / 没有已启用 mod 时清空并返回 null。
     /// 任何 IO 失败都只记日志，绝不让启动流程失败。
