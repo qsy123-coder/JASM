@@ -107,7 +107,7 @@ public class UhdCoverageScannerTests
 
         var report = UhdCoverageScanner.FormatReport([character], DateTimeOffset.UnixEpoch);
 
-        Assert.Contains("需要学习: 1", report);
+        Assert.Contains("有未覆盖 hash: 1", report);
         Assert.Contains("琳奈", report);
         Assert.Contains("覆盖 1/3", report);
     }
