@@ -6,6 +6,7 @@ using GIMI_ModManager.WinUI.Models.Options;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Services.ModEnv;
+using GIMI_ModManager.WinUI.Services.Overlay;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Services.Injection;
@@ -31,6 +32,7 @@ public sealed class GameLaunchInjectionService
     private readonly SelectedGameService _selectedGameService;
     private readonly UhdActiveModService _uhdActiveModService;
     private readonly UhdMapperProvisioner _uhdMapperProvisioner;
+    private readonly UhdAliasImportService _uhdAliasImportService;
     private readonly ILogger _logger;
 
     public GameLaunchInjectionService(
@@ -40,6 +42,7 @@ public sealed class GameLaunchInjectionService
         SelectedGameService selectedGameService,
         UhdActiveModService uhdActiveModService,
         UhdMapperProvisioner uhdMapperProvisioner,
+        UhdAliasImportService uhdAliasImportService,
         ILogger logger)
     {
         _localSettingsService = localSettingsService;
@@ -48,6 +51,7 @@ public sealed class GameLaunchInjectionService
         _selectedGameService = selectedGameService;
         _uhdActiveModService = uhdActiveModService;
         _uhdMapperProvisioner = uhdMapperProvisioner;
+        _uhdAliasImportService = uhdAliasImportService;
         _logger = logger.ForContext<GameLaunchInjectionService>();
     }
 
@@ -112,8 +116,14 @@ public sealed class GameLaunchInjectionService
             .ReadSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App)
             .ConfigureAwait(false);
 
-        // 先落盘 active-mod.json：映射 DLL 在进程启动时就会读它，必须早于 CreateProcess。
-        // 没有注入就不需要这份清单；写失败只记日志，不阻断启动。
+        // 启动前自动把 Rocket 学到的 UHD 配对补成 mod ini 里的 _UHD_ 段。
+        // 这条路径由 3DMigoto 在 draw 时接管，是本项目实机验证过的可靠路径；
+        // 只写有变化的文件（每个文件先备份），失败不影响启动。
+        // 这样用户不需要每次手动点「导入 Rocket UHD 映射」。
+        await EnsureUhdSectionsAsync(overlay?.LastSelectedCharacter, ct).ConfigureAwait(false);
+
+        // 再落盘 active-mod.json：映射 DLL 在进程启动时就会读它，必须早于 CreateProcess。
+        // 已被 _UHD_ 段覆盖的 hash 会在清单里被排除；写失败只记日志，不阻断启动。
         _uhdActiveModService.WriteForCharacter(overlay?.LastSelectedCharacter);
 
         var arguments = BuildArguments(settings.LaunchArguments, overlay);
@@ -131,6 +141,36 @@ public sealed class GameLaunchInjectionService
         var message = ElevatorLaunchInjectProtocol.DescribeFailure(result.FailureReason);
         _logger.Warning("[注入启动] 失败 reason={Reason} message={Message}", result.FailureReason, message);
         return InjectionLaunchResult.Fail(message, result.FailureReason);
+    }
+
+    /// <summary>
+    /// 对当前角色所有已启用的 mod 补齐 UHD 覆盖段。学习库缺失/该角色没学过/mod 不需要补，
+    /// 都只是「没变化」，不当作启动失败。真正写盘时由导入服务逐个文件备份。
+    /// </summary>
+    private async Task EnsureUhdSectionsAsync(string? characterInternalName, CancellationToken ct)
+    {
+        try
+        {
+            var selection = _uhdActiveModService.ResolveSelection(characterInternalName);
+            if (selection is null)
+                return;
+
+            var result = await _uhdAliasImportService
+                .ApplyAsync(selection.RoleName, selection.EnabledModPaths, ct)
+                .ConfigureAwait(false);
+
+            _logger.Information("[UHD映射] 启动前自动补齐：success={Success} files={Files} sections={Sections} message={Message}",
+                result.Success, result.FilesChanged, result.SectionsAdded, result.Message);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            // 自动补齐只是「让 mod 在 UHD 下正确显示」的优化，绝不能阻断游戏启动。
+            _logger.Warning(e, "[UHD映射] 启动前自动补齐失败，继续启动");
+        }
     }
 
     /// <summary>
