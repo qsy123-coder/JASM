@@ -159,12 +159,20 @@ public sealed class UhdAliasImportService
             changedFiles.Count, sectionsAdded, modsSkipped, changedFiles);
     }
 
+    /// <summary>
+    /// mod 下的全部 ini，<b>递归包含子目录</b>。
+    ///
+    /// 不少 WWMI mod 把 <c>[TextureOverrideTexture*]</c> 放在 <c>Main\mod.ini</c> /
+    /// <c>NPC\mod.ini</c>，顶层 mod.ini 只有切换逻辑；只看顶层会导致这类 mod
+    /// 「一条 hash 都匹配不到」。3DMigoto 自身也是递归加载的，这里与它保持一致。
+    /// </summary>
     private static IEnumerable<string> EnumerateIniFiles(string modPath)
     {
         try
         {
-            return Directory.EnumerateFiles(modPath, "*.ini", SearchOption.TopDirectoryOnly)
+            return Directory.EnumerateFiles(modPath, "*.ini", SearchOption.AllDirectories)
                 .Where(p => !p.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
+                .Where(p => !p.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
