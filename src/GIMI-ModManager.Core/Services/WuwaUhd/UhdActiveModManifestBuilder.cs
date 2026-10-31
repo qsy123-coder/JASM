@@ -23,7 +23,11 @@ public sealed record UhdActiveModInput(string Name, string RootPath, IReadOnlyLi
 /// 带上坏配对会直接把共享贴图换掉。
 /// </para>
 ///
-/// 这些段仍然会作为 3DMigoto 侧的绑定保留在 ini 里；本条只影响 JASM 注入路径。
+/// <para>
+/// 但这些段里的 hash 会**从清单中排除**：3DMigoto 已经在 draw 时接管它们，
+/// 原生 mapper 再按 SRV 抢同一个 hash 会破坏 3DMigoto 的覆盖（实测整身发黑）。
+/// 于是两种场景各自成立：有段 → 段负责、mapper 不碰；无段 → mapper 全权接管。
+/// </para>
 /// </summary>
 public static class UhdActiveModManifestBuilder
 {
@@ -121,6 +125,11 @@ public static class UhdActiveModManifestBuilder
 
         var resourceFiles = BuildResourceFileMap(sections);
 
+        // 3DMigoto 已经用这些 _UHD_ 段接管了对应 hash。原生 mapper 不能再碰它们：
+        // 运行时按 SRV 替换会和 3DMigoto 的 draw 时替换冲突（实测整身发黑）。
+        // 段里的 hash 只用于「排除」，不作为映射来源（原因见类注释）。
+        var sectionCoveredHashes = BuildSectionCoveredHashSet(sections);
+
         var textures = new List<UhdActiveModTexture>();
         var seen = new HashSet<(string Hash, string Resource)>(new HashResourceComparer());
 
@@ -143,7 +152,7 @@ public static class UhdActiveModManifestBuilder
             if (resources.Length == 0)
                 continue;
 
-            var uhdHashes = CollectKnownUhdHashes(hdHash, hdToUhdHashes);
+            var uhdHashes = CollectKnownUhdHashes(hdHash, hdToUhdHashes, sectionCoveredHashes);
 
             foreach (var resource in resources)
             {
@@ -194,13 +203,32 @@ public static class UhdActiveModManifestBuilder
         return map;
     }
 
+    /// <summary>ini 里 <c>..._UHD_&lt;hash&gt;</c> 段已经接管的 UHD hash 集合。</summary>
+    private static HashSet<string> BuildSectionCoveredHashSet(IEnumerable<IniSection> sections)
+    {
+        var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var section in sections)
+        {
+            if (section.Name.IndexOf(GeneratedUhdMarker, StringComparison.OrdinalIgnoreCase) <= 0)
+                continue;
+
+            var hash = section.Body.Select(UhdOverrideGenerator.TryReadHash).FirstOrDefault(h => h is not null);
+            if (hash is not null)
+                covered.Add(hash);
+        }
+
+        return covered;
+    }
+
     /// <summary>
-    /// 只从 Rocket 学习库取 UHD 配对。ini 里已有的 <c>..._UHD_&lt;hash&gt;</c> 段不参与
-    /// （原因见类注释：它们可能来自旧学习数据，把共享贴图或别的贴图挂到本条目上）。
+    /// 只从 Rocket 学习库取 UHD 配对，并剔除 3DMigoto 的 <c>..._UHD_</c> 段已经覆盖的 hash。
+    /// 段里的 hash 不能当作映射来源（原因见类注释），但必须当作「已占用」排除。
     /// </summary>
     private static IReadOnlyList<string> CollectKnownUhdHashes(
         string hdHash,
-        IReadOnlyDictionary<string, IReadOnlyCollection<string>>? hdToUhdHashes)
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>>? hdToUhdHashes,
+        IReadOnlySet<string> sectionCoveredHashes)
     {
         var result = new List<string>();
 
@@ -210,7 +238,10 @@ public static class UhdActiveModManifestBuilder
         foreach (var hash in fromAliases)
         {
             var normalized = RoleHashAliasLibrary.NormalizeHash(hash);
-            if (normalized is not null && !result.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+            if (normalized is null || sectionCoveredHashes.Contains(normalized))
+                continue;
+
+            if (!result.Contains(normalized, StringComparer.OrdinalIgnoreCase))
                 result.Add(normalized);
         }
 
