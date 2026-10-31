@@ -72,6 +72,49 @@ bool SharesDataLayout(DXGI_FORMAT left, DXGI_FORMAT right)
     return leftGroup != 0 && leftGroup == DataLayoutGroup(right);
 }
 
+// 采样时是否做 sRGB 解码。跨压缩族时这是必须对齐的语义之一：
+// 例如游戏用 BC3_UNORM 采样的槽位，换成 BC7_UNORM 的 mod 贴图没问题，
+// 但换成 BC7_UNORM_SRGB 就会整体偏暗。
+bool IsSrgbFormat(DXGI_FORMAT format)
+{
+    switch (format)
+    {
+    case DXGI_FORMAT_BC1_UNORM_SRGB:
+    case DXGI_FORMAT_BC2_UNORM_SRGB:
+    case DXGI_FORMAT_BC3_UNORM_SRGB:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// 8 位 UNORM 色彩贴图（含 sRGB 变体）。跨族替换只在这个集合内成立：
+// 着色器拿到的都是解码后的 0..1 RGBA，压缩族只是存储方式；
+// SNORM（有符号）、BC6H（HDR 浮点）等数值语义不同，不能混用。
+bool IsColorUnormFormat(DXGI_FORMAT format)
+{
+    switch (format)
+    {
+    case DXGI_FORMAT_BC1_UNORM:
+    case DXGI_FORMAT_BC1_UNORM_SRGB:
+    case DXGI_FORMAT_BC2_UNORM:
+    case DXGI_FORMAT_BC2_UNORM_SRGB:
+    case DXGI_FORMAT_BC3_UNORM:
+    case DXGI_FORMAT_BC3_UNORM_SRGB:
+    case DXGI_FORMAT_BC7_UNORM:
+    case DXGI_FORMAT_BC7_UNORM_SRGB:
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return true;
+    default:
+        return false;
+    }
+}
+
 }  // namespace
 
 TextureFormatMatch ClassifyTextureFormat(DXGI_FORMAT ddsFormat, DXGI_FORMAT viewFormat)
@@ -83,18 +126,29 @@ TextureFormatMatch ClassifyTextureFormat(DXGI_FORMAT ddsFormat, DXGI_FORMAT view
     if (ddsFormat == viewFormat)
         return TextureFormatMatch::Same;
 
-    return SharesDataLayout(ddsFormat, viewFormat) ? TextureFormatMatch::Compatible
-                                                   : TextureFormatMatch::Unsupported;
+    if (SharesDataLayout(ddsFormat, viewFormat))
+        return TextureFormatMatch::Compatible;
+
+    // 压缩族不同：只要都是 8 位 UNORM 色彩贴图且 sRGB 语义一致，就能直接按
+    // DDS 自身格式建纹理（MT 就是这种情况：游戏 BC3_UNORM，mod 是 BC7_UNORM）。
+    if (IsColorUnormFormat(ddsFormat) && IsColorUnormFormat(viewFormat)
+        && IsSrgbFormat(ddsFormat) == IsSrgbFormat(viewFormat))
+        return TextureFormatMatch::Compatible;
+
+    return TextureFormatMatch::Unsupported;
 }
 
 DXGI_FORMAT ChooseReplacementFormat(DXGI_FORMAT ddsFormat, DXGI_FORMAT viewFormat)
 {
-    if (viewFormat == DXGI_FORMAT_UNKNOWN)
+    if (viewFormat == DXGI_FORMAT_UNKNOWN || ddsFormat == DXGI_FORMAT_UNKNOWN)
         return ddsFormat;
 
-    return ClassifyTextureFormat(ddsFormat, viewFormat) == TextureFormatMatch::Compatible
-               ? viewFormat
-               : ddsFormat;
+    if (ClassifyTextureFormat(ddsFormat, viewFormat) != TextureFormatMatch::Compatible)
+        return ddsFormat;
+
+    // 同族才用视图格式（能精确复刻 sRGB 语义）；跨族只能用 DDS 自己的格式，
+    // 但上面已经保证 sRGB 语义一致。
+    return SharesDataLayout(ddsFormat, viewFormat) ? viewFormat : ddsFormat;
 }
 
 }  // namespace jasm::uhd
