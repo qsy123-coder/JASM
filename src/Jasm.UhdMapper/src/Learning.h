@@ -60,6 +60,8 @@ private:
     {
         std::vector<uint8_t> data;
         std::size_t byteWidth = 0;
+        D3D11_BUFFER_DESC desc{};
+        bool descValid = false;
         bool known = false;
         uint32_t hash = 0;
         bool hashValid = false;

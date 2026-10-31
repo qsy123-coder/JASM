@@ -32,20 +32,6 @@ bool SafeAssign(std::vector<uint8_t>& target, const void* source, std::size_t co
     }
 }
 
-uint32_t ReadIndexValue(const uint8_t* data, DXGI_FORMAT format)
-{
-    if (format == DXGI_FORMAT_R16_UINT)
-    {
-        uint16_t value = 0;
-        std::memcpy(&value, data, sizeof(value));
-        return value;
-    }
-
-    uint32_t value = 0;
-    std::memcpy(&value, data, sizeof(value));
-    return value;
-}
-
 }  // namespace
 
 Learning& Learning::Instance()
@@ -123,6 +109,8 @@ void Learning::OnBufferCreated(ID3D11Buffer* buffer, const D3D11_BUFFER_DESC& de
 
     BufferShadow shadow;
     shadow.byteWidth = desc.ByteWidth;
+    shadow.desc = desc;
+    shadow.descValid = true;
     if (initialData != nullptr && initialData->pSysMem != nullptr)
         shadow.known = SafeAssign(shadow.data, initialData->pSysMem, desc.ByteWidth);
 
@@ -216,21 +204,36 @@ void Learning::OnDrawIndexed(UINT indexCount, UINT startIndexLocation)
     if (!EnsureShadowLocked(_currentIndexBuffer, &shadow) || !shadow->known)
         return;
 
-    const std::size_t stride =
-        _indexFormat == DXGI_FORMAT_R16_UINT ? sizeof(uint16_t) : sizeof(uint32_t);
     if (_indexFormat != DXGI_FORMAT_R16_UINT && _indexFormat != DXGI_FORMAT_R32_UINT)
         return;
 
-    const std::size_t offset =
-        static_cast<std::size_t>(_indexOffset) + static_cast<std::size_t>(startIndexLocation) * stride;
-    if (offset + stride > shadow->data.size())
-        return;
-
-    const uint32_t firstIndex = ReadIndexValue(shadow->data.data() + offset, _indexFormat);
+    // 身份位置 = draw 的 StartIndexLocation（Rocket 的 match_first_index 就是它；
+    // 组件计数前缀和 0→17970→63606 可证）。不要再读「第一个 index 值」。
+    const uint32_t firstIndex = startIndexLocation;
 
     if (!shadow->hashValid)
     {
         shadow->hash = ComputeBufferHash(shadow->data);
+
+        // 诊断：3DMigoto 的 IB hash 是 mod.ini 里的 hash =，算法未知；
+        // 一次真机跑日志即可判断是「纯内容」还是「内容+描述」的组合。
+        if (shadow->descValid)
+        {
+            const uint32_t dataHash = shadow->hash;
+            const auto* descBytes = reinterpret_cast<const uint8_t*>(&shadow->desc);
+            const uint32_t descSeed = Crc32c(descBytes, sizeof(shadow->desc));
+            const uint32_t combined1 = Crc32cUpdate(dataHash ^ 0xFFFFFFFFu, descBytes,
+                                                    sizeof(shadow->desc)) ^ 0xFFFFFFFFu;
+            const uint32_t combined2 = Crc32cUpdate(descSeed ^ 0xFFFFFFFFu, shadow->data.data(),
+                                                    shadow->data.size()) ^ 0xFFFFFFFFu;
+            LogWrite(LogLevel::Info,
+                     "ibhash data=%08x c1=%08x c2=%08x width=%u bind=%08x usage=%u cpu=%u misc=%08x stride=%u",
+                     dataHash, combined1, combined2, shadow->desc.ByteWidth,
+                     shadow->desc.BindFlags, shadow->desc.Usage,
+                     shadow->desc.CPUAccessFlags, shadow->desc.MiscFlags,
+                     shadow->desc.StructureByteStride);
+        }
+
         shadow->hashValid = true;
     }
 
