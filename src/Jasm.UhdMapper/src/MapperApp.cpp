@@ -7,6 +7,7 @@
 #include <string>
 
 #include "D3D11Hooks.h"
+#include "Learning.h"
 #include "Log.h"
 #include "TextureHash.h"
 #include "TextureRegistry.h"
@@ -135,7 +136,8 @@ void MapperApp::UpdateDisableFlag()
         _disableLogged = false;
     }
 
-    SetApplyMode(_config.applyMode && _manifestLoaded);
+    // 学习模式只观察，绝不替换（否则会把「看到的贴图」换成 mod 贴图，毁掉配对）。
+    SetApplyMode(_config.applyMode && _manifestLoaded && !_config.learnMode);
 }
 
 void MapperApp::WriteObservedTextures()
@@ -189,12 +191,21 @@ void MapperApp::WorkerMain()
 #endif
 
     LogInit(_config.logPath, _config.debugLog);
-    LogWrite(LogLevel::Info, "mapper start pid=%lu abi=2 mode=%s runtime=%s",
+    LogWrite(LogLevel::Info, "mapper start pid=%lu abi=2 mode=%s learn=%d runtime=%s",
              GetCurrentProcessId(), _config.applyMode ? "apply" : "instrument",
-             WideToUtf8(_config.runtimeDirectory).c_str());
+             _config.learnMode ? 1 : 0, WideToUtf8(_config.runtimeDirectory).c_str());
+
+    // 学习模式的输出固定落在 runtime 目录（托管侧按档位重命名）。
+    if (_config.learnMode)
+    {
+        Learning::Instance().SetOutputPath(_config.runtimeDirectory + L"\\learn.tsv");
+        Learning::Instance().SetEnabled(true);
+        LogWrite(LogLevel::Info, "learning enabled output=%s",
+                 WideToUtf8(_config.runtimeDirectory + L"\\learn.tsv").c_str());
+    }
 
     const bool manifestOk = ReloadManifest();
-    SetApplyMode(_config.applyMode && manifestOk);
+    SetApplyMode(_config.applyMode && manifestOk && !_config.learnMode);
 
     const bool hooksInstalled = InstallD3D11Hooks();
     LogWrite(hooksInstalled ? LogLevel::Info : LogLevel::Warn, "hooks installed=%d",
@@ -236,6 +247,12 @@ void MapperApp::WorkerMain()
         {
             LogSummary();
             WriteObservedTextures();
+            if (_config.learnMode)
+            {
+                Learning::Instance().WriteSnapshot();
+                LogWrite(LogLevel::Info, "learning samples=%zu",
+                         Learning::Instance().SampleCount());
+            }
             lastSummary = now;
         }
     }
