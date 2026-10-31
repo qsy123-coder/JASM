@@ -771,6 +771,69 @@ internal sealed partial class OverlayViewModel
         }
     }
 
+    /// <summary>
+    /// 从 Rocket 的 <c>Lod0_texture.dll</c> 读取**内嵌的官方 HD→UHD 映射表**并合并进学习库。
+    /// 这份表覆盖 Rocket 支持的角色（实测 2,110 条 / 18 个角色），不需要运行 Rocket；
+    /// 与本地 aliases、JASM 自学习结果合并使用。
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportRocketBuiltinAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        IsUhdBusy = true;
+        SetUhdStatus("正在读取 Rocket 内置映射…", isError: false);
+        try
+        {
+            var path = Settings.RocketLod0TextureDllPath;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                var picker = new Windows.Storage.Pickers.FileOpenPicker();
+                picker.FileTypeFilter.Add(".dll");
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+                var file = await picker.PickSingleFileAsync();
+                if (file is null)
+                {
+                    SetUhdStatus("已取消。", isError: true);
+                    return;
+                }
+
+                path = file.Path;
+                Settings.RocketLod0TextureDllPath = path;
+                _ = SaveSettingsAsync();
+            }
+
+            var aliases = await Task.Run(() => RocketBuiltinAliasExtractor.ExtractFromDll(path))
+                .ConfigureAwait(true);
+            if (aliases.Count == 0)
+            {
+                SetUhdStatus("这个 DLL 里没有找到内置映射（请确认选的是新版 Lod0_texture.dll）。",
+                    isError: true);
+                return;
+            }
+
+            var added = RocketBuiltinAliasExtractor.MergeIntoLibrary(aliases);
+            var preview = string.Join("、",
+                aliases.Take(8).Select(item => $"{item.Role}({item.Pairs.Count})"));
+            SetUhdStatus($"已导入 {aliases.Count} 个角色、新增 {added} 条映射：{preview}…",
+                isError: false);
+
+            await RefreshCoordinator.RequestRefreshAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗修复] 导入 Rocket 内置映射失败");
+            SetUhdStatus("导入 Rocket 内置映射失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            IsUhdBusy = false;
+        }
+    }
+
     // ── 命令：UHD 学习向导 ─────────────────────────────────────────────
     //
     // 流程：只启用所选 Mod（其余停用）→ 启动新版 Rocket → 用户在 UHD 下展示角色，
