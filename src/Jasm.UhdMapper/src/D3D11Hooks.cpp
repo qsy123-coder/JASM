@@ -13,6 +13,7 @@
 #include <MinHook.h>
 
 #include "AliasTable.h"
+#include "Learning.h"
 #include "Log.h"
 #include "Manifest.h"
 
@@ -36,6 +37,9 @@ using CreateDeviceFn = HRESULT(WINAPI*)(IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE,
                                         const D3D_FEATURE_LEVEL*, UINT, UINT, ID3D11Device**,
                                         D3D_FEATURE_LEVEL*, ID3D11DeviceContext**);
 
+using CreateBufferFn = HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*, const D3D11_BUFFER_DESC*,
+                                                   const D3D11_SUBRESOURCE_DATA*, ID3D11Buffer**);
+
 using CreateTexture2DFn = HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*, const D3D11_TEXTURE2D_DESC*,
                                                       const D3D11_SUBRESOURCE_DATA*,
                                                       ID3D11Texture2D**);
@@ -58,9 +62,17 @@ using CopyResourceFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Reso
 using UpdateSubresourceFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT,
                                                      const D3D11_BOX*, const void*, UINT, UINT);
 
+// M3 观察学习：draw 身份 = (索引缓冲内容 hash, 第一个 index 值)。
+using IASetIndexBufferFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*,
+                                                    DXGI_FORMAT, UINT);
+using DrawIndexedFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT, INT);
+using DrawIndexedInstancedFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT, UINT,
+                                                        INT, UINT);
+
 CreateDeviceAndSwapChainFn g_origCreateDeviceAndSwapChain = nullptr;
 CreateDeviceFn g_origCreateDevice = nullptr;
 
+CreateBufferFn g_origCreateBuffer = nullptr;
 CreateTexture2DFn g_origCreateTexture2D = nullptr;
 CreateShaderResourceViewFn g_origCreateShaderResourceView = nullptr;
 PSSetShaderResourcesFn g_origPSSetShaderResources = nullptr;
@@ -69,6 +81,9 @@ UnmapFn g_origUnmap = nullptr;
 CopySubresourceRegionFn g_origCopySubresourceRegion = nullptr;
 CopyResourceFn g_origCopyResource = nullptr;
 UpdateSubresourceFn g_origUpdateSubresource = nullptr;
+IASetIndexBufferFn g_origIASetIndexBuffer = nullptr;
+DrawIndexedFn g_origDrawIndexed = nullptr;
+DrawIndexedInstancedFn g_origDrawIndexedInstanced = nullptr;
 
 std::atomic<bool> g_installed{false};
 std::atomic<bool> g_applyMode{false};
@@ -228,6 +243,78 @@ bool PatchVtableSlot(void** vtable, std::size_t index, void* detour, void** orig
     return true;
 }
 
+// ── 观察学习（M3）：索引缓冲影子 + draw 身份 ────────────────────────────
+
+HRESULT STDMETHODCALLTYPE DetourCreateBuffer(ID3D11Device* self, const D3D11_BUFFER_DESC* desc,
+                                             const D3D11_SUBRESOURCE_DATA* initialData,
+                                             ID3D11Buffer** buffer)
+{
+    const auto original = g_origCreateBuffer;
+    const HRESULT result = original(self, desc, initialData, buffer);
+
+    if (SUCCEEDED(result) && buffer != nullptr && *buffer != nullptr && desc != nullptr)
+    {
+        try
+        {
+            Learning::Instance().OnBufferCreated(*buffer, *desc, initialData);
+        }
+        catch (...)
+        {
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    return result;
+}
+
+void STDMETHODCALLTYPE DetourIASetIndexBuffer(ID3D11DeviceContext* self, ID3D11Buffer* buffer,
+                                              DXGI_FORMAT format, UINT offset)
+{
+    try
+    {
+        Learning::Instance().OnIndexBufferBound(buffer, format, offset);
+    }
+    catch (...)
+    {
+        g_failures.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    g_origIASetIndexBuffer(self, buffer, format, offset);
+}
+
+void STDMETHODCALLTYPE DetourDrawIndexed(ID3D11DeviceContext* self, UINT indexCount,
+                                         UINT startIndexLocation, INT baseVertexLocation)
+{
+    try
+    {
+        Learning::Instance().OnDrawIndexed(indexCount, startIndexLocation);
+    }
+    catch (...)
+    {
+        g_failures.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    g_origDrawIndexed(self, indexCount, startIndexLocation, baseVertexLocation);
+}
+
+void STDMETHODCALLTYPE DetourDrawIndexedInstanced(ID3D11DeviceContext* self,
+                                                  UINT indexCountPerInstance, UINT instanceCount,
+                                                  UINT startIndexLocation, INT baseVertexLocation,
+                                                  UINT startInstanceLocation)
+{
+    try
+    {
+        Learning::Instance().OnDrawIndexed(indexCountPerInstance, startIndexLocation);
+    }
+    catch (...)
+    {
+        g_failures.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    g_origDrawIndexedInstanced(self, indexCountPerInstance, instanceCount, startIndexLocation,
+                               baseVertexLocation, startInstanceLocation);
+}
+
 // ── 纹理 / SRV 记录 ──────────────────────────────────────────────────────
 
 HRESULT STDMETHODCALLTYPE DetourCreateTexture2D(ID3D11Device* self, const D3D11_TEXTURE2D_DESC* desc,
@@ -301,12 +388,17 @@ void InstrumentBindings(UINT start, UINT count, ID3D11ShaderResourceView* const*
 {
     auto& registry = TextureRegistry::Instance();
     const AliasTable* table = g_aliasTable.load(std::memory_order_acquire);
+    const bool learning = Learning::Instance().Enabled();
 
     for (UINT i = 0; i < count; ++i)
     {
         ID3D11ShaderResourceView* view = views[i];
         if (view == nullptr)
+        {
+            if (learning)
+                Learning::Instance().OnPixelShaderResourceBound(start + i, 0);
             continue;
+        }
 
         g_binds.fetch_add(1, std::memory_order_relaxed);
 
@@ -321,10 +413,15 @@ void InstrumentBindings(UINT start, UINT count, ID3D11ShaderResourceView* const*
 
             if (!registry.TryGetSrvHash(view, &hash, &isReplacement))
             {
+                if (learning)
+                    Learning::Instance().OnPixelShaderResourceBound(start + i, 0);
                 g_unknownBinds.fetch_add(1, std::memory_order_relaxed);
                 continue;
             }
         }
+
+        if (learning)
+            Learning::Instance().OnPixelShaderResourceBound(start + i, hash);
 
         g_hashedBinds.fetch_add(1, std::memory_order_relaxed);
 
@@ -485,11 +582,20 @@ HRESULT STDMETHODCALLTYPE DetourMap(ID3D11DeviceContext* self, ID3D11Resource* r
     const auto original = g_origMap;
     const HRESULT result = original(self, resource, subresource, mapType, mapFlags, mapped);
 
-    if (SUCCEEDED(result) && mapped != nullptr && mapped->pData != nullptr && subresource == 0)
+    if (SUCCEEDED(result) && mapped != nullptr && mapped->pData != nullptr)
     {
         try
         {
-            RememberMap(resource, subresource, mapped->pData, mapped->RowPitch);
+            if (subresource == 0)
+                RememberMap(resource, subresource, mapped->pData, mapped->RowPitch);
+
+            // 索引缓冲（学习模式）：记住映射地址，Unmap 前整块拷进影子。
+            if (resource != nullptr)
+            {
+                ComPtr<ID3D11Buffer> buffer;
+                if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(buffer.GetAddressOf()))))
+                    Learning::Instance().OnBufferMapped(buffer.Get(), mapped->pData);
+            }
         }
         catch (...)
         {
@@ -523,6 +629,21 @@ void STDMETHODCALLTYPE DetourUnmap(ID3D11DeviceContext* self, ID3D11Resource* re
         }
     }
 
+    // 索引缓冲的影子必须在原 Unmap 之前拷完（之后地址失效）。
+    if (resource != nullptr)
+    {
+        try
+        {
+            ComPtr<ID3D11Buffer> buffer;
+            if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(buffer.GetAddressOf()))))
+                Learning::Instance().OnBufferUnmapped(buffer.Get());
+        }
+        catch (...)
+        {
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
     original(self, resource, subresource);
 
     if (hashed)
@@ -548,6 +669,21 @@ void STDMETHODCALLTYPE DetourUpdateSubresource(ID3D11DeviceContext* self, ID3D11
                                                UINT subresource, const D3D11_BOX* box,
                                                const void* data, UINT rowPitch, UINT depthPitch)
 {
+    // 索引缓冲（学习模式）：UpdateSubresource 的 box 为 null 表示整块更新。
+    if (resource != nullptr && subresource == 0 && box == nullptr && data != nullptr)
+    {
+        try
+        {
+            ComPtr<ID3D11Buffer> buffer;
+            if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(buffer.GetAddressOf()))))
+                Learning::Instance().OnBufferUpdated(buffer.Get(), data);
+        }
+        catch (...)
+        {
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
     const auto original = g_origUpdateSubresource;
     original(self, resource, subresource, box, data, rowPitch, depthPitch);
 
@@ -637,6 +773,9 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
 
     g_device.store(device, std::memory_order_release);
     void** deviceVtable = *reinterpret_cast<void***>(device);
+    const bool bufferHook = PatchVtableSlot(deviceVtable, 3,
+                                            reinterpret_cast<void*>(&DetourCreateBuffer),
+                                            reinterpret_cast<void**>(&g_origCreateBuffer));
     const bool textureHook = PatchVtableSlot(deviceVtable, 5,
                                              reinterpret_cast<void*>(&DetourCreateTexture2D),
                                              reinterpret_cast<void**>(&g_origCreateTexture2D));
@@ -652,13 +791,30 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
         // ID3D11DeviceContext 真实 vtable 顺序（前面是 IUnknown + DeviceChild 共 7 个），
         // 以 d3d11.h 为准 —— 注意 PSSetConstantBuffers 在 Unmap 之后，不是紧跟 PSSetSamplers：
         //   8  PSSetShaderResources
-        //   12 DrawIndexed      （M3 用）
+        //   12 DrawIndexed      （M3 学习：draw 身份）
         //   14 Map
         //   15 Unmap
+        //   19 IASetIndexBuffer  （M3 学习）
+        //   20 DrawIndexedInstanced（M3 学习）
         //   46 CopySubresourceRegion
         //   47 CopyResource
         //   48 UpdateSubresource
         // 索引错一位就会用错误签名调用别的管线方法，直接崩游戏。
+        contextHooks += PatchVtableSlot(contextVtable, 12,
+                                        reinterpret_cast<void*>(&DetourDrawIndexed),
+                                        reinterpret_cast<void**>(&g_origDrawIndexed))
+                            ? 1
+                            : 0;
+        contextHooks += PatchVtableSlot(contextVtable, 19,
+                                        reinterpret_cast<void*>(&DetourIASetIndexBuffer),
+                                        reinterpret_cast<void**>(&g_origIASetIndexBuffer))
+                            ? 1
+                            : 0;
+        contextHooks += PatchVtableSlot(contextVtable, 20,
+                                        reinterpret_cast<void*>(&DetourDrawIndexedInstanced),
+                                        reinterpret_cast<void**>(&g_origDrawIndexedInstanced))
+                            ? 1
+                            : 0;
         contextHooks += PatchVtableSlot(contextVtable, 8,
                                         reinterpret_cast<void*>(&DetourPSSetShaderResources),
                                         reinterpret_cast<void**>(&g_origPSSetShaderResources))
@@ -690,9 +846,9 @@ void InstallDeviceHooks(ID3D11Device* device, ID3D11DeviceContext* context)
     }
 
     LogWrite(LogLevel::Info,
-             "device created vtable=%p context=%p deviceHooks=%d/%d contextHooks=%d/6 screen=%ux%u",
-             deviceVtable, context, textureHook ? 1 : 0, srvHook ? 1 : 0, contextHooks,
-             g_screenWidth.load(), g_screenHeight.load());
+             "device created vtable=%p context=%p deviceHooks=%d/%d/%d contextHooks=%d/9 screen=%ux%u",
+             deviceVtable, context, bufferHook ? 1 : 0, textureHook ? 1 : 0, srvHook ? 1 : 0,
+             contextHooks, g_screenWidth.load(), g_screenHeight.load());
 }
 
 HRESULT WINAPI DetourCreateDeviceAndSwapChain(
