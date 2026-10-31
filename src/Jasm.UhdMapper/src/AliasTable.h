@@ -31,6 +31,10 @@ public:
     // 是否是 manifest 里任何 mod 的 HD hash（仪器阶段用来区分 hd/uhd 命中）。
     bool IsHdHash(uint32_t hash) const { return _hdHashes.count(hash) != 0; }
 
+    // 同一个 UHD hash 是否指向多个不同 DDS：无法判定替换目标，永远不替换。
+    // 单独暴露出来是为了在日志里区分「没命中」和「命中但歧义」。
+    bool IsAmbiguous(uint32_t hash) const { return _ambiguous.count(hash) != 0; }
+
     std::size_t Count() const { return _map.size(); }
     std::size_t AmbiguousCount() const { return _ambiguous.size(); }
     std::size_t SkippedCount() const { return _skipped; }
