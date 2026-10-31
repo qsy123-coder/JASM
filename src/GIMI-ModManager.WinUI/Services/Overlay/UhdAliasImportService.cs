@@ -26,7 +26,7 @@ public sealed record UhdAliasImportResult(
 /// 前提：用户必须先用**新版 Rocket**在 UHD 下把目标角色/该 mod 跑一遍，让
 /// <c>%LOCALAPPDATA%\Rocket\Wuwa\AutoLearning\RoleHash.aliases.tsv</c> 里有该角色的 UHD 记录。
 /// </summary>
-internal sealed class UhdAliasImportService
+public sealed class UhdAliasImportService
 {
     private readonly ILogger _logger;
 
