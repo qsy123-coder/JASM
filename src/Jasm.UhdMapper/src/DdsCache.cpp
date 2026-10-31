@@ -5,6 +5,7 @@
 
 #include <DirectXTex.h>
 
+#include "DdsFormat.h"
 #include "Log.h"
 #include "Manifest.h"
 #include "PathSafety.h"
@@ -37,16 +38,19 @@ void DdsCache::SetLimits(uint64_t maxCacheBytes, uint64_t maxTextureBytes)
         _maxTextureBytes = maxTextureBytes;
 }
 
-std::string DdsCache::MakeKey(uint32_t uhdHash, const std::wstring& path)
+std::string DdsCache::MakeKey(uint32_t uhdHash, DXGI_FORMAT viewFormat, const std::wstring& path)
 {
-    char prefix[16] = {};
-    std::snprintf(prefix, sizeof(prefix), "%08x|", uhdHash);
+    // 格式进键：同一张 DDS 可能分别以线性/SRGB 视图绑定到不同槽位，
+    // 两者必须各自持有一份按对应格式创建的纹理。
+    char prefix[32] = {};
+    std::snprintf(prefix, sizeof(prefix), "%08x|%d|", uhdHash, static_cast<int>(viewFormat));
     return std::string(prefix) + WideToUtf8(path);
 }
 
-bool DdsCache::LoadTexture(ID3D11Device* device, const std::wstring& path,
+bool DdsCache::LoadTexture(ID3D11Device* device, const std::wstring& path, DXGI_FORMAT viewFormat,
                            Microsoft::WRL::ComPtr<ID3D11Texture2D>* texture,
-                           Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>* view, uint64_t* bytes)
+                           Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>* view, uint64_t* bytes,
+                           DXGI_FORMAT* createdFormat)
 {
     if (device == nullptr || texture == nullptr || view == nullptr || bytes == nullptr)
         return false;
@@ -72,12 +76,26 @@ bool DdsCache::LoadTexture(ID3D11Device* device, const std::wstring& path,
         || metadata.IsCubemap() || metadata.mipLevels == 0)
         return false;
 
+    // 按原始 SRV 的格式建纹理：同一份压缩块在 UNORM / UNORM_SRGB 之间位布局相同，
+    // 只是采样时是否做 sRGB 解码 —— 用错方向整张贴图会发白或发黑。
+    const TextureFormatMatch formatMatch = ClassifyTextureFormat(metadata.format, viewFormat);
+    if (formatMatch == TextureFormatMatch::Unsupported)
+    {
+        LogWrite(LogLevel::Warn,
+                 "dds format unsupported dds_fmt=%d view_fmt=%d path=%s",
+                 static_cast<int>(metadata.format), static_cast<int>(viewFormat),
+                 WideToUtf8(path).c_str());
+        return false;
+    }
+
+    const DXGI_FORMAT textureFormat = ChooseReplacementFormat(metadata.format, viewFormat);
+
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = static_cast<UINT>(metadata.width);
     desc.Height = static_cast<UINT>(metadata.height);
     desc.MipLevels = static_cast<UINT>(metadata.mipLevels);
     desc.ArraySize = 1;
-    desc.Format = metadata.format;
+    desc.Format = textureFormat;
     desc.SampleDesc.Count = 1;
     desc.SampleDesc.Quality = 0;
     desc.Usage = D3D11_USAGE_IMMUTABLE;
@@ -114,11 +132,13 @@ bool DdsCache::LoadTexture(ID3D11Device* device, const std::wstring& path,
     *texture = std::move(created);
     *view = std::move(createdView);
     *bytes = image.GetPixelsSize();
+    if (createdFormat != nullptr)
+        *createdFormat = textureFormat;
     return true;
 }
 
 bool DdsCache::GetOrCreate(ID3D11Device* device, uint32_t uhdHash, const AliasTarget& target,
-                           ID3D11ShaderResourceView** view)
+                           DXGI_FORMAT viewFormat, ID3D11ShaderResourceView** view)
 {
     if (device == nullptr || view == nullptr)
         return false;
@@ -132,7 +152,7 @@ bool DdsCache::GetOrCreate(ID3D11Device* device, uint32_t uhdHash, const AliasTa
         return false;
     }
 
-    const std::string key = MakeKey(uhdHash, target.ddsPath);
+    const std::string key = MakeKey(uhdHash, viewFormat, target.ddsPath);
 
     {
         std::lock_guard<std::mutex> lock(_mutex);
@@ -154,6 +174,7 @@ bool DdsCache::GetOrCreate(ID3D11Device* device, uint32_t uhdHash, const AliasTa
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> createdView;
     uint64_t bytes = 0;
+    DXGI_FORMAT chosenFormat = viewFormat;
 
     {
         std::lock_guard<std::mutex> lock(_mutex);
@@ -162,7 +183,8 @@ bool DdsCache::GetOrCreate(ID3D11Device* device, uint32_t uhdHash, const AliasTa
             _failed.erase(failed); // 冷却已过，重新尝试
     }
 
-    if (!LoadTexture(device, target.ddsPath, &texture, &createdView, &bytes))
+    if (!LoadTexture(device, target.ddsPath, viewFormat, &texture, &createdView, &bytes,
+                     &chosenFormat))
     {
         std::lock_guard<std::mutex> lock(_mutex);
         _failed[key] = Failure{NowMs()};
@@ -202,7 +224,8 @@ bool DdsCache::GetOrCreate(ID3D11Device* device, uint32_t uhdHash, const AliasTa
 
     _entries.emplace(key, std::move(entry));
 
-    LogWrite(LogLevel::Info, "dds loaded hash=%08x bytes=%llu path=%s", uhdHash,
+    LogWrite(LogLevel::Info, "dds loaded hash=%08x view_fmt=%d tex_fmt=%d bytes=%llu path=%s",
+             uhdHash, static_cast<int>(viewFormat), static_cast<int>(chosenFormat),
              static_cast<unsigned long long>(bytes), WideToUtf8(target.ddsPath).c_str());
     return true;
 }
