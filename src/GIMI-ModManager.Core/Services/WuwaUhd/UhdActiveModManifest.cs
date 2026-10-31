@@ -79,7 +79,10 @@ public sealed class UhdActiveModTexture
     [JsonPropertyName("overrideSection")]
     public string OverrideSection { get; init; } = string.Empty;
 
-    /// <summary>可选的已知 UHD 配对（Rocket 学习结果或已生成的 _UHD_ 段）。DLL 可据此跳过学习。</summary>
+    /// <summary>
+    /// 已知 UHD 配对，只来自 Rocket 学习库（aliases）。ini 里已生成的 _UHD_ 段不参与：
+    /// 它们可能是旧学习数据，会把别的贴图（含共享光照图）挂到本条目上。
+    /// </summary>
     [JsonPropertyName("uhdHashes")]
     public IReadOnlyList<string> UhdHashes { get; init; } = [];
 
