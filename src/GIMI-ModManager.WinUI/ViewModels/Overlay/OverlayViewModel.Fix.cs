@@ -1074,7 +1074,8 @@ internal sealed partial class OverlayViewModel
         _selfLearnPhase = SelfLearnPhase.Hd;
         SelfLearnStatus = "正在以 HD 启动游戏…";
 
-        var launch = await _gameLaunchInjectionService.TryLaunchAsync().ConfigureAwait(true);
+        var launch = await _gameLaunchInjectionService.TryLaunchAsync(injectMapper: true)
+            .ConfigureAwait(true);
         if (!launch.Success)
         {
             RestoreSelfLearningState();
@@ -1138,7 +1139,8 @@ internal sealed partial class OverlayViewModel
                     SelfLearnStatus = "HD 完成，正在以 UHD 启动游戏…";
                     SetUhdStatus("HD 观察完成，已切换到 UHD。", isError: false);
 
-                    var launch = await _gameLaunchInjectionService.TryLaunchAsync().ConfigureAwait(true);
+                    var launch = await _gameLaunchInjectionService.TryLaunchAsync(injectMapper: true)
+                        .ConfigureAwait(true);
                     if (!launch.Success)
                     {
                         await FailSelfLearningAsync("UHD 启动失败：" + launch.Error);
