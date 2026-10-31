@@ -98,6 +98,34 @@ public class UhdActiveModManifestTests
     }
 
     [Fact]
+    public void SkipsAliasPairsAlreadyCoveredByGeneratedUhdSections()
+    {
+        // 段里的 hash 由 3DMigoto 在 draw 时接管；native mapper 不能再碰，否则两边抢同一个
+        // 贴图会整身发黑（实机）。这里断言它被排除，而未被段覆盖的 alias 仍然保留。
+        const string ini = """
+                           [ResourceDiffuse]
+                           filename = Texture\Diffuse.dds
+
+                           [TextureOverrideTexture0]
+                           hash = 1998df83
+                           this = ResourceDiffuse
+
+                           [TextureOverrideTexture0_UHD_dd1f9bc8]
+                           hash = dd1f9bc8
+                           this = ResourceDiffuse
+                           """;
+
+        var aliases = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["1998df83"] = ["dd1f9bc8", "4d8edb5e"]
+        };
+
+        var texture = Assert.Single(Build(ini, aliases: aliases).Mods[0].Textures);
+
+        Assert.Equal(["4d8edb5e"], texture.UhdHashes);
+    }
+
+    [Fact]
     public void MergesRocketAliasPairs()
     {
         var aliases = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
