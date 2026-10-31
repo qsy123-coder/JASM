@@ -94,6 +94,8 @@ void LoadConfigFile(MapperConfig& config)
 
         if (key == "mode")
             config.applyMode = value == "apply";
+        else if (key == "learn")
+            config.learnMode = ParseBool(value);
         else if (key == "log")
             config.debugLog = value == "debug";
         else if (key == "readback_hash")
