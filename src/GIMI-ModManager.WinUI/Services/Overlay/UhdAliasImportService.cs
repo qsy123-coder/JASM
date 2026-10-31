@@ -23,8 +23,10 @@ public sealed record UhdAliasImportResult(
 /// DISABLED_ 切换会互相打架。这里只消费它写下的学习结果，生成静态的
 /// <c>[TextureOverrideTexture*_UHD_*]</c> 段；日常启动不加载 Rocket 组件。
 ///
-/// 前提：用户必须先用**新版 Rocket**在 UHD 下把目标角色/该 mod 跑一遍，让
-/// <c>%LOCALAPPDATA%\Rocket\Wuwa\AutoLearning\RoleHash.aliases.tsv</c> 里有该角色的 UHD 记录。
+/// 学习数据有两个来源，读取时合并：Rocket 的
+/// <c>%LOCALAPPDATA%\Rocket\Wuwa\AutoLearning\RoleHash.aliases.tsv</c>
+/// 与 JASM 自研学习结果 <see cref="UhdLearningStore.LibraryPath"/>。
+/// 后者不依赖 Rocket（HD/UHD 两次观察配对，见 <see cref="UhdLearningStore"/>）。
 /// </summary>
 public sealed class UhdAliasImportService
 {
@@ -38,21 +40,21 @@ public sealed class UhdAliasImportService
     public static string AliasesFilePath =>
         Path.Combine(RoleHashAliasLibrary.DefaultDirectory, RoleHashAliasLibrary.AliasesFileName);
 
-    /// <summary>学习库是否存在、是否有该角色的映射（界面做可用性提示用）。</summary>
+    /// <summary>是否有可用学习数据（Rocket aliases 或 JASM 自学习结果）、该角色有多少条映射。</summary>
     public (bool LibraryExists, int RoleMappings) Inspect(string roleName)
     {
-        if (!File.Exists(AliasesFilePath))
+        var exists = File.Exists(AliasesFilePath) || File.Exists(UhdLearningStore.LibraryPath);
+        if (!exists)
             return (false, 0);
 
         try
         {
-            var library = RoleHashAliasLibrary.Load(AliasesFilePath);
-            var mappings = RoleHashAliasLibrary.GetForRole(library, roleName);
+            var mappings = UhdLearningStore.LoadMappingsForRole(roleName);
             return (true, mappings.Count);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _logger.Warning(e, "[UHD映射] 读取 RoleHash 学习库失败");
+            _logger.Warning(e, "[UHD映射] 读取 UHD 学习数据失败");
             return (false, 0);
         }
     }
@@ -72,28 +74,22 @@ public sealed class UhdAliasImportService
         if (modPaths.Count == 0)
             return UhdAliasImportResult.Fail("至少选择一个 Mod。");
 
-        if (!File.Exists(AliasesFilePath))
-        {
-            return UhdAliasImportResult.Fail(
-                "没有找到 Rocket 的 RoleHash 学习库。请先用新版 Rocket 在 UHD 档位下学习该角色。");
-        }
-
         IReadOnlyDictionary<string, IReadOnlyCollection<string>> mappings;
         try
         {
-            var library = RoleHashAliasLibrary.Load(AliasesFilePath);
-            mappings = RoleHashAliasLibrary.GetForRole(library, roleName);
+            // Rocket aliases 与 JASM 自学习结果合并；两者都缺时为空。
+            mappings = UhdLearningStore.LoadMappingsForRole(roleName);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _logger.Warning(e, "[UHD映射] 读取学习库失败");
-            return UhdAliasImportResult.Fail("读取 RoleHash 学习库失败：" + e.Message);
+            _logger.Warning(e, "[UHD映射] 读取 UHD 学习数据失败");
+            return UhdAliasImportResult.Fail("读取 UHD 学习数据失败：" + e.Message);
         }
 
         if (mappings.Count == 0)
         {
             return UhdAliasImportResult.Fail(
-                $"学习库里没有「{roleName}」的 UHD 映射。请先用新版 Rocket 在 UHD 下让该角色出现在画面中，等它学习完成后再试。");
+                $"没有「{roleName}」的 UHD 学习数据。请先用新版 Rocket 学一次该角色，或使用 JASM 自带学习。");
         }
 
         var changedFiles = new List<string>();
