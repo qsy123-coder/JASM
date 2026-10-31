@@ -14,9 +14,16 @@ public sealed record UhdActiveModInput(string Name, string RootPath, IReadOnlyLi
 /// <see cref="UhdOverrideGenerator"/> 保持一致（同一个 <c>TryReadHash</c>），两处对
 /// 「哪一行算 hash」不会有分歧。
 ///
-/// 已生成的 <c>..._UHD_&lt;hash&gt;</c> 段不会单独成为条目 —— 它们是
-/// <see cref="UhdOverrideGenerator"/> 的产物（3DMigoto 侧的绑定），这里只把其中的
-/// UHD hash 并进原段条目的 <see cref="UhdActiveModTexture.UhdHashes"/> 作为已知配对。
+/// <para>
+/// UHD 配对**只取 Rocket 学习库（aliases）**，不读 ini 里已生成的
+/// <c>..._UHD_&lt;hash&gt;</c> 段。原因是这些段是历史产物、可能来自旧的学习数据：
+/// 实机见过 <c>[TextureOverrideTexture8_UHD_7ad4d90b]</c> 把 HD=739ef6e9（NO 贴图）
+/// 的 UHD hash 挂到了 Texture8 的 albedo 资源上，以及 <c>Texture1_UHD_6b454451</c>
+/// 把共享 DLightmap 映射成 mod 贴图。原生 DLL 比 3DMigoto 更严格地信任这份清单，
+/// 带上坏配对会直接把共享贴图换掉。
+/// </para>
+///
+/// 这些段仍然会作为 3DMigoto 侧的绑定保留在 ini 里；本条只影响 JASM 注入路径。
 /// </summary>
 public static class UhdActiveModManifestBuilder
 {
@@ -113,7 +120,6 @@ public static class UhdActiveModManifestBuilder
             .ToArray();
 
         var resourceFiles = BuildResourceFileMap(sections);
-        var generatedHashes = BuildGeneratedHashMap(sections);
 
         var textures = new List<UhdActiveModTexture>();
         var seen = new HashSet<(string Hash, string Resource)>(new HashResourceComparer());
@@ -137,7 +143,7 @@ public static class UhdActiveModManifestBuilder
             if (resources.Length == 0)
                 continue;
 
-            var uhdHashes = CollectKnownUhdHashes(hdHash, section.Name, hdToUhdHashes, generatedHashes);
+            var uhdHashes = CollectKnownUhdHashes(hdHash, hdToUhdHashes);
 
             foreach (var resource in resources)
             {
@@ -188,60 +194,24 @@ public static class UhdActiveModManifestBuilder
         return map;
     }
 
-    /// <summary>原段名 → 已生成的 UHD hash 集合（来自 <c>[原段名_UHD_&lt;hash&gt;]</c>）。</summary>
-    private static Dictionary<string, List<string>> BuildGeneratedHashMap(IEnumerable<IniSection> sections)
-    {
-        var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var section in sections)
-        {
-            var markerIndex = section.Name.IndexOf(GeneratedUhdMarker, StringComparison.OrdinalIgnoreCase);
-            if (markerIndex <= 0)
-                continue;
-
-            var baseName = section.Name[..markerIndex];
-            var hash = section.Body.Select(UhdOverrideGenerator.TryReadHash).FirstOrDefault(h => h is not null);
-            if (hash is null)
-                continue;
-
-            if (!map.TryGetValue(baseName, out var hashes))
-            {
-                hashes = [];
-                map[baseName] = hashes;
-            }
-
-            if (!hashes.Contains(hash, StringComparer.OrdinalIgnoreCase))
-                hashes.Add(hash);
-        }
-
-        return map;
-    }
-
+    /// <summary>
+    /// 只从 Rocket 学习库取 UHD 配对。ini 里已有的 <c>..._UHD_&lt;hash&gt;</c> 段不参与
+    /// （原因见类注释：它们可能来自旧学习数据，把共享贴图或别的贴图挂到本条目上）。
+    /// </summary>
     private static IReadOnlyList<string> CollectKnownUhdHashes(
         string hdHash,
-        string sectionName,
-        IReadOnlyDictionary<string, IReadOnlyCollection<string>>? hdToUhdHashes,
-        Dictionary<string, List<string>> generatedHashes)
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>>? hdToUhdHashes)
     {
         var result = new List<string>();
 
-        if (hdToUhdHashes is not null && hdToUhdHashes.TryGetValue(hdHash, out var fromAliases))
-        {
-            foreach (var hash in fromAliases)
-            {
-                var normalized = RoleHashAliasLibrary.NormalizeHash(hash);
-                if (normalized is not null && !result.Contains(normalized, StringComparer.OrdinalIgnoreCase))
-                    result.Add(normalized);
-            }
-        }
+        if (hdToUhdHashes is null || !hdToUhdHashes.TryGetValue(hdHash, out var fromAliases))
+            return result;
 
-        if (generatedHashes.TryGetValue(sectionName, out var generated))
+        foreach (var hash in fromAliases)
         {
-            foreach (var hash in generated)
-            {
-                if (!result.Contains(hash, StringComparer.OrdinalIgnoreCase))
-                    result.Add(hash);
-            }
+            var normalized = RoleHashAliasLibrary.NormalizeHash(hash);
+            if (normalized is not null && !result.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+                result.Add(normalized);
         }
 
         return result;
