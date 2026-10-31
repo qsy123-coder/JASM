@@ -916,97 +916,98 @@
                                 <TextBlock
                                     FontSize="10"
                                     Foreground="#99FFFFFF"
-                                    Text="UHD 档位下的贴图错误分两类：贴图 hash 过期用「执行 UHD 修复」（先试基础哈希）；贴图被流送/光追降级用「应用配置修复」（改 Engine.ini/GameUserSettings.ini，会强制高画质，低配慎用，先备份）。档位请与官方启动器保持一致。"
-                                    TextWrapping="Wrap" />
-                                <ComboBox
-                                    HorizontalAlignment="Stretch"
-                                    Header="资源档位"
-                                    ItemsSource="{x:Bind ViewModel.UhdTierOptions}"
-                                    SelectedIndex="{x:Bind ViewModel.UhdTierIndex, Mode=TwoWay}" />
-                                <ComboBox
-                                    HorizontalAlignment="Stretch"
-                                    Header="修复方式"
-                                    ItemsSource="{x:Bind ViewModel.UhdFixModeOptions}"
-                                    SelectedIndex="{x:Bind ViewModel.UhdFixModeIndex, Mode=TwoWay}" />
-                                <TextBlock
-                                    FontSize="10"
-                                    Foreground="#99FFFFFF"
-                                    Text="普通 mod 先用「基础哈希修复」；只有依赖 RabbitFX 的状态贴图才用第三项。若全跳过：用新版 Rocket 在 UHD 下学习该角色一次，再点「导入 Rocket UHD 映射」。"
+                                    Text="一键完成 HD/UHD 两次观察并生成映射；不需要 Rocket，也不需要手动改 ini。"
                                     TextWrapping="Wrap" />
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Spacing="1">
-                                        <TextBlock FontSize="11" Text="内置注入启动（实验）" />
-                                        <TextBlock
-                                            FontSize="10"
-                                            Foreground="#99FFFFFF"
-                                            Text="开启后由 JASM 直启游戏并注入 WWMI；失败自动回退 XXMI Launcher。"
-                                            TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <ToggleSwitch
+                                    <ComboBox
+                                        HorizontalAlignment="Stretch"
+                                        Header="资源档位"
+                                        ItemsSource="{x:Bind ViewModel.UhdTierOptions}"
+                                        SelectedIndex="{x:Bind ViewModel.UhdTierIndex, Mode=TwoWay}" />
+                                    <StackPanel
                                         Grid.Column="1"
-                                        MinWidth="0"
-                                        OffContent=""
-                                        OnContent=""
-                                        IsOn="{x:Bind ViewModel.UseInjectionLaunch, Mode=TwoWay}" />
+                                        VerticalAlignment="Bottom"
+                                        Orientation="Horizontal"
+                                        Spacing="6">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="11"
+                                            Text="内置注入" />
+                                        <ToggleSwitch
+                                            MinWidth="0"
+                                            OffContent=""
+                                            OnContent=""
+                                            IsOn="{x:Bind ViewModel.UseInjectionLaunch, Mode=TwoWay}" />
+                                    </StackPanel>
                                 </Grid>
                                 <Button
+                                    Height="34"
                                     HorizontalAlignment="Stretch"
-                                    Command="{x:Bind ViewModel.ImportUhdAliasesCommand}"
-                                    Content="导入 Rocket UHD 映射（需先学习）"
-                                    FontSize="11"
-                                    IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
-                                <Button
-                                    HorizontalAlignment="Stretch"
-                                    Command="{x:Bind ViewModel.ImportRocketBuiltinCommand}"
-                                    Content="导入 Rocket 内置映射（选 Lod0_texture.dll，无需运行 Rocket）"
-                                    FontSize="11"
-                                    IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
-
-                                <!--  UHD 学习向导：停用本角色 Mod → 新版 Rocket 学习 → 恢复并导入  -->
+                                    Command="{x:Bind ViewModel.StartSelfLearningCommand}"
+                                    Content="一键学习并修复（HD + UHD）"
+                                    FontSize="12"
+                                    IsEnabled="{x:Bind ViewModel.CanStartSelfLearning, Mode=OneWay}" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#99FFFFFF"
+                                    Text="向导会启动两次游戏（HD → UHD）。每次让角色出现在画面里，然后退出游戏，向导会自动继续。"
+                                    TextWrapping="Wrap" />
                                 <Border
                                     Padding="8"
                                     Background="#0FFFFFFF"
-                                    CornerRadius="6">
-                                    <StackPanel Spacing="5">
-                                        <TextBlock
-                                            FontSize="11"
-                                            FontWeight="SemiBold"
-                                            Text="UHD 学习向导" />
+                                    CornerRadius="6"
+                                    Visibility="{x:Bind ViewModel.IsSelfLearning, Mode=OneWay}">
+                                    <StackPanel Spacing="6">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ProgressRing
+                                                Width="16"
+                                                Height="16"
+                                                IsActive="{x:Bind ViewModel.IsSelfLearning, Mode=OneWay}" />
+                                            <TextBlock
+                                                FontSize="10"
+                                                Foreground="#E6FFFFFF"
+                                                Text="{x:Bind ViewModel.SelfLearnStatus, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <Button
+                                            HorizontalAlignment="Stretch"
+                                            Command="{x:Bind ViewModel.CancelSelfLearningCommand}"
+                                            Content="取消学习"
+                                            FontSize="11" />
+                                    </StackPanel>
+                                </Border>
+                                <Expander
+                                    HorizontalAlignment="Stretch"
+                                    Header="更多修复工具"
+                                    IsExpanded="False">
+                                    <StackPanel Padding="0,8,0,0" Spacing="6">
+                                        <ComboBox
+                                            HorizontalAlignment="Stretch"
+                                            Header="修复方式（旧流程）"
+                                            ItemsSource="{x:Bind ViewModel.UhdFixModeOptions}"
+                                            SelectedIndex="{x:Bind ViewModel.UhdFixModeIndex, Mode=TwoWay}" />
                                         <TextBlock
                                             FontSize="10"
                                             Foreground="#99FFFFFF"
-                                            Text="一次学一个 Mod：只启用所选的 Mod（其余停用），用新版 Rocket 在 UHD 下让角色穿着它出现，再回来完成并导入。Rocket 和 JASM 用的是同一个 Mods 文件夹，不需要另外添加。"
+                                            Text="旧流程：普通 mod 用「基础哈希修复」；依赖 RabbitFX 的状态贴图用第三项。"
                                             TextWrapping="Wrap" />
                                         <Button
                                             HorizontalAlignment="Stretch"
-                                            Command="{x:Bind ViewModel.StartUhdLearningCommand}"
-                                            Content="开始 UHD 学习（只启用所选 Mod 并启动 Rocket）"
+                                            Command="{x:Bind ViewModel.ImportUhdAliasesCommand}"
+                                            Content="导入 Rocket UHD 映射（需先学习）"
                                             FontSize="11"
-                                            IsEnabled="{x:Bind ViewModel.CanStartUhdLearning, Mode=OneWay}" />
-                                        <Grid ColumnSpacing="6" Visibility="{x:Bind ViewModel.IsUhdLearning, Mode=OneWay}">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button
-                                                HorizontalAlignment="Stretch"
-                                                Command="{x:Bind ViewModel.FinishUhdLearningCommand}"
-                                                Content="完成学习并导入"
-                                                FontSize="11"
-                                                IsEnabled="{x:Bind ViewModel.CanFinishUhdLearning, Mode=OneWay}" />
-                                            <Button
-                                                Grid.Column="1"
-                                                HorizontalAlignment="Stretch"
-                                                Command="{x:Bind ViewModel.CancelUhdLearningCommand}"
-                                                Content="取消学习"
-                                                FontSize="11" />
-                                        </Grid>
-                                    </StackPanel>
-                                </Border>
+                                            IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+                                        <Button
+                                            HorizontalAlignment="Stretch"
+                                            Command="{x:Bind ViewModel.ImportRocketBuiltinCommand}"
+                                            Content="导入 Rocket 内置映射（选 Lod0_texture.dll）"
+                                            FontSize="11"
+                                            IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+
                                 <Grid ColumnSpacing="6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -1044,7 +1045,9 @@
                                         Content="刷新状态"
                                         FontSize="11"
                                         IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
-                                </Grid>
+                                        </Grid>
+                                    </StackPanel>
+                                </Expander>
                                 <TextBlock
                                     FontSize="10"
                                     Foreground="#CCFFFFFF"
