@@ -163,8 +163,10 @@ public static class UhdCoverageScanner
 
         var builder = new StringBuilder();
         builder.AppendLine("# JASM UHD 覆盖体检");
+        builder.AppendLine("# 说明：未覆盖只表示「学习库里没有该 HD hash 的 UHD 配对」，不等于 UHD 下一定坏 ——");
+        builder.AppendLine("#       游戏对部分贴图仍绑定 HD 版本，mod 的 HD 覆盖照样生效。以实际画面为准。");
         builder.AppendLine($"# 生成时间: {generatedAt:yyyy-MM-dd HH:mm:ss zzz}");
-        builder.AppendLine($"# 角色: {characters.Count}，需要学习: {characters.Count(c => c.NeedsLearning)}");
+        builder.AppendLine($"# 角色: {characters.Count}，有未覆盖 hash: {characters.Count(c => c.NeedsLearning)}");
         builder.AppendLine();
         builder.AppendLine("角色\t内部名\tmod 数\thash mod 数\t覆盖\t未覆盖 mod\t状态");
 
@@ -172,13 +174,13 @@ public static class UhdCoverageScanner
                      .ThenByDescending(c => c.TotalHashes)
                      .ThenBy(c => c.Role, StringComparer.OrdinalIgnoreCase))
         {
-            var status = character.NeedsLearning ? "需要学习" : "OK";
+            var status = character.NeedsLearning ? "待核对" : "OK";
             builder.AppendLine(
                 $"{character.Role}\t{character.CharacterInternalName}\t{character.ModCount}\t{character.HashModCount}\t{character.CoveredHashes}/{character.TotalHashes}\t{character.UncoveredMods}\t{status}");
         }
 
         builder.AppendLine();
-        builder.AppendLine("# 明细（仅列出未完全覆盖的角色）");
+        builder.AppendLine("# 明细（仅列出有未覆盖 hash 的角色）");
 
         foreach (var character in characters.Where(c => c.NeedsLearning)
                      .OrderByDescending(c => c.UncoveredMods))
