@@ -93,6 +93,7 @@ public sealed class UhdAliasImportService
         }
 
         var changedFiles = new List<string>();
+        var matchedHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sectionsAdded = 0;
         var modsSkipped = 0;
 
@@ -121,6 +122,7 @@ public sealed class UhdAliasImportService
                 }
 
                 var generated = UhdOverrideGenerator.Generate(original, mappings);
+                matchedHashes.UnionWith(generated.MatchedHashes);
                 if (!generated.HasChanges)
                     continue;
 
@@ -149,8 +151,18 @@ public sealed class UhdAliasImportService
 
         if (changedFiles.Count == 0)
         {
+            // 有命中但没新增 = 之前已经生成过这些段（幂等重跑），不是失败。
+            if (matchedHashes.Count > 0)
+            {
+                return new UhdAliasImportResult(true,
+                    $"所选 Mod 的 {matchedHashes.Count} 个 HD hash 都已有 UHD 覆盖段，无需改动。",
+                    0, 0, modsSkipped, []);
+            }
+
             return new UhdAliasImportResult(false,
-                $"学习库有 {mappings.Count} 条「{roleName}」映射，但没有匹配到所选 Mod 的 HD hash（可能这个 mod 没在 Rocket 学习时启用）。",
+                $"学习库有 {mappings.Count} 条「{roleName}」映射，但没有匹配到所选 Mod 的 HD hash。"
+                + "常见原因：Mod 的贴图 hash 还是旧游戏版本（先执行「一键修复」再导入），"
+                + "或学习时该 Mod 没有显示在画面上。",
                 0, 0, modsSkipped, []);
         }
 
