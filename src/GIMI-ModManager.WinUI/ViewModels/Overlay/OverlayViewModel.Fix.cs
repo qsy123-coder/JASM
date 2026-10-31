@@ -888,8 +888,9 @@ internal sealed partial class OverlayViewModel
                 .ToArray();
 
             SetUhdStatus(
-                $"体检完成：{report.Count} 个角色，{needing} 个需要学习。报告：{reportPath}"
-                + (top.Length > 0 ? " 优先：" + string.Join("、", top) : string.Empty),
+                $"体检完成：{report.Count} 个角色，{needing} 个有未覆盖 hash（不等于一定坏，以实际画面为准）。"
+                + $"报告：{reportPath}"
+                + (top.Length > 0 ? " 优先核对：" + string.Join("、", top) : string.Empty),
                 isError: false);
         }
         catch (Exception e)
