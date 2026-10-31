@@ -21,8 +21,11 @@ public:
     static DdsCache& Instance();
 
     // 命中缓存或成功加载时返回 true，并给出一个已 AddRef 的 SRV（调用方负责 Release）。
+    // viewFormat = 原始 SRV 的视图格式（DXGI_FORMAT_UNKNOWN 表示未知）：替换纹理按它创建，
+    // 保证 sRGB/线性语义与游戏原始贴图一致。同一张 DDS 可能被不同格式的视图绑定，
+    // 缓存键因此包含格式。
     bool GetOrCreate(ID3D11Device* device, uint32_t uhdHash, const AliasTarget& target,
-                     ID3D11ShaderResourceView** view);
+                     DXGI_FORMAT viewFormat, ID3D11ShaderResourceView** view);
 
     struct Stats
     {
@@ -49,10 +52,13 @@ private:
         uint64_t failedAtMs = 0;
     };
 
-    static std::string MakeKey(uint32_t uhdHash, const std::wstring& path);
+    static std::string MakeKey(uint32_t uhdHash, DXGI_FORMAT viewFormat,
+                               const std::wstring& path);
     static bool LoadTexture(ID3D11Device* device, const std::wstring& path,
+                            DXGI_FORMAT viewFormat,
                             Microsoft::WRL::ComPtr<ID3D11Texture2D>* texture,
-                            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>* view, uint64_t* bytes);
+                            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>* view, uint64_t* bytes,
+                            DXGI_FORMAT* createdFormat);
 
     mutable std::mutex _mutex;
     std::unordered_map<std::string, Entry> _entries;
