@@ -59,8 +59,8 @@ public static class UhdActiveModManifestBuilder
     }
 
     /// <summary>
-    /// 从磁盘构建：每个 mod 只读**顶层** <c>*.ini</c>（与「导入 Rocket UHD 映射」的
-    /// 导入范围一致），读失败的文件跳过。
+    /// 从磁盘构建：每个 mod 读取**全部** <c>*.ini</c>（含 <c>Main\</c>、<c>NPC\</c> 等子目录，
+    /// 与 3DMigoto 的递归加载范围一致），读失败的文件跳过。
     /// </summary>
     public static UhdActiveModManifest BuildFromDirectory(
         string role,
@@ -75,7 +75,7 @@ public static class UhdActiveModManifestBuilder
         return Build(role, roleInternalName, inputs, hdToUhdHashes, generatedAtUtc);
     }
 
-    /// <summary>读入一个 mod 的顶层 ini；目录不存在时返回空 IniFiles（不抛）。</summary>
+    /// <summary>读入一个 mod 的全部 ini（含子目录）；目录不存在时返回空 IniFiles（不抛）。</summary>
     public static UhdActiveModInput LoadMod(string name, string rootPath)
     {
         var sources = new List<UhdIniSource>();
@@ -95,7 +95,13 @@ public static class UhdActiveModManifestBuilder
         return new UhdActiveModInput(name, rootPath, sources);
     }
 
-    /// <summary>顶层 *.ini，排除备份（.bak）与写入中的临时文件（.tmp）。</summary>
+    /// <summary>
+    /// mod 下的全部 *.ini，<b>递归包含子目录</b>，排除备份（.bak）与写入中的临时文件（.tmp）。
+    ///
+    /// 不能只看顶层：WWMI 里不少 mod 把真正的 <c>[TextureOverrideTexture*]</c> 放在
+    /// <c>Main\mod.ini</c> / <c>NPC\mod.ini</c>，顶层 mod.ini 只是切换逻辑。3DMigoto
+    /// 本身也是递归扫描 mod 目录的，这里必须与它保持一致，否则这类 mod 在清单里是空的。
+    /// </summary>
     public static IReadOnlyList<string> EnumerateIniFiles(string modRootPath)
     {
         if (string.IsNullOrWhiteSpace(modRootPath) || !Directory.Exists(modRootPath))
@@ -103,7 +109,7 @@ public static class UhdActiveModManifestBuilder
 
         try
         {
-            return Directory.EnumerateFiles(modRootPath, "*.ini", SearchOption.TopDirectoryOnly)
+            return Directory.EnumerateFiles(modRootPath, "*.ini", SearchOption.AllDirectories)
                 .Where(p => !p.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
                 .Where(p => !p.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
@@ -123,7 +129,11 @@ public static class UhdActiveModManifestBuilder
             .SelectMany(source => ParseSections(source.Text, source.FilePath))
             .ToArray();
 
-        var resourceFiles = BuildResourceFileMap(sections);
+        // 资源段先在**所在 ini 文件**里解析：3DMigoto 的 namespace 默认是文件内的，
+        // Main\ 与 NPC\ 常各有同名 ResourceTexture0，跨文件混用会把 DDS 指错。
+        // 全局表只作为跨文件引用的兜底（显式命名空间写法）。
+        var resourceFilesByIni = BuildResourceFileMapByFile(sections);
+        var globalResourceFiles = BuildResourceFileMap(sections);
 
         // 3DMigoto 已经用这些 _UHD_ 段接管了对应 hash。原生 mapper 不能再碰它们：
         // 运行时按 SRV 替换会和 3DMigoto 的 draw 时替换冲突（实测整身发黑）。
@@ -159,13 +169,18 @@ public static class UhdActiveModManifestBuilder
                 if (!seen.Add((hdHash, resource)))
                     continue;
 
-                resourceFiles.TryGetValue(resource, out var fileName);
+                var fileName = FindResourceFile(resourceFilesByIni, globalResourceFiles,
+                    section.FilePath, resource);
+
+                // 3DMigoto 的相对 filename 以 ini 文件所在目录为基准（顶层 ini 即 mod 根目录）。
+                var baseDirectory = Path.GetDirectoryName(section.FilePath);
 
                 textures.Add(new UhdActiveModTexture
                 {
                     HdHash = hdHash,
                     ResourceSection = resource,
-                    DdsPath = ResolveResourcePath(fileName, mod.RootPath),
+                    DdsPath = ResolveResourcePath(fileName,
+                        string.IsNullOrWhiteSpace(baseDirectory) ? mod.RootPath : baseDirectory),
                     OverrideSection = section.Name,
                     UhdHashes = uhdHashes,
                     IniFile = section.FilePath
@@ -192,15 +207,57 @@ public static class UhdActiveModManifestBuilder
             if (!section.Name.StartsWith(ResourcePrefix, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var fileName = section.Body
-                .Select(line => TryReadKey(line, "filename"))
-                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-
             if (!map.ContainsKey(section.Name))
-                map[section.Name] = Unquote(fileName);
+                map[section.Name] = ReadResourceFileName(section);
         }
 
         return map;
+    }
+
+    /// <summary>ini 文件路径 → (资源段名 → <c>filename</c>)。同名以同文件里先出现的为准。</summary>
+    private static Dictionary<string, Dictionary<string, string?>> BuildResourceFileMapByFile(
+        IEnumerable<IniSection> sections)
+    {
+        var map = new Dictionary<string, Dictionary<string, string?>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var section in sections)
+        {
+            if (!section.Name.StartsWith(ResourcePrefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!map.TryGetValue(section.FilePath, out var fileMap))
+            {
+                fileMap = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+                map[section.FilePath] = fileMap;
+            }
+
+            if (!fileMap.ContainsKey(section.Name))
+                fileMap[section.Name] = ReadResourceFileName(section);
+        }
+
+        return map;
+    }
+
+    /// <summary>优先在引用方 ini 里找资源段，找不到再退回全局表。</summary>
+    private static string? FindResourceFile(
+        IReadOnlyDictionary<string, Dictionary<string, string?>> byFile,
+        IReadOnlyDictionary<string, string?> global,
+        string filePath,
+        string resource)
+    {
+        if (byFile.TryGetValue(filePath, out var fileMap) && fileMap.TryGetValue(resource, out var local))
+            return local;
+
+        return global.TryGetValue(resource, out var fallback) ? fallback : null;
+    }
+
+    private static string? ReadResourceFileName(IniSection section)
+    {
+        var fileName = section.Body
+            .Select(line => TryReadKey(line, "filename"))
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+        return Unquote(fileName);
     }
 
     /// <summary>ini 里 <c>..._UHD_&lt;hash&gt;</c> 段已经接管的 UHD hash 集合。</summary>
@@ -253,10 +310,11 @@ public static class UhdActiveModManifestBuilder
         && !sectionName.Contains(GeneratedUhdMarker, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// <c>filename = Texture\foo.dds</c> → 绝对路径。相对路径按 mod 根目录解析；
+    /// <c>filename = Texture\foo.dds</c> → 绝对路径。相对路径按 <paramref name="baseDirectory"/>
+    /// 解析（通常是 ini 文件所在目录，与 3DMigoto 一致）；
     /// 非法路径/过长路径返回 null（DLL 侧跳过这条，不影响其它贴图）。
     /// </summary>
-    public static string? ResolveResourcePath(string? fileName, string modRootPath)
+    public static string? ResolveResourcePath(string? fileName, string baseDirectory)
     {
         if (string.IsNullOrWhiteSpace(fileName))
             return null;
@@ -269,7 +327,7 @@ public static class UhdActiveModManifestBuilder
         {
             var full = Path.IsPathRooted(normalized)
                 ? normalized
-                : Path.Combine(modRootPath, normalized);
+                : Path.Combine(baseDirectory, normalized);
             return Path.GetFullPath(full);
         }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException)
