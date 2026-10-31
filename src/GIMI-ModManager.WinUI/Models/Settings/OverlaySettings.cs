@@ -83,6 +83,13 @@ public class OverlaySettings
     public int? UhdResourceTierIndex { get; set; }
 
     /// <summary>
+    /// Rocket 新版 <c>Lod0_texture.dll</c> 的路径。JASM 会读取它**内嵌的官方 HD→UHD 映射表**
+    /// （覆盖 Rocket 支持的角色），并进学习库 —— 不需要运行 Rocket。
+    /// 为空 = 还没选过；启动注入时若已设置会自动导入。
+    /// </summary>
+    public string? RocketLod0TextureDllPath { get; set; }
+
+    /// <summary>
     /// UHD 修复方式：0 = 基础哈希、1 = 稳定纹理、2 = 补全状态贴图（RabbitFX）。
     /// <c>null</c> = 没设置过 → 基础哈希。普通 mod 不应默认走 RabbitFX 派生哈希。
     /// </summary>
