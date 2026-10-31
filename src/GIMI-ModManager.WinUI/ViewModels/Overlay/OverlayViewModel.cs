@@ -15,6 +15,7 @@ using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.Services.Injection;
 using GIMI_ModManager.WinUI.Services.Input;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
@@ -64,6 +65,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     private readonly WuwaRollbackService _rollbackService;
     private readonly WuwaUhdRepairService _uhdRepairService;
     private readonly UhdAliasImportService _uhdAliasImportService;
+    private readonly GameLaunchInjectionService _gameLaunchInjectionService;
     private readonly ILogger _logger;
 
     /// <summary>上一个显示行内按键面板的 Mod。用来判断"目标换人了"，好让列表把它滚进视野。</summary>
@@ -322,7 +324,8 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         ModSettingsService modSettingsService, IGameKeySender gameKeySender,
         NotificationManager notificationManager, WuwaModFixerEngine fixerEngine,
         WuwaFixSession fixSession, WuwaRollbackService rollbackService,
-        WuwaUhdRepairService uhdRepairService, UhdAliasImportService uhdAliasImportService, ILogger logger)
+        WuwaUhdRepairService uhdRepairService, UhdAliasImportService uhdAliasImportService,
+        GameLaunchInjectionService gameLaunchInjectionService, ILogger logger)
     {
         _skinManagerService = skinManagerService;
         _gameService = gameService;
@@ -338,6 +341,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         _rollbackService = rollbackService;
         _uhdRepairService = uhdRepairService;
         _uhdAliasImportService = uhdAliasImportService;
+        _gameLaunchInjectionService = gameLaunchInjectionService;
         _logger = logger.ForContext<OverlayViewModel>();
 
         // 状态行是否占位置的判据跨在协调器上：它一变，HasRefreshStatus 就要重新算
