@@ -11,6 +11,7 @@
 
 #include "AliasTable.h"
 #include "Crc32c.h"
+#include "DdsFormat.h"
 #include "Json.h"
 #include "Manifest.h"
 #include "PathSafety.h"
@@ -136,6 +137,49 @@ static void TestTextureHashIgnoresPadding()
     CHECK(ComputeTextureDataHash(desc, &dataFirst, &hashFirst));
 }
 
+static void TestDdsFormat()
+{
+    // 完全相同 / 视图格式未知：保持 DDS 原格式
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC7_UNORM)
+          == TextureFormatMatch::Same);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_UNKNOWN)
+          == TextureFormatMatch::Same);
+    CHECK(ChooseReplacementFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_UNKNOWN)
+          == DXGI_FORMAT_BC7_UNORM);
+
+    // BC7 的 TYPELESS / UNORM / SRGB 共享压缩块：按视图格式重建
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC7_UNORM_SRGB)
+          == TextureFormatMatch::Compatible);
+    CHECK(ChooseReplacementFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC7_UNORM_SRGB)
+          == DXGI_FORMAT_BC7_UNORM_SRGB);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM_SRGB, DXGI_FORMAT_BC7_TYPELESS)
+          == TextureFormatMatch::Compatible);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC1_UNORM, DXGI_FORMAT_BC1_UNORM_SRGB)
+          == TextureFormatMatch::Compatible);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC3_UNORM_SRGB, DXGI_FORMAT_BC3_UNORM)
+          == TextureFormatMatch::Compatible);
+
+    // 8 位无压缩格式同理（UNORM ↔ UNORM_SRGB）
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+          == TextureFormatMatch::Compatible);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+          == TextureFormatMatch::Compatible);
+
+    // 不共享数据位：必须放弃替换，不能硬换格式
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC1_UNORM)
+          == TextureFormatMatch::Unsupported);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC4_UNORM, DXGI_FORMAT_BC4_SNORM)
+          == TextureFormatMatch::Unsupported);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC5_UNORM, DXGI_FORMAT_BC5_SNORM)
+          == TextureFormatMatch::Unsupported);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC6H_UF16, DXGI_FORMAT_BC6H_SF16)
+          == TextureFormatMatch::Unsupported);
+    CHECK(ClassifyTextureFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM)
+          == TextureFormatMatch::Unsupported);
+    CHECK(ChooseReplacementFormat(DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC1_UNORM)
+          == DXGI_FORMAT_BC7_UNORM);
+}
+
 static void TestJson()
 {
     const char* text = R"({"schemaVersion":1,"role":"\u7433\u5948","list":[1,2,3],"flag":true,"n":null})";
@@ -238,6 +282,8 @@ static void TestAliasTable()
     AliasTable conflictTable;
     conflictTable.Build(conflicting);
     CHECK(!conflictTable.TryGet(0xdeadbeefu, &target));
+    CHECK(conflictTable.IsAmbiguous(0xdeadbeefu));
+    CHECK(!conflictTable.IsAmbiguous(0xdd1f9bc8u));
     CHECK(conflictTable.AmbiguousCount() >= 1);
 
     // 路径不在 mod root 下 → 跳过
@@ -282,6 +328,7 @@ int main()
     TestHashes();
     TestRowLayout();
     TestTextureHashIgnoresPadding();
+    TestDdsFormat();
     TestJson();
     TestManifest();
     TestAliasTable();
