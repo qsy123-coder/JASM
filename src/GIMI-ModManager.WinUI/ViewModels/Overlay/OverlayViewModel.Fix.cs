@@ -452,6 +452,7 @@ internal sealed partial class OverlayViewModel
             OnPropertyChanged(nameof(CanRollback));
             OnPropertyChanged(nameof(CanRollbackSelected));
             OnPropertyChanged(nameof(CanSwitchTabs));
+            OnPropertyChanged(nameof(CanStartSelfLearning));
             OnPropertyChanged(nameof(CanSwitchCharacter));
             OnPropertyChanged(nameof(CanRunUhdActions));
         }
@@ -980,7 +981,7 @@ internal sealed partial class OverlayViewModel
 
     public bool HasSelfLearnStatus => !string.IsNullOrWhiteSpace(SelfLearnStatus);
 
-    public bool CanStartSelfLearning => CanRunUhdActions && !IsSelfLearning;
+    public bool CanStartSelfLearning => CanRunUhdActions && !IsSelfLearning && !FixSession.IsRunning;
 
     partial void OnIsSelfLearningChanged(bool value) => OnPropertyChanged(nameof(CanStartSelfLearning));
 
@@ -1049,6 +1050,16 @@ internal sealed partial class OverlayViewModel
             .ToList();
         _selfLearnOriginalTier = Settings.UhdResourceTierIndex;
 
+        // 学习前先跑一次**基础哈希修复**（修复引擎的默认流程，不带增强开关）。
+        //
+        // 为什么必须先修：mod 的贴图 hash 若停留在旧游戏版本，学习库里的 HD→UHD 配对
+        // 与它永远不相交，最后导入会报「一条都没有匹配到」。实机案例：弗洛洛-罪恶修女
+        // 的 15 条旧 hash 修复后正好命中学习库，才生成得出 _UHD_ 段。
+        //
+        // 修复失败不阻断学习：学习观察的是游戏贴图，与 mod 的 hash 无关；导入时仍会
+        // 把不匹配暴露出来。修复引擎自带备份，可回滚。
+        await TryRunBaseHashFixForLearningAsync(enabledTargets, _selfLearnRole);
+
         try
         {
             // 启用状态由用户在列表里决定，这里不再改名/停用，避免路径在捕获后失效。
@@ -1085,6 +1096,47 @@ internal sealed partial class OverlayViewModel
         _selfLearnPid = launch.ProcessId;
         _selfLearnCts = new CancellationTokenSource();
         _ = RunSelfLearnLoopAsync(_selfLearnCts.Token);
+    }
+
+    /// <summary>
+    /// 一键学习的前置步骤：对目标 Mod 执行一次基础哈希修复。
+    ///
+    /// 只跑修复引擎的默认流程（<see cref="WuwaFixOptions"/> 全默认，不带
+    /// <c>--derived-hashes</c> / <c>--stable-texture</c> 等增强开关）：这里要的只是把
+    /// 过期的贴图 hash 更新到当前游戏版本。修复引擎会为每个 ini 生成 <c>.BAK</c>。
+    ///
+    /// 引擎不可用或修复失败都不阻断学习 —— 学习观察的是游戏实际绑定的贴图，与 mod
+    /// 自己写的 hash 无关；真没修成时，导入阶段会再次报「没有匹配到 HD hash」。
+    /// </summary>
+    private async Task TryRunBaseHashFixForLearningAsync(
+        IReadOnlyList<(Guid Id, string Name, string Path)> targets,
+        string role)
+    {
+        try
+        {
+            await EnsureEngineAsync();
+            if (!IsEngineReady)
+                return;
+
+            var fixTargets = targets
+                .Select(item => new WuwaFixTarget(item.Id, item.Name, item.Path))
+                .ToList();
+            if (fixTargets.Count == 0)
+                return;
+
+            SetUhdStatus("正在修复 Mod 哈希（学习前置步骤）…", isError: false);
+            await FixSession.StartAsync(fixTargets, new WuwaFixOptions(), role);
+
+            if (FixSession.FailedCount > 0)
+            {
+                _logger.Warning("[UHD自学习] 前置哈希修复有 {Count} 个 Mod 失败", FixSession.FailedCount);
+                SetUhdStatus("哈希修复有 Mod 失败，继续学习；详情见修复日志。", isError: true);
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[UHD自学习] 前置哈希修复失败，继续学习");
+        }
     }
 
     [RelayCommand]
