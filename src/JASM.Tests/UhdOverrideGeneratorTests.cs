@@ -47,6 +47,8 @@ public class UhdOverrideGeneratorTests
 
         Assert.False(second.HasChanges);
         Assert.Equal(first.Text, second.Text);
+        // 重跑时仍要报告「命中过映射」，否则导入层无法区分「已是最新」和「一条都没对上」。
+        Assert.Contains("1998df83", second.MatchedHashes);
     }
 
     [Fact]
@@ -99,6 +101,7 @@ public class UhdOverrideGeneratorTests
 
         Assert.False(result.HasChanges);
         Assert.Equal(SampleIni, result.Text);
+        Assert.Empty(result.MatchedHashes);
     }
 
     [Fact]
