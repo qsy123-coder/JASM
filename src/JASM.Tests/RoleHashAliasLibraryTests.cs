@@ -21,7 +21,8 @@ public class RoleHashAliasLibraryTests
 
             Assert.Equal(2, lynae.Count);
             Assert.Equal(["dd1f9bc8"], lynae["1998df83"]);
-            Assert.Equal(["42dadfb2", "6b454451"], lynae["48947f0c"].OrderBy(x => x));
+            // 第 22 列（这里是 6b454451 = DLightmap 共享贴图）不是该 mod 的 UHD 别名
+            Assert.Equal(["42dadfb2"], lynae["48947f0c"]);
             Assert.DoesNotContain("other", library.Keys);
         }
         finally
