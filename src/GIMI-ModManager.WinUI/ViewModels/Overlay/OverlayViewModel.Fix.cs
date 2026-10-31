@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.Contracts.Entities;
@@ -827,6 +828,74 @@ internal sealed partial class OverlayViewModel
         {
             _logger.Warning(e, "[浮窗修复] 导入 Rocket 内置映射失败");
             SetUhdStatus("导入 Rocket 内置映射失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            IsUhdBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 静态体检整个 Mod 库：按角色统计 <c>[TextureOverrideTexture*]</c> 的 HD hash 是否已被
+    /// UHD 映射覆盖，输出<see cref="UhdCoverageScanner"/>报告。不启动游戏。
+    ///
+    /// <para>
+    /// 判定单位是角色：同一角色的 mod 共用游戏贴图 hash，角色映射齐了它的 mod 就不会错；
+    /// 「无 hash 绑定」的新式 mod（按槽位绑定）不受 UHD 档位影响。
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task ScanUhdCoverageAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        IsUhdBusy = true;
+        SetUhdStatus("正在扫描全部 Mod 的 UHD 覆盖…", isError: false);
+        try
+        {
+            var report = await Task.Run(() =>
+            {
+                var characters = new List<UhdCharacterCoverage>();
+                foreach (var modList in _skinManagerService.CharacterModLists)
+                {
+                    var role = modList.Character.DisplayName;
+                    var internalName = modList.Character.InternalName.ToString();
+                    var mappings = UhdLearningStore.LoadMappingsForRole(role);
+                    var mods = modList.Mods
+                        .Select(entry => (entry.Mod.Name, entry.Mod.FullPath))
+                        .Where(mod => !string.IsNullOrWhiteSpace(mod.FullPath))
+                        .ToArray();
+
+                    characters.Add(UhdCoverageScanner.ScanCharacter(role, internalName, mods, mappings));
+                }
+
+                return characters;
+            }).ConfigureAwait(true);
+
+            var needing = report.Count(character => character.NeedsLearning);
+            var reportText = UhdCoverageScanner.FormatReport(report, DateTimeOffset.Now);
+            Directory.CreateDirectory(UhdActiveModStore.RuntimeDirectory);
+            var reportPath = Path.Combine(UhdActiveModStore.RuntimeDirectory, "coverage-report.txt");
+            await File.WriteAllTextAsync(reportPath, reportText, new UTF8Encoding(false))
+                .ConfigureAwait(true);
+
+            var top = report
+                .Where(character => character.NeedsLearning)
+                .OrderByDescending(character => character.UncoveredMods)
+                .Take(5)
+                .Select(character => $"{character.Role}({character.UncoveredMods})")
+                .ToArray();
+
+            SetUhdStatus(
+                $"体检完成：{report.Count} 个角色，{needing} 个需要学习。报告：{reportPath}"
+                + (top.Length > 0 ? " 优先：" + string.Join("、", top) : string.Empty),
+                isError: false);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗修复] UHD 覆盖体检失败");
+            SetUhdStatus("体检失败：" + e.Message, isError: true);
         }
         finally
         {
