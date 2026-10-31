@@ -47,7 +47,8 @@ public sealed record UhdCharacterCoverage(
 public static class UhdCoverageScanner
 {
     /// <summary>
-    /// 扫描一个角色下所有 mod。mod 入口是 (显示名, 根目录)；只读顶层 *.ini（跳过 .bak/.tmp）。
+    /// 扫描一个角色下所有 mod。mod 入口是 (显示名, 根目录)；递归读取 *.ini
+    /// （含 Main\ / NPC\ 等子目录，跳过 .bak/.tmp）。
     /// </summary>
     public static UhdCharacterCoverage ScanCharacter(
         string role,
@@ -110,7 +111,7 @@ public static class UhdCoverageScanner
     }
 
     /// <summary>
-    /// 解析顶层 ini 里的 <c>[TextureOverrideTexture*]</c> 段（排除 <c>_UHD_</c> 生成段），
+    /// 解析一份 ini 里的 <c>[TextureOverrideTexture*]</c> 段（排除 <c>_UHD_</c> 生成段），
     /// 返回 (段名, 首个 hash 或 null)。
     /// </summary>
     public static IEnumerable<(string Name, string? Hash)> ParseTextureBindings(string iniText)
