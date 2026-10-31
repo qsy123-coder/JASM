@@ -903,6 +903,51 @@ internal sealed partial class OverlayViewModel
         }
     }
 
+    /// <summary>
+    /// 用浮窗里选的档位，通过「内置注入」直接启动游戏（不经过 XXMI Launcher）。
+    /// 与一键学习共用同一条启动链路，失败时把原因写进状态行。
+    /// </summary>
+    [RelayCommand]
+    private async Task LaunchWithTierAsync()
+    {
+        if (!CanRunUhdActions)
+            return;
+
+        if (IsGameRunning())
+        {
+            SetUhdStatus("游戏已经在运行了；先退出再点这个按钮。", isError: true);
+            return;
+        }
+
+        if (!UseInjectionLaunch)
+        {
+            SetUhdStatus("请先打开「内置注入」开关 —— 这个按钮走 JASM 的注入启动，不经过 XXMI。",
+                isError: true);
+            return;
+        }
+
+        IsUhdBusy = true;
+        var tier = WuwaResourceTierExtensions.FromIndex(UhdTierIndex);
+        SetUhdStatus($"正在以「{tier.ToDisplayName()}」启动游戏…", isError: false);
+        try
+        {
+            var result = await _gameLaunchInjectionService.TryLaunchAsync().ConfigureAwait(true);
+            SetUhdStatus(result.Success
+                    ? $"已以「{tier.ToDisplayName()}」启动游戏（pid={result.ProcessId}）。"
+                    : "启动失败：" + result.Error,
+                isError: !result.Success);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗修复] 按档位启动失败");
+            SetUhdStatus("启动失败：" + e.Message, isError: true);
+        }
+        finally
+        {
+            IsUhdBusy = false;
+        }
+    }
+
     // ── 命令：JASM 自研 UHD 学习（不依赖 Rocket）────────────────────────
     //
     // 一键流程：HD 启动 → 用户让角色出现并退出 → 自动换 UHD 再启动 → 再退出 →
