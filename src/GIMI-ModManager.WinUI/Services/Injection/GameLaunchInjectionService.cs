@@ -68,8 +68,13 @@ public sealed class GameLaunchInjectionService
 
     /// <summary>
     /// 尝试直启 + 注入。返回失败时调用方应回退到原启动命令（XXMI Launcher）。
+    ///
+    /// <paramref name="injectMapper"/> 只在「一键学习」时需要：这时必须注入
+    /// <c>Jasm.UhdMapper.dll</c> 观察贴图。日常启动**不注入**——UHD 修复靠 ini 里的
+    /// <c>_UHD_</c> 段（3DMigoto 接管），多注入一个 DLL 只会增加崩溃面。
     /// </summary>
-    public async Task<InjectionLaunchResult> TryLaunchAsync(CancellationToken ct = default)
+    public async Task<InjectionLaunchResult> TryLaunchAsync(CancellationToken ct = default,
+        bool injectMapper = false)
     {
         var settings = await ReadSettingsAsync(ct).ConfigureAwait(false);
         if (!settings.Enabled)
@@ -109,8 +114,8 @@ public sealed class GameLaunchInjectionService
         if (!File.Exists(d3d11Path))
             return InjectionLaunchResult.Fail("找不到 WWMI 的 d3d11.dll，请先完成 Mod 环境配置", "no-d3d11");
 
-        // 映射 DLL 由内嵌资源按需释放；没有映射 DLL 时 Phase 1 仍可只注入 d3d11
-        var mapperPath = _uhdMapperProvisioner.EnsureProvisioned();
+        // 映射 DLL 只在学习时需要（观察贴图绑定）；日常启动只注入 d3d11。
+        var mapperPath = injectMapper ? _uhdMapperProvisioner.EnsureProvisioned() : null;
 
         var overlay = await _localSettingsService
             .ReadSettingAsync<OverlaySettings>(OverlaySettings.Key, SettingScope.App)
@@ -122,9 +127,10 @@ public sealed class GameLaunchInjectionService
         // 这样用户不需要每次手动点「导入 Rocket UHD 映射」。
         await EnsureUhdSectionsAsync(overlay, ct).ConfigureAwait(false);
 
-        // 再落盘 active-mod.json：映射 DLL 在进程启动时就会读它，必须早于 CreateProcess。
+        // 清单只有映射 DLL 会读；不注入 DLL 时不必写（也避免让旧副本读到过期数据）。
         // 已被 _UHD_ 段覆盖的 hash 会在清单里被排除；写失败只记日志，不阻断启动。
-        _uhdActiveModService.WriteForCharacter(overlay?.LastSelectedCharacter);
+        if (injectMapper)
+            _uhdActiveModService.WriteForCharacter(overlay?.LastSelectedCharacter);
 
         var arguments = BuildArguments(settings.LaunchArguments, overlay);
         var workingDirectory = Path.GetDirectoryName(gameExe) ?? install.InstallDir;
