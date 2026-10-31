@@ -956,6 +956,17 @@
                                     Foreground="#99FFFFFF"
                                     Text="向导会启动两次游戏（HD → UHD）。每次让角色出现在画面里，然后退出游戏，向导会自动继续。"
                                     TextWrapping="Wrap" />
+                                <Button
+                                    HorizontalAlignment="Stretch"
+                                    Command="{x:Bind ViewModel.ScanUhdCoverageCommand}"
+                                    Content="体检全部 Mod（生成 UHD 覆盖报告）"
+                                    FontSize="11"
+                                    IsEnabled="{x:Bind ViewModel.CanRunUhdActions, Mode=OneWay}" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="#99FFFFFF"
+                                    Text="体检不启动游戏：按角色统计哪些 Mod 的贴图 hash 还没被 UHD 映射覆盖，报告写到 UhdRuntime\coverage-report.txt。"
+                                    TextWrapping="Wrap" />
                                 <Border
                                     Padding="8"
                                     Background="#0FFFFFFF"
