@@ -72,8 +72,11 @@ public class UhdActiveModManifestTests
     }
 
     [Fact]
-    public void MergesGeneratedUhdSectionsIntoTheBaseEntry()
+    public void IgnoresGeneratedUhdSectionsBecauseTheyMayBeStale()
     {
+        // 实机出现过旧学习数据留下的 _UHD_ 段把别的贴图 hash 挂到本条（例如
+        // Texture8_UHD_7ad4d90b 实际属于 HD=739ef6e9 的 NO 贴图）。原生 DLL 会
+        // 直接按清单替换，所以配对只信 Rocket aliases，不信 ini 里的历史段。
         const string ini = """
                            [ResourceDiffuse]
                            filename = Texture\Diffuse.dds
@@ -91,7 +94,7 @@ public class UhdActiveModManifestTests
 
         var texture = Assert.Single(manifest.Mods[0].Textures);
         Assert.Equal("1998df83", texture.HdHash);
-        Assert.Equal(["dd1f9bc8"], texture.UhdHashes);
+        Assert.Empty(texture.UhdHashes);
     }
 
     [Fact]
