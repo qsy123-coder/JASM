@@ -84,6 +84,18 @@ void TextureRegistry::RememberSrv(ID3D11ShaderResourceView* srv, ID3D11Resource*
     SrvEntry entry;
     entry.resource = resource;
 
+    // 视图格式/维度：替换贴图时要按原始 SRV 的格式重建（sRGB vs 线性），
+    // 否则整张贴图会发白或发黑。
+    // 注意 ID3D11View::GetDesc 返回 void（不是 HRESULT），失败时描述被清零，
+    // 因此以 Format == UNKNOWN 判定「拿不到视图信息」。COM 调用放在锁外。
+    D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc{};
+    srv->GetDesc(&viewDesc);
+    if (viewDesc.Format != DXGI_FORMAT_UNKNOWN)
+    {
+        entry.viewFormat = viewDesc.Format;
+        entry.viewIsTexture2D = viewDesc.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D;
+    }
+
     // QueryInterface 放在锁外，避免在锁里做 COM 调用。
     ComPtr<ID3D11Texture2D> texture;
     const bool isTexture =
@@ -137,6 +149,25 @@ bool TextureRegistry::TryGetSrvHash(ID3D11ShaderResourceView* srv, uint32_t* has
 
     if (hash != nullptr)
         *hash = it->second.hash;
+    return true;
+}
+
+bool TextureRegistry::TryGetSrvView(ID3D11ShaderResourceView* srv, DXGI_FORMAT* format,
+                                    bool* isTexture2D) const
+{
+    if (srv == nullptr)
+        return false;
+
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    const auto it = _srvs.find(srv);
+    // 没有 GetDesc 结果的 SRV 等同于「视图信息未知」，让调用方按 DDS 原格式处理。
+    if (it == _srvs.end() || it->second.viewFormat == DXGI_FORMAT_UNKNOWN)
+        return false;
+
+    if (format != nullptr)
+        *format = it->second.viewFormat;
+    if (isTexture2D != nullptr)
+        *isTexture2D = it->second.viewIsTexture2D;
     return true;
 }
 
