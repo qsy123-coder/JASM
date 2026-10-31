@@ -960,7 +960,7 @@
                                 <TextBlock
                                     FontSize="10"
                                     Foreground="#99FFFFFF"
-                                    Text="向导会启动两次游戏（HD → UHD）。每次让角色出现在画面里，然后退出游戏，向导会自动继续。"
+                                    Text="先在 Mod 列表里只启用要学习的那一个（其余停用），再点这个按钮。向导会启动两次游戏（HD → UHD）：每次让角色（穿着该 Mod）出现在画面里，然后退出游戏，向导会自动继续。"
                                     TextWrapping="Wrap" />
                                 <Button
                                     HorizontalAlignment="Stretch"
