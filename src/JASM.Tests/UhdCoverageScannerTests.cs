@@ -72,6 +72,45 @@ public class UhdCoverageScannerTests
     }
 
     [Fact]
+    public void ScansNestedIniFiles()
+    {
+        // 顶层 mod.ini 只有切换逻辑，真正的贴图覆盖在 Main\ 里（WWMI 常见布局）。
+        var root = Path.Combine(Path.GetTempPath(), "coverage-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Main"));
+
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "mod.ini"), """
+                [Constants]
+                global persist $swapvar = 1
+                """);
+            File.WriteAllText(Path.Combine(root, "Main", "mod.ini"), """
+                [TextureOverrideTexture0]
+                hash = aaaaaaaa
+                this = ResourceA
+                """);
+
+            var mappings = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["aaaaaaaa"] = ["11111111"]
+            };
+
+            var character = UhdCoverageScanner.ScanCharacter("琳奈", "lynae",
+                [("Mod", root)], mappings);
+
+            var mod = Assert.Single(character.Mods);
+            Assert.Equal(1, mod.TextureSections);
+            Assert.Equal(1, mod.TotalHashes);
+            Assert.Equal(1, mod.CoveredHashes);
+            Assert.False(mod.NeedsLearning);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SlotBasedModsDoNotNeedLearning()
     {
         var root = Path.Combine(Path.GetTempPath(), "coverage-" + Guid.NewGuid().ToString("N"));
