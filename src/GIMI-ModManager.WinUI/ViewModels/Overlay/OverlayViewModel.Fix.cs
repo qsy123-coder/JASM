@@ -1018,44 +1018,40 @@ internal sealed partial class OverlayViewModel
             return;
         }
 
-        var selectedTargets = FixTargets.Where(item => item.IsSelected).ToList();
-        if (selectedTargets.Count == 0)
+        // 用**主列表里当前已启用的 Mod**作为学习目标，而不是修复页的独立勾选列表 ——
+        // 后者与启用状态不同步，实机出现过「勾了罪恶修女、实际学到的是另外两个」。
+        var enabledTargets = modList.Mods
+            .Where(entry => entry.IsEnabled)
+            .Select(entry => (entry.Id, Name: entry.Mod.Name, Path: entry.Mod.FullPath))
+            .Where(item => !string.IsNullOrWhiteSpace(item.Path) && Directory.Exists(item.Path))
+            .ToList();
+
+        if (enabledTargets.Count == 0)
         {
-            SetUhdStatus("请先勾选要学习的 Mod（建议一次只勾一个，避免多个 Mod 抢同一个槽位）。",
+            SetUhdStatus("请先在 Mod 列表里启用要学习的 Mod（一次只启用一个，其余停用），再点一键学习。",
                 isError: true);
+            return;
+        }
+
+        if (enabledTargets.Count > 1)
+        {
+            SetUhdStatus($"当前启用了 {enabledTargets.Count} 个 Mod；建议只启用要学习的那一个，"
+                         + "否则多套贴图混在一起观察。", isError: true);
             return;
         }
 
         _selfLearnRole = SelectedCharacter.DisplayName;
         _selfLearnModList = modList;
-        _selfLearnOriginallyEnabledIds = modList.Mods
-            .Where(entry => entry.IsEnabled)
-            .Select(entry => entry.Id)
-            .ToList();
-        _selfLearnTargetPaths = selectedTargets
-            .Select(item => item.ModPath)
-            .Where(Directory.Exists)
+        _selfLearnOriginallyEnabledIds = enabledTargets.Select(item => item.Id).ToList();
+        _selfLearnTargetPaths = enabledTargets
+            .Select(item => item.Path)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         _selfLearnOriginalTier = Settings.UhdResourceTierIndex;
 
-        var selectedIds = selectedTargets.Select(item => item.Id).ToHashSet();
-
         try
         {
-            // 一次只留所选 Mod，避免其它 Mod 的贴图混进观察。
-            await Task.Run(() =>
-            {
-                foreach (var entry in modList.Mods)
-                {
-                    var shouldBeEnabled = selectedIds.Contains(entry.Id);
-                    if (shouldBeEnabled && !entry.IsEnabled)
-                        modList.EnableMod(entry.Id);
-                    else if (!shouldBeEnabled && entry.IsEnabled)
-                        modList.DisableMod(entry.Id);
-                }
-            }).ConfigureAwait(true);
-
+            // 启用状态由用户在列表里决定，这里不再改名/停用，避免路径在捕获后失效。
             // HD 档位 + learn 模式：DLL 只记录观察，不替换任何贴图。
             Settings.UhdResourceTierIndex = 2;
             await SaveSettingsAsync();
