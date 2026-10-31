@@ -1,7 +1,15 @@
 namespace GIMI_ModManager.Core.Services.WuwaUhd;
 
-/// <summary>生成结果：新 INI 文本 + 本次新增的 UHD section 名。</summary>
-public sealed record UhdOverrideGenerationResult(string Text, IReadOnlyList<string> AddedSections)
+/// <summary>
+/// 生成结果：新 INI 文本、本次新增的 UHD section 名，以及命中了映射表的 HD hash。
+///
+/// <see cref="MatchedHashes"/> 用来区分「一条都对不上」（mod 的 hash 过期/不在学习库）
+/// 与「早就修过、已经是最新」（有命中但无需新增）。
+/// </summary>
+public sealed record UhdOverrideGenerationResult(
+    string Text,
+    IReadOnlyList<string> AddedSections,
+    IReadOnlyList<string> MatchedHashes)
 {
     public bool HasChanges => AddedSections.Count > 0;
 }
@@ -47,6 +55,7 @@ public static class UhdOverrideGenerator
         }
 
         var added = new List<string>();
+        var matched = new List<string>();
         var appended = new List<string>();
 
         foreach (var section in sections)
@@ -57,6 +66,9 @@ public static class UhdOverrideGenerator
             var hdHash = section.Body.Select(TryReadHash).FirstOrDefault(h => h is not null);
             if (hdHash is null || !hdToUhdMap.TryGetValue(hdHash, out var uhdHashes))
                 continue;
+
+            if (!matched.Contains(hdHash, StringComparer.OrdinalIgnoreCase))
+                matched.Add(hdHash);
 
             foreach (var uhdHash in uhdHashes)
             {
@@ -93,7 +105,7 @@ public static class UhdOverrideGenerator
         }
 
         if (appended.Count == 0)
-            return new UhdOverrideGenerationResult(source, added);
+            return new UhdOverrideGenerationResult(source, added, matched);
 
         while (appended.Count > 0 && string.IsNullOrWhiteSpace(appended[^1]))
             appended.RemoveAt(appended.Count - 1);
@@ -104,7 +116,7 @@ public static class UhdOverrideGenerator
         foreach (var line in lines)
             builder.Append(line).Append(newline);
 
-        return new UhdOverrideGenerationResult(builder.ToString(), added);
+        return new UhdOverrideGenerationResult(builder.ToString(), added, matched);
     }
 
     private static List<IniSection> ParseSections(IReadOnlyList<string> lines)
