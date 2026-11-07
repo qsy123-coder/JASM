@@ -114,6 +114,16 @@ public sealed class InGameMenuService(
 
                 var target = enabled[0];
 
+                // 常驻前置/后处理类 Mod 没有 $object_detected：菜单无法按角色门控，
+                // 会在任何场景一直显示并与角色菜单叠加，批量补齐直接跳过。
+                if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath))
+                {
+                    items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
+                        InGameMenuGenerationStatus.SkippedNoObjectDetected,
+                        "常驻 Mod（无 $object_detected），菜单无法按角色门控，已跳过"));
+                    continue;
+                }
+
                 if (!regenerate && HasGeneratedMenu(target))
                 {
                     items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
