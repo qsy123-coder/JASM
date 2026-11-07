@@ -55,6 +55,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private readonly INavigationService _navigationService;
     private readonly ModArchiveRepository _modArchiveRepository;
     private readonly ModEnvSetupFacade _modEnvSetupFacade;
+    private readonly InGameMenuService _inGameMenuService;
+
+    [ObservableProperty] private string _inGameMenuKeyDisplay = "F8";
+    [ObservableProperty] private string _inGameMenuKeyInput = "F8";
+    [ObservableProperty] private string _inGameMenuStatusMessage = string.Empty;
+    [ObservableProperty] private bool _hasInGameMenuStatus;
+    [ObservableProperty] private bool _isInGameMenuGenerating;
 
 
     private readonly NotificationManager _notificationManager;
@@ -161,7 +168,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         SelectedGameService selectedGameService, ModUpdateAvailableChecker modUpdateAvailableChecker,
         LifeCycleService lifeCycleService, INavigationService navigationService,
         ModArchiveRepository modArchiveRepository,
-        GameDataSyncService gameDataSyncService, ModEnvSetupFacade modEnvSetupFacade)
+        GameDataSyncService gameDataSyncService, ModEnvSetupFacade modEnvSetupFacade,
+        InGameMenuService inGameMenuService)
     {
         _themeSelectorService = themeSelectorService;
         _localSettingsService = localSettingsService;
@@ -186,6 +194,17 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         _modArchiveRepository = modArchiveRepository;
         _gameDataSyncService = gameDataSyncService;
         _modEnvSetupFacade = modEnvSetupFacade;
+        _inGameMenuService = inGameMenuService;
+
+        var inGameMenuSettings =
+            localSettingsService.ReadSetting<InGameMenuSettings>(InGameMenuSettings.Key, SettingScope.App)
+            ?? new InGameMenuSettings();
+        InGameMenuKeyDisplay = string.IsNullOrWhiteSpace(inGameMenuSettings.OpenKeyDisplay)
+            ? "F8"
+            : inGameMenuSettings.OpenKeyDisplay;
+        InGameMenuKeyInput = string.IsNullOrWhiteSpace(inGameMenuSettings.OpenKeyTokens)
+            ? "F8"
+            : inGameMenuSettings.OpenKeyTokens;
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
         _logger = logger.ForContext<SettingsViewModel>();
@@ -522,6 +541,80 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         OverlayHotkeyStatusMessage = overlayService.IsInitializedForSupportedGame
             ? $"快捷键已更新为 {OverlayHotkeyDisplay}"
             : "已保存；切换到鸣潮后生效";
+    }
+
+    /// <summary>
+    /// 设置页的「为所有 Mod 补齐游戏内菜单」。
+    /// 只给每个列表里「当前生效」且还没有菜单的 Mod 生成；已有菜单 / 多件启用会跳过。
+    /// </summary>
+    [RelayCommand]
+    private async Task GenerateModMenusAsync()
+    {
+        if (IsInGameMenuGenerating)
+            return;
+
+        IsInGameMenuGenerating = true;
+        HasInGameMenuStatus = true;
+        InGameMenuStatusMessage = "正在扫描已安装 Mod…";
+
+        try
+        {
+            var progress = new Progress<InGameMenuBatchProgress>(p =>
+                InGameMenuStatusMessage = $"正在处理 {p.CharacterName}（{p.Done}/{p.Total}）…");
+
+            var result = await Task.Run(() => _inGameMenuService.GenerateForAllAsync(progress));
+
+            InGameMenuStatusMessage = result.Failed > 0
+                ? $"完成：生成 {result.Generated}，跳过 {result.Skipped}，失败 {result.Failed}（详见日志）"
+                : $"完成：生成 {result.Generated}，跳过 {result.Skipped}";
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 批量补齐失败");
+            InGameMenuStatusMessage = "生成失败：" + e.Message;
+        }
+        finally
+        {
+            IsInGameMenuGenerating = false;
+            HasInGameMenuStatus = true;
+        }
+    }
+
+    /// <summary>
+    /// 修改呼出键并重建所有已有菜单。
+    /// 键是写进 ini 的，改键不会自动生效；重建是唯一让旧菜单也用新键的办法。
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveInGameMenuKeyAsync()
+    {
+        var key = InGameMenuKeyInput?.Trim();
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            HasInGameMenuStatus = true;
+            InGameMenuStatusMessage = "呼出键不能为空";
+            return;
+        }
+
+        try
+        {
+            var settings = await _inGameMenuService.ReadSettingsAsync();
+            settings.OpenKeyTokens = key;
+            settings.OpenKeyDisplay = key;
+            await _inGameMenuService.SaveSettingsAsync(settings);
+
+            InGameMenuKeyDisplay = key;
+            HasInGameMenuStatus = true;
+            InGameMenuStatusMessage = $"呼出键已改为 {key}，正在重建已有菜单…";
+
+            var result = await Task.Run(() => _inGameMenuService.GenerateForAllAsync(regenerate: true));
+            InGameMenuStatusMessage = $"呼出键已改为 {key}，已重建 {result.Generated} 个菜单";
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 更新呼出键失败");
+            InGameMenuStatusMessage = "更新失败：" + e.Message;
+        }
     }
 
     private static bool IsModifierKey(VirtualKey key) =>
