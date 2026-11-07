@@ -15,6 +15,7 @@ using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities;
 using GIMI_ModManager.Core.Entities.Mods.Contract;
+using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.ModHandling;
@@ -28,7 +29,8 @@ public sealed partial class ModPaneVM(
     ISkinManagerService skinManagerService,
     NotificationManager notificationService,
     ModSettingsService modSettingsService,
-    ImageHandlerService imageHandlerService)
+    ImageHandlerService imageHandlerService,
+    InGameMenuService inGameMenuService)
     : ObservableRecipient, IRecipient<ModChangedMessage>
 {
     private readonly ILogger _logger = Log.ForContext<ModPaneVM>();
@@ -36,6 +38,7 @@ public sealed partial class ModPaneVM(
     private readonly NotificationManager _notificationService = notificationService;
     private readonly ModSettingsService _modSettingsService = modSettingsService;
     private readonly ImageHandlerService _imageHandlerService = imageHandlerService;
+    private readonly InGameMenuService _inGameMenuService = inGameMenuService;
     private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     private readonly AsyncLock _loadModLock = new();
@@ -52,6 +55,16 @@ public sealed partial class ModPaneVM(
     [ObservableProperty] private bool _isEditingModName;
 
     public bool IsNotReadOnly => !IsReadOnly;
+
+    /// <summary>当前 Mod 的游戏内菜单状态文案（空 = 不显示）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasInGameMenuStatus))]
+    private string _inGameMenuStatusText = string.Empty;
+
+    [ObservableProperty] private bool _isInGameMenuGenerated;
+    [ObservableProperty] private bool _isInGameMenuBusy;
+
+    public bool HasInGameMenuStatus => !string.IsNullOrEmpty(InGameMenuStatusText);
 
     private Guid? _loadedModId;
     private CharacterSkinEntry? _loadedMod;
@@ -164,6 +177,7 @@ public sealed partial class ModPaneVM(
         ModModel.PropertyChanged += ModModel_PropertyChanged;
         _loadedModId = modId;
         IsReadOnly = false;
+        RefreshInGameMenuStatus();
     }
 
     private void ModModel_PropertyChanged(object? sender, PropertyChangedEventArgs e) => SaveModSettingsCommand.NotifyCanExecuteChanged();
@@ -173,10 +187,82 @@ public sealed partial class ModPaneVM(
     {
         _loadedModId = null;
         _loadedMod = null;
+        IsInGameMenuGenerated = false;
+        InGameMenuStatusText = string.Empty;
         if (ModModel.IsLoaded)
             ModModel.PropertyChanged -= ModModel_PropertyChanged;
         ModModel = new ModPaneFieldsVm();
         return Task.CompletedTask;
+    }
+
+    /// <summary>刷新「详情页 → 游戏内菜单」的状态。Mod 未加载时清空。</summary>
+    private void RefreshInGameMenuStatus()
+    {
+        if (!IsModLoaded)
+        {
+            IsInGameMenuGenerated = false;
+            InGameMenuStatusText = string.Empty;
+            return;
+        }
+
+        IsInGameMenuGenerated = _inGameMenuService.HasGeneratedMenu(_loadedMod.Mod);
+        InGameMenuStatusText = IsInGameMenuGenerated ? "已生成游戏内菜单（F8 打开，↑/↓ 选择，F9 切换）" : string.Empty;
+    }
+
+    /// <summary>详情页的「生成游戏内菜单」。已有作者可点击菜单时会被生成器跳过。</summary>
+    [RelayCommand]
+    private async Task GenerateInGameMenuAsync()
+    {
+        if (!IsModLoaded || IsInGameMenuBusy)
+            return;
+
+        IsInGameMenuBusy = true;
+        try
+        {
+            var settings = await _inGameMenuService.ReadSettingsAsync();
+            var mod = _loadedMod.Mod;
+            var result = await Task.Run(() => _inGameMenuService.GenerateForMod(mod, settings));
+
+            InGameMenuStatusText = result.Status switch
+            {
+                InGameMenuGenerationStatus.Generated => "菜单已生成（F8 打开，↑/↓ 选择，F9 切换）",
+                InGameMenuGenerationStatus.SkippedExistingClickableMenu => "作者已自带可点击菜单，已跳过",
+                InGameMenuGenerationStatus.SkippedNoRows => "没有可用的 [Key*] 段落，已跳过",
+                InGameMenuGenerationStatus.SkippedNoClickableRows => "没有可切换的循环变量，已跳过",
+                _ => "生成失败：" + result.Reason,
+            };
+
+            IsInGameMenuGenerated = _inGameMenuService.HasGeneratedMenu(mod);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 详情页生成菜单失败");
+            InGameMenuStatusText = "生成失败：" + e.Message;
+        }
+        finally
+        {
+            IsInGameMenuBusy = false;
+        }
+    }
+
+    /// <summary>详情页的「移除游戏内菜单」。只删 JASM 自己生成的产物。</summary>
+    [RelayCommand]
+    private void RemoveInGameMenu()
+    {
+        if (!IsModLoaded)
+            return;
+
+        try
+        {
+            _inGameMenuService.RemoveForMod(_loadedMod.Mod);
+            IsInGameMenuGenerated = false;
+            InGameMenuStatusText = "菜单已移除";
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 详情页移除菜单失败");
+            InGameMenuStatusText = "移除失败：" + e.Message;
+        }
     }
 
 
