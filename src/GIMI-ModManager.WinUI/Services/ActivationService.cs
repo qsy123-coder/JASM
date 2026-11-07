@@ -323,6 +323,23 @@ public class ActivationService : IActivationService
         // 走 GetService 而不是构造注入：这个服务是 internal 的，塞进本类 public 的构造函数会撞上可访问性检查；
         // 它也只是"启动时装一次"，没必要把 ActivationService 的构造函数撑得更长。
         await App.GetService<OverlayWindowService>().InitializeAsync();
+
+        // 游戏内切换菜单：启动后在后台补齐。不阻塞 UI，已有菜单的 Mod 会直接跳过；
+        // 失败只记日志（菜单是附加能力，不能影响主程序启动）。
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var menuService = App.GetService<GIMI_ModManager.WinUI.Services.ModHandling.InGameMenuService>();
+                var result = await menuService.GenerateForAllAsync().ConfigureAwait(false);
+                Serilog.Log.Information("[InGameMenu] 启动补齐完成：生成 {Generated}，跳过 {Skipped}，失败 {Failed}",
+                    result.Generated, result.Skipped, result.Failed);
+            }
+            catch (Exception e)
+            {
+                Serilog.Log.Warning(e, "[InGameMenu] 启动批量补齐失败");
+            }
+        });
     }
 
     const int MinimizedPosition = -32000;
