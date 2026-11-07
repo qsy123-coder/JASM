@@ -15,6 +15,11 @@ public enum InGameMenuGenerationStatus
     SkippedMultipleEnabledMods,
     /// <summary>菜单已经生成过（批量补齐不会重复做纹理生成）。</summary>
     SkippedAlreadyGenerated,
+    /// <summary>
+    /// Mod 没有 <c>$object_detected</c>（常驻前置/后处理类）：菜单无法按角色门控，
+    /// 会一直显示并与角色菜单叠加，批量补齐跳过。
+    /// </summary>
+    SkippedNoObjectDetected,
     Failed,
 }
 
@@ -248,6 +253,12 @@ public static class InGameMenuGenerator
 
         return Path.Combine(modFolderPath, best);
     }
+
+    /// <summary>
+    /// Mod 是否提供 <c>$object_detected</c>。没有它说明是常驻前置/后处理类 Mod，
+    /// 菜单无法按「当前角色」门控，批量补齐应跳过。
+    /// </summary>
+    public static bool HasObjectDetectedVariable(string modFolderPath) => ContainsObjectDetected(modFolderPath);
 
     private static bool ContainsObjectDetected(string modFolderPath)
     {
