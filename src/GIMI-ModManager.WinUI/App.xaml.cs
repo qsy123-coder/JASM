@@ -276,6 +276,7 @@ public partial class App : Application
                 });
                 services.AddSingleton<ModUpdateAvailableChecker>();
                 services.AddSingleton<ModInstallerService>();
+                services.AddSingleton<Services.ModHandling.InGameMenuService>();
                 services.AddSingleton<GameDataSyncService>();
 
                 // Mod environment setup (one-click XXMI/WWMI install)
