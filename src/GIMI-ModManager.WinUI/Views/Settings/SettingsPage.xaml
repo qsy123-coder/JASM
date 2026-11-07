@@ -581,6 +581,57 @@
 
                 <TextBlock
                     Style="{ThemeResource SubtitleTextBlockStyle}"
+                    Text="游戏内 Mod 菜单" />
+                <StackPanel Margin="{StaticResource SmallTopBottomMargin}" Spacing="8">
+                    <TextBlock
+                        MaxWidth="600"
+                        HorizontalAlignment="Left"
+                        IsTextSelectionEnabled="True"
+                        TextWrapping="WrapWholeWords"
+                        Text="为每个「当前生效」的 Mod 生成游戏内切换菜单：按 F8 打开/关闭，↑/↓ 选择，F9 切换当前行。已有可点击菜单、或同一角色同时启用多件 Mod 时会跳过。" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Padding="10,6"
+                            HorizontalAlignment="Left"
+                            Background="#1AFFFFFF"
+                            BorderBrush="#33FFFFFF"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                            <TextBlock
+                                FontFamily="Consolas"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.InGameMenuKeyDisplay, Mode=OneWay}" />
+                        </Border>
+                        <TextBox
+                            Grid.Column="1"
+                            Text="{x:Bind ViewModel.InGameMenuKeyInput, Mode=TwoWay}"
+                            PlaceholderText="呼出键，例如 F8" />
+                        <Button
+                            Grid.Column="2"
+                            Command="{x:Bind ViewModel.SaveInGameMenuKeyCommand}"
+                            Content="保存呼出键" />
+                        <Button
+                            Grid.Column="3"
+                            Command="{x:Bind ViewModel.GenerateModMenusCommand}"
+                            Content="为所有 Mod 补齐菜单" />
+                    </Grid>
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="#FFE8A33D"
+                        Text="{x:Bind ViewModel.InGameMenuStatusMessage, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords"
+                        Visibility="{x:Bind ViewModel.HasInGameMenuStatus, Mode=OneWay}" />
+                </StackPanel>
+
+                <TextBlock
+                    Style="{ThemeResource SubtitleTextBlockStyle}"
                     Text="Export/Backup Mods"
                     l:Uids.Uid="Settings_Export_Title" />
 
