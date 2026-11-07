@@ -4,6 +4,7 @@ using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities.Mods.Contract;
 using GIMI_ModManager.Core.Entities.Mods.Helpers;
+using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.Entities.Mods.SkinMod;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
@@ -165,6 +166,10 @@ public class ModInstallerService(
                 return;
 
             if (_inGameMenuService.HasGeneratedMenu(mod))
+                return;
+
+            // 常驻前置/后处理类 Mod 没有 $object_detected，菜单无法按角色门控，装完也不生成
+            if (!InGameMenuGenerator.HasObjectDetectedVariable(mod.FullPath))
                 return;
 
             await Task.Run(() => _inGameMenuService.GenerateForMod(mod, settings)).ConfigureAwait(false);
