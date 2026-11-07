@@ -21,10 +21,12 @@ namespace GIMI_ModManager.WinUI.Services.ModHandling;
 
 public class ModInstallerService(
     IWindowManagerService windowManagerService,
-    ILocalSettingsService localSettingsService)
+    ILocalSettingsService localSettingsService,
+    InGameMenuService inGameMenuService)
 {
     private readonly ILocalSettingsService _localSettingsService = localSettingsService;
     private readonly IWindowManagerService _windowManagerService = windowManagerService;
+    private readonly InGameMenuService _inGameMenuService = inGameMenuService;
 
     public async Task<InstallMonitor> StartModInstallationAsync(DirectoryInfo modFolder, ICharacterModList modList,
         ICharacterSkin? inGameSkin = null, Action<InstallOptions>? setup = null)
@@ -137,7 +139,40 @@ public class ModInstallerService(
             }
         }
 
+        // 装完顺手补一份游戏内菜单。失败只记日志，绝不把安装判失败 ——
+        // 菜单是锦上添花，Mod 本身已经落盘成功。
+        await TryGenerateInGameMenuAsync(skinMod, modList).ConfigureAwait(false);
+
         return skinMod;
+    }
+
+    /// <summary>
+    /// 安装完成后的菜单生成钩子。只有在「这一件是当前唯一启用的」时才做，
+    /// 与批量补齐的「只给当前生效的那一件」规则保持一致。
+    /// </summary>
+    private async Task TryGenerateInGameMenuAsync(ISkinMod mod, ICharacterModList modList)
+    {
+        try
+        {
+            var settings = await _inGameMenuService.ReadSettingsAsync().ConfigureAwait(false);
+            if (!settings.Enabled)
+                return;
+
+            if (!modList.IsModEnabled(mod))
+                return;
+
+            if (modList.Mods.Count(entry => entry.IsEnabled) != 1)
+                return;
+
+            if (_inGameMenuService.HasGeneratedMenu(mod))
+                return;
+
+            await Task.Run(() => _inGameMenuService.GenerateForMod(mod, settings)).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Serilog.Log.Warning(e, "[InGameMenu] 安装后生成菜单失败: {Mod}", mod.Name);
+        }
     }
 
     private async Task<InstallMonitor> InternalStartAsync(DirectoryInfo modFolder, ICharacterModList modList,
