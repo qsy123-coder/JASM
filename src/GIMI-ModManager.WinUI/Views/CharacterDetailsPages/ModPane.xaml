@@ -255,6 +255,24 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden"
                           VerticalAlignment="Stretch">
                 <StackPanel x:Name="KeyBindingHintPanel" Spacing="10">
+                    <!-- 游戏内菜单：生成 / 移除 / 状态 -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            Command="{x:Bind ViewModel.GenerateInGameMenuCommand}"
+                            Content="生成游戏内菜单"
+                            IsEnabled="{x:Bind ViewModel.IsNotReadOnly, Mode=OneWay}" />
+                        <Button
+                            Command="{x:Bind ViewModel.RemoveInGameMenuCommand}"
+                            Content="移除"
+                            IsEnabled="{x:Bind ViewModel.IsInGameMenuGenerated, Mode=OneWay}" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.InGameMenuStatusText, Mode=OneWay}"
+                            TextWrapping="WrapWholeWords"
+                            Visibility="{x:Bind ViewModel.HasInGameMenuStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </StackPanel>
                     <!-- 按 ini 文件分组，点击文件夹名折叠 -->
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModModel.KeyBindingGroups, Mode=OneWay}">
                         <ItemsRepeater.Layout>
