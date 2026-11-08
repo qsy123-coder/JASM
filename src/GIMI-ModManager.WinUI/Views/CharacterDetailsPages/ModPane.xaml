@@ -265,6 +265,10 @@
                             Command="{x:Bind ViewModel.RemoveInGameMenuCommand}"
                             Content="移除"
                             IsEnabled="{x:Bind ViewModel.IsInGameMenuGenerated, Mode=OneWay}" />
+                        <Button
+                            Command="{x:Bind ViewModel.CustomizeInGameMenuCommand}"
+                            Content="自定义行"
+                            IsEnabled="{x:Bind ViewModel.IsInGameMenuGenerated, Mode=OneWay}" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
