@@ -254,7 +254,6 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             : inGameMenuSettings.MenuTheme;
         _suppressThemeChange = false;
 
-        InGameMenuReferenceAssetsPicker.Path = inGameMenuSettings.ReferenceAssetsDirectory;
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
         _logger = logger.ForContext<SettingsViewModel>();
@@ -269,6 +268,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
         OverlayScreenshotFolderPicker = new PathPicker();
         InGameMenuReferenceAssetsPicker = new PathPicker();
+        // 必须在构造完 PathPicker 之后再写入路径（之前放在设置读取处会空引用）
+        InGameMenuReferenceAssetsPicker.Path = inGameMenuSettings.ReferenceAssetsDirectory;
 
         var overlaySettings = localSettingsService.ReadSetting<OverlaySettings>(OverlaySettings.Key,
             SettingScope.App);
