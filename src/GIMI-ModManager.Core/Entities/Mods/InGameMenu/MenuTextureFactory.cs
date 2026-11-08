@@ -116,7 +116,10 @@ public static class MenuTextureFactory
                 surface.SetPixel(x, y, fill.B, fill.G, fill.R, fill.A);
 
                 if (distance > -1.4)
-                    surface.SetPixel(x, y, theme.TabBorder.B, theme.TabBorder.G, theme.TabBorder.R, theme.TabBorder.A);
+                {
+                    var border = active ? theme.TabBorderActive : theme.TabBorder;
+                    surface.SetPixel(x, y, border.B, border.G, border.R, border.A);
+                }
 
                 // 选中页签底部亮线
                 if (active && y >= surface.Height - 3)
