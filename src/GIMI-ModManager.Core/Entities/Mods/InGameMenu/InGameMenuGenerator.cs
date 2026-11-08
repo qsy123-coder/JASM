@@ -128,6 +128,8 @@ public static class InGameMenuGenerator
                 null, null, 0, 0,
                 "没有解析到任何 [Key*] 段落");
 
+        rows = EnsureAsciiNamespaces(modFolderPath, rows);
+
         var clickable = rows.Count(r => r.IsClickable);
         if (clickable == 0)
             return new InGameMenuGenerationResult(
@@ -148,14 +150,24 @@ public static class InGameMenuGenerator
         if (File.Exists(iniPath) && !LooksLikeGeneratedIni(iniPath))
             return Failed($"{MenuIniFileName} 已存在且不是 JASM 生成的文件，拒绝覆盖");
 
-        var detectionHash = ExtractDetectionHash(modFolderPath);
         var effectiveOptions = options ?? new InGameMenuOptions();
+        // 补过 ASCII namespace 之后，每个 Mod 的 $object_detected 都是独立的，
+        // 直接用它做逐角色门控（比 hash 可靠；hash 可能命中共享资源导致叠菜单）。
+        var gateNamespace = rows.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.Namespace))?.Namespace;
+        var detectionVariable = !string.IsNullOrWhiteSpace(gateNamespace)
+                                && ContainsObjectDetected(modFolderPath)
+            ? "$\\" + gateNamespace + "\\object_detected"
+            : string.Empty;
+        var detectionHash = detectionVariable.Length == 0 ? ExtractDetectionHash(modFolderPath) : null;
+
         effectiveOptions = effectiveOptions with
         {
             Title = Truncate(StripDisabledPrefix(Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar))), 40),
             DetectionHash = detectionHash ?? string.Empty,
-            // 有角色 hash 时用它做逐角色门控；没有才退回全局 $object_detected
+            DetectionVariable = detectionVariable,
+            // 有独立门控变量 / hash 时不再退回未限定的全局 $object_detected
             GateOnObjectDetected = detectionHash is null
+                                   && detectionVariable.Length == 0
                                    && effectiveOptions.GateOnObjectDetected
                                    && ContainsObjectDetected(modFolderPath),
         };
@@ -219,6 +231,21 @@ public static class InGameMenuGenerator
             removed = true;
         }
 
+        // 还原生成时补进作者 ini 的 ASCII namespace 行
+        foreach (var ini in Directory.EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories))
+        {
+            try
+            {
+                IniFileText.TryRemoveAddedNamespace(ini);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
         return removed;
     }
 
@@ -258,6 +285,57 @@ public static class InGameMenuGenerator
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 给没有 <c>namespace =</c> 的 Mod 补一行 ASCII namespace。
+    ///
+    /// 3DMigoto 用 ini 的**路径**当默认命名空间，而 Mod 路径通常含中文；
+    /// 菜单里写成 <c>$\Mods\character\绯雪-…\mod.ini\var</c> 会被表达式解析器判为语法错误
+    /// （真机日志：<c>Syntax Error ... \绯雪-…\mod.ini\skirt</c>）。补一行 ASCII namespace 后，
+    /// 菜单用 <c>$\JasmXXXXXXXX\var</c> 就能正常读写。
+    ///
+    /// 只改这一个文件的这一行；<see cref="Remove"/> 会按标记把它删掉。
+    /// </summary>
+    private static IReadOnlyList<ModIniToggleRow> EnsureAsciiNamespaces(
+        string modFolderPath,
+        IReadOnlyList<ModIniToggleRow> rows)
+    {
+        var assigned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<ModIniToggleRow>(rows.Count);
+
+        foreach (var row in rows)
+        {
+            if (!string.IsNullOrWhiteSpace(row.Namespace))
+            {
+                result.Add(row);
+                continue;
+            }
+
+            if (!assigned.TryGetValue(row.IniRelativePath, out var ns))
+            {
+                // 必须全局唯一：不同 Mod 的 ini 相对路径常常都是 "mod.ini"，
+                // 只用相对路径会让两个 Mod 共用一个命名空间、互相串改变量。
+                var seed = (modFolderPath + "|" + row.IniRelativePath).ToLowerInvariant();
+                ns = "Jasm" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(seed)))[..8];
+
+                try
+                {
+                    IniFileText.TryInsertNamespace(Path.Combine(modFolderPath, row.IniRelativePath), ns);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // 写不进去就退回旧行为：菜单能显示，但点击不会作用到 Mod
+                    ns = string.Empty;
+                }
+
+                assigned[row.IniRelativePath] = ns;
+            }
+
+            result.Add(string.IsNullOrEmpty(ns) ? row : row with { Namespace = ns });
+        }
+
+        return result;
     }
 
     private static bool LooksLikeGeneratedIni(string path)
