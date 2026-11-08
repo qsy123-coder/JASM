@@ -56,14 +56,24 @@ public sealed record InGameMenuOptions
     /// v10：hold 边沿在低帧率下会漏（按下/抬起同帧）；改用 cycle 脉冲变量 + Present 检测变化。
     /// v11：修复门控 if 缺少 endif（绘制变成无条件执行，F7 改 open 但菜单不消失）。
     /// v12：竖栏增加 ↺「恢复默认」，把所有行写回 Mod ini 声明的初始值。
+    /// v13：键盘导航（↑/↓ 选择、Enter 切换）与选中行高亮。
     /// </summary>
-    public const int CurrentGeneratorVersion = 12;
+    public const int CurrentGeneratorVersion = 13;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
 
     /// <summary>诊断用：在光标计算位置画一个红色小方块。</summary>
     public bool DebugCursor { get; init; }
+
+    /// <summary>菜单行的显示顺序（<see cref="ModIniToggleRow.Key"/> 列表）；未列出的行按原顺序追加。</summary>
+    public IReadOnlyList<string> RowOrder { get; init; } = [];
+
+    /// <summary>要隐藏的行（<see cref="ModIniToggleRow.Key"/> 列表）。</summary>
+    public IReadOnlyCollection<string> HiddenRows { get; init; } = [];
+
+    /// <summary>菜单皮肤；换皮肤后需要重建菜单。</summary>
+    public MenuTheme Theme { get; init; } = MenuThemes.Default;
 }
 
 /// <summary>一张待生成的纹理。文字类由生成器渲染，面板类由 <see cref="MenuTextureFactory"/> 绘制。</summary>
@@ -123,7 +133,7 @@ public sealed record InGameMenuBuildResult(
 /// • 每行：左箭头、名称、当前值、右侧按键提示、右箭头；
 /// • 底部三行说明文字。
 ///
-/// 交互：<c>F7</c> 开关；按住 Alt 后左键点击行/页签/页码，右键拖动菜单。
+/// 交互：<c>F7</c> 开关；Alt+左键点击行/页签/页码，右键拖动；↑/↓ 选择，Enter 切换。
 /// 所有坐标写在 1920×1080 虚拟空间，运行时按 <c>min(res_w/1920, res_h/1080)</c> 缩放。
 /// </summary>
 public static class InGameMenuIniBuilder
@@ -243,7 +253,7 @@ public static class InGameMenuIniBuilder
             GdiTextRasterizer.TextAlign.Center));
 
         // —— 底部说明 ——
-        textures.Add(Text("JASM_Menu/hint_1.dds", "按住 Alt：左键点击切换 · 右键拖动菜单",
+        textures.Add(Text("JASM_Menu/hint_1.dds", "Alt+左键点击 · ↑/↓ 选择 · Enter 切换",
             BottomHintWidth, BottomHintHeight, 16, false, GdiTextRasterizer.TextAlign.Center));
         textures.Add(Text("JASM_Menu/hint_2.dds", $"{options.OpenKeyDisplay} 打开 / 关闭菜单",
             BottomHintWidth, BottomHintHeight, 16, false, GdiTextRasterizer.TextAlign.Center));
@@ -311,9 +321,14 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"{v}drag_guard = 1");
         ini.AppendLine();
 
+        // 键盘导航：↑/↓ 选择，Enter 切换（都在菜单打开时生效）
+        AppendNavKey(ini, v, token, "Up", "VK_UP", "up");
+        AppendNavKey(ini, v, token, "Down", "VK_DOWN", "down");
+        AppendNavKey(ini, v, token, "Enter", "VK_RETURN", "enter");
+
         AppendConstants(ini, v);
         AppendDetector(ini, v, token, options);
-        AppendPresent(ini, v, token, options, pageCount, menuHeight);
+        AppendPresent(ini, v, token, options, pageCount, menuHeight, rowCount, rowsPerPage);
         AppendChrome(ini, v, token, pageCount, visibleRows, rows, options);
 
         for (var p = 0; p < pageCount; p++)
@@ -340,6 +355,16 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"global persist {v}x = {AnchorDefaultX}");
         ini.AppendLine($"global persist {v}y = {AnchorDefaultY}");
         ini.AppendLine($"global {v}page = 0");
+        ini.AppendLine($"global {v}sel = 0");
+        ini.AppendLine($"global {v}up_pulse = 0");
+        ini.AppendLine($"global {v}up_prev = 0");
+        ini.AppendLine($"global {v}down_pulse = 0");
+        ini.AppendLine($"global {v}down_prev = 0");
+        ini.AppendLine($"global {v}enter_pulse = 0");
+        ini.AppendLine($"global {v}enter_prev = 0");
+        ini.AppendLine($"global {v}nav_up = 0");
+        ini.AppendLine($"global {v}nav_down = 0");
+        ini.AppendLine($"global {v}nav_enter = 0");
         ini.AppendLine($"global {v}click_guard = 0");
         ini.AppendLine($"global {v}key_pulse = 0");
         ini.AppendLine($"global {v}key_pulse_prev = 0");
@@ -382,7 +407,7 @@ public static class InGameMenuIniBuilder
     }
 
     private static void AppendPresent(StringBuilder ini, string v, string token, InGameMenuOptions options,
-        int pageCount, int menuHeight)
+        int pageCount, int menuHeight, int rowCount, int rowsPerPage)
     {
         // [Present] 只做无条件转发：把 if 门控放进 CommandList 里。
         // 实机验证：非命名空间的 mod ini 里直接写在 [Present] 的 if 不会生效。
@@ -394,7 +419,11 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"if {v}first_frame == 1");
         ini.AppendLine($"    {v}open = 0");
         ini.AppendLine($"    {v}page = 0");
+        ini.AppendLine($"    {v}sel = 0");
         ini.AppendLine($"    {v}key_pulse_prev = {v}key_pulse");
+        ini.AppendLine($"    {v}up_prev = {v}up_pulse");
+        ini.AppendLine($"    {v}down_prev = {v}down_pulse");
+        ini.AppendLine($"    {v}enter_prev = {v}enter_pulse");
         ini.AppendLine($"    {v}first_frame = 0");
         ini.AppendLine("endif");
         ini.AppendLine();
@@ -476,6 +505,34 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"    if {v}page > {Math.Max(0, pageCount - 1)}");
         ini.AppendLine($"        {v}page = {Math.Max(0, pageCount - 1)}");
         ini.AppendLine("    endif");
+        ini.AppendLine();
+
+        // 键盘导航：脉冲变化 → 移动选择 / Enter 切换
+        ini.AppendLine($"    {v}nav_up = 0");
+        ini.AppendLine($"    {v}nav_down = 0");
+        ini.AppendLine($"    {v}nav_enter = 0");
+        AppendNavEdge(ini, v, "up");
+        AppendNavEdge(ini, v, "down");
+        AppendNavEdge(ini, v, "enter");
+        ini.AppendLine($"    if {v}nav_up == 1");
+        ini.AppendLine($"        {v}sel = {v}sel - 1");
+        ini.AppendLine("    endif");
+        ini.AppendLine($"    if {v}nav_down == 1");
+        ini.AppendLine($"        {v}sel = {v}sel + 1");
+        ini.AppendLine("    endif");
+        ini.AppendLine($"    if {v}sel < 0");
+        ini.AppendLine($"        {v}sel = {Math.Max(0, rowCount - 1)}");
+        ini.AppendLine("    endif");
+        ini.AppendLine($"    if {v}sel > {Math.Max(0, rowCount - 1)}");
+        ini.AppendLine($"        {v}sel = 0");
+        ini.AppendLine("    endif");
+        ini.AppendLine($"    {v}page = 0");
+        for (var p = 1; p < pageCount; p++)
+        {
+            ini.AppendLine($"    if {v}sel >= {p * rowsPerPage}");
+            ini.AppendLine($"        {v}page = {p}");
+            ini.AppendLine("    endif");
+        }
         ini.AppendLine();
         ini.AppendLine("    ; Alt+左键按下沿");
         ini.AppendLine($"    if {v}click_guard == 1");
@@ -688,6 +745,12 @@ public static class InGameMenuIniBuilder
             RowWidth, RowHeight, 1);
         ini.AppendLine("endif");
 
+        // 键盘选中的行也显示高亮
+        ini.AppendLine($"if {v}sel == {index}");
+        AppendQuad(ini, v, token, ResourceName("RowHover", token), $"{v}x + {RowOffsetX}", $"{v}y + {rowY}",
+            RowWidth, RowHeight, 1);
+        ini.AppendLine("endif");
+
         // 左箭头
         AppendQuad(ini, v, token, ResourceName("ArrowLeft", token), $"{v}x + {ArrowLeftOffsetX}",
             $"{v}y + {rowY + ArrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
@@ -727,11 +790,18 @@ public static class InGameMenuIniBuilder
         AppendQuad(ini, v, token, ResourceName("ArrowRight", token), $"{v}x + {ArrowRightOffsetX}",
             $"{v}y + {rowY + ArrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
 
-        // Alt+左键点击切换
+        // Alt+左键点击切换 / Enter 切换选中行
         if (row.IsClickable)
         {
             ini.AppendLine($"if {v}in_rect == 1");
             ini.AppendLine($"    if {v}click == 1");
+            ini.AppendLine($"        {v}sel = {index}");
+            AppendCycle(ini, row.QualifiedVariable, row.Values);
+            ini.AppendLine("    endif");
+            ini.AppendLine("endif");
+
+            ini.AppendLine($"if {v}sel == {index}");
+            ini.AppendLine($"    if {v}nav_enter == 1");
             AppendCycle(ini, row.QualifiedVariable, row.Values);
             ini.AppendLine("    endif");
             ini.AppendLine("endif");
@@ -906,6 +976,33 @@ public static class InGameMenuIniBuilder
     private static string KeyMouseClickSection(string token) => $"KeyJasmMenuMouseClick_{token}";
 
     private static string KeyMouseDragSection(string token) => $"KeyJasmMenuMouseDrag_{token}";
+
+    /// <summary>键盘导航键：cycle 只翻转脉冲，Present 里检测变化再移动选择/切换。</summary>
+    private static void AppendNavKey(StringBuilder ini, string v, string token, string name, string key,
+        string pulse)
+    {
+        ini.AppendLine($"[KeyJasmMenu{name}_{token}]");
+        ini.AppendLine($"condition = {v}open == 1");
+        ini.AppendLine($"key = {key}");
+        ini.AppendLine("type = cycle");
+        ini.AppendLine($"{v}{pulse}_pulse = 0,1");
+        ini.AppendLine();
+    }
+
+    /// <summary>检测脉冲变量本帧是否发生变化（低帧率下按下/抬起可能同帧，不能只看当前值）。</summary>
+    private static void AppendNavEdge(StringBuilder ini, string v, string pulse)
+    {
+        ini.AppendLine($"    if {v}{pulse}_pulse == 1");
+        ini.AppendLine($"        if {v}{pulse}_prev == 0");
+        ini.AppendLine($"            {v}nav_{pulse} = 1");
+        ini.AppendLine("        endif");
+        ini.AppendLine("    else");
+        ini.AppendLine($"        if {v}{pulse}_prev == 1");
+        ini.AppendLine($"            {v}nav_{pulse} = 1");
+        ini.AppendLine("        endif");
+        ini.AppendLine("    endif");
+        ini.AppendLine($"    {v}{pulse}_prev = {v}{pulse}_pulse");
+    }
 
     private static string MenuDrawCommandList(string token) => $"CommandListJasmMenuDraw_{token}";
 
