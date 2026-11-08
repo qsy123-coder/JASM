@@ -15,6 +15,10 @@
 *.sln.docstates
 *.secrets.cs
 
+# Local secrets (COS upload credentials 等)，绝不入库
+.env
+.env.local
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
