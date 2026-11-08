@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities.Mods.Helpers;
+using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
@@ -60,6 +61,43 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
     [ObservableProperty] private string _inGameMenuKeyDisplay = "F7";
     [ObservableProperty] private string _inGameMenuKeyInput = "F7";
+
+    /// <summary>内置菜单皮肤。</summary>
+    public IReadOnlyList<MenuTheme> InGameMenuThemes => MenuThemes.All;
+
+    [ObservableProperty] private string _selectedInGameMenuTheme = MenuThemes.DefaultId;
+
+    /// <summary>初始化时写入设置值不应触发重建。</summary>
+    private bool _suppressThemeChange;
+
+    partial void OnSelectedInGameMenuThemeChanged(string value)
+    {
+        if (_suppressThemeChange)
+            return;
+
+        _ = ApplyInGameMenuThemeAsync(value);
+    }
+
+    private async Task ApplyInGameMenuThemeAsync(string themeId)
+    {
+        try
+        {
+            var settings = await _inGameMenuService.ReadSettingsAsync();
+            settings.MenuTheme = themeId;
+            await _inGameMenuService.SaveSettingsAsync(settings);
+
+            HasInGameMenuStatus = true;
+            InGameMenuStatusMessage = $"菜单主题已切换为 {MenuThemes.Get(themeId).DisplayName}，正在重建…";
+
+            var result = await Task.Run(() => _inGameMenuService.GenerateForAllAsync(regenerate: true));
+            InGameMenuStatusMessage = $"菜单主题已切换，已重建 {result.Generated} 个菜单";
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 切换菜单主题失败");
+            InGameMenuStatusMessage = "切换主题失败：" + e.Message;
+        }
+    }
     [ObservableProperty] private string _inGameMenuStatusMessage = string.Empty;
     [ObservableProperty] private bool _hasInGameMenuStatus;
     [ObservableProperty] private bool _isInGameMenuGenerating;
@@ -206,6 +244,12 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         InGameMenuKeyInput = string.IsNullOrWhiteSpace(inGameMenuSettings.OpenKeyTokens)
             ? "F7"
             : inGameMenuSettings.OpenKeyTokens;
+
+        _suppressThemeChange = true;
+        SelectedInGameMenuTheme = string.IsNullOrWhiteSpace(inGameMenuSettings.MenuTheme)
+            ? MenuThemes.DefaultId
+            : inGameMenuSettings.MenuTheme;
+        _suppressThemeChange = false;
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
         _logger = logger.ForContext<SettingsViewModel>();
