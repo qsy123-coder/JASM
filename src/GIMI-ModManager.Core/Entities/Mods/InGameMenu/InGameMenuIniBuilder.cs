@@ -55,8 +55,9 @@ public sealed record InGameMenuOptions
     /// v9：呼出键从 type=cycle 改为 hold + 自行检测按下沿，避免与自动归零 resync 导致第一次按无效。
     /// v10：hold 边沿在低帧率下会漏（按下/抬起同帧）；改用 cycle 脉冲变量 + Present 检测变化。
     /// v11：修复门控 if 缺少 endif（绘制变成无条件执行，F7 改 open 但菜单不消失）。
+    /// v12：竖栏增加 ↺「恢复默认」，把所有行写回 Mod ini 声明的初始值。
     /// </summary>
-    public const int CurrentGeneratorVersion = 11;
+    public const int CurrentGeneratorVersion = 12;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -220,6 +221,8 @@ public static class InGameMenuIniBuilder
             SidebarWidth, pageCount * SidebarNumberHeight + 12, 0, false, GdiTextRasterizer.TextAlign.Left));
         textures.Add(Text("JASM_Menu/close.dds", "×", CloseWidth, CloseHeight, 24, false,
             GdiTextRasterizer.TextAlign.Center));
+        textures.Add(Text("JASM_Menu/reset.dds", "↺", CloseWidth, CloseHeight, 24, false,
+            GdiTextRasterizer.TextAlign.Center));
 
         for (var p = 0; p < pageCount; p++)
         {
@@ -244,7 +247,7 @@ public static class InGameMenuIniBuilder
             BottomHintWidth, BottomHintHeight, 16, false, GdiTextRasterizer.TextAlign.Center));
         textures.Add(Text("JASM_Menu/hint_2.dds", $"{options.OpenKeyDisplay} 打开 / 关闭菜单",
             BottomHintWidth, BottomHintHeight, 16, false, GdiTextRasterizer.TextAlign.Center));
-        textures.Add(Text("JASM_Menu/hint_3.dds", "JASM · 游戏内 Mod 菜单",
+        textures.Add(Text("JASM_Menu/hint_3.dds", "左侧 ↺ 恢复默认 · JASM",
             BottomHintWidth, BottomHintHeight, 16, false, GdiTextRasterizer.TextAlign.Center));
 
         // —— 每行文字 ——
@@ -311,7 +314,7 @@ public static class InGameMenuIniBuilder
         AppendConstants(ini, v);
         AppendDetector(ini, v, token, options);
         AppendPresent(ini, v, token, options, pageCount, menuHeight);
-        AppendChrome(ini, v, token, pageCount, visibleRows, options);
+        AppendChrome(ini, v, token, pageCount, visibleRows, rows, options);
 
         for (var p = 0; p < pageCount; p++)
             AppendPageCommandList(ini, token, p, rowCount, rowsPerPage);
@@ -527,7 +530,7 @@ public static class InGameMenuIniBuilder
     }
 
     private static void AppendChrome(StringBuilder ini, string v, string token, int pageCount, int visibleRows,
-        InGameMenuOptions options)
+        IReadOnlyList<ModIniToggleRow> rows, InGameMenuOptions options)
     {
         ini.AppendLine($"[{MenuDrawCommandList(token)}]");
 
@@ -603,6 +606,22 @@ public static class InGameMenuIniBuilder
             ini.AppendLine("    endif");
             ini.AppendLine("endif");
         }
+
+        // 重置按钮（竖栏下方）：把所有行恢复成 Mod ini 里声明的初始值
+        var resetY = SidebarOffsetY + pageCount * SidebarNumberHeight + 12 + 6;
+        AppendQuad(ini, v, token, ResourceName("Reset", token), $"{v}x + {SidebarOffsetX}",
+            $"{v}y + {resetY}", CloseWidth, CloseHeight, 0.85m);
+        ini.AppendLine($"{v}in_rect = 0");
+        AppendHitRect(ini, v, $"{v}x + {SidebarOffsetX}", $"{v}y + {resetY}", CloseWidth, CloseHeight);
+        ini.AppendLine($"if {v}in_rect == 1");
+        ini.AppendLine($"    if {v}click == 1");
+        foreach (var row in rows)
+        {
+            if (row.IsClickable && !string.IsNullOrWhiteSpace(row.DefaultValue))
+                ini.AppendLine($"        {row.QualifiedVariable} = {row.DefaultValue}");
+        }
+        ini.AppendLine("    endif");
+        ini.AppendLine("endif");
 
         // 当前页的行
         for (var p = 0; p < pageCount; p++)
@@ -787,6 +806,7 @@ public static class InGameMenuIniBuilder
         AppendResource(ini, token, "TabActive", "JASM_Menu/tab_active.dds");
         AppendResource(ini, token, "Sidebar", "JASM_Menu/sidebar.dds");
         AppendResource(ini, token, "Close", "JASM_Menu/close.dds");
+        AppendResource(ini, token, "Reset", "JASM_Menu/reset.dds");
         AppendResource(ini, token, "Row", "JASM_Menu/row.dds");
         AppendResource(ini, token, "RowHover", "JASM_Menu/row_hover.dds");
         AppendResource(ini, token, "ArrowLeft", "JASM_Menu/arrow_left.dds");
