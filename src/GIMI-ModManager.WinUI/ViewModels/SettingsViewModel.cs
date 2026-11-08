@@ -57,8 +57,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     private readonly ModEnvSetupFacade _modEnvSetupFacade;
     private readonly InGameMenuService _inGameMenuService;
 
-    [ObservableProperty] private string _inGameMenuKeyDisplay = "F6";
-    [ObservableProperty] private string _inGameMenuKeyInput = "F6";
+    [ObservableProperty] private string _inGameMenuKeyDisplay = "F7";
+    [ObservableProperty] private string _inGameMenuKeyInput = "F7";
     [ObservableProperty] private string _inGameMenuStatusMessage = string.Empty;
     [ObservableProperty] private bool _hasInGameMenuStatus;
     [ObservableProperty] private bool _isInGameMenuGenerating;
@@ -200,10 +200,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             localSettingsService.ReadSetting<InGameMenuSettings>(InGameMenuSettings.Key, SettingScope.App)
             ?? new InGameMenuSettings();
         InGameMenuKeyDisplay = string.IsNullOrWhiteSpace(inGameMenuSettings.OpenKeyDisplay)
-            ? "F6"
+            ? "F7"
             : inGameMenuSettings.OpenKeyDisplay;
         InGameMenuKeyInput = string.IsNullOrWhiteSpace(inGameMenuSettings.OpenKeyTokens)
-            ? "F6"
+            ? "F7"
             : inGameMenuSettings.OpenKeyTokens;
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
