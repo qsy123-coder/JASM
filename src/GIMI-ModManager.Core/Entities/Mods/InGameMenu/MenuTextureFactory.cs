@@ -10,12 +10,13 @@ public static class MenuTextureFactory
 {
     private const int SuperSample = 4;
 
-    /// <summary>深色半透明面板 + 细蓝边，与截图里的风格同构。</summary>
-    public static RasterSurface CreatePanel(int width, int height, int radius = 18)
+    /// <summary>深色半透明面板 + 细描边，颜色由皮肤决定。</summary>
+    public static RasterSurface CreatePanel(int width, int height, MenuTheme theme, int radius = 18)
         => CreateRoundedRect(
             width, height, radius,
-            fillR: 18, fillG: 22, fillB: 30, fillA: 236,
-            borderR: 96, borderG: 176, borderB: 224, borderA: 190);
+            fillR: theme.PanelFill.R, fillG: theme.PanelFill.G, fillB: theme.PanelFill.B, fillA: theme.PanelFill.A,
+            borderR: theme.PanelBorder.R, borderG: theme.PanelBorder.G, borderB: theme.PanelBorder.B,
+            borderA: theme.PanelBorder.A);
 
     /// <summary>鼠标悬停行的高亮：白色低透明度。</summary>
     public static RasterSurface CreateHover(int width, int height, int radius = 10)
@@ -50,24 +51,25 @@ public static class MenuTextureFactory
     /// 单行底条：深蓝纵向渐变 + 青色描边 + 内侧金线。
     /// <paramref name="active"/> 为悬停态：底色更亮、描边更亮。
     /// </summary>
-    public static RasterSurface CreateRowBar(int width, int height, bool active)
+    public static RasterSurface CreateRowBar(int width, int height, bool active, MenuTheme theme)
     {
         var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
         const double radius = 10;
         const double border = 1.6;
         const double innerInset = 3.5;
 
-        var top = active ? (r: 20, g: 58, b: 90) : (r: 10, g: 28, b: 46);
-        var bottom = active ? (r: 8, g: 26, b: 44) : (r: 5, g: 14, b: 26);
+        var top = active ? theme.RowTopActive : theme.RowTop;
+        var bottom = active ? theme.RowBottomActive : theme.RowBottom;
         var fillAlpha = active ? 240 : 225;
-        var borderColor = active ? (r: 140, g: 235, b: 255) : (r: 90, g: 210, b: 250);
+        var borderColor = active ? theme.RowBorderActive : theme.RowBorder;
+        var innerColor = theme.RowInner;
 
         for (var y = 0; y < surface.Height; y++)
         {
             var t = surface.Height <= 1 ? 0 : y / (double)(surface.Height - 1);
-            var r = (byte)(top.r + (bottom.r - top.r) * t);
-            var g = (byte)(top.g + (bottom.g - top.g) * t);
-            var b = (byte)(top.b + (bottom.b - top.b) * t);
+            var r = (byte)(top.R + (bottom.R - top.R) * t);
+            var g = (byte)(top.G + (bottom.G - top.G) * t);
+            var b = (byte)(top.B + (bottom.B - top.B) * t);
 
             for (var x = 0; x < surface.Width; x++)
             {
@@ -81,11 +83,11 @@ public static class MenuTextureFactory
                 surface.SetPixel(x, y, b, g, r, (byte)fillAlpha);
 
                 if (distance > -border)
-                    surface.SetPixel(x, y, (byte)borderColor.b, (byte)borderColor.g, (byte)borderColor.r, 215);
+                    surface.SetPixel(x, y, borderColor.B, borderColor.G, borderColor.R, 215);
 
-                // 内侧金线（截图里行框有一圈暖色内边）
+                // 内侧暖色内线（截图里行框有一圈内边）
                 if (distance > -innerInset && distance < -innerInset + 1.0)
-                    surface.SetPixel(x, y, 80, 170, 210, 150);
+                    surface.SetPixel(x, y, innerColor.B, innerColor.G, innerColor.R, innerColor.A);
             }
         }
 
@@ -93,10 +95,12 @@ public static class MenuTextureFactory
     }
 
     /// <summary>顶部页签：深蓝底 + 底部青色线；选中态更亮。</summary>
-    public static RasterSurface CreateTab(int width, int height, bool active)
+    public static RasterSurface CreateTab(int width, int height, bool active, MenuTheme theme)
     {
         var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
         const double radius = 6;
+
+        var fill = active ? theme.TabActive : theme.TabInactive;
 
         for (var y = 0; y < surface.Height; y++)
         {
@@ -109,17 +113,14 @@ public static class MenuTextureFactory
                 if (distance > 0)
                     continue;
 
-                if (active)
-                    surface.SetPixel(x, y, 128, 92, 40, 235);   // RGB(40,92,128)
-                else
-                    surface.SetPixel(x, y, 38, 22, 8, 205);     // RGB(8,22,38)
+                surface.SetPixel(x, y, fill.B, fill.G, fill.R, fill.A);
 
                 if (distance > -1.4)
-                    surface.SetPixel(x, y, 250, 210, 90, 190);  // RGB(90,210,250)
+                    surface.SetPixel(x, y, theme.TabBorder.B, theme.TabBorder.G, theme.TabBorder.R, theme.TabBorder.A);
 
                 // 选中页签底部亮线
                 if (active && y >= surface.Height - 3)
-                    surface.SetPixel(x, y, 255, 240, 160, 230); // RGB(160,240,255)
+                    surface.SetPixel(x, y, theme.TabAccent.B, theme.TabAccent.G, theme.TabAccent.R, theme.TabAccent.A);
             }
         }
 
@@ -127,7 +128,7 @@ public static class MenuTextureFactory
     }
 
     /// <summary>左侧竖栏：半透明深色圆角条。</summary>
-    public static RasterSurface CreateSidebar(int width, int height)
+    public static RasterSurface CreateSidebar(int width, int height, MenuTheme theme)
     {
         var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
         const double radius = 12;
@@ -143,18 +144,20 @@ public static class MenuTextureFactory
                 if (distance > 0)
                     continue;
 
-                surface.SetPixel(x, y, 26, 12, 8, 210);
+                surface.SetPixel(x, y, theme.SidebarFill.B, theme.SidebarFill.G, theme.SidebarFill.R,
+                    theme.SidebarFill.A);
 
                 if (distance > -1.2)
-                    surface.SetPixel(x, y, 120, 80, 60, 170);
+                    surface.SetPixel(x, y, theme.SidebarBorder.B, theme.SidebarBorder.G, theme.SidebarBorder.R,
+                        theme.SidebarBorder.A);
             }
         }
 
         return surface;
     }
 
-    /// <summary>标题下划线：中间亮、两端渐隐的青色线。</summary>
-    public static RasterSurface CreateUnderline(int width, int height)
+    /// <summary>标题下划线：中间亮、两端渐隐的主题色线。</summary>
+    public static RasterSurface CreateUnderline(int width, int height, MenuTheme theme)
     {
         var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
 
@@ -163,7 +166,7 @@ public static class MenuTextureFactory
             var t = surface.Width <= 1 ? 0 : x / (double)(surface.Width - 1);
             var fade = (byte)(255 * Math.Min(1, Math.Min(t, 1 - t) * 6));
             for (var y = 0; y < surface.Height; y++)
-                surface.SetPixel(x, y, 255, 220, 90, fade);
+                surface.SetPixel(x, y, theme.Underline.B, theme.Underline.G, theme.Underline.R, fade);
         }
 
         return surface;
