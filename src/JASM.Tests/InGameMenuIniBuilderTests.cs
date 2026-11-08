@@ -66,6 +66,19 @@ public class InGameMenuIniBuilderTests
     }
 
     [Fact]
+    public void UsesPhysicalCursorPositionForHitTesting()
+    {
+        var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x", new InGameMenuOptions());
+
+        // cursor_x/y 在游戏隐藏光标时会冻结在最后一次可见位置，菜单可见但点击永远命中不了。
+        // 必须用每帧从 GetCursorPos 更新的物理屏幕坐标。
+        Assert.Contains("$jasm_x_mx = cursor_screen_x", build.IniText);
+        Assert.Contains("$jasm_x_my = cursor_screen_y", build.IniText);
+        Assert.DoesNotContain("cursor_x", build.IniText);
+        Assert.DoesNotContain("cursor_y", build.IniText);
+    }
+
+    [Fact]
     public void PaginatesAboveRowLimit()
     {
         var rows = Enumerable.Range(0, 12).Select(i => Row("Item" + i, "var" + i)).ToList();
