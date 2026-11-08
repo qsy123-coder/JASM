@@ -294,4 +294,27 @@ public class VirtualKeyMapTests
         Assert.Equal("CTRL", definition.Display);
         Assert.Null(definition.VirtualKeyCode);
     }
+
+    // ── 反向映射（录制呼出键用）──────────────────────────────────
+
+    [Theory]
+    [InlineData(0x76, "VK_F7")]
+    [InlineData(0x41, "VK_A")]
+    [InlineData(0x30, "VK_0")]
+    [InlineData(0x24, "VK_HOME")]
+    [InlineData(0x60, "VK_NUMPAD0")]
+    [InlineData(0xA5, "VK_RMENU")]   // Right Alt：不能写成 VK_RIGHTMENU（3DMigoto 表里没有）
+    [InlineData(0xA4, "VK_LMENU")]
+    [InlineData(0xA3, "VK_RCONTROL")]
+    [InlineData(0xA1, "VK_RSHIFT")]
+    [InlineData(0x5C, "VK_RWIN")]
+    public void TryGetIniName_MapsSupportedKeysTo3DMigotoNames(ushort virtualKey, string expected)
+    {
+        Assert.True(VirtualKeyMap.TryGetIniName(virtualKey, out var name));
+        Assert.Equal(expected, name);
+    }
+
+    [Fact]
+    public void TryGetIniName_RejectsUnknownKey()
+        => Assert.False(VirtualKeyMap.TryGetIniName(0xFF, out _));
 }
