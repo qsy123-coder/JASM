@@ -109,6 +109,27 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void IsUpToDateIsFalseForMenuFromOlderGenerator()
+    {
+        var mod = CreateMod("MyMod");
+
+        Assert.False(InGameMenuGenerator.IsUpToDate(mod));
+
+        InGameMenuGenerator.Generate(mod);
+        Assert.True(InGameMenuGenerator.IsUpToDate(mod));
+
+        // 模拟升级前生成的菜单：文件还在，但 manifest 记录的是旧版本
+        var manifest = Path.Combine(mod, "Normal", "JASM_Menu", "manifest.json");
+        var json = File.ReadAllText(manifest).Replace(
+            $"\"generatorVersion\": {InGameMenuOptions.CurrentGeneratorVersion}",
+            "\"generatorVersion\": 2");
+        File.WriteAllText(manifest, json);
+
+        Assert.True(InGameMenuGenerator.IsGenerated(mod));
+        Assert.False(InGameMenuGenerator.IsUpToDate(mod));
+    }
+
+    [Fact]
     public void RegenerationIsIdempotent()
     {
         var mod = CreateMod("MyMod");
