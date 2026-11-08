@@ -21,6 +21,12 @@ public sealed record InGameMenuOptions
     /// <summary>Mod 是否提供 <c>$object_detected</c>；没有就不加门控。</summary>
     public bool GateOnObjectDetected { get; init; } = true;
 
+    /// <summary>
+    /// 角色模型的纹理 hash（来自 Mod 里设置 <c>$object_detected = 1</c> 的 TextureOverride）。
+    /// 非空时用这个 hash 做**逐角色**门控；<c>$object_detected</c> 在无 namespace 的 Mod 里是全局共享的。
+    /// </summary>
+    public string DetectionHash { get; init; } = string.Empty;
+
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = 2;
 
@@ -275,6 +281,7 @@ public static class InGameMenuIniBuilder
         ini.AppendLine();
 
         AppendConstants(ini, v);
+        AppendDetector(ini, v, token, options);
         AppendPresent(ini, v, token, options, pageCount, menuHeight);
         AppendChrome(ini, v, token, pageCount, visibleRows, options);
 
@@ -321,6 +328,23 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"global {v}img_y = 0");
         ini.AppendLine($"global {v}tint_a = 1");
         ini.AppendLine($"global {v}first_frame = 1");
+        ini.AppendLine($"global {v}last_seen = -1000");
+        ini.AppendLine($"global {v}age = 0");
+        ini.AppendLine();
+    }
+
+    /// <summary>
+    /// 逐角色检测：用 Mod 自己设置 <c>$object_detected = 1</c> 时的纹理 hash，
+    /// 只有该角色的模型在绘制时才会刷新 <c>last_seen</c>。
+    /// </summary>
+    private static void AppendDetector(StringBuilder ini, string v, string token, InGameMenuOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.DetectionHash))
+            return;
+
+        ini.AppendLine($"[{DetectorSection(token)}]");
+        ini.AppendLine($"hash = {options.DetectionHash}");
+        ini.AppendLine($"{v}last_seen = time");
         ini.AppendLine();
     }
 
@@ -340,6 +364,17 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"    {v}first_frame = 0");
         ini.AppendLine("endif");
         ini.AppendLine();
+
+        if (!string.IsNullOrWhiteSpace(options.DetectionHash))
+        {
+            ini.AppendLine("; 逐角色门控：超过 0.5s 没检测到该角色模型就关闭菜单");
+            ini.AppendLine($"{v}age = time - {v}last_seen");
+            ini.AppendLine($"if {v}age >= 0.5");
+            ini.AppendLine($"    {v}open = 0");
+            ini.AppendLine("endif");
+            ini.AppendLine();
+        }
+
         ini.AppendLine($"if {v}open == 1");
         if (options.GateOnObjectDetected)
             ini.AppendLine("if $object_detected == 1");
@@ -773,6 +808,8 @@ public static class InGameMenuIniBuilder
     private static string KeyMouseDragSection(string token) => $"KeyJasmMenuMouseDrag_{token}";
 
     private static string MenuDrawCommandList(string token) => $"CommandListJasmMenuDraw_{token}";
+
+    private static string DetectorSection(string token) => $"TextureOverrideJasmDetect_{token}";
 
     private static string EntryCommandList(string token) => $"CommandListJasmEntry_{token}";
 
