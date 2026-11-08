@@ -609,14 +609,17 @@
                                 FontWeight="SemiBold"
                                 Text="{x:Bind ViewModel.InGameMenuKeyDisplay, Mode=OneWay}" />
                         </Border>
-                        <TextBox
+                        <TextBlock
                             Grid.Column="1"
-                            Text="{x:Bind ViewModel.InGameMenuKeyInput, Mode=TwoWay}"
-                            PlaceholderText="呼出键，例如 F7" />
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="#99FFFFFF"
+                            TextWrapping="WrapWholeWords"
+                            Text="点击「录制按键」，然后按下想用的键（不用手动输入）。Esc 取消。" />
                         <Button
                             Grid.Column="2"
-                            Command="{x:Bind ViewModel.SaveInGameMenuKeyCommand}"
-                            Content="保存呼出键" />
+                            Command="{x:Bind ViewModel.RecordInGameMenuKeyCommand}"
+                            Content="录制按键" />
                         <Button
                             Grid.Column="3"
                             Command="{x:Bind ViewModel.GenerateModMenusCommand}"
