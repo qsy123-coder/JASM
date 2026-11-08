@@ -611,7 +611,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         };
         var hint = new TextBlock
         {
-            Text = "请按下要用的呼出键；Esc 取消。\nF6 / F8 / F9 / F10 / F12 已被 3DMigoto / WWMI 占用，会被拒绝。",
+            Text = "请按下要用的呼出键；Esc 取消。\n" +
+                   "支持 F1–F24、字母/数字、小键盘、Insert/Delete/Home/End/PgUp/PgDn 等；" +
+                   "鼠标键和单独的 Ctrl/Alt/Shift/Win（含左右 Alt）不能作为呼出键。\n" +
+                   "F6 / F8 / F9 / F10 / F12 已被 3DMigoto / WWMI 占用，会被拒绝。",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         };
@@ -686,23 +689,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
     /// <summary>把 WinUI 虚拟键转换成 3DMigoto 的 <c>[Key*]</c> 写法；不支持的键返回 null。</summary>
     private static string? ToIniKeyToken(VirtualKey key)
-    {
-        var vk = (ushort)key;
-        if (vk is >= 0x70 and <= 0x87)
-            return "F" + (vk - 0x6F); // F1..F24
-        if (vk is >= 0x41 and <= 0x5A)
-            return ((char)vk).ToString(); // A..Z
-        if (vk is >= 0x30 and <= 0x39)
-            return ((char)vk).ToString(); // 0..9
-        if (vk is >= 0x60 and <= 0x69)
-            return "VK_NUMPAD" + (vk - 0x60);
-
-        var name = key.ToString();
-        if (string.IsNullOrWhiteSpace(name) || !char.IsLetter(name[0]))
-            return null;
-
-        return "VK_" + name.ToUpperInvariant();
-    }
+        => VirtualKeyMap.TryGetIniName((ushort)key, out var name) ? name : null;
 
     /// <summary>
     /// 修改呼出键并重建所有已有菜单。
@@ -743,6 +730,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
     private static bool IsModifierKey(VirtualKey key) =>
         key is VirtualKey.Control or VirtualKey.Shift or VirtualKey.Menu
+            or VirtualKey.LeftControl or VirtualKey.RightControl
+            or VirtualKey.LeftShift or VirtualKey.RightShift
+            or VirtualKey.LeftMenu or VirtualKey.RightMenu
             or VirtualKey.LeftWindows or VirtualKey.RightWindows;
 
     private static HotkeyModifiers ReadModifiers()
