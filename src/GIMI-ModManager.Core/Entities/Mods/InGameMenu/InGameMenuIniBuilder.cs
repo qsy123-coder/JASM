@@ -61,8 +61,9 @@ public sealed record InGameMenuOptions
     /// v15：新增「深灰米色（参考样式）」主题并设为默认（参考《心·绀星绮愿》GUI）。
     /// v16：新增整块深色背板，贴近参考菜单的深灰底。
     /// v17：新增「参考素材」主题，直接拷贝参考 Mod 的按钮/页签 PNG。
+    /// v18：参考素材样式改用 720×108 行、300×56 页签、7 行/页、无背板/无下划线、每行米色描边。
     /// </summary>
-    public const int CurrentGeneratorVersion = 17;
+    public const int CurrentGeneratorVersion = 18;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -211,6 +212,30 @@ public static class InGameMenuIniBuilder
 
     public const int DefaultRowsPerPage = 10;
 
+    // 参考素材样式：按钮素材原生 720×108，每页 7 行才能放进 1080 高度
+    private const int ReferenceRowWidth = 720;
+    private const int ReferenceRowHeight = 108;
+    private const int ReferenceRowsPerPage = 7;
+
+    private static int RowsPerPage(InGameMenuOptions options)
+        => Math.Clamp(options.MaxRowsPerPage, 1,
+            options.Theme.UseReferenceAssets ? ReferenceRowsPerPage : 20);
+
+    private static int RowWidthFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? ReferenceRowWidth : RowWidth;
+
+    private static int RowHeightFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? ReferenceRowHeight : RowHeight;
+
+    private static int RowOffsetYFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 186 : RowOffsetY;
+
+    private static int TabWidthFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 300 : TabWidth;
+
+    private static int TabHeightFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 56 : TabHeight;
+
     public static InGameMenuBuildResult Build(
         IReadOnlyList<ModIniToggleRow> rows,
         string menuToken,
@@ -219,20 +244,24 @@ public static class InGameMenuIniBuilder
         var token = NormalizeToken(menuToken);
         var v = "$jasm_" + token + "_"; // 自有变量前缀
 
-        var rowsPerPage = Math.Clamp(options.MaxRowsPerPage, 1, 20);
+        var rowsPerPage = RowsPerPage(options);
         options = options with { MaxRowsPerPage = rowsPerPage };
 
         var rowCount = rows.Count;
         var pageCount = Math.Max(1, (rowCount + rowsPerPage - 1) / rowsPerPage);
         var visibleRows = Math.Min(rowsPerPage, Math.Max(1, rowCount));
-        var menuHeight = RowOffsetY + visibleRows * (RowHeight + RowGap) + 3 * BottomHintLineGap + 16;
+        var menuHeight = RowOffsetYFor(options) + visibleRows * (RowHeightFor(options) + RowGap) + 3 * BottomHintLineGap + 16;
 
         var (titleLine1, titleLine2) = SplitTitle(options.Title);
         var textures = new List<MenuTextureSpec>();
 
         // —— 整块深色背板 ——
-        textures.Add(new MenuTextureSpec("JASM_Menu/panel.dds", MenuTextureKind.Panel, string.Empty,
-            PanelTextureWidth, menuHeight + PanelExtraHeight, 0, false, GdiTextRasterizer.TextAlign.Left));
+        // 参考素材样式没有实心背板（截图里是游戏画面直接透出），其余主题保留。
+        if (!options.Theme.UseReferenceAssets)
+        {
+            textures.Add(new MenuTextureSpec("JASM_Menu/panel.dds", MenuTextureKind.Panel, string.Empty,
+                PanelTextureWidth, menuHeight + PanelExtraHeight, 0, false, GdiTextRasterizer.TextAlign.Left));
+        }
 
         // —— 顶部：标题 + 下划线 ——
         textures.Add(Text("JASM_Menu/title_1.dds", titleLine1, TitleWidth, TitleHeight, 32, true,
@@ -244,9 +273,9 @@ public static class InGameMenuIniBuilder
 
         // —— 顶部页签 + 左侧页码 ——
         textures.Add(new MenuTextureSpec("JASM_Menu/tab.dds", MenuTextureKind.Tab, string.Empty,
-            TabWidth, TabHeight, 0, false, GdiTextRasterizer.TextAlign.Left));
+            TabWidthFor(options), TabHeightFor(options), 0, false, GdiTextRasterizer.TextAlign.Left));
         textures.Add(new MenuTextureSpec("JASM_Menu/tab_active.dds", MenuTextureKind.TabActive, string.Empty,
-            TabWidth, TabHeight, 0, false, GdiTextRasterizer.TextAlign.Left));
+            TabWidthFor(options), TabHeightFor(options), 0, false, GdiTextRasterizer.TextAlign.Left));
         textures.Add(new MenuTextureSpec("JASM_Menu/sidebar.dds", MenuTextureKind.Sidebar, string.Empty,
             SidebarWidth, pageCount * SidebarNumberHeight + 12, 0, false, GdiTextRasterizer.TextAlign.Left));
         textures.Add(Text("JASM_Menu/close.dds", "×", CloseWidth, CloseHeight, 24, false,
@@ -257,7 +286,8 @@ public static class InGameMenuIniBuilder
         for (var p = 0; p < pageCount; p++)
         {
             textures.Add(Text($"JASM_Menu/tab_label_{p:00}.dds", (p + 1).ToString(CultureInfo.InvariantCulture),
-                TabWidth - 10, TabHeight - 4, 20, true, GdiTextRasterizer.TextAlign.Center));
+                TabWidthFor(options) - 10, TabHeightFor(options) - 4, 20, true,
+                GdiTextRasterizer.TextAlign.Center));
             textures.Add(Text($"JASM_Menu/page_{p:00}.dds", (p + 1).ToString(CultureInfo.InvariantCulture),
                 32, 32, 20, false, GdiTextRasterizer.TextAlign.Center));
         }
@@ -355,7 +385,7 @@ public static class InGameMenuIniBuilder
         AppendResources(ini, token, rows, pageCount, options);
         AppendShader(ini, v, token);
 
-        return new InGameMenuBuildResult(ini.ToString(), textures, RowWidth, menuHeight, pageCount);
+        return new InGameMenuBuildResult(ini.ToString(), textures, RowWidthFor(options), menuHeight, pageCount);
     }
 
     private static MenuTextureSpec Text(string file, string text, int w, int h, int font, bool bold,
@@ -538,11 +568,12 @@ public static class InGameMenuIniBuilder
         ini.AppendLine("    endif");
         ini.AppendLine();
         ini.AppendLine("    ; 位置夹取：菜单不能拖出屏幕（左侧要给竖栏留空间）");
+        var menuWidth = RowWidthFor(options) + 80;
         ini.AppendLine($"    if {v}x < 80");
         ini.AppendLine($"        {v}x = 80");
         ini.AppendLine("    endif");
-        ini.AppendLine($"    if {v}x > 1920 - 700");
-        ini.AppendLine($"        {v}x = 1920 - 700");
+        ini.AppendLine($"    if {v}x > 1920 - {menuWidth}");
+        ini.AppendLine($"        {v}x = 1920 - {menuWidth}");
         ini.AppendLine("    endif");
         ini.AppendLine($"    if {v}y < 0");
         ini.AppendLine($"        {v}y = 0");
@@ -565,18 +596,26 @@ public static class InGameMenuIniBuilder
     {
         ini.AppendLine($"[{MenuDrawCommandList(token)}]");
 
-        // 整块深色背板（参考菜单的深灰底）
-        AppendQuad(ini, v, token, ResourceName("Panel", token), $"{v}x + {PanelOffsetX}",
-            $"{v}y + {PanelOffsetY}", PanelTextureWidth, menuHeight + PanelExtraHeight, 1);
+        // 整块深色背板（参考素材样式没有背板）
+        if (!options.Theme.UseReferenceAssets)
+        {
+            AppendQuad(ini, v, token, ResourceName("Panel", token), $"{v}x + {PanelOffsetX}",
+                $"{v}y + {PanelOffsetY}", PanelTextureWidth, menuHeight + PanelExtraHeight, 1);
+        }
 
-        // 标题两行 + 下划线
+        // 标题两行 + 下划线（参考素材样式没有下划线）
         AppendQuad(ini, v, token, ResourceName("Title1", token), $"{v}x", $"{v}y", TitleWidth, TitleHeight, 1);
         AppendQuad(ini, v, token, ResourceName("Title2", token), $"{v}x", $"{v}y + {TitleHeight + TitleLineGap}",
             TitleWidth, TitleHeight, 1);
-        AppendQuad(ini, v, token, ResourceName("Underline", token), $"{v}x", $"{v}y + {UnderlineOffsetY}",
-            UnderlineWidth, UnderlineHeight, 1);
+        if (!options.Theme.UseReferenceAssets)
+        {
+            AppendQuad(ini, v, token, ResourceName("Underline", token), $"{v}x", $"{v}y + {UnderlineOffsetY}",
+                UnderlineWidth, UnderlineHeight, 1);
+        }
 
         // 顶部页签（最多 6 个；更多页用左侧页码）
+        var tabWidth = TabWidthFor(options);
+        var tabHeight = TabHeightFor(options);
         var tabCount = Math.Min(pageCount, 6);
         for (var p = 0; p < tabCount; p++)
         {
@@ -584,20 +623,20 @@ public static class InGameMenuIniBuilder
             ini.AppendLine($"if {v}page == {p}");
             ini.AppendLine($"    ps-t100 = {ResourceName("TabActive", token)}");
             ini.AppendLine("endif");
-            ini.AppendLine($"{v}img_w = {TabWidth}");
-            ini.AppendLine($"{v}img_h = {TabHeight}");
-            ini.AppendLine($"{v}img_x = {v}x + {TabsOffsetX + p * (TabWidth + TabGap)}");
+            ini.AppendLine($"{v}img_w = {tabWidth}");
+            ini.AppendLine($"{v}img_h = {tabHeight}");
+            ini.AppendLine($"{v}img_x = {v}x + {TabsOffsetX + p * (tabWidth + TabGap)}");
             ini.AppendLine($"{v}img_y = {v}y + {TabsOffsetY}");
             ini.AppendLine($"{v}tint_a = 1");
             ini.AppendLine($"run = {QuadCommandList(token)}");
 
             AppendQuad(ini, v, token, ResourceName($"TabLabel{p:00}", token),
-                $"{v}x + {TabsOffsetX + p * (TabWidth + TabGap) + 5}", $"{v}y + {TabsOffsetY + 2}",
-                TabWidth - 10, TabHeight - 4, 1);
+                $"{v}x + {TabsOffsetX + p * (tabWidth + TabGap) + 5}", $"{v}y + {TabsOffsetY + 2}",
+                tabWidth - 10, tabHeight - 4, 1);
 
             ini.AppendLine($"{v}in_rect = 0");
-            AppendHitRect(ini, v, $"{v}x + {TabsOffsetX + p * (TabWidth + TabGap)}", $"{v}y + {TabsOffsetY}",
-                TabWidth, TabHeight);
+            AppendHitRect(ini, v, $"{v}x + {TabsOffsetX + p * (tabWidth + TabGap)}", $"{v}y + {TabsOffsetY}",
+                tabWidth, tabHeight);
             ini.AppendLine($"if {v}in_rect == 1");
             ini.AppendLine($"    if {v}click == 1");
             ini.AppendLine($"        {v}page = {p}");
@@ -667,7 +706,7 @@ public static class InGameMenuIniBuilder
         }
 
         // 底部说明
-        var hintY = RowOffsetY + visibleRows * (RowHeight + RowGap) + 8;
+        var hintY = RowOffsetYFor(options) + visibleRows * (RowHeightFor(options) + RowGap) + 8;
         AppendQuad(ini, v, token, ResourceName("HintLine1", token), $"{v}x + {BottomHintOffsetX}",
             $"{v}y + {hintY}", BottomHintWidth, BottomHintHeight, 0.8m);
         AppendQuad(ini, v, token, ResourceName("HintLine2", token), $"{v}x + {BottomHintOffsetX}",
@@ -706,31 +745,49 @@ public static class InGameMenuIniBuilder
     private static void AppendRow(StringBuilder ini, string v, string token, int index, ModIniToggleRow row,
         InGameMenuOptions options)
     {
-        var rowY = RowOffsetY + (index % options.MaxRowsPerPage) * (RowHeight + RowGap);
+        var rowWidth = RowWidthFor(options);
+        var rowHeight = RowHeightFor(options);
+        var rowsPerPage = RowsPerPage(options);
+        var reference = options.Theme.UseReferenceAssets;
+
+        var rowY = RowOffsetYFor(options) + (index % rowsPerPage) * (rowHeight + RowGap);
+        var arrowOffsetY = reference ? rowHeight / 2 - ArrowHeight / 2 : ArrowOffsetY;
+        var labelOffsetY = reference ? 18 : LabelOffsetY;
+        var valueOffsetY = reference ? 62 : ValueOffsetY;
+        var hintOffsetX = rowWidth - 150;
+        var arrowRightOffsetX = rowWidth - ArrowWidth;
 
         ini.AppendLine($"; ---- 行 {index}: {SanitizeComment(row.SectionName)} → {SanitizeComment(row.Label)} ----");
         ini.AppendLine($"[{RowCommandList(token, index)}]");
 
         // 命中框
         ini.AppendLine($"{v}in_rect = 0");
-        AppendHitRect(ini, v, $"{v}x + {RowOffsetX}", $"{v}y + {rowY}", RowWidth, RowHeight);
+        AppendHitRect(ini, v, $"{v}x + {RowOffsetX}", $"{v}y + {rowY}", rowWidth, rowHeight);
 
         // 行底条
         AppendQuad(ini, v, token, ResourceName("Row", token), $"{v}x + {RowOffsetX}", $"{v}y + {rowY}",
-            RowWidth, RowHeight, 1);
+            rowWidth, rowHeight, 1);
+
+        // 参考素材样式：每一行都叠米色描边（ButtonBorder），不只在悬停时
+        if (reference)
+        {
+            AppendQuad(ini, v, token, ResourceName("RowHover", token), $"{v}x + {RowOffsetX}", $"{v}y + {rowY}",
+                rowWidth, rowHeight, 1);
+        }
+
         ini.AppendLine($"if {v}in_rect == 1");
         AppendQuad(ini, v, token, ResourceName("RowHover", token), $"{v}x + {RowOffsetX}", $"{v}y + {rowY}",
-            RowWidth, RowHeight, 1);
+            rowWidth, rowHeight, 1);
         ini.AppendLine("endif");
 
         // 左箭头
         AppendQuad(ini, v, token, ResourceName("ArrowLeft", token), $"{v}x + {ArrowLeftOffsetX}",
-            $"{v}y + {rowY + ArrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
+            $"{v}y + {rowY + arrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
 
         // 名称（不可点击的行调暗）
         var labelTint = row.IsClickable ? 1m : 0.45m;
         AppendQuad(ini, v, token, ResourceName($"Label{index:00}", token), $"{v}x + {LabelOffsetX}",
-            $"{v}y + {rowY + LabelOffsetY}", LabelWidth, LabelHeight, labelTint);
+            $"{v}y + {rowY + labelOffsetY}", LabelWidth, LabelHeight, labelTint);
 
         // 当前值：按 ini 的值列表选纹理
         if (row.IsClickable)
@@ -746,7 +803,7 @@ public static class InGameMenuIniBuilder
             ini.AppendLine($"{v}img_w = {LabelWidth}");
             ini.AppendLine($"{v}img_h = {ValueHeight}");
             ini.AppendLine($"{v}img_x = {v}x + {LabelOffsetX}");
-            ini.AppendLine($"{v}img_y = {v}y + {rowY + ValueOffsetY}");
+            ini.AppendLine($"{v}img_y = {v}y + {rowY + valueOffsetY}");
             ini.AppendLine($"{v}tint_a = 0.85");
             ini.AppendLine($"run = {QuadCommandList(token)}");
         }
@@ -754,13 +811,13 @@ public static class InGameMenuIniBuilder
         // 原按键提示
         if (!string.IsNullOrWhiteSpace(row.KeyDisplay))
         {
-            AppendQuad(ini, v, token, ResourceName($"Hint{index:00}", token), $"{v}x + {HintOffsetX}",
+            AppendQuad(ini, v, token, ResourceName($"Hint{index:00}", token), $"{v}x + {hintOffsetX}",
                 $"{v}y + {rowY + HintOffsetY}", HintWidth, HintHeight, 0.7m);
         }
 
         // 右箭头
-        AppendQuad(ini, v, token, ResourceName("ArrowRight", token), $"{v}x + {ArrowRightOffsetX}",
-            $"{v}y + {rowY + ArrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
+        AppendQuad(ini, v, token, ResourceName("ArrowRight", token), $"{v}x + {arrowRightOffsetX}",
+            $"{v}y + {rowY + arrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
 
         // Alt+左键点击切换
         if (row.IsClickable)
