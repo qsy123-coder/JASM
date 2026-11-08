@@ -61,9 +61,10 @@ public sealed record InGameMenuOptions
     /// v15：新增「深灰米色（参考样式）」主题并设为默认（参考《心·绀星绮愿》GUI）。
     /// v16：新增整块深色背板，贴近参考菜单的深灰底。
     /// v17：新增「参考素材」主题，直接拷贝参考 Mod 的按钮/页签 PNG。
-    /// v18：参考素材样式改用 720×108 行、300×56 页签、7 行/页、无背板/无下划线、每行米色描边。
+    /// v18：参考素材样式改用原生素材尺寸、无背板/无下划线、每行米色描边。
+    /// v19：整体缩小到 560×84 行、220×44 页签、9 行/页。
     /// </summary>
-    public const int CurrentGeneratorVersion = 18;
+    public const int CurrentGeneratorVersion = 19;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -213,9 +214,9 @@ public static class InGameMenuIniBuilder
     public const int DefaultRowsPerPage = 10;
 
     // 参考素材样式：按钮素材原生 720×108，每页 7 行才能放进 1080 高度
-    private const int ReferenceRowWidth = 720;
-    private const int ReferenceRowHeight = 108;
-    private const int ReferenceRowsPerPage = 7;
+    private const int ReferenceRowWidth = 560;
+    private const int ReferenceRowHeight = 84;
+    private const int ReferenceRowsPerPage = 9;
 
     private static int RowsPerPage(InGameMenuOptions options)
         => Math.Clamp(options.MaxRowsPerPage, 1,
@@ -228,13 +229,16 @@ public static class InGameMenuIniBuilder
         => options.Theme.UseReferenceAssets ? ReferenceRowHeight : RowHeight;
 
     private static int RowOffsetYFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 186 : RowOffsetY;
+        => options.Theme.UseReferenceAssets ? 170 : RowOffsetY;
 
     private static int TabWidthFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 300 : TabWidth;
+        => options.Theme.UseReferenceAssets ? 220 : TabWidth;
 
     private static int TabHeightFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 56 : TabHeight;
+        => options.Theme.UseReferenceAssets ? 44 : TabHeight;
+
+    private static int LabelWidthFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 300 : LabelWidth;
 
     public static InGameMenuBuildResult Build(
         IReadOnlyList<ModIniToggleRow> rows,
@@ -313,7 +317,7 @@ public static class InGameMenuIniBuilder
         // —— 每行文字 ——
         for (var i = 0; i < rowCount; i++)
         {
-            textures.Add(Text($"JASM_Menu/label_{i:00}.dds", rows[i].Label, LabelWidth, LabelHeight, 22, true,
+            textures.Add(Text($"JASM_Menu/label_{i:00}.dds", rows[i].Label, LabelWidthFor(options), LabelHeight, 22, true,
                 GdiTextRasterizer.TextAlign.Left));
 
             if (!string.IsNullOrWhiteSpace(rows[i].KeyDisplay))
@@ -325,7 +329,7 @@ public static class InGameMenuIniBuilder
             for (var valueIndex = 0; valueIndex < rows[i].Values.Count; valueIndex++)
             {
                 textures.Add(Text($"JASM_Menu/value_{i:00}_{valueIndex:00}.dds", Unquote(rows[i].Values[valueIndex]),
-                    LabelWidth, ValueHeight, 17, false, GdiTextRasterizer.TextAlign.Left));
+                    LabelWidthFor(options), ValueHeight, 17, false, GdiTextRasterizer.TextAlign.Left));
             }
         }
 
@@ -752,8 +756,8 @@ public static class InGameMenuIniBuilder
 
         var rowY = RowOffsetYFor(options) + (index % rowsPerPage) * (rowHeight + RowGap);
         var arrowOffsetY = reference ? rowHeight / 2 - ArrowHeight / 2 : ArrowOffsetY;
-        var labelOffsetY = reference ? 18 : LabelOffsetY;
-        var valueOffsetY = reference ? 62 : ValueOffsetY;
+        var labelOffsetY = reference ? 14 : LabelOffsetY;
+        var valueOffsetY = reference ? 50 : ValueOffsetY;
         var hintOffsetX = rowWidth - 150;
         var arrowRightOffsetX = rowWidth - ArrowWidth;
 
@@ -787,7 +791,7 @@ public static class InGameMenuIniBuilder
         // 名称（不可点击的行调暗）
         var labelTint = row.IsClickable ? 1m : 0.45m;
         AppendQuad(ini, v, token, ResourceName($"Label{index:00}", token), $"{v}x + {LabelOffsetX}",
-            $"{v}y + {rowY + labelOffsetY}", LabelWidth, LabelHeight, labelTint);
+            $"{v}y + {rowY + labelOffsetY}", LabelWidthFor(options), LabelHeight, labelTint);
 
         // 当前值：按 ini 的值列表选纹理
         if (row.IsClickable)
@@ -800,7 +804,7 @@ public static class InGameMenuIniBuilder
                 ini.AppendLine("endif");
             }
 
-            ini.AppendLine($"{v}img_w = {LabelWidth}");
+            ini.AppendLine($"{v}img_w = {LabelWidthFor(options)}");
             ini.AppendLine($"{v}img_h = {ValueHeight}");
             ini.AppendLine($"{v}img_x = {v}x + {LabelOffsetX}");
             ini.AppendLine($"{v}img_y = {v}y + {rowY + valueOffsetY}");
