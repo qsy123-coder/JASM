@@ -210,6 +210,17 @@ public class KeyBindingLabelLocalizerTests
     public void LocalizeMenuLabel_TranslatesPhrases(string label, string expected)
         => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeMenuLabel(label));
 
+    [Theory]
+    [InlineData("[Key_shoulder_lace]", "肩部蕾丝")]
+    [InlineData("[KeyEight2]", "八2")]
+    [InlineData("[KeyNaked]", "裸体")]
+    [InlineData("[KeyEXlock]", "EX锁定")]
+    [InlineData("[KeyQunzishipin]", "裙子视频")]
+    [InlineData("[KeyTogglea]", "开/关A")]
+    [InlineData("[KeyLowerbody]", "下半身")]
+    public void LocalizeSectionName_CoversTheCamellyaCollection(string sectionName, string expected)
+        => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
+
     // ── 与 ModIniKeyBindingEntry 的接线 ──────────────────────
 
     [Theory]
