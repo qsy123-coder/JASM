@@ -27,7 +27,7 @@ public class InGameMenuSettings
     public int MaxRowsPerPage { get; set; } = 10;
 
     /// <summary>菜单皮肤 Id（见 <c>MenuThemes</c>），换皮肤后需要重建菜单。</summary>
-    public string MenuTheme { get; set; } = "reference";
+    public string MenuTheme { get; set; } = "reference-assets";
 
     /// <summary>
     /// 「参考素材」主题使用的 PNG 目录（参考 Mod 的 <c>GUI\res</c>）。
