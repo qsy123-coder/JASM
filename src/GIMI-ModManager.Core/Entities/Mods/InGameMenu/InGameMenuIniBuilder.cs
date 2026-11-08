@@ -60,8 +60,9 @@ public sealed record InGameMenuOptions
     /// v14：移除键盘导航（会覆盖分页页码），恢复纯鼠标交互。
     /// v15：新增「深灰米色（参考样式）」主题并设为默认（参考《心·绀星绮愿》GUI）。
     /// v16：新增整块深色背板，贴近参考菜单的深灰底。
+    /// v17：新增「参考素材」主题，直接拷贝参考 Mod 的按钮/页签 PNG。
     /// </summary>
-    public const int CurrentGeneratorVersion = 16;
+    public const int CurrentGeneratorVersion = 17;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -77,6 +78,12 @@ public sealed record InGameMenuOptions
 
     /// <summary>菜单皮肤；换皮肤后需要重建菜单。</summary>
     public MenuTheme Theme { get; init; } = MenuThemes.Reference;
+
+    /// <summary>参考素材目录（参考 Mod 的 GUI\res），空表示不使用 PNG 素材。</summary>
+    public string ReferenceAssetsDirectory { get; init; } = string.Empty;
+
+    /// <summary>哪些资源改用 .png 源文件（Row / RowHover / Tab / TabActive）。</summary>
+    public IReadOnlyCollection<string> PngResources { get; init; } = [];
 }
 
 /// <summary>一张待生成的纹理。文字类由生成器渲染，面板类由 <see cref="MenuTextureFactory"/> 绘制。</summary>
@@ -345,7 +352,7 @@ public static class InGameMenuIniBuilder
         for (var i = 0; i < rowCount; i++)
             AppendRow(ini, v, token, i, rows[i], options);
 
-        AppendResources(ini, token, rows, pageCount, options.DebugCursor);
+        AppendResources(ini, token, rows, pageCount, options);
         AppendShader(ini, v, token);
 
         return new InGameMenuBuildResult(ini.ToString(), textures, RowWidth, menuHeight, pageCount);
@@ -820,52 +827,59 @@ public static class InGameMenuIniBuilder
     }
 
     private static void AppendResources(StringBuilder ini, string token, IReadOnlyList<ModIniToggleRow> rows,
-        int pageCount, bool debugCursor)
+        int pageCount, InGameMenuOptions options)
     {
         ini.AppendLine();
         ini.AppendLine("; ============================================================");
         ini.AppendLine("; 资源");
         ini.AppendLine("; ============================================================");
 
-        AppendResource(ini, token, "Title1", "JASM_Menu/title_1.dds");
-        AppendResource(ini, token, "Title2", "JASM_Menu/title_2.dds");
-        AppendResource(ini, token, "Underline", "JASM_Menu/underline.dds");
-        AppendResource(ini, token, "Tab", "JASM_Menu/tab.dds");
-        AppendResource(ini, token, "TabActive", "JASM_Menu/tab_active.dds");
-        AppendResource(ini, token, "Sidebar", "JASM_Menu/sidebar.dds");
-        AppendResource(ini, token, "Close", "JASM_Menu/close.dds");
-        AppendResource(ini, token, "Reset", "JASM_Menu/reset.dds");
-        AppendResource(ini, token, "Panel", "JASM_Menu/panel.dds");
-        AppendResource(ini, token, "Row", "JASM_Menu/row.dds");
-        AppendResource(ini, token, "RowHover", "JASM_Menu/row_hover.dds");
-        AppendResource(ini, token, "ArrowLeft", "JASM_Menu/arrow_left.dds");
-        AppendResource(ini, token, "ArrowRight", "JASM_Menu/arrow_right.dds");
-        AppendResource(ini, token, "HintLine1", "JASM_Menu/hint_1.dds");
-        AppendResource(ini, token, "HintLine2", "JASM_Menu/hint_2.dds");
-        AppendResource(ini, token, "HintLine3", "JASM_Menu/hint_3.dds");
+        // 参考素材模式下，行/页签直接引用拷贝来的 .png；其余仍用生成的 .dds
+        void Res(string name, string ddsPath)
+            => AppendResource(ini, token, name,
+                options.PngResources.Contains(name, StringComparer.OrdinalIgnoreCase)
+                    ? Path.ChangeExtension(ddsPath, ".png")
+                    : ddsPath);
+
+        Res("Title1", "JASM_Menu/title_1.dds");
+        Res("Title2", "JASM_Menu/title_2.dds");
+        Res("Underline", "JASM_Menu/underline.dds");
+        Res("Tab", "JASM_Menu/tab.dds");
+        Res("TabActive", "JASM_Menu/tab_active.dds");
+        Res("Sidebar", "JASM_Menu/sidebar.dds");
+        Res("Close", "JASM_Menu/close.dds");
+        Res("Reset", "JASM_Menu/reset.dds");
+        Res("Panel", "JASM_Menu/panel.dds");
+        Res("Row", "JASM_Menu/row.dds");
+        Res("RowHover", "JASM_Menu/row_hover.dds");
+        Res("ArrowLeft", "JASM_Menu/arrow_left.dds");
+        Res("ArrowRight", "JASM_Menu/arrow_right.dds");
+        Res("HintLine1", "JASM_Menu/hint_1.dds");
+        Res("HintLine2", "JASM_Menu/hint_2.dds");
+        Res("HintLine3", "JASM_Menu/hint_3.dds");
 
         for (var p = 0; p < pageCount; p++)
         {
-            AppendResource(ini, token, $"TabLabel{p:00}", $"JASM_Menu/tab_label_{p:00}.dds");
-            AppendResource(ini, token, $"Page{p:00}", $"JASM_Menu/page_{p:00}.dds");
+            Res($"TabLabel{p:00}", $"JASM_Menu/tab_label_{p:00}.dds");
+            Res($"Page{p:00}", $"JASM_Menu/page_{p:00}.dds");
         }
 
         for (var i = 0; i < rows.Count; i++)
         {
-            AppendResource(ini, token, $"Label{i:00}", $"JASM_Menu/label_{i:00}.dds");
+            Res($"Label{i:00}", $"JASM_Menu/label_{i:00}.dds");
 
             if (!string.IsNullOrWhiteSpace(rows[i].KeyDisplay))
-                AppendResource(ini, token, $"Hint{i:00}", $"JASM_Menu/hint_{i:00}.dds");
+                Res($"Hint{i:00}", $"JASM_Menu/hint_{i:00}.dds");
 
             for (var valueIndex = 0; valueIndex < rows[i].Values.Count; valueIndex++)
             {
-                AppendResource(ini, token, $"Value{i:00}_{valueIndex:00}",
+                Res($"Value{i:00}_{valueIndex:00}",
                     $"JASM_Menu/value_{i:00}_{valueIndex:00}.dds");
             }
         }
 
-        if (debugCursor)
-            AppendResource(ini, token, "Cursor", "JASM_Menu/cursor.dds");
+        if (options.DebugCursor)
+            Res("Cursor", "JASM_Menu/cursor.dds");
     }
 
     private static void AppendResource(StringBuilder ini, string token, string name, string fileName)
