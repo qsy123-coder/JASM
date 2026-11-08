@@ -43,6 +43,12 @@ public sealed record ModIniToggleRow
     public string Label { get; init; } = string.Empty;
 
     /// <summary>
+    /// 菜单行的稳定标识（<c>ini 相对路径|段落名</c>），用于保存「行顺序 / 隐藏」偏好。
+    /// 变量名可能被作者改动，段落名 + 文件路径更稳定。
+    /// </summary>
+    public string Key => IniRelativePath + "|" + SectionName;
+
+    /// <summary>
     /// 这一行能否由菜单直接改值。需要：有变量名、至少两个候选值、按键类型是循环/开关类。
     /// </summary>
     public bool IsClickable =>
