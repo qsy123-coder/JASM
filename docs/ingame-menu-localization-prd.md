@@ -134,3 +134,11 @@ mod 段落名是作者自定字符串，数量动态增长，无法提前写进 
 - 188 个 RAR5 自解压包，**全部成功**，提取 325 个 ini
 - 去重后未翻译 **119** → 补词后剩 **54**；剩余为 A–M、TA–TJ、YQ*、Zs* 变体 ID 与作者说明长句
 - 新增覆盖：`_shoulder_lace`→肩部蕾丝、`Eight2`→八2、`Naked`→裸体、`Bunny Suit`→兔女郎套装、`Qunzishipin`→裙子视频、`Togglea`→开/关A、`Lowerbody`→下半身 等
+
+### 尤诺 批次（2026-11-09）
+
+- 源目录：`...\整改\尤诺`
+- 132 个 RAR5 自解压包，**全部成功**，提取 240 个 ini
+- 去重后未翻译 **134** → 补词后剩 **21**；剩余为 `Abby`/`Bqz`/`Qb`/`Tr`/`Yf` 等变体 ID 与少量含义不明的拼音
+- 新增覆盖：`Fishnet`→渔网袜、`Mega`→巨大、`Shoet`→鞋子、`Tacet Mark`→声痕、`$Body Harness`→身体束带、`Background Reload Random`→背景随机重载、`Jixieshou`→机械手 等
+- 本轮同时让菜单标签忽略前导 `$`（作者常把变量名当注释）
