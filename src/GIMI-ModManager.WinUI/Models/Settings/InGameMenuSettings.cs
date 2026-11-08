@@ -7,7 +7,7 @@ namespace GIMI_ModManager.WinUI.Models.Settings;
 ///
 /// 存 <c>SettingScope.App</c>：呼出键与每页行数是这台机器上的使用习惯，换游戏不该各存一份。
 ///
-/// 默认呼出键是单键 <c>F6</c>。实机验证：这个 3DMigoto 构建不认多修饰键组合
+/// 默认呼出键是单键 <c>F7</c>。实机验证：这个 3DMigoto 构建不认多修饰键组合
 /// （`CTRL SHIFT VK_M` 匹配不上，游戏反而响应了 Ctrl+M），所以默认值选单键。
 /// </summary>
 public class InGameMenuSettings
@@ -17,11 +17,11 @@ public class InGameMenuSettings
     /// <summary>总开关。关闭后安装/启动都不会再生成菜单，已有菜单不受影响。</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>3DMigoto <c>[Key*]</c> 里的写法，  <c>F6</c>、<c>VK_F8</c>。</summary>
-    public string OpenKeyTokens { get; set; } = "F6";
+    /// <summary>3DMigoto <c>[Key*]</c> 里的写法，  <c>F7</c>、<c>VK_F8</c>。</summary>
+    public string OpenKeyTokens { get; set; } = "F7";
 
-    /// <summary>菜单右上角显示的同一个键，  <c>F6</c>。</summary>
-    public string OpenKeyDisplay { get; set; } = "F6";
+    /// <summary>菜单右上角显示的同一个键，  <c>F7</c>。</summary>
+    public string OpenKeyDisplay { get; set; } = "F7";
 
     /// <summary>一页最多几行；超出的部分用键盘选中自动切页。</summary>
     public int MaxRowsPerPage { get; set; } = 10;
