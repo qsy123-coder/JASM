@@ -36,7 +36,20 @@ public static partial class ModIniToggleParser
 
             try
             {
-                rows.AddRange(ParseText(IniFileText.ReadAllText(file), relativePath));
+                var text = IniFileText.ReadAllText(file);
+                var defaults = ReadGlobalDefaults(text);
+                var fileRows = ParseText(text, relativePath);
+
+                if (defaults.Count > 0)
+                {
+                    fileRows = fileRows
+                        .Select(row => defaults.TryGetValue(row.VariableName, out var value)
+                            ? row with { DefaultValue = value }
+                            : row)
+                        .ToList();
+                }
+
+                rows.AddRange(fileRows);
             }
             catch (IOException)
             {
@@ -208,6 +221,33 @@ public static partial class ModIniToggleParser
         });
     }
 
+    /// <summary>
+    /// 收集 ini 里的 <c>global [persist] $var = value</c> 初始值，用于菜单的「恢复默认」。
+    /// 同名变量在一个文件里重复声明时取第一条。
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ReadGlobalDefaults(string text)
+    {
+        var defaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (!line.StartsWith("global", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var match = GlobalDefaultRegex().Match(line);
+            if (!match.Success)
+                continue;
+
+            var name = match.Groups[1].Value.Trim();
+            var value = StripInlineComment(match.Groups[2].Value).Trim();
+            if (name.Length > 0 && value.Length > 0)
+                defaults.TryAdd(name, value);
+        }
+
+        return defaults;
+    }
+
     private static bool IsKeySection(string header)
         => header.StartsWith("Key", StringComparison.OrdinalIgnoreCase);
 
@@ -353,6 +393,9 @@ public static partial class ModIniToggleParser
 
     [GeneratedRegex(@"(?<=[a-z0-9])(?=[A-Z])")]
     private static partial Regex SpaceBeforeUpperRegex();
+
+    [GeneratedRegex(@"^\s*global\s+(?:persist\s+)?\$([^\s=]+)\s*=\s*(.+)$", RegexOptions.IgnoreCase)]
+    private static partial Regex GlobalDefaultRegex();
 
     private sealed class SectionBuilder
     {
