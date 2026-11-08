@@ -601,6 +601,7 @@ public static class InGameMenuGenerator
                 type = r.KeyType,
                 key = r.KeyDisplay,
                 label = r.Label,
+                rawLabel = r.RawLabel,
                 clickable = r.IsClickable,
             }),
         };
