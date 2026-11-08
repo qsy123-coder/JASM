@@ -152,8 +152,24 @@ public class InGameMenuIniBuilderTests
 
         Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/row.dds");
         Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/label_00.dds" && t.Text == "Shoes");
-        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/value_00_02.dds" && t.Text == "9");
+        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/value_00_02.dds" && t.Text == "3/3");
         Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/hint_00.dds");
+    }
+
+    [Fact]
+    public void ReferenceThemeShowsOneBasedValueRightAligned()
+    {
+        var build = InGameMenuIniBuilder.Build([Row("Shoes", values: ["4", "8", "9"])], "x",
+            new InGameMenuOptions { Theme = MenuThemes.ReferenceAssets });
+
+        Assert.Contains(build.Textures, t =>
+            t.FileName == "JASM_Menu/value_00_00.dds" &&
+            t.Text == "1/3" &&
+            t.Align == GdiTextRasterizer.TextAlign.Right);
+        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/value_00_02.dds" && t.Text == "3/3");
+
+        // 430 - 200 - 32 = 198：值贴住行右侧
+        Assert.Contains("$jasm_x_img_x = $jasm_x_x + 198", build.IniText);
     }
 
     [Fact]
