@@ -104,6 +104,10 @@ public static class KeyBindingLabelLocalizer
         if (ContainsCjk(trimmed) || !trimmed.Contains(' '))
             return Localize(trimmed);
 
+        // 带空格的短语先看整串精确表（"Make Up" / "Back To Vanilla" 这类逐词拼会翻错）
+        if (ExactLabels.TryGetValue(Normalize(trimmed), out var exact))
+            return exact;
+
         var words = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         foreach (var word in words)
         {
@@ -205,12 +209,15 @@ public static class KeyBindingLabelLocalizer
     {
         result = string.Empty;
 
+        // 段落名常带首字母大写（Waiqunbai），切分时按小写处理
+        var lower = value.ToLowerInvariant();
+
         // 单个拼音词（xiezi）在第 2 步就命中了；走到这里只可能是连写，长度至少两段
         const int minSegmentLength = 3;
-        if (value.Length < minSegmentLength * 2)
+        if (lower.Length < minSegmentLength * 2)
             return false;
 
-        foreach (var c in value)
+        foreach (var c in lower)
         {
             if (c is < 'a' or > 'z')
                 return false;
@@ -219,15 +226,15 @@ public static class KeyBindingLabelLocalizer
         var segments = new List<string>();
         var offset = 0;
 
-        while (offset < value.Length)
+        while (offset < lower.Length)
         {
             var matchedLength = 0;
             var matched = string.Empty;
 
             // 最长优先：从剩余整段往下试，第一个命中的就是最长匹配
-            for (var length = value.Length - offset; length >= minSegmentLength; length--)
+            for (var length = lower.Length - offset; length >= minSegmentLength; length--)
             {
-                if (!PinyinWords.TryGetValue(value.Substring(offset, length), out var chinese))
+                if (!PinyinWords.TryGetValue(lower.Substring(offset, length), out var chinese))
                     continue;
 
                 matchedLength = length;
@@ -266,6 +273,58 @@ public static class KeyBindingLabelLocalizer
         ["boobsize"] = "胸部尺寸",
         // "2nd layer" 里的数字把分词切成 "2" + "ndlayer"，逐词翻不出来，整串收
         ["2ndlayer"] = "第二层",
+
+        // ── 扫 100+ 心月狐 mod 后补充的短语/缩写（分词会拆错或 L/R 这类后缀翻不出）──
+        ["waistdeco"] = "腰部装饰",
+        ["handl"] = "左手",
+        ["handr"] = "右手",
+        ["arml"] = "左臂",
+        ["armr"] = "右臂",
+        ["sides"] = "侧面S",
+        ["sides2"] = "侧面S2",
+        ["sideskirt"] = "侧裙",
+        ["makeup"] = "妆容",
+        ["makeup2"] = "妆容2",
+        ["mouserb"] = "鼠标右键",
+        ["backtovanilla"] = "恢复原版",
+        ["hsinforteformbacktovanilla"] = "心大招形态恢复原版",
+        ["togglealtleft"] = "开/关Alt左",
+        ["togglealtlow"] = "开/关Alt下",
+        ["togglealtup"] = "开/关Alt上",
+        ["toggleleft"] = "开/关左",
+        ["togglelow"] = "开/关下",
+        ["toggleright"] = "开/关右",
+        ["toggleup"] = "开/关上",
+        ["togglefb"] = "开/关前后",
+        ["toggleinner"] = "开/关内层",
+        ["togglelr"] = "开/关左右",
+        ["boobsorbuttorsize"] = "胸部或臀部尺寸",
+        ["holdbutt"] = "按住臀部",
+        ["ahegao"] = "阿黑颜",
+        ["waterclothing"] = "水湿衣物",
+        ["waterrain"] = "雨滴",
+        ["foxfurcolor"] = "狐狸毛色",
+        ["foxtailstarcrown"] = "狐尾星冠",
+        ["blackhairv176"] = "黑色发型V176",
+        ["hiyukicuffv1810"] = "Hiyuki袖口V1810",
+        ["butterflytattoov1855"] = "蝴蝶纹身V1855",
+        ["shoesultv1834"] = "鞋子大招V1834",
+        ["v4comparecostumematerial"] = "V4对比服装材质",
+        ["v5compareulroute"] = "V5对比UL路线",
+        ["linoguialt"] = "Lino界面Alt",
+        ["linoguictrl"] = "Lino界面Ctrl",
+        ["linoguimouse"] = "Lino界面Mouse",
+        ["oirigonaldressoptions"] = "原版连衣裙选项",
+        ["expresslock"] = "表情锁定",
+        ["bellywindow"] = "腹部开口",
+        ["boobwindow1"] = "胸部开口1",
+        ["boobwindow2"] = "胸部开口2",
+        ["corset"] = "束腰",
+        ["gripband"] = "握持带",
+        ["shawl"] = "披肩",
+        ["ultclothcolor"] = "大招布料颜色",
+        ["armwrist"] = "手腕",
+        ["referencecuffv1811"] = "参考袖口V1811",
     };
 
     /// <summary>英文词表（逐词匹配，大小写不敏感）</summary>
@@ -585,6 +644,61 @@ public static class KeyBindingLabelLocalizer
         ["innerclothes"] = "内衬",
         ["outerclothe"] = "外衣",
         ["armcloth"] = "手臂布料",
+
+        // ── 扫 100+ 心月狐 mod 后补充 ──
+        ["clothing"] = "衣物",
+        ["neck"] = "颈部",
+        ["make"] = "妆容",
+        ["fur"] = "毛皮",
+        ["letter"] = "字母",
+        ["lower"] = "下部",
+        ["oil"] = "油光",
+        ["original"] = "原始",
+        ["pube"] = "阴毛",
+        ["sling"] = "吊带",
+        ["visibility"] = "显示",
+        ["fabric"] = "布料",
+        ["highlight"] = "高光",
+        ["fox"] = "狐狸",
+        ["count"] = "数量",
+        ["chain"] = "链",
+        ["panel"] = "面板",
+        ["options"] = "选项",
+        ["spread"] = "展开",
+        ["dec"] = "装饰",
+        ["bare"] = "裸露",
+        ["beads"] = "珠子",
+        ["float"] = "漂浮",
+        ["lock"] = "锁定",
+        ["booba"] = "胸部",
+        ["boobchain"] = "胸部链条",
+        ["boobdeco"] = "胸部装饰",
+        ["cheststuff"] = "胸部配件",
+        ["stuff"] = "配件",
+        ["hsin"] = "心",
+        ["forte"] = "大招",
+        ["form"] = "形态",
+        ["base"] = "基础",
+        ["vanilla"] = "原版",
+        ["shade"] = "眼影",
+        ["haircut"] = "发型",
+        ["setup"] = "设置",
+        ["mole"] = "泪痣",
+        ["outfit"] = "服装",
+        ["sub"] = "副",
+        ["pantie"] = "内裤",
+        ["stoking"] = "丝袜",       // 作者把 stocking 写少了一个 c
+        ["oirignal"] = "原版",      // original 的拼写错误
+        ["cloths"] = "衣物",
+        ["wrist"] = "手腕",
+        ["window"] = "开口",
+        ["belly"] = "腹部",
+        ["corset"] = "束腰",
+        ["grip"] = "握持",
+        ["band"] = "带",
+        ["shawl"] = "披肩",
+        ["ult"] = "大招",
+        ["reference"] = "参考",
     };
 
     /// <summary>
@@ -694,5 +808,14 @@ public static class KeyBindingLabelLocalizer
         ["xiaban"] = "下半",
         ["xiongdai"] = "胸带",
         ["yinmao"] = "阴毛",
+
+        // ── 扫 100+ 心月狐 mod 后补充 ──
+        ["xiong"] = "胸",
+        ["shouwan"] = "手腕",
+        ["touguan"] = "头冠",
+        ["miansha"] = "面纱",
+        ["neichen"] = "内衬",
+        ["wai"] = "外",
+        ["huawen"] = "花纹",
     };
 }
