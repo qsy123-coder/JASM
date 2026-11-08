@@ -298,6 +298,12 @@ public static class InGameMenuGenerator
             MenuTextureKind.Panel => MenuTextureFactory.CreatePanel(spec.Width, spec.Height),
             MenuTextureKind.Hover => MenuTextureFactory.CreateHover(spec.Width, spec.Height),
             MenuTextureKind.Marker => MenuTextureFactory.CreateSolid(spec.Width, spec.Height, 255, 40, 40, 230),
+            MenuTextureKind.RowBar => MenuTextureFactory.CreateRowBar(spec.Width, spec.Height, active: false),
+            MenuTextureKind.RowHover => MenuTextureFactory.CreateRowBar(spec.Width, spec.Height, active: true),
+            MenuTextureKind.Tab => MenuTextureFactory.CreateTab(spec.Width, spec.Height, active: false),
+            MenuTextureKind.TabActive => MenuTextureFactory.CreateTab(spec.Width, spec.Height, active: true),
+            MenuTextureKind.Sidebar => MenuTextureFactory.CreateSidebar(spec.Width, spec.Height),
+            MenuTextureKind.Underline => MenuTextureFactory.CreateUnderline(spec.Width, spec.Height),
             _ => GdiTextRasterizer.RenderText(spec.Text, spec.Width, spec.Height, spec.FontSize, spec.Bold, spec.Align),
         };
 
