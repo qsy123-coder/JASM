@@ -201,6 +201,27 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void AppliesRowHideAndOrder()
+    {
+        var mod = CreateMod("LayoutMod");
+        var rows = ModIniToggleParser.ParseDirectory(mod);
+        var shoes = rows.Single(r => r.Label == "Shoes");
+        var hair = rows.Single(r => r.Label == "Hair");
+
+        InGameMenuGenerator.Generate(mod, new InGameMenuOptions
+        {
+            RowOrder = [hair.Key, shoes.Key],
+            HiddenRows = [shoes.Key], // 隐藏优先于排序
+        });
+
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.DoesNotContain(@"$\FoxMain\xiezi", menu);
+        Assert.Contains(@"$\FoxMain\hair", menu);
+        Assert.Contains("行 0: [KeyHair]", menu);
+        Assert.DoesNotContain("行 1:", menu);
+    }
+
+    [Fact]
     public void IsUpToDateIsFalseForMenuFromOlderGenerator()
     {
         var mod = CreateMod("MyMod");
