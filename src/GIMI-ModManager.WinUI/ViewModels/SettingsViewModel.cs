@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
+using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
@@ -578,6 +579,129 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             IsInGameMenuGenerating = false;
             HasInGameMenuStatus = true;
         }
+    }
+
+    /// <summary>3DMigoto / WWMI 已经占用的键，录制时直接拒绝，避免按键冲突。</summary>
+    private static readonly HashSet<string> ReservedMenuKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "F6",  // WWMI: toggle mods
+        "F8",  // 3DMigoto: analyse_frame
+        "F9",  // 3DMigoto: show_original
+        "F10", // 3DMigoto: reload config / first-run notification
+        "F12", // WWMI: user guide
+    };
+
+    /// <summary>
+    /// 录制游戏内菜单呼出键：弹窗里按一个键即可，不用手输。
+    /// 拒绝修饰键、鼠标键，以及 3DMigoto / WWMI 已占用的 F6 / F8 / F9 / F10 / F12。
+    /// </summary>
+    [RelayCommand]
+    private async Task RecordInGameMenuKeyAsync()
+    {
+        if (IsInGameMenuGenerating)
+            return;
+
+        var capturedToken = string.Empty;
+
+        var keyText = new TextBox
+        {
+            IsReadOnly = true,
+            Text = "等待按键…",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var hint = new TextBlock
+        {
+            Text = "请按下要用的呼出键；Esc 取消。\nF6 / F8 / F9 / F10 / F12 已被 3DMigoto / WWMI 占用，会被拒绝。",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12
+        };
+        var dialog = new ContentDialog
+        {
+            Title = "录制游戏内菜单呼出键",
+            Content = new StackPanel { Spacing = 8, Children = { keyText, hint } },
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        dialog.Opened += (_, _) => keyText.Focus(FocusState.Programmatic);
+        keyText.KeyDown += (_, e) =>
+        {
+            e.Handled = true;
+
+            if (e.Key == VirtualKey.Escape)
+            {
+                dialog.Hide();
+                return;
+            }
+
+            if (IsModifierKey(e.Key))
+            {
+                keyText.Text = "这是修饰键，请按一个普通键…";
+                return;
+            }
+
+            var token = ToIniKeyToken(e.Key);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                keyText.Text = "这个键不支持，请换一个";
+                return;
+            }
+
+            if (ReservedMenuKeys.Contains(token))
+            {
+                keyText.Text = $"{token} 已被 3DMigoto / WWMI 占用，请换一个";
+                return;
+            }
+
+            capturedToken = token;
+            dialog.Hide();
+        };
+
+        await _windowManagerService.ShowDialogAsync(dialog);
+
+        if (capturedToken.Length == 0)
+            return;
+
+        try
+        {
+            var settings = await _inGameMenuService.ReadSettingsAsync();
+            settings.OpenKeyTokens = capturedToken;
+            settings.OpenKeyDisplay = VirtualKeyMap.Resolve(capturedToken).Display;
+            await _inGameMenuService.SaveSettingsAsync(settings);
+
+            InGameMenuKeyDisplay = settings.OpenKeyDisplay;
+            InGameMenuKeyInput = settings.OpenKeyTokens;
+            HasInGameMenuStatus = true;
+            InGameMenuStatusMessage = $"呼出键已改为 {settings.OpenKeyDisplay}，正在重建已有菜单…";
+
+            var result = await Task.Run(() => _inGameMenuService.GenerateForAllAsync(regenerate: true));
+            InGameMenuStatusMessage = $"呼出键已改为 {settings.OpenKeyDisplay}，已重建 {result.Generated} 个菜单";
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 录制呼出键失败");
+            InGameMenuStatusMessage = "更新失败：" + e.Message;
+        }
+    }
+
+    /// <summary>把 WinUI 虚拟键转换成 3DMigoto 的 <c>[Key*]</c> 写法；不支持的键返回 null。</summary>
+    private static string? ToIniKeyToken(VirtualKey key)
+    {
+        var vk = (ushort)key;
+        if (vk is >= 0x70 and <= 0x87)
+            return "F" + (vk - 0x6F); // F1..F24
+        if (vk is >= 0x41 and <= 0x5A)
+            return ((char)vk).ToString(); // A..Z
+        if (vk is >= 0x30 and <= 0x39)
+            return ((char)vk).ToString(); // 0..9
+        if (vk is >= 0x60 and <= 0x69)
+            return "VK_NUMPAD" + (vk - 0x60);
+
+        var name = key.ToString();
+        if (string.IsNullOrWhiteSpace(name) || !char.IsLetter(name[0]))
+            return null;
+
+        return "VK_" + name.ToUpperInvariant();
     }
 
     /// <summary>
