@@ -15,6 +15,9 @@ public sealed record MenuTheme
     public required string Id { get; init; }
     public required string DisplayName { get; init; }
 
+    /// <summary>true = 生成时直接拷贝参考 Mod 的 PNG 素材（需要在设置里指定素材目录）。</summary>
+    public bool UseReferenceAssets { get; init; }
+
     // 面板
     public required MenuColor PanelFill { get; init; }
     public required MenuColor PanelBorder { get; init; }
@@ -145,7 +148,19 @@ public static class MenuThemes
         Underline = MenuColor.Rgb(235, 235, 235),
     };
 
-    public static IReadOnlyList<MenuTheme> All { get; } = [Reference, ClassicBlue, Crimson, Ink];
+    /// <summary>
+    /// 直接拷贝参考 Mod 的 PNG 素材（ButtonBg / ButtonBorder / TabBg / TabBgSelected）。
+    /// 需要在设置里填「参考素材目录」（参考 Mod 的 GUI\res）。
+    /// 找不到目录或文件时退回 <see cref="Reference"/> 的自绘配色。
+    /// </summary>
+    public static readonly MenuTheme ReferenceAssets = Reference with
+    {
+        Id = "reference-assets",
+        DisplayName = "参考素材（直接拷贝 PNG）",
+        UseReferenceAssets = true,
+    };
+
+    public static IReadOnlyList<MenuTheme> All { get; } = [Reference, ReferenceAssets, ClassicBlue, Crimson, Ink];
 
     public static MenuTheme Get(string? id)
         => All.FirstOrDefault(theme => string.Equals(theme.Id, id, StringComparison.OrdinalIgnoreCase))
