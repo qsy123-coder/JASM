@@ -11,6 +11,46 @@ namespace JASM.Tests;
 public class ModIniToggleParserTests
 {
     [Fact]
+    public void LocalizesMenuLabelsAndKeepsRawLabel()
+    {
+        var rows = ModIniToggleParser.ParseText("""
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+
+            [KeyHairAcc]
+            key = VK_UP
+            type = cycle
+            $acc = 0,1
+            """, "mod.ini");
+
+        var shoes = rows.Single(r => r.SectionName == "[KeyShoes]");
+        Assert.Equal("鞋子", shoes.Label);
+        Assert.Equal("Shoes", shoes.RawLabel);
+
+        var acc = rows.Single(r => r.SectionName == "[KeyHairAcc]");
+        Assert.Equal("发饰", acc.Label);
+        Assert.Equal("Hair Acc", acc.RawLabel);
+    }
+
+    [Fact]
+    public void KeepsMultiWordCommentWhenNotEveryWordTranslates()
+    {
+        var rows = ModIniToggleParser.ParseText("""
+            ; Shoes are picked from the wardrobe
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """, "mod.ini");
+
+        var row = Assert.Single(rows);
+        Assert.Equal("Shoes are picked from the wardrobe", row.Label);
+        Assert.Equal("Shoes are picked from the wardrobe", row.RawLabel);
+    }
+
+    [Fact]
     public void ParseDirectoryCapturesGlobalDefaultForReset()
     {
         var root = Path.Combine(Path.GetTempPath(), "jasm-defaults-" + Guid.NewGuid().ToString("N"));
@@ -104,7 +144,7 @@ public class ModIniToggleParserTests
         var row = Assert.Single(rows);
         Assert.False(row.IsClickable);
         Assert.Equal("→", row.KeyDisplay);
-        Assert.Equal("Hold", row.Label);
+        Assert.Equal("长按", row.Label);
     }
 
     [Fact]
