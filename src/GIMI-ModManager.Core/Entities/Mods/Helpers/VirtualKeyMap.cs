@@ -31,6 +31,14 @@ public static class VirtualKeyMap
     private static readonly VirtualKeyDefinition AltKey = new("Alt", false, 0x12);
 
     private static readonly IReadOnlyDictionary<string, VirtualKeyDefinition> Map = BuildMap();
+    private static readonly IReadOnlyDictionary<ushort, string> IniNameByVirtualKey = BuildIniNames();
+
+    /// <summary>
+    /// 把 Windows 虚拟键码反查成 3DMigoto 能识别的 <c>[Key*]</c> 写法（如 <c>VK_F7</c>、<c>VK_RMENU</c>）。
+    /// 表里没有的键返回 false —— 调用方应当拒绝它，而不是写一个 3DMigoto 不认识的变量名。
+    /// </summary>
+    public static bool TryGetIniName(ushort virtualKey, out string name)
+        => IniNameByVirtualKey.TryGetValue(virtualKey, out name!);
 
     /// <summary>
     /// 解析 ini 里的按键名。词表里没有的名字**原样**返回且虚拟键码为 <c>null</c>
@@ -133,6 +141,18 @@ public static class VirtualKeyMap
         // 键盘右侧的菜单键（Win32 的 VK_APPS）。注意不是 VK_MENU —— 那个是 Alt 本身。
         Add(new VirtualKeyDefinition("菜单键", false, 0x5D), "VK_APPS", "APPS", "MENUKEY");
 
+        // ── 左右分开的修饰键 ──
+        // 3DMigoto 表里是 RMENU / LMENU / RCONTROL / LCONTROL / RSHIFT / LSHIFT / RWIN / LWIN；
+        // WinUI 的 RightMenu.ToString() 是 "RightMenu"，拼成 VK_RIGHTMENU 表里没有，按键会失效。
+        Add(new VirtualKeyDefinition("左Alt", false, 0xA4), "VK_LMENU", "LMENU");
+        Add(new VirtualKeyDefinition("右Alt", false, 0xA5), "VK_RMENU", "RMENU");
+        Add(new VirtualKeyDefinition("左Ctrl", false, 0xA2), "VK_LCONTROL", "LCONTROL");
+        Add(new VirtualKeyDefinition("右Ctrl", false, 0xA3), "VK_RCONTROL", "RCONTROL");
+        Add(new VirtualKeyDefinition("左Shift", false, 0xA0), "VK_LSHIFT", "LSHIFT");
+        Add(new VirtualKeyDefinition("右Shift", false, 0xA1), "VK_RSHIFT", "RSHIFT");
+        Add(new VirtualKeyDefinition("左Win", false, 0x5B), "VK_LWIN", "LWIN", "LEFT_WINDOWS", "LEFT_WIN");
+        Add(new VirtualKeyDefinition("右Win", false, 0x5C), "VK_RWIN", "RWIN", "RIGHT_WINDOWS", "RIGHT_WIN");
+
         // ── 小键盘 0..9 = 0x60..0x69 ──
         for (var i = 0; i <= 9; i++)
             Add(new VirtualKeyDefinition($"小键盘{i}", false, (ushort)(0x60 + i)), $"VK_NUMPAD{i}", $"NUMPAD{i}");
@@ -173,5 +193,31 @@ public static class VirtualKeyMap
         Add(new VirtualKeyDefinition("(无)", false, null), "NONE", "DISABLED");
 
         return map;
+    }
+
+    private static IReadOnlyDictionary<ushort, string> BuildIniNames()
+    {
+        var result = new Dictionary<ushort, string>();
+
+        foreach (var (name, definition) in Map)
+        {
+            if (definition.VirtualKeyCode is not { } code)
+                continue;
+
+            // 只收 VK_ 前缀的写法：3DMigoto 会先剥掉 VK_ 再查表，写成 VK_RMENU 最稳。
+            if (!name.StartsWith("VK_", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // 同一键码可能有多个别名（VK_PRIOR / VK_PAGEUP 不太可能，但保险）——取最短的，确定性更好
+            if (!result.TryGetValue(code, out var existing) || name.Length < existing.Length)
+                result[code] = name;
+        }
+
+        // 单独的 Ctrl / Shift / Alt 不在主表里
+        result[0x11] = "VK_CONTROL";
+        result[0x10] = "VK_SHIFT";
+        result[0x12] = "VK_MENU";
+
+        return result;
     }
 }
