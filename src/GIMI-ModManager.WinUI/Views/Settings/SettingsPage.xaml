@@ -625,6 +625,15 @@
                             Command="{x:Bind ViewModel.GenerateModMenusCommand}"
                             Content="为所有 Mod 补齐菜单" />
                     </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock VerticalAlignment="Center" Text="菜单主题" />
+                        <ComboBox
+                            MinWidth="180"
+                            DisplayMemberPath="DisplayName"
+                            ItemsSource="{x:Bind ViewModel.InGameMenuThemes, Mode=OneWay}"
+                            SelectedValue="{x:Bind ViewModel.SelectedInGameMenuTheme, Mode=TwoWay}"
+                            SelectedValuePath="Id" />
+                    </StackPanel>
                     <TextBlock
                         FontSize="12"
                         Foreground="#FFE8A33D"
