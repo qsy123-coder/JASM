@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using GIMI_ModManager.Core.Helpers;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 
@@ -226,6 +227,38 @@ public static class InGameMenuGenerator
         => Directory.Exists(modFolderPath)
            && Directory.EnumerateFiles(modFolderPath, MenuIniFileName, SearchOption.AllDirectories)
                .Any(LooksLikeGeneratedIni);
+
+    /// <summary>
+    /// 菜单存在且由<b>当前</b>生成器版本产出。批量补齐用这个判断，而不是简单的文件存在——
+    /// 旧版本产出的菜单可能有已知缺陷（v2 的鼠标命中用了会冻结的 <c>cursor_x/y</c>），
+    /// 升级后应当自动重建，不能因为「文件已经在了」就永远跳过。
+    /// </summary>
+    public static bool IsUpToDate(string modFolderPath)
+    {
+        if (!Directory.Exists(modFolderPath))
+            return false;
+
+        foreach (var dir in Directory.EnumerateDirectories(modFolderPath, AssetsDirectoryName, SearchOption.AllDirectories))
+        {
+            var manifestPath = Path.Combine(dir, ManifestFileName);
+            if (!File.Exists(manifestPath))
+                continue;
+
+            try
+            {
+                var version = JObject.Parse(File.ReadAllText(manifestPath))
+                    .Value<int?>("generatorVersion") ?? 0;
+                return version >= InGameMenuOptions.CurrentGeneratorVersion;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // 读不出来就当过期：重建比留着一个坏菜单安全
+                return false;
+            }
+        }
+
+        return false;
+    }
 
     private static bool LooksLikeGeneratedIni(string path)
     {
