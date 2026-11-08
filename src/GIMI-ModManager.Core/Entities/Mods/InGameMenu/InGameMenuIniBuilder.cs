@@ -7,14 +7,14 @@ namespace GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 public sealed record InGameMenuOptions
 {
     /// <summary>
-    /// 3DMigoto <c>[Key*]</c> 里写的呼出键，如 <c>F6</c>。
+    /// 3DMigoto <c>[Key*]</c> 里写的呼出键，如 <c>F7</c>。
     /// 默认不能用 F8：d3dx.ini 把 F8 绑给 frame analysis（<c>analyse_frame</c>），
     /// 会与菜单开关抢键并逐帧重复触发。
     /// </summary>
-    public string OpenKeyTokens { get; init; } = "F6";
+    public string OpenKeyTokens { get; init; } = "F7";
 
     /// <summary>UI 上显示的同一个键（用于底部提示）。</summary>
-    public string OpenKeyDisplay { get; init; } = "F6";
+    public string OpenKeyDisplay { get; init; } = "F7";
 
     /// <summary>菜单标题（通常是 Mod 显示名，会自动拆成两行）。</summary>
     public string Title { get; init; } = "JASM";
@@ -50,9 +50,10 @@ public sealed record InGameMenuOptions
     /// v5：逐角色门控改用 Mod 自己的限定 <c>object_detected</c>；hash 可能命中共享资源导致多份菜单叠在一起。
     /// v6：门控不再加在呼出键上（按键处理时 object_detected 已被 post 回 0，呼出键关不掉），
     ///     改为角色不在场时在 Present 里自动 <c>open = 0</c>。
-    /// v7：默认呼出键 F8 → F6。F8 被 d3dx.ini 绑给 frame analysis，会逐帧重复触发并抢菜单开关。
+    /// v7：默认呼出键 F8 → F6（F8 被 d3dx.ini 绑给 frame analysis）。
+    /// v8：F6 被 WWMI 核心占用（toggle mods），默认改为 F7。
     /// </summary>
-    public const int CurrentGeneratorVersion = 7;
+    public const int CurrentGeneratorVersion = 8;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -118,7 +119,7 @@ public sealed record InGameMenuBuildResult(
 /// • 每行：左箭头、名称、当前值、右侧按键提示、右箭头；
 /// • 底部三行说明文字。
 ///
-/// 交互：<c>F6</c> 开关；按住 Alt 后左键点击行/页签/页码，右键拖动菜单。
+/// 交互：<c>F7</c> 开关；按住 Alt 后左键点击行/页签/页码，右键拖动菜单。
 /// 所有坐标写在 1920×1080 虚拟空间，运行时按 <c>min(res_w/1920, res_h/1080)</c> 缩放。
 /// </summary>
 public static class InGameMenuIniBuilder
