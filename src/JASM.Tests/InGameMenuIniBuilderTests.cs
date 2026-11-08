@@ -122,6 +122,17 @@ public class InGameMenuIniBuilderTests
 
 
     [Fact]
+    public void ReferenceThemeUsesSmallerRegularLabelFont()
+    {
+        var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x",
+            new InGameMenuOptions { Theme = MenuThemes.ReferenceAssets });
+
+        var label = Assert.Single(build.Textures, t => t.FileName == "JASM_Menu/label_00.dds");
+        Assert.Equal(18, label.FontSize);
+        Assert.False(label.Bold);
+    }
+
+    [Fact]
     public void EmitsResetActionAndTextureForRowsWithDefaults()
     {
         var row = Row("Shoes") with { DefaultValue = "4" };
