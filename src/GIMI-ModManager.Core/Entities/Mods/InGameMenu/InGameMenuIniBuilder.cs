@@ -52,8 +52,9 @@ public sealed record InGameMenuOptions
     ///     改为角色不在场时在 Present 里自动 <c>open = 0</c>。
     /// v7：默认呼出键 F8 → F6（F8 被 d3dx.ini 绑给 frame analysis）。
     /// v8：F6 被 WWMI 核心占用（toggle mods），默认改为 F7。
+    /// v9：呼出键从 type=cycle 改为 hold + 自行检测按下沿，避免与自动归零 resync 导致第一次按无效。
     /// </summary>
-    public const int CurrentGeneratorVersion = 8;
+    public const int CurrentGeneratorVersion = 9;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -283,14 +284,13 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"namespace = {MenuNamespace(token)}");
         ini.AppendLine();
 
-        // 呼出键
+        // 呼出键：用 hold + 自己检测按下沿，不用 type = cycle。
+        // type = cycle 与「角色不在场时自动 open = 0」会互相 resync（日志里能看到
+        // Resynced key cycle），表现为第一次按 F7 无效或关不掉。
         ini.AppendLine($"[{KeyToggleSection(token)}]");
-        // 不要给按键加 condition：3DMigoto 处理按键时 object_detected 往往已经被
-        // Mod 的 [Present] post 回 0，加了条件会导致呼出键关不掉菜单。
-        // 多份菜单的问题改由「角色不在场时自动 open = 0」解决（见 AppendPresent）。
         ini.AppendLine($"key = {options.OpenKeyTokens}");
-        ini.AppendLine("type = cycle");
-        ini.AppendLine($"{v}open = 0,1");
+        ini.AppendLine("type = hold");
+        ini.AppendLine($"{v}toggle_guard = 1");
         ini.AppendLine();
 
         // Alt+左键点击 / Alt+右键拖动（鸣潮按 Alt 时光标解锁）
@@ -337,6 +337,8 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"global persist {v}y = {AnchorDefaultY}");
         ini.AppendLine($"global {v}page = 0");
         ini.AppendLine($"global {v}click_guard = 0");
+        ini.AppendLine($"global {v}toggle_guard = 0");
+        ini.AppendLine($"global {v}toggle_prev = 0");
         ini.AppendLine($"global {v}prev_down = 0");
         ini.AppendLine($"global {v}click = 0");
         ini.AppendLine($"global {v}drag_guard = 0");
@@ -389,6 +391,21 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"    {v}open = 0");
         ini.AppendLine($"    {v}page = 0");
         ini.AppendLine($"    {v}first_frame = 0");
+        ini.AppendLine("endif");
+        ini.AppendLine();
+
+        ini.AppendLine("; 呼出键按下沿：自己翻转 open（hold + 边沿，不用 type=cycle）");
+        ini.AppendLine($"if {v}toggle_guard == 1");
+        ini.AppendLine($"    if {v}toggle_prev == 0");
+        ini.AppendLine($"        if {v}open == 0");
+        ini.AppendLine($"            {v}open = 1");
+        ini.AppendLine("        else");
+        ini.AppendLine($"            {v}open = 0");
+        ini.AppendLine("        endif");
+        ini.AppendLine("    endif");
+        ini.AppendLine($"    {v}toggle_prev = 1");
+        ini.AppendLine("else");
+        ini.AppendLine($"    {v}toggle_prev = 0");
         ini.AppendLine("endif");
         ini.AppendLine();
 
