@@ -228,6 +228,24 @@ public class KeyBindingLabelLocalizerTests
     public void LocalizeSectionName_CoversTheWeddingOutfitTypos(string sectionName, string expected)
         => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
 
+    [Theory]
+    [InlineData("[KeyFishnet]", "渔网袜")]
+    [InlineData("[KeyMega]", "巨大")]
+    [InlineData("[KeyShoet]", "鞋子")]
+    [InlineData("[KeyJiandai]", "肩带")]
+    [InlineData("[KeyTacetmark]", "声痕")]
+    [InlineData("[KeyJixieshou]", "机械手")]
+    [InlineData("[KeyHairFlowers]", "发花")]
+    public void LocalizeSectionName_CoversTheIunoCollection(string sectionName, string expected)
+        => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
+
+    [Theory]
+    [InlineData("$Body Harness", "身体束带")]
+    [InlineData("Background Reload Random", "背景随机重载")]
+    [InlineData("Xie Zi", "鞋子")]
+    public void LocalizeMenuLabel_CoversIunoPhrases(string label, string expected)
+        => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeMenuLabel(label));
+
     // ── 与 ModIniKeyBindingEntry 的接线 ──────────────────────
 
     [Theory]
