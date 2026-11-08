@@ -58,8 +58,10 @@ public sealed record InGameMenuOptions
     /// v12：竖栏增加 ↺「恢复默认」，把所有行写回 Mod ini 声明的初始值。
     /// v13：键盘导航（↑/↓ 选择、Enter 切换）与选中行高亮。
     /// v14：移除键盘导航（会覆盖分页页码），恢复纯鼠标交互。
+    /// v15：新增「深灰米色（参考样式）」主题并设为默认（参考《心·绀星绮愿》GUI）。
+    /// v16：新增整块深色背板，贴近参考菜单的深灰底。
     /// </summary>
-    public const int CurrentGeneratorVersion = 14;
+    public const int CurrentGeneratorVersion = 16;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -74,7 +76,7 @@ public sealed record InGameMenuOptions
     public IReadOnlyCollection<string> HiddenRows { get; init; } = [];
 
     /// <summary>菜单皮肤；换皮肤后需要重建菜单。</summary>
-    public MenuTheme Theme { get; init; } = MenuThemes.Default;
+    public MenuTheme Theme { get; init; } = MenuThemes.Reference;
 }
 
 /// <summary>一张待生成的纹理。文字类由生成器渲染，面板类由 <see cref="MenuTextureFactory"/> 绘制。</summary>
@@ -167,6 +169,12 @@ public static class InGameMenuIniBuilder
     private const int RowOffsetX = 20;
     private const int RowOffsetY = 168;
     private const int RowWidth = 620;
+
+    // 整块深色背板（参考菜单的深灰底），覆盖标题/竖栏/行/底部说明
+    private const int PanelTextureWidth = 720;
+    private const int PanelOffsetX = -68;
+    private const int PanelOffsetY = -10;
+    private const int PanelExtraHeight = 12;
     private const int RowHeight = 64;
     private const int RowGap = 6;
 
@@ -214,6 +222,10 @@ public static class InGameMenuIniBuilder
 
         var (titleLine1, titleLine2) = SplitTitle(options.Title);
         var textures = new List<MenuTextureSpec>();
+
+        // —— 整块深色背板 ——
+        textures.Add(new MenuTextureSpec("JASM_Menu/panel.dds", MenuTextureKind.Panel, string.Empty,
+            PanelTextureWidth, menuHeight + PanelExtraHeight, 0, false, GdiTextRasterizer.TextAlign.Left));
 
         // —— 顶部：标题 + 下划线 ——
         textures.Add(Text("JASM_Menu/title_1.dds", titleLine1, TitleWidth, TitleHeight, 32, true,
@@ -325,7 +337,7 @@ public static class InGameMenuIniBuilder
         AppendConstants(ini, v);
         AppendDetector(ini, v, token, options);
         AppendPresent(ini, v, token, options, pageCount, menuHeight);
-        AppendChrome(ini, v, token, pageCount, visibleRows, rows, options);
+        AppendChrome(ini, v, token, pageCount, visibleRows, rows, menuHeight, options);
 
         for (var p = 0; p < pageCount; p++)
             AppendPageCommandList(ini, token, p, rowCount, rowsPerPage);
@@ -542,9 +554,13 @@ public static class InGameMenuIniBuilder
     }
 
     private static void AppendChrome(StringBuilder ini, string v, string token, int pageCount, int visibleRows,
-        IReadOnlyList<ModIniToggleRow> rows, InGameMenuOptions options)
+        IReadOnlyList<ModIniToggleRow> rows, int menuHeight, InGameMenuOptions options)
     {
         ini.AppendLine($"[{MenuDrawCommandList(token)}]");
+
+        // 整块深色背板（参考菜单的深灰底）
+        AppendQuad(ini, v, token, ResourceName("Panel", token), $"{v}x + {PanelOffsetX}",
+            $"{v}y + {PanelOffsetY}", PanelTextureWidth, menuHeight + PanelExtraHeight, 1);
 
         // 标题两行 + 下划线
         AppendQuad(ini, v, token, ResourceName("Title1", token), $"{v}x", $"{v}y", TitleWidth, TitleHeight, 1);
@@ -819,6 +835,7 @@ public static class InGameMenuIniBuilder
         AppendResource(ini, token, "Sidebar", "JASM_Menu/sidebar.dds");
         AppendResource(ini, token, "Close", "JASM_Menu/close.dds");
         AppendResource(ini, token, "Reset", "JASM_Menu/reset.dds");
+        AppendResource(ini, token, "Panel", "JASM_Menu/panel.dds");
         AppendResource(ini, token, "Row", "JASM_Menu/row.dds");
         AppendResource(ini, token, "RowHover", "JASM_Menu/row_hover.dds");
         AppendResource(ini, token, "ArrowLeft", "JASM_Menu/arrow_left.dds");
