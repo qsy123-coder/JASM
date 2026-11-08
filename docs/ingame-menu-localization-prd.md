@@ -118,3 +118,12 @@ mod 段落名是作者自定字符串，数量动态增长，无法提前写进 
 
 1. 100+ mod 的根目录路径（扫描工具需要）。
 2. `rawLabel` 只写 manifest 是否够，还是详情页也要显示原文（本期先只写 manifest）。
+
+## P2 首次扫描结果（2026-11-08）
+
+- 源目录：`F:\BaiduNetdiskDownload\MC-MOD整合包\wMOD全集-每日更新\整改\心月狐`
+- 103 个 RAR5 自解压包（密码 `x77syq`），用 7-Zip **只解压 `*.ini`、不执行 exe**
+- 成功 102，失败 1（`心(含大招)-朝颜淡v2…exe`，7-Zip exit 2）
+- 提取 309 个 ini
+- 去重后未翻译标签 **170** 个；补词后剩 **61** 个，均为变体 ID（`A`/`F`/`T5`/`C3003`…）或作者备注句，按规则保留英文
+- 新增词条覆盖：`Waistdeco`→腰部装饰、`Hand L`→左手、`Togglealtleft`→开/关Alt左、`Hsin Base Form Breast Size`→心基础形态胸部尺寸、`Waiqunbai`→外裙摆 等
