@@ -71,8 +71,9 @@ public sealed record InGameMenuOptions
     /// v25：参考样式改用 18px 常规字重标签，避免粗体显得被拉伸。
     /// v26：改用随包分发的 HYWenHei-85W 字体 + 3× 超采样渲染。
     /// v27：补入尤诺 132 个 mod 扫描出的标签翻译。
+    /// v28：补齐尤诺菜单剩余 Pluses/Lets 两行。
     /// </summary>
-    public const int CurrentGeneratorVersion = 27;
+    public const int CurrentGeneratorVersion = 28;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
