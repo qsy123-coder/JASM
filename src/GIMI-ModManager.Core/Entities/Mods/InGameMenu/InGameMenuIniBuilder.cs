@@ -23,17 +23,31 @@ public sealed record InGameMenuOptions
 
     /// <summary>
     /// 角色模型的纹理 hash（来自 Mod 里设置 <c>$object_detected = 1</c> 的 TextureOverride）。
-    /// 非空时用这个 hash 做**逐角色**门控；<c>$object_detected</c> 在无 namespace 的 Mod 里是全局共享的。
+    /// <see cref="DetectionVariable"/> 为空时才作为后备门控。
     /// </summary>
     public string DetectionHash { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 逐角色门控变量（完整限定名，如 <c>$\JasmXXXXXXXX\object_detected</c>）。
+    ///
+    /// 补了 ASCII namespace 之后，每个 Mod 的 <c>$object_detected</c> 都是独立的：
+    /// Mod 的组件绘制时置 1，自己的 <c>[Present]</c> 再 post 回 0。
+    /// 用它做门控比 hash 更准，而且 F8 只切换当前角色那份菜单。
+    /// </summary>
+    public string DetectionVariable { get; init; } = string.Empty;
 
     /// <summary>
     /// 生成器版本，写进 ini 头与 manifest，便于日后失效重生成。
     ///
     /// v3：命中检测改用 <c>cursor_screen_x/y</c>。v2 用 <c>cursor_x/y</c>，
     /// 在游戏隐藏光标时会冻结，导致菜单可见但鼠标点击永远命中不了。
+    /// v4：没有 namespace 的 Mod 自动补 ASCII namespace；v3 用含中文的 ini 路径当限定名，
+    /// 3DMigoto 解析器会报语法错误，点击不会作用到 Mod。
+    /// v5：逐角色门控改用 Mod 自己的限定 <c>object_detected</c>；hash 可能命中共享资源导致多份菜单叠在一起。
+    /// v6：门控不再加在呼出键上（按键处理时 object_detected 已被 post 回 0，F8 关不掉），
+    ///     改为角色不在场时在 Present 里自动 <c>open = 0</c>。
     /// </summary>
-    public const int CurrentGeneratorVersion = 3;
+    public const int CurrentGeneratorVersion = 6;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -265,10 +279,9 @@ public static class InGameMenuIniBuilder
 
         // 呼出键
         ini.AppendLine($"[{KeyToggleSection(token)}]");
-        // 多套菜单都绑 F8：不加门控的话，按一次会把所有菜单的 open 一起翻转，
-        // 表现为「F8 关不掉，反而切到另一件 Mod 的菜单」。只让当前加载的角色响应。
-        if (options.GateOnObjectDetected)
-            ini.AppendLine("condition = $object_detected == 1");
+        // 不要给按键加 condition：3DMigoto 处理按键时 object_detected 往往已经被
+        // Mod 的 [Present] post 回 0，加了条件会导致 F8 关不掉菜单。
+        // 多份菜单的问题改由「角色不在场时自动 open = 0」解决（见 AppendPresent）。
         ini.AppendLine($"key = {options.OpenKeyTokens}");
         ini.AppendLine("type = cycle");
         ini.AppendLine($"{v}open = 0,1");
@@ -373,7 +386,10 @@ public static class InGameMenuIniBuilder
         ini.AppendLine("endif");
         ini.AppendLine();
 
-        if (!string.IsNullOrWhiteSpace(options.DetectionHash))
+        // 有 DetectionVariable 时用 Mod 自己的 object_detected（补 namespace 后已按 Mod 隔离），
+        // 不再靠 hash 猜测：hash 可能命中共享资源，导致多份菜单同时亮。
+        if (string.IsNullOrWhiteSpace(options.DetectionVariable)
+            && !string.IsNullOrWhiteSpace(options.DetectionHash))
         {
             ini.AppendLine("; 逐角色门控：超过 0.5s 没检测到该角色模型就关闭菜单");
             ini.AppendLine($"{v}age = time - {v}last_seen");
@@ -383,8 +399,27 @@ public static class InGameMenuIniBuilder
             ini.AppendLine();
         }
 
+        // 角色不在场时自动关闭：F8 会翻转所有菜单的 open，但只有当前角色那份能留下；
+        // 其余在同帧被压回 0，避免多份菜单叠在一起，也避免切角色后突然弹出。
+        if (!string.IsNullOrWhiteSpace(options.DetectionVariable))
+        {
+            ini.AppendLine($"if {options.DetectionVariable} == 0");
+            ini.AppendLine($"    {v}open = 0");
+            ini.AppendLine("endif");
+            ini.AppendLine();
+        }
+        else if (options.GateOnObjectDetected)
+        {
+            ini.AppendLine("if $object_detected == 0");
+            ini.AppendLine($"    {v}open = 0");
+            ini.AppendLine("endif");
+            ini.AppendLine();
+        }
+
         ini.AppendLine($"if {v}open == 1");
-        if (options.GateOnObjectDetected)
+        if (!string.IsNullOrWhiteSpace(options.DetectionVariable))
+            ini.AppendLine($"if {options.DetectionVariable} == 1");
+        else if (options.GateOnObjectDetected)
             ini.AppendLine("if $object_detected == 1");
 
         // 必须用 cursor_screen_x/y（物理屏幕像素），不能用 cursor_x/y：
