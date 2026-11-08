@@ -56,9 +56,9 @@ public class InGameMenuIniBuilderTests
             new InGameMenuOptions { OpenKeyTokens = "CTRL SHIFT VK_M" });
 
         Assert.Contains("key = CTRL SHIFT VK_M", build.IniText);
-        // 开关用 hold + 按下沿，避免 type=cycle 与自动归零 resync
-        Assert.Contains("type = hold", build.IniText);
-        Assert.Contains("$jasm_x_toggle_guard = 1", build.IniText);
+        // 开关用 cycle 脉冲变量，Present 检测变化后翻转 open
+        Assert.Contains("$jasm_x_key_pulse = 0,1", build.IniText);
+        Assert.Contains("$jasm_x_key_pulse_prev = $jasm_x_key_pulse", build.IniText);
         // 纯鼠标交互：Alt+左键点击、Alt+右键拖动否鸣潮按住 Alt 时光标解锁）
         Assert.Contains("key = ALT VK_LBUTTON", build.IniText);
         Assert.Contains("key = ALT VK_RBUTTON", build.IniText);
