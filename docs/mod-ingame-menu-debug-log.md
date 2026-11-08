@@ -307,6 +307,31 @@ F:\XXMI\WWMI\Mods\character\others\RabbitFX反虚化+发光前置v82自定义版
 
 调色修正：`RasterSurface.SetPixel` 的参数顺序是 **BGRA**，页签颜色最初写反（蓝变棕），已修正。
 
+### 5.11 多份菜单叠字 & 逐角色门控（2026-11-08）
+
+现象：角色选择界面里「尤诺」和「绯雪」两份菜单的标题、行叠在一起；F8 还会把两份菜单的 open 一起翻转。
+
+根因：
+
+- 每个 Mod 的 `[TextureOverrideComponent*]` 都会设置 **全局** `$object_detected = 1`；
+- 没有 `namespace` 的 Mod（尤诺/绯雪都是）共享同一个全局变量，所以任意角色模型绘制都会点亮所有菜单；
+- 多份菜单都绑 F8，按一次同时翻转所有 open。
+
+修复：
+
+1. **逐角色检测**：从 Mod 里「设置 `$object_detected = 1` 的那一段」提取角色专属的 `hash =`，在生成的 ini 里加一个
+   ```ini
+   [TextureOverrideJasmDetect_<token>]
+   hash = 9707e44e
+   $jasm_<token>_last_seen = time
+   ```
+   菜单只在 `time - last_seen < 0.5` 时显示/保持打开；切换到别的角色后自动关闭。
+2. 呼出键不再用全局 `$object_detected` 做条件。
+3. 只保留当前使用角色的一份 JASM 菜单（多份会叠字）；需要别的角色时再生成。
+
+已知边界：角色选择/加载界面如果正在绘制该角色模型，菜单仍会显示（这是「当前角色」的正确行为）；同屏多角色时各自菜单会同时可见，需要避免同时保留多份菜单。
+
+
 
 
 ---
