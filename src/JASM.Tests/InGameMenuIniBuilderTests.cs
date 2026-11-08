@@ -79,6 +79,23 @@ public class InGameMenuIniBuilderTests
     }
 
     [Fact]
+    public void GatesOnQualifiedObjectDetectedVariable()
+    {
+        var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x", new InGameMenuOptions
+        {
+            DetectionVariable = @"$\JasmABCDEF12\object_detected",
+            GateOnObjectDetected = false,
+        });
+
+        // 呼出键不加条件（否则 F8 关不掉）；绘制与自动归零都按当前角色门控
+        Assert.Contains(@"if $\JasmABCDEF12\object_detected == 0", build.IniText);
+        Assert.Contains(@"if $\JasmABCDEF12\object_detected == 1", build.IniText);
+        Assert.DoesNotContain(@"condition = $\JasmABCDEF12\object_detected", build.IniText);
+        Assert.DoesNotContain("age = time -", build.IniText);
+        Assert.DoesNotContain("[TextureOverrideJasmDetect", build.IniText);
+    }
+
+    [Fact]
     public void PaginatesAboveRowLimit()
     {
         var rows = Enumerable.Range(0, 12).Select(i => Row("Item" + i, "var" + i)).ToList();
