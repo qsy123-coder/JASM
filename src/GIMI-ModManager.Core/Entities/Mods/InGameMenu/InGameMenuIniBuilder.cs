@@ -54,8 +54,9 @@ public sealed record InGameMenuOptions
     /// v8：F6 被 WWMI 核心占用（toggle mods），默认改为 F7。
     /// v9：呼出键从 type=cycle 改为 hold + 自行检测按下沿，避免与自动归零 resync 导致第一次按无效。
     /// v10：hold 边沿在低帧率下会漏（按下/抬起同帧）；改用 cycle 脉冲变量 + Present 检测变化。
+    /// v11：修复门控 if 缺少 endif（绘制变成无条件执行，F7 改 open 但菜单不消失）。
     /// </summary>
-    public const int CurrentGeneratorVersion = 10;
+    public const int CurrentGeneratorVersion = 11;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -517,7 +518,9 @@ public static class InGameMenuIniBuilder
         ini.AppendLine("    endif");
         ini.AppendLine();
         ini.AppendLine($"    run = {MenuDrawCommandList(token)}");
-        if (options.GateOnObjectDetected)
+        // 逐个关闭门控 if：DetectionVariable 和 GateOnObjectDetected 都会额外开一层。
+        // 漏掉任何一个 endif，3DMigoto 会把绘制当成无条件执行 —— 表现为「F7 改了 open 但菜单不消失」。
+        if (!string.IsNullOrWhiteSpace(options.DetectionVariable) || options.GateOnObjectDetected)
             ini.AppendLine("endif");
         ini.AppendLine("endif");
         ini.AppendLine();
