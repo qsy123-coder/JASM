@@ -207,6 +207,8 @@ public static partial class ModIniToggleParser
             values = cycleCandidates[0].Values;
         }
 
+        var rawLabel = BuildLabel(section.PriorComment, header);
+
         result.Add(new ModIniToggleRow
         {
             SectionName = "[" + header + "]",
@@ -217,7 +219,8 @@ public static partial class ModIniToggleParser
             KeyType = section.Type,
             KeyDisplay = FormatKeyDisplay(section.KeyValue),
             Condition = section.Condition,
-            Label = BuildLabel(section.PriorComment, header),
+            Label = KeyBindingLabelLocalizer.LocalizeMenuLabel(rawLabel),
+            RawLabel = rawLabel,
         });
     }
 
