@@ -127,3 +127,10 @@ mod 段落名是作者自定字符串，数量动态增长，无法提前写进 
 - 提取 309 个 ini
 - 去重后未翻译标签 **170** 个；补词后剩 **61** 个，均为变体 ID（`A`/`F`/`T5`/`C3003`…）或作者备注句，按规则保留英文
 - 新增词条覆盖：`Waistdeco`→腰部装饰、`Hand L`→左手、`Togglealtleft`→开/关Alt左、`Hsin Base Form Breast Size`→心基础形态胸部尺寸、`Waiqunbai`→外裙摆 等
+
+### 椿 批次（2026-11-08）
+
+- 源目录：`...\整改\椿`
+- 188 个 RAR5 自解压包，**全部成功**，提取 325 个 ini
+- 去重后未翻译 **119** → 补词后剩 **54**；剩余为 A–M、TA–TJ、YQ*、Zs* 变体 ID 与作者说明长句
+- 新增覆盖：`_shoulder_lace`→肩部蕾丝、`Eight2`→八2、`Naked`→裸体、`Bunny Suit`→兔女郎套装、`Qunzishipin`→裙子视频、`Togglea`→开/关A、`Lowerbody`→下半身 等
