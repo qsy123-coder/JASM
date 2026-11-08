@@ -57,7 +57,7 @@ public class InGameMenuIniBuilderTests
 
         Assert.Contains("key = CTRL SHIFT VK_M", build.IniText);
         Assert.Contains("$jasm_x_open = 0,1", build.IniText);
-        // 纯鼠标交互：Alt+左键点击、Alt+右键拖动（鸣潮按住 Alt 时光标解锁）
+        // 纯鼠标交互：Alt+左键点击、Alt+右键拖动否鸣潮按住 Alt 时光标解锁）
         Assert.Contains("key = ALT VK_LBUTTON", build.IniText);
         Assert.Contains("key = ALT VK_RBUTTON", build.IniText);
         Assert.DoesNotContain("key = UP", build.IniText);
@@ -87,7 +87,7 @@ public class InGameMenuIniBuilderTests
             GateOnObjectDetected = false,
         });
 
-        // 呼出键不加条件（否则 F8 关不掉）；绘制与自动归零都按当前角色门控
+        // 呼出键不加条件否否则 F8 关不掉）；绘制与自动归零都按当前角色门控
         Assert.Contains(@"if $\JasmABCDEF12\object_detected == 0", build.IniText);
         Assert.Contains(@"if $\JasmABCDEF12\object_detected == 1", build.IniText);
         Assert.DoesNotContain(@"condition = $\JasmABCDEF12\object_detected", build.IniText);
@@ -139,7 +139,7 @@ public class InGameMenuIniBuilderTests
     [Fact]
     public void NeverEmitsUnsupportedAndOperator()
     {
-        // 本机 3DMigoto 的 CommandList if 不支持 &&（日志会报 Variable not recognized，
+        // 本机 3DMigoto 的 CommandList if 不支持 &&否日志会报 Variable not recognized，
         // 并打乱 if/endif 结构导致绘制无条件执行）。作者条件即使含 && 也不能原样带进来。
         var row = Row("Shoes") with { Condition = "$a == 1 && $b == 0" };
 
@@ -200,7 +200,7 @@ public class InGameMenuIniBuilderTests
 
         var lines = build.IniText.Split('\n').Select(l => l.Trim()).ToArray();
 
-        // if / endif 必须配平（3DMigoto 解析失败通常只报一行，很难查）
+        // if / endif 必须配平否3DMigoto 解析失败通常只报一行，很难查）
         var depth = 0;
         foreach (var line in lines)
         {
