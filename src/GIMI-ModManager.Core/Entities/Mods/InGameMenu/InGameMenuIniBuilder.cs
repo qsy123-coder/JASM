@@ -69,8 +69,9 @@ public sealed record InGameMenuOptions
     /// v23：设置作用域修正后强制重建，确保所有菜单用上参考素材主题。
     /// v24：补入椿 188 个 mod 扫描出的常用标签翻译。
     /// v25：参考样式改用 18px 常规字重标签，避免粗体显得被拉伸。
+    /// v26：改用随包分发的 HYWenHei-85W 字体 + 3× 超采样渲染。
     /// </summary>
-    public const int CurrentGeneratorVersion = 25;
+    public const int CurrentGeneratorVersion = 26;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -92,6 +93,12 @@ public sealed record InGameMenuOptions
 
     /// <summary>哪些资源改用 .png 源文件（Row / RowHover / Tab / TabActive）。</summary>
     public IReadOnlyCollection<string> PngResources { get; init; } = [];
+
+    /// <summary>随包分发的字体文件；存在时进程私有加载，保证所有用户字形一致。</summary>
+    public string FontFilePath { get; init; } = string.Empty;
+
+    /// <summary>字体族名；为空时使用系统默认（Microsoft YaHei UI）。</summary>
+    public string FontFamily { get; init; } = string.Empty;
 }
 
 /// <summary>一张待生成的纹理。文字类由生成器渲染，面板类由 <see cref="MenuTextureFactory"/> 绘制。</summary>
