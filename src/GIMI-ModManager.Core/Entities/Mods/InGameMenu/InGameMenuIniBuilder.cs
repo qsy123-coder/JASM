@@ -27,8 +27,16 @@ public sealed record InGameMenuOptions
     /// </summary>
     public string DetectionHash { get; init; } = string.Empty;
 
+    /// <summary>
+    /// 生成器版本，写进 ini 头与 manifest，便于日后失效重生成。
+    ///
+    /// v3：命中检测改用 <c>cursor_screen_x/y</c>。v2 用 <c>cursor_x/y</c>，
+    /// 在游戏隐藏光标时会冻结，导致菜单可见但鼠标点击永远命中不了。
+    /// </summary>
+    public const int CurrentGeneratorVersion = 3;
+
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
-    public int GeneratorVersion { get; init; } = 2;
+    public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
 
     /// <summary>诊断用：在光标计算位置画一个红色小方块。</summary>
     public bool DebugCursor { get; init; }
@@ -379,8 +387,11 @@ public static class InGameMenuIniBuilder
         if (options.GateOnObjectDetected)
             ini.AppendLine("if $object_detected == 1");
 
-        ini.AppendLine($"    {v}mx = cursor_x * res_width");
-        ini.AppendLine($"    {v}my = cursor_y * res_height");
+        // 必须用 cursor_screen_x/y（物理屏幕像素），不能用 cursor_x/y：
+        // 后者在游戏隐藏光标时**冻结**在上一次可见位置，菜单能画出来但鼠标永远落不进
+        // 命中框（真机红点诊断证实）。cursor_screen_x/y 每帧从 GetCursorPos 更新。
+        ini.AppendLine($"    {v}mx = cursor_screen_x");
+        ini.AppendLine($"    {v}my = cursor_screen_y");
         ini.AppendLine($"    local {v}sx = res_width / 1920");
         ini.AppendLine($"    local {v}sy = res_height / 1080");
         ini.AppendLine($"    if {v}sy < {v}sx");
