@@ -188,6 +188,28 @@ public class KeyBindingLabelLocalizerTests
     public void LocalizeSectionName_KeepsAuthorVariantLetters(string sectionName, string expected)
         => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
 
+    [Theory]
+    [InlineData("[KeyWaistdeco]", "腰部装饰")]
+    [InlineData("[KeyTogglealtleft]", "开/关Alt左")]
+    [InlineData("[KeyHandL]", "左手")]
+    [InlineData("[KeyHsinForteFormBackToVanilla]", "心大招形态恢复原版")]
+    [InlineData("[KeyWaiqunbai]", "外裙摆")]
+    [InlineData("[KeyTouguan]", "头冠")]
+    [InlineData("[KeyMiansha]", "面纱")]
+    [InlineData("[KeyNeichen]", "内衬")]
+    [InlineData("[KeyXiong]", "胸")]
+    public void LocalizeSectionName_CoversTheHsinCollection(string sectionName, string expected)
+        => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
+
+    [Theory]
+    [InlineData("Make Up", "妆容")]
+    [InlineData("Hsin Base Form Breast Size", "心基础形态胸部尺寸")]
+    [InlineData("White Glove Highlight", "白色手套高光")]
+    [InlineData("Reset Panel Pos", "重置面板位置")]
+    [InlineData("Hsin Ear2 Toggle", "心耳朵2开/关")]
+    public void LocalizeMenuLabel_TranslatesPhrases(string label, string expected)
+        => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeMenuLabel(label));
+
     // ── 与 ModIniKeyBindingEntry 的接线 ──────────────────────
 
     [Theory]
