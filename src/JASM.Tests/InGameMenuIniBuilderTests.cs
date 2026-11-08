@@ -143,6 +143,26 @@ public class InGameMenuIniBuilderTests
     }
 
     [Fact]
+    public void UsesDetectionHashForPerCharacterGating()
+    {
+        var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x", new InGameMenuOptions
+        {
+            DetectionHash = "f8b55eeb",
+            GateOnObjectDetected = false,
+        });
+
+        // 逐角色：只有该角色模型绘制时才刷新 last_seen
+        Assert.Contains("[TextureOverrideJasmDetect_x]", build.IniText);
+        Assert.Contains("hash = f8b55eeb", build.IniText);
+        Assert.Contains("$jasm_x_last_seen = time", build.IniText);
+        Assert.Contains("$jasm_x_age = time - $jasm_x_last_seen", build.IniText);
+        Assert.Contains("if $jasm_x_age >= 0.5", build.IniText);
+
+        // 不再用全局共享的 $object_detected 做门控
+        Assert.DoesNotContain("if $object_detected == 1", build.IniText);
+    }
+
+    [Fact]
     public void GeneratedIniIsStructurallyBalancedAndSelfContained()
     {
         var rows = Enumerable.Range(0, 12).Select(i => Row("Item" + i, "var" + i, "Ns" + i, "0", "1", "2")).ToList();
