@@ -62,9 +62,10 @@ public sealed record InGameMenuOptions
     /// v16：新增整块深色背板，贴近参考菜单的深灰底。
     /// v17：新增「参考素材」主题，直接拷贝参考 Mod 的按钮/页签 PNG。
     /// v18：参考素材样式改用原生素材尺寸、无背板/无下划线、每行米色描边。
-    /// v19：整体缩小到 560×84 行、220×44 页签、9 行/页。
+    /// v19：整体缩小。
+    /// v20：按全屏截图比例改为 430×56 行、180×30 页签、11 行/页，标题也同步缩小。
     /// </summary>
-    public const int CurrentGeneratorVersion = 19;
+    public const int CurrentGeneratorVersion = 20;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -214,9 +215,9 @@ public static class InGameMenuIniBuilder
     public const int DefaultRowsPerPage = 10;
 
     // 参考素材样式：按钮素材原生 720×108，每页 7 行才能放进 1080 高度
-    private const int ReferenceRowWidth = 560;
-    private const int ReferenceRowHeight = 84;
-    private const int ReferenceRowsPerPage = 9;
+    private const int ReferenceRowWidth = 430;
+    private const int ReferenceRowHeight = 56;
+    private const int ReferenceRowsPerPage = 11;
 
     private static int RowsPerPage(InGameMenuOptions options)
         => Math.Clamp(options.MaxRowsPerPage, 1,
@@ -229,16 +230,34 @@ public static class InGameMenuIniBuilder
         => options.Theme.UseReferenceAssets ? ReferenceRowHeight : RowHeight;
 
     private static int RowOffsetYFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 170 : RowOffsetY;
+        => options.Theme.UseReferenceAssets ? 116 : RowOffsetY;
 
     private static int TabWidthFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 220 : TabWidth;
+        => options.Theme.UseReferenceAssets ? 180 : TabWidth;
 
     private static int TabHeightFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 44 : TabHeight;
+        => options.Theme.UseReferenceAssets ? 30 : TabHeight;
 
     private static int LabelWidthFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 300 : LabelWidth;
+        => options.Theme.UseReferenceAssets ? 200 : LabelWidth;
+
+    private static int TitleWidthFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 300 : TitleWidth;
+
+    private static int TitleHeightFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 34 : TitleHeight;
+
+    private static int TitleFontFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 24 : 32;
+
+    private static int TitleLineGapFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 2 : TitleLineGap;
+
+    private static int TabsOffsetYFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 78 : TabsOffsetY;
+
+    private static int HintOffsetYFor(InGameMenuOptions options)
+        => options.Theme.UseReferenceAssets ? 12 : HintOffsetY;
 
     public static InGameMenuBuildResult Build(
         IReadOnlyList<ModIniToggleRow> rows,
@@ -268,9 +287,9 @@ public static class InGameMenuIniBuilder
         }
 
         // —— 顶部：标题 + 下划线 ——
-        textures.Add(Text("JASM_Menu/title_1.dds", titleLine1, TitleWidth, TitleHeight, 32, true,
+        textures.Add(Text("JASM_Menu/title_1.dds", titleLine1, TitleWidthFor(options), TitleHeightFor(options), TitleFontFor(options), true,
             GdiTextRasterizer.TextAlign.Left));
-        textures.Add(Text("JASM_Menu/title_2.dds", titleLine2, TitleWidth, TitleHeight, 32, true,
+        textures.Add(Text("JASM_Menu/title_2.dds", titleLine2, TitleWidthFor(options), TitleHeightFor(options), TitleFontFor(options), true,
             GdiTextRasterizer.TextAlign.Left));
         textures.Add(new MenuTextureSpec("JASM_Menu/underline.dds", MenuTextureKind.Underline, string.Empty,
             UnderlineWidth, UnderlineHeight, 0, false, GdiTextRasterizer.TextAlign.Left));
@@ -608,9 +627,9 @@ public static class InGameMenuIniBuilder
         }
 
         // 标题两行 + 下划线（参考素材样式没有下划线）
-        AppendQuad(ini, v, token, ResourceName("Title1", token), $"{v}x", $"{v}y", TitleWidth, TitleHeight, 1);
-        AppendQuad(ini, v, token, ResourceName("Title2", token), $"{v}x", $"{v}y + {TitleHeight + TitleLineGap}",
-            TitleWidth, TitleHeight, 1);
+        AppendQuad(ini, v, token, ResourceName("Title1", token), $"{v}x", $"{v}y", TitleWidthFor(options), TitleHeightFor(options), 1);
+        AppendQuad(ini, v, token, ResourceName("Title2", token), $"{v}x", $"{v}y + {TitleHeightFor(options) + TitleLineGapFor(options)}",
+            TitleWidthFor(options), TitleHeightFor(options), 1);
         if (!options.Theme.UseReferenceAssets)
         {
             AppendQuad(ini, v, token, ResourceName("Underline", token), $"{v}x", $"{v}y + {UnderlineOffsetY}",
@@ -630,16 +649,16 @@ public static class InGameMenuIniBuilder
             ini.AppendLine($"{v}img_w = {tabWidth}");
             ini.AppendLine($"{v}img_h = {tabHeight}");
             ini.AppendLine($"{v}img_x = {v}x + {TabsOffsetX + p * (tabWidth + TabGap)}");
-            ini.AppendLine($"{v}img_y = {v}y + {TabsOffsetY}");
+            ini.AppendLine($"{v}img_y = {v}y + {TabsOffsetYFor(options)}");
             ini.AppendLine($"{v}tint_a = 1");
             ini.AppendLine($"run = {QuadCommandList(token)}");
 
             AppendQuad(ini, v, token, ResourceName($"TabLabel{p:00}", token),
-                $"{v}x + {TabsOffsetX + p * (tabWidth + TabGap) + 5}", $"{v}y + {TabsOffsetY + 2}",
+                $"{v}x + {TabsOffsetX + p * (tabWidth + TabGap) + 5}", $"{v}y + {TabsOffsetYFor(options) + 2}",
                 tabWidth - 10, tabHeight - 4, 1);
 
             ini.AppendLine($"{v}in_rect = 0");
-            AppendHitRect(ini, v, $"{v}x + {TabsOffsetX + p * (tabWidth + TabGap)}", $"{v}y + {TabsOffsetY}",
+            AppendHitRect(ini, v, $"{v}x + {TabsOffsetX + p * (tabWidth + TabGap)}", $"{v}y + {TabsOffsetYFor(options)}",
                 tabWidth, tabHeight);
             ini.AppendLine($"if {v}in_rect == 1");
             ini.AppendLine($"    if {v}click == 1");
@@ -756,8 +775,8 @@ public static class InGameMenuIniBuilder
 
         var rowY = RowOffsetYFor(options) + (index % rowsPerPage) * (rowHeight + RowGap);
         var arrowOffsetY = reference ? rowHeight / 2 - ArrowHeight / 2 : ArrowOffsetY;
-        var labelOffsetY = reference ? 14 : LabelOffsetY;
-        var valueOffsetY = reference ? 50 : ValueOffsetY;
+        var labelOffsetY = reference ? 8 : LabelOffsetY;
+        var valueOffsetY = reference ? 30 : ValueOffsetY;
         var hintOffsetX = rowWidth - 150;
         var arrowRightOffsetX = rowWidth - ArrowWidth;
 
@@ -816,7 +835,7 @@ public static class InGameMenuIniBuilder
         if (!string.IsNullOrWhiteSpace(row.KeyDisplay))
         {
             AppendQuad(ini, v, token, ResourceName($"Hint{index:00}", token), $"{v}x + {hintOffsetX}",
-                $"{v}y + {rowY + HintOffsetY}", HintWidth, HintHeight, 0.7m);
+                $"{v}y + {rowY + HintOffsetYFor(options)}", HintWidth, HintHeight, 0.7m);
         }
 
         // 右箭头
