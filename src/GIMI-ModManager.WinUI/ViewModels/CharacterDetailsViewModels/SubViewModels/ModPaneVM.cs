@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -206,7 +206,7 @@ public sealed partial class ModPaneVM(
         }
 
         IsInGameMenuGenerated = _inGameMenuService.HasGeneratedMenu(_loadedMod.Mod);
-        InGameMenuStatusText = IsInGameMenuGenerated ? "已生成游戏内菜单（F8 打开，↑/↓ 选择，F9 切换）" : string.Empty;
+        InGameMenuStatusText = IsInGameMenuGenerated ? "已生成游戏内菜单（F6 打开，↑/↓ 选择，F9 切换）" : string.Empty;
     }
 
     /// <summary>详情页的「生成游戏内菜单」。已有作者可点击菜单时会被生成器跳过。</summary>
@@ -225,7 +225,7 @@ public sealed partial class ModPaneVM(
 
             InGameMenuStatusText = result.Status switch
             {
-                InGameMenuGenerationStatus.Generated => "菜单已生成（F8 打开，↑/↓ 选择，F9 切换）",
+                InGameMenuGenerationStatus.Generated => "菜单已生成（F6 打开，↑/↓ 选择，F9 切换）",
                 InGameMenuGenerationStatus.SkippedExistingClickableMenu => "作者已自带可点击菜单，已跳过",
                 InGameMenuGenerationStatus.SkippedNoRows => "没有可用的 [Key*] 段落，已跳过",
                 InGameMenuGenerationStatus.SkippedNoClickableRows => "没有可切换的循环变量，已跳过",
