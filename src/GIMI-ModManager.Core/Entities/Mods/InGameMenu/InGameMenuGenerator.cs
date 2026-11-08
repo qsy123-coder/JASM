@@ -147,11 +147,16 @@ public static class InGameMenuGenerator
         if (File.Exists(iniPath) && !LooksLikeGeneratedIni(iniPath))
             return Failed($"{MenuIniFileName} 已存在且不是 JASM 生成的文件，拒绝覆盖");
 
+        var detectionHash = ExtractDetectionHash(modFolderPath);
         var effectiveOptions = options ?? new InGameMenuOptions();
         effectiveOptions = effectiveOptions with
         {
             Title = Truncate(StripDisabledPrefix(Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar))), 40),
-            GateOnObjectDetected = effectiveOptions.GateOnObjectDetected && ContainsObjectDetected(modFolderPath),
+            DetectionHash = detectionHash ?? string.Empty,
+            // 有角色 hash 时用它做逐角色门控；没有才退回全局 $object_detected
+            GateOnObjectDetected = detectionHash is null
+                                   && effectiveOptions.GateOnObjectDetected
+                                   && ContainsObjectDetected(modFolderPath),
         };
 
         var menuToken = BuildToken(Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar)));
@@ -252,6 +257,72 @@ public static class InGameMenuGenerator
             .Key;
 
         return Path.Combine(modFolderPath, best);
+    }
+
+    /// <summary>
+    /// 提取这个 Mod 用来检测「角色模型正在绘制」的纹理 hash。
+    ///
+    /// 为什么不用 <c>$object_detected</c>：它在没有 namespace 的 Mod 里是**全局共享**变量，
+    /// 多个角色的 Mod 会互相点亮菜单。而每个 Mod 的 <c>[TextureOverrideComponent*]</c> 里
+    /// 设置 <c>$object_detected = 1</c> 的那一段带有角色专属的 <c>hash =</c>，
+    /// 把同一个 hash 放进我们自己的 TextureOverride，就能做到「只在该角色绘制时点亮」。
+    /// </summary>
+    public static string? ExtractDetectionHash(string modFolderPath)
+    {
+        if (!Directory.Exists(modFolderPath))
+            return null;
+
+        foreach (var file in Directory
+                     .EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories)
+                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string text;
+            try
+            {
+                text = IniFileText.ReadAllText(file);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            string? sectionHash = null;
+
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.Trim();
+
+                if (line.StartsWith('['))
+                {
+                    sectionHash = null;
+                    continue;
+                }
+
+                if (line.StartsWith("hash", StringComparison.OrdinalIgnoreCase))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq > 0)
+                        sectionHash = line[(eq + 1)..].Trim();
+                    continue;
+                }
+
+                if (sectionHash is not null
+                    && line.StartsWith("$object_detected", StringComparison.OrdinalIgnoreCase)
+                    && line.Replace(" ", string.Empty).Contains("=1", StringComparison.Ordinal))
+                {
+                    return sectionHash;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
