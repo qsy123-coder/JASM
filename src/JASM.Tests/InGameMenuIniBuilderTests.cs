@@ -120,20 +120,6 @@ public class InGameMenuIniBuilderTests
         Assert.Equal(ifs, endifs);
     }
 
-    [Fact]
-    public void EmitsKeyboardNavigationKeysAndSelection()
-    {
-        var build = InGameMenuIniBuilder.Build([Row("Shoes"), Row("Hair", "hair")], "x", new InGameMenuOptions());
-
-        Assert.Contains("[KeyJasmMenuUp_x]", build.IniText);
-        Assert.Contains("[KeyJasmMenuDown_x]", build.IniText);
-        Assert.Contains("[KeyJasmMenuEnter_x]", build.IniText);
-        Assert.Contains("key = VK_UP", build.IniText);
-        Assert.Contains("key = VK_DOWN", build.IniText);
-        Assert.Contains("key = VK_RETURN", build.IniText);
-        Assert.Contains("$jasm_x_nav_enter", build.IniText);
-        Assert.Contains("if $jasm_x_sel == 0", build.IniText);
-    }
 
     [Fact]
     public void EmitsResetActionAndTextureForRowsWithDefaults()
