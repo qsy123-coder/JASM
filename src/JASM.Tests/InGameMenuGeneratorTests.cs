@@ -45,6 +45,98 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void GenerateAddsAsciiNamespaceForNamespaceLessMod()
+    {
+        var mod = CreateMod("绯雪-测试", NamespaceLessIni);
+
+        var result = InGameMenuGenerator.Generate(mod);
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+
+        // 作者 ini 开头补了一行 ASCII namespace（含中文路径的限定名 3DMigoto 解析不了）
+        var authorIni = File.ReadAllText(Path.Combine(mod, "Normal", "mod.ini"));
+        Assert.StartsWith(IniFileText.AddedNamespaceMarker, authorIni);
+        var nsMatch = System.Text.RegularExpressions.Regex.Match(authorIni, @"namespace = (Jasm[0-9A-F]{8})");
+        Assert.True(nsMatch.Success, authorIni);
+
+        // 菜单用这个 ASCII 命名空间访问 Mod 变量
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains($@"if $\{nsMatch.Groups[1].Value}\xiezi == 4", menu);
+        Assert.DoesNotContain(@"$\Mods\", menu);
+    }
+
+    [Fact]
+    public void GatesMenuOnModsOwnObjectDetectedVariable()
+    {
+        var mod = CreateMod("GateMod", ObjectDetectedIni);
+
+        InGameMenuGenerator.Generate(mod);
+
+        var authorIni = File.ReadAllText(Path.Combine(mod, "Normal", "mod.ini"));
+        var ns = System.Text.RegularExpressions.Regex.Match(authorIni, @"namespace = (Jasm[0-9A-F]{8})")
+            .Groups[1].Value;
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+
+        // 每个 Mod 补了 namespace 后，object_detected 是独立的；用它门控，避免多份菜单同时亮
+        Assert.Contains($@"if $\{ns}\object_detected == 0", menu);
+        Assert.Contains($@"if $\{ns}\object_detected == 1", menu);
+        Assert.DoesNotContain(@"condition = $\" + ns, menu);
+        Assert.DoesNotContain("JasmDetect", menu);
+        Assert.DoesNotContain("age = time -", menu);
+    }
+
+    [Fact]
+    public void NamespacesAreUniqueAcrossModsWithSameIniPath()
+    {
+        var first = CreateMod("ModA", NamespaceLessIni);
+        var second = CreateMod("ModB", NamespaceLessIni);
+
+        InGameMenuGenerator.Generate(first);
+        InGameMenuGenerator.Generate(second);
+
+        var firstNs = System.Text.RegularExpressions.Regex.Match(
+            File.ReadAllText(Path.Combine(first, "Normal", "mod.ini")), @"namespace = (Jasm[0-9A-F]{8})")
+            .Groups[1].Value;
+        var secondNs = System.Text.RegularExpressions.Regex.Match(
+            File.ReadAllText(Path.Combine(second, "Normal", "mod.ini")), @"namespace = (Jasm[0-9A-F]{8})")
+            .Groups[1].Value;
+
+        Assert.NotEqual(firstNs, secondNs);
+    }
+
+    [Fact]
+    public void RemoveRestoresAuthorIniAfterNamespaceInsertion()
+    {
+        var mod = CreateMod("绯雪-测试", NamespaceLessIni);
+        InGameMenuGenerator.Generate(mod);
+
+        Assert.True(InGameMenuGenerator.Remove(mod));
+
+        var authorIni = File.ReadAllText(Path.Combine(mod, "Normal", "mod.ini"));
+        Assert.Equal(NamespaceLessIni, authorIni);
+        Assert.False(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu.ini")));
+    }
+
+    [Fact]
+    public void NamespaceInsertionPreservesGb18030Encoding()
+    {
+        var mod = Path.Combine(_root, "GbMod");
+        Directory.CreateDirectory(Path.Combine(mod, "Normal"));
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var gbk = Encoding.GetEncoding(54936);
+        const string content = "; 中文注释\r\n[KeyShoes]\r\nkey = VK_DOWN\r\ntype = cycle\r\n$xiezi = 4,8,9";
+        var iniPath = Path.Combine(mod, "Normal", "mod.ini");
+        File.WriteAllBytes(iniPath, gbk.GetBytes(content));
+
+        InGameMenuGenerator.Generate(mod);
+
+        var decoded = gbk.GetString(File.ReadAllBytes(iniPath));
+        Assert.Contains("; 中文注释", decoded);
+        Assert.Contains(IniFileText.AddedNamespaceMarker, decoded);
+        Assert.Contains("namespace = Jasm", decoded);
+    }
+
+    [Fact]
     public void RemoveDeletesOnlyJasmArtifacts()
     {
         var mod = CreateMod("MyMod");
@@ -165,6 +257,32 @@ public class InGameMenuGeneratorTests : IDisposable
         key = Num5
         type = cycle
         $hair = 0,1
+        """;
+
+    private const string NamespaceLessIni = """
+        [KeyShoes]
+        key = VK_DOWN
+        type = cycle
+        $xiezi = 4,8,9
+        """;
+
+    private const string ObjectDetectedIni = """
+        [Constants]
+        global $object_detected = 0
+
+        [KeyShoes]
+        key = VK_DOWN
+        type = cycle
+        $xiezi = 4,8,9
+
+        [TextureOverrideComponent0]
+        hash = f8b55eeb
+        $object_detected = 1
+
+        [Present]
+        if $object_detected
+            post $object_detected = 0
+        endif
         """;
 
     private string CreateMod(string name, string iniContent = OriginalIni)
