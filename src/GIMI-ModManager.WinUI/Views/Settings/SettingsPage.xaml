@@ -588,7 +588,7 @@
                         HorizontalAlignment="Left"
                         IsTextSelectionEnabled="True"
                         TextWrapping="WrapWholeWords"
-                        Text="为每个「当前生效」的 Mod 生成游戏内切换菜单：按 F6 打开/关闭，↑/↓ 选择，F9 切换当前行。已有可点击菜单、或同一角色同时启用多件 Mod 时会跳过。" />
+                        Text="为每个「当前生效」的 Mod 生成游戏内切换菜单：按 F7 打开/关闭，↑/↓ 选择，F9 切换当前行。已有可点击菜单、或同一角色同时启用多件 Mod 时会跳过。" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -612,7 +612,7 @@
                         <TextBox
                             Grid.Column="1"
                             Text="{x:Bind ViewModel.InGameMenuKeyInput, Mode=TwoWay}"
-                            PlaceholderText="呼出键，例如 F6" />
+                            PlaceholderText="呼出键，例如 F7" />
                         <Button
                             Grid.Column="2"
                             Command="{x:Bind ViewModel.SaveInGameMenuKeyCommand}"
