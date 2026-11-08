@@ -412,6 +412,8 @@ public static class KeyBindingLabelLocalizer
         ["portraitsmode"] = "立绘模式",
         ["portraitsreloadrandom"] = "立绘随机重载",
         ["xiezi"] = "鞋子",
+        ["pluses"] = "凸点",
+        ["lets"] = "腿饰",
     };
 
     /// <summary>英文词表（逐词匹配，大小写不敏感）</summary>
