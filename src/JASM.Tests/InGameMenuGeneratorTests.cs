@@ -205,8 +205,8 @@ public class InGameMenuGeneratorTests : IDisposable
     {
         var mod = CreateMod("LayoutMod");
         var rows = ModIniToggleParser.ParseDirectory(mod);
-        var shoes = rows.Single(r => r.Label == "Shoes");
-        var hair = rows.Single(r => r.Label == "Hair");
+        var shoes = rows.Single(r => r.SectionName == "[KeyShoes]");
+        var hair = rows.Single(r => r.SectionName == "[KeyHair]");
 
         InGameMenuGenerator.Generate(mod, new InGameMenuOptions
         {
