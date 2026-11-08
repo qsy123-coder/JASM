@@ -6,11 +6,15 @@ namespace GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 /// <summary>生成菜单时的可配置项。</summary>
 public sealed record InGameMenuOptions
 {
-    /// <summary>3DMigoto <c>[Key*]</c> 里写的呼出键，如 <c>F8</c>。</summary>
-    public string OpenKeyTokens { get; init; } = "F8";
+    /// <summary>
+    /// 3DMigoto <c>[Key*]</c> 里写的呼出键，如 <c>F6</c>。
+    /// 默认不能用 F8：d3dx.ini 把 F8 绑给 frame analysis（<c>analyse_frame</c>），
+    /// 会与菜单开关抢键并逐帧重复触发。
+    /// </summary>
+    public string OpenKeyTokens { get; init; } = "F6";
 
     /// <summary>UI 上显示的同一个键（用于底部提示）。</summary>
-    public string OpenKeyDisplay { get; init; } = "F8";
+    public string OpenKeyDisplay { get; init; } = "F6";
 
     /// <summary>菜单标题（通常是 Mod 显示名，会自动拆成两行）。</summary>
     public string Title { get; init; } = "JASM";
@@ -32,7 +36,7 @@ public sealed record InGameMenuOptions
     ///
     /// 补了 ASCII namespace 之后，每个 Mod 的 <c>$object_detected</c> 都是独立的：
     /// Mod 的组件绘制时置 1，自己的 <c>[Present]</c> 再 post 回 0。
-    /// 用它做门控比 hash 更准，而且 F8 只切换当前角色那份菜单。
+    /// 用它做门控比 hash 更准，而且呼出键只切换当前角色那份菜单。
     /// </summary>
     public string DetectionVariable { get; init; } = string.Empty;
 
@@ -44,10 +48,11 @@ public sealed record InGameMenuOptions
     /// v4：没有 namespace 的 Mod 自动补 ASCII namespace；v3 用含中文的 ini 路径当限定名，
     /// 3DMigoto 解析器会报语法错误，点击不会作用到 Mod。
     /// v5：逐角色门控改用 Mod 自己的限定 <c>object_detected</c>；hash 可能命中共享资源导致多份菜单叠在一起。
-    /// v6：门控不再加在呼出键上（按键处理时 object_detected 已被 post 回 0，F8 关不掉），
+    /// v6：门控不再加在呼出键上（按键处理时 object_detected 已被 post 回 0，呼出键关不掉），
     ///     改为角色不在场时在 Present 里自动 <c>open = 0</c>。
+    /// v7：默认呼出键 F8 → F6。F8 被 d3dx.ini 绑给 frame analysis，会逐帧重复触发并抢菜单开关。
     /// </summary>
-    public const int CurrentGeneratorVersion = 6;
+    public const int CurrentGeneratorVersion = 7;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -113,7 +118,7 @@ public sealed record InGameMenuBuildResult(
 /// • 每行：左箭头、名称、当前值、右侧按键提示、右箭头；
 /// • 底部三行说明文字。
 ///
-/// 交互：<c>F8</c> 开关；按住 Alt 后左键点击行/页签/页码，右键拖动菜单。
+/// 交互：<c>F6</c> 开关；按住 Alt 后左键点击行/页签/页码，右键拖动菜单。
 /// 所有坐标写在 1920×1080 虚拟空间，运行时按 <c>min(res_w/1920, res_h/1080)</c> 缩放。
 /// </summary>
 public static class InGameMenuIniBuilder
@@ -280,7 +285,7 @@ public static class InGameMenuIniBuilder
         // 呼出键
         ini.AppendLine($"[{KeyToggleSection(token)}]");
         // 不要给按键加 condition：3DMigoto 处理按键时 object_detected 往往已经被
-        // Mod 的 [Present] post 回 0，加了条件会导致 F8 关不掉菜单。
+        // Mod 的 [Present] post 回 0，加了条件会导致呼出键关不掉菜单。
         // 多份菜单的问题改由「角色不在场时自动 open = 0」解决（见 AppendPresent）。
         ini.AppendLine($"key = {options.OpenKeyTokens}");
         ini.AppendLine("type = cycle");
@@ -399,7 +404,7 @@ public static class InGameMenuIniBuilder
             ini.AppendLine();
         }
 
-        // 角色不在场时自动关闭：F8 会翻转所有菜单的 open，但只有当前角色那份能留下；
+        // 角色不在场时自动关闭：呼出键会翻转所有菜单的 open，但只有当前角色那份能留下；
         // 其余在同帧被压回 0，避免多份菜单叠在一起，也避免切角色后突然弹出。
         if (!string.IsNullOrWhiteSpace(options.DetectionVariable))
         {
