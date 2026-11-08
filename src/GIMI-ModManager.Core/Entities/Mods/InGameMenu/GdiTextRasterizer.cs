@@ -44,6 +44,45 @@ public static class GdiTextRasterizer
     private const uint BiRgb = 0;
     private const int Transparent = 1;
 
+    /// <summary>
+    /// 以 3 倍尺寸用 GDI 渲染再盒式缩小。小字号直接画会因 GDI 点阵提示出现锯齿/空心感，
+    /// 超采样后落到目标纹理上会平滑很多（字号与纹理尺寸不变）。
+    /// </summary>
+    private const int RenderScale = 3;
+
+    private const uint FrPrivate = 0x10;
+
+    /// <summary>当前字体族。默认系统雅黑；应用可改为随包分发的 HYWenHei-85W。</summary>
+    private static string _fontFamily = "Microsoft YaHei UI";
+
+    private static readonly HashSet<string> LoadedFontFiles = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 使用指定的字体文件（进程私有加载，不安装到系统）。文件不存在时退回默认字体。
+    /// 随包分发的字体能保证每个用户的字形一致。
+    /// </summary>
+    public static void UseFont(string? filePath, string? family)
+    {
+        if (string.IsNullOrWhiteSpace(family))
+            return;
+
+        if (!string.IsNullOrWhiteSpace(filePath) && System.IO.File.Exists(filePath))
+        {
+            lock (LoadedFontFiles)
+            {
+                if (LoadedFontFiles.Add(filePath))
+                    AddFontResourceExW(filePath, FrPrivate, IntPtr.Zero);
+            }
+
+            _fontFamily = family;
+            return;
+        }
+
+        // 没有文件路径时允许直接用系统字体族（如 Microsoft YaHei UI）
+        if (string.IsNullOrWhiteSpace(filePath))
+            _fontFamily = family;
+    }
+
     public enum TextAlign
     {
         Left,
@@ -78,6 +117,9 @@ public static class GdiTextRasterizer
         var previousBitmap = IntPtr.Zero;
         var previousFont = IntPtr.Zero;
 
+        var renderWidth = surface.Width * RenderScale;
+        var renderHeight = surface.Height * RenderScale;
+
         try
         {
             var info = new BitmapInfo
@@ -85,12 +127,12 @@ public static class GdiTextRasterizer
                 Header = new BitmapInfoHeader
                 {
                     Size = (uint)Marshal.SizeOf<BitmapInfoHeader>(),
-                    Width = surface.Width,
-                    Height = -surface.Height, // 负高度 = 自上而下
+                    Width = renderWidth,
+                    Height = -renderHeight, // 负高度 = 自上而下
                     Planes = 1,
                     BitCount = 32,
                     Compression = BiRgb,
-                    SizeImage = (uint)(surface.Width * surface.Height * 4),
+                    SizeImage = (uint)(renderWidth * renderHeight * 4),
                 },
             };
 
@@ -101,7 +143,7 @@ public static class GdiTextRasterizer
             previousBitmap = SelectObject(hdc, dib);
 
             font = CreateFontW(
-                -fontSize, 0, 0, 0,
+                -fontSize * RenderScale, 0, 0, 0,
                 bold ? 600 : 400,
                 0, 0, 0,
                 1,   // DEFAULT_CHARSET
@@ -109,7 +151,7 @@ public static class GdiTextRasterizer
                 0,   // CLIP_DEFAULT_PRECIS
                 4,   // ANTIALIASED_QUALITY（灰度抗锯齿，避免 ClearType 彩边）
                 0,
-                "Microsoft YaHei UI");
+                _fontFamily);
 
             if (font != IntPtr.Zero)
                 previousFont = SelectObject(hdc, font);
@@ -121,8 +163,8 @@ public static class GdiTextRasterizer
             {
                 Left = 0,
                 Top = 0,
-                Right = surface.Width,
-                Bottom = surface.Height,
+                Right = renderWidth,
+                Bottom = renderHeight,
             };
 
             var flags = DtSingleLine | DtVCenter | DtNoPrefix | DtEndEllipsis | align switch
@@ -135,7 +177,7 @@ public static class GdiTextRasterizer
             DrawTextW(hdc, text, text.Length, ref rect, flags);
             GdiFlush();
 
-            CopyToSurface(bits, surface);
+            CopyToSurface(bits, renderWidth, renderHeight, surface);
         }
         finally
         {
@@ -155,28 +197,42 @@ public static class GdiTextRasterizer
     }
 
     /// <summary>
-    /// DIB 里是 GDI 画的灰度字（RGB 相同、alpha 未写），这里把亮度转成 alpha、RGB 置白。
+    /// 把 3 倍尺寸的 GDI 灰度字按 3×3 盒式缩小到目标纹理：亮度 → alpha，RGB 置白。
     /// </summary>
-    private static void CopyToSurface(IntPtr bits, RasterSurface surface)
+    private static void CopyToSurface(IntPtr bits, int renderWidth, int renderHeight, RasterSurface surface)
     {
-        var byteCount = surface.Width * surface.Height * 4;
+        var byteCount = renderWidth * renderHeight * 4;
         var source = new byte[byteCount];
         Marshal.Copy(bits, source, 0, byteCount);
 
-        for (var i = 0; i < byteCount; i += 4)
+        var block = RenderScale * RenderScale;
+
+        for (var y = 0; y < surface.Height; y++)
         {
-            var b = source[i];
-            var g = source[i + 1];
-            var r = source[i + 2];
-            var coverage = Math.Max(r, Math.Max(g, b));
+            for (var x = 0; x < surface.Width; x++)
+            {
+                var sum = 0;
 
-            if (coverage == 0)
-                continue;
+                for (var sy = 0; sy < RenderScale; sy++)
+                {
+                    var row = (y * RenderScale + sy) * renderWidth;
+                    for (var sx = 0; sx < RenderScale; sx++)
+                    {
+                        var i = (row + x * RenderScale + sx) * 4;
+                        sum += Math.Max(source[i], Math.Max(source[i + 1], source[i + 2]));
+                    }
+                }
 
-            surface.Pixels[i] = 0xFF;
-            surface.Pixels[i + 1] = 0xFF;
-            surface.Pixels[i + 2] = 0xFF;
-            surface.Pixels[i + 3] = coverage;
+                var coverage = (byte)(sum / block);
+                if (coverage == 0)
+                    continue;
+
+                var index = (y * surface.Width + x) * 4;
+                surface.Pixels[index] = 0xFF;
+                surface.Pixels[index + 1] = 0xFF;
+                surface.Pixels[index + 2] = 0xFF;
+                surface.Pixels[index + 3] = coverage;
+            }
         }
     }
 
@@ -220,6 +276,9 @@ public static class GdiTextRasterizer
 
     [DllImport("gdi32.dll")]
     private static extern IntPtr CreateCompatibleDC(IntPtr hDc);
+
+    [DllImport("gdi32.dll", EntryPoint = "AddFontResourceExW", CharSet = CharSet.Unicode)]
+    private static extern int AddFontResourceExW(string name, uint fl, IntPtr pdv);
 
     [DllImport("gdi32.dll")]
     private static extern int DeleteDC(IntPtr hDc);
