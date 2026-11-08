@@ -121,6 +121,18 @@ public class InGameMenuIniBuilderTests
     }
 
     [Fact]
+    public void EmitsResetActionAndTextureForRowsWithDefaults()
+    {
+        var row = Row("Shoes") with { DefaultValue = "4" };
+
+        var build = InGameMenuIniBuilder.Build([row], "x", new InGameMenuOptions());
+
+        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/reset.dds");
+        Assert.Contains("[ResourceJasmReset_x]", build.IniText);
+        Assert.Contains(@"$\Fox\xiezi = 4", build.IniText);
+    }
+
+    [Fact]
     public void PaginatesAboveRowLimit()
     {
         var rows = Enumerable.Range(0, 12).Select(i => Row("Item" + i, "var" + i)).ToList();
