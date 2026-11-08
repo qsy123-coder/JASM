@@ -30,6 +30,12 @@ public class InGameMenuSettings
     public string MenuTheme { get; set; } = "reference";
 
     /// <summary>
+    /// 「参考素材」主题使用的 PNG 目录（参考 Mod 的 <c>GUI\res</c>）。
+    /// 为空或缺文件时退回同主题的自绘配色。
+    /// </summary>
+    public string ReferenceAssetsDirectory { get; set; } = string.Empty;
+
+    /// <summary>
     /// 每个 Mod 的菜单行自定义，键是 Mod 目录名（不含 DISABLED_ 前缀）。
     /// 值为行顺序与隐藏列表；未配置的 Mod 使用 ini 原顺序、全部显示。
     /// </summary>
