@@ -769,6 +769,9 @@ public static class KeyBindingLabelLocalizer
         ["virtual"] = "虚拟",
         ["cursor"] = "光标",
         ["shipin"] = "视频",
+        ["handcurf"] = "袖口",      // Handcuff 的拼写错误，婚礼套里指袖口
+        ["inner"] = "内衬",
+        ["vail"] = "面纱",          // Veil 的拼写错误
     };
 
     /// <summary>
