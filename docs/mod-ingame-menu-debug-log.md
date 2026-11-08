@@ -386,6 +386,12 @@ F:\XXMI\WWMI\Mods\character\others\RabbitFX反虚化+发光前置v82自定义版
 生成器版本：v3（`cursor_screen_x/y`）→ v4（ASCII namespace）→ v5（object_detected 门控）→ v6（门控从按键挪到 Present 自动归零）。
 旧版本菜单会在批量补齐时自动重建。
 
+3. **F8 与 3DMigoto frame analysis 冲突（2026-11-08 晚）**
+   - `d3dx.ini` 里有一行 `analyse_frame = no_modifiers VK_F8`。
+   - F8 会逐帧触发 `User key activation`（日志可证），把菜单的 `open` 反复 cycle，
+     表现为「F8 关不掉菜单 / 一进游戏菜单自己弹出」。
+   - 默认呼出键改为 **F6**（`d3dx.ini` 未占用）；生成器 **v7** 会重建旧菜单。
+
 
 
 
