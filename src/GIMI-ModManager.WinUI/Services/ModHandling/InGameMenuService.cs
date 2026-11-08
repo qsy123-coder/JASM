@@ -57,6 +57,9 @@ public sealed class InGameMenuService(
     /// <summary>这个 Mod 目录里是否已经有 JASM 生成的菜单。</summary>
     public bool HasGeneratedMenu(ISkinMod mod) => InGameMenuGenerator.IsGenerated(mod.FullPath);
 
+    /// <summary>菜单是否存在且由当前生成器版本产出（旧版本菜单需要重建）。</summary>
+    public bool HasCurrentMenu(ISkinMod mod) => InGameMenuGenerator.IsUpToDate(mod.FullPath);
+
     /// <summary>为一个 Mod 生成菜单。调用方负责后台线程。</summary>
     public InGameMenuGenerationResult GenerateForMod(ISkinMod mod, InGameMenuSettings settings)
         => InGameMenuGenerator.Generate(mod.FullPath, ToOptions(settings));
@@ -65,8 +68,8 @@ public sealed class InGameMenuService(
     public bool RemoveForMod(ISkinMod mod) => InGameMenuGenerator.Remove(mod.FullPath);
 
     /// <summary>
-    /// 扫描全部 Mod 列表，给「当前生效」且还没有菜单的 Mod 补菜单。
-    /// 已经在磁盘上有菜单的 Mod 直接跳过（批量不会重复生成纹理）。
+    /// 扫描全部 Mod 列表，给「当前生效」的 Mod 补菜单。
+    /// 已经是当前生成器版本的菜单直接跳过；旧版本菜单（例如 v2 的鼠标命中缺陷）会自动重建。
     /// </summary>
     public async Task<InGameMenuBatchResult> GenerateForAllAsync(
         IProgress<InGameMenuBatchProgress>? progress = null,
@@ -124,10 +127,10 @@ public sealed class InGameMenuService(
                     continue;
                 }
 
-                if (!regenerate && HasGeneratedMenu(target))
+                if (!regenerate && HasCurrentMenu(target))
                 {
                     items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
-                        InGameMenuGenerationStatus.SkippedAlreadyGenerated, "菜单已存在"));
+                        InGameMenuGenerationStatus.SkippedAlreadyGenerated, "菜单已存在且为当前版本"));
                     continue;
                 }
 
