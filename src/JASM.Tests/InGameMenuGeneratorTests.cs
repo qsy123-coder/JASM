@@ -59,6 +59,22 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void ExtractsDetectionHashFromObjectDetectedOverride()
+    {
+        var mod = CreateMod("MyMod", """
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideComponent0]
+            hash = f8b55eeb
+            match_first_index = 0
+            $object_detected = 1
+            """);
+
+        Assert.Equal("f8b55eeb", InGameMenuGenerator.ExtractDetectionHash(mod));
+    }
+
+    [Fact]
     public void SkipsModThatAlreadyHasClickableMenu()
     {
         var mod = CreateMod("MyMod");
