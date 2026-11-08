@@ -173,6 +173,20 @@ public static class InGameMenuGenerator
                                    && ContainsObjectDetected(modFolderPath),
         };
 
+        // 参考素材主题：直接拷贝参考 Mod 的通用 PNG（按钮/页签），其余仍由 JASM 生成。
+        // 缺文件就跳过该资源，退回到同主题的自绘 .dds。
+        var pngAssets = ResolveReferenceAssets(effectiveOptions);
+        if (pngAssets.Count > 0)
+        {
+            effectiveOptions = effectiveOptions with
+            {
+                PngResources = ReferenceAssetMap
+                    .Where(mapping => pngAssets.ContainsKey(mapping.Kind))
+                    .Select(mapping => mapping.ResourceName)
+                    .ToArray(),
+            };
+        }
+
         var menuToken = BuildToken(Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar)));
         var build = InGameMenuIniBuilder.Build(rows, menuToken, effectiveOptions);
 
@@ -183,7 +197,18 @@ public static class InGameMenuGenerator
             Directory.CreateDirectory(assetsDirectory);
 
             foreach (var texture in build.Textures)
-                WriteTexture(targetDirectory, texture, effectiveOptions.Theme);
+            {
+                if (pngAssets.TryGetValue(texture.Kind, out var sourcePath))
+                {
+                    var targetPath = Path.Combine(assetsDirectory,
+                        Path.GetFileNameWithoutExtension(texture.FileName) + ".png");
+                    File.Copy(sourcePath, targetPath, overwrite: true);
+                }
+                else
+                {
+                    WriteTexture(targetDirectory, texture, effectiveOptions.Theme);
+                }
+            }
 
             var shaderPath = Path.Combine(assetsDirectory, "draw_2d.hlsl");
             File.WriteAllText(shaderPath, DrawShader, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -491,6 +516,32 @@ public static class InGameMenuGenerator
         }
 
         return false;
+    }
+
+    /// <summary>参考素材：通用的按钮/页签 PNG（Header/Footer 带作者标题，不复用）。</summary>
+    private static readonly (MenuTextureKind Kind, string Source, string ResourceName)[] ReferenceAssetMap =
+    [
+        (MenuTextureKind.RowBar, "ButtonBg.png", "Row"),
+        (MenuTextureKind.RowHover, "ButtonBorder.png", "RowHover"),
+        (MenuTextureKind.Tab, "ui2_TabBg.png", "Tab"),
+        (MenuTextureKind.TabActive, "ui2_TabBgSelected.png", "TabActive"),
+    ];
+
+    /// <summary>找出参考素材目录里实际存在的 PNG；缺的会退回自绘纹理。</summary>
+    private static IReadOnlyDictionary<MenuTextureKind, string> ResolveReferenceAssets(InGameMenuOptions options)
+    {
+        var result = new Dictionary<MenuTextureKind, string>();
+        if (!options.Theme.UseReferenceAssets || string.IsNullOrWhiteSpace(options.ReferenceAssetsDirectory))
+            return result;
+
+        foreach (var (kind, source, _) in ReferenceAssetMap)
+        {
+            var path = Path.Combine(options.ReferenceAssetsDirectory, source);
+            if (File.Exists(path))
+                result[kind] = path;
+        }
+
+        return result;
     }
 
     private static void WriteTexture(string targetDirectory, MenuTextureSpec spec, MenuTheme theme)
