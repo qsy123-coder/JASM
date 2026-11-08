@@ -129,6 +129,7 @@ public static class InGameMenuGenerator
                 "没有解析到任何 [Key*] 段落");
 
         rows = EnsureAsciiNamespaces(modFolderPath, rows);
+        rows = ApplyRowLayout(rows, options ?? new InGameMenuOptions());
 
         var clickable = rows.Count(r => r.IsClickable);
         if (clickable == 0)
@@ -182,7 +183,7 @@ public static class InGameMenuGenerator
             Directory.CreateDirectory(assetsDirectory);
 
             foreach (var texture in build.Textures)
-                WriteTexture(targetDirectory, texture);
+                WriteTexture(targetDirectory, texture, effectiveOptions.Theme);
 
             var shaderPath = Path.Combine(assetsDirectory, "draw_2d.hlsl");
             File.WriteAllText(shaderPath, DrawShader, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -338,6 +339,33 @@ public static class InGameMenuGenerator
         return result;
     }
 
+    /// <summary>
+    /// 应用用户对行的自定义：先按 <see cref="InGameMenuOptions.HiddenRows"/> 过滤，
+    /// 再按 <see cref="InGameMenuOptions.RowOrder"/> 排序；未列出的行保持原相对顺序追加。
+    /// </summary>
+    private static IReadOnlyList<ModIniToggleRow> ApplyRowLayout(
+        IReadOnlyList<ModIniToggleRow> rows,
+        InGameMenuOptions options)
+    {
+        if (options.HiddenRows.Count == 0 && options.RowOrder.Count == 0)
+            return rows;
+
+        var hidden = new HashSet<string>(options.HiddenRows, StringComparer.OrdinalIgnoreCase);
+        var visible = rows.Where(row => !hidden.Contains(row.Key)).ToList();
+
+        if (options.RowOrder.Count == 0)
+            return visible;
+
+        // OrderBy 是稳定排序：未出现在 RowOrder 里的行保持原有相对顺序，排在最后。
+        var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < options.RowOrder.Count; i++)
+            order.TryAdd(options.RowOrder[i], i);
+
+        return visible
+            .OrderBy(row => order.TryGetValue(row.Key, out var index) ? index : int.MaxValue)
+            .ToList();
+    }
+
     private static bool LooksLikeGeneratedIni(string path)
     {
         try
@@ -465,7 +493,7 @@ public static class InGameMenuGenerator
         return false;
     }
 
-    private static void WriteTexture(string targetDirectory, MenuTextureSpec spec)
+    private static void WriteTexture(string targetDirectory, MenuTextureSpec spec, MenuTheme theme)
     {
         var relative = spec.FileName.Replace('/', Path.DirectorySeparatorChar);
         var fullPath = Path.Combine(targetDirectory, relative);
@@ -477,15 +505,15 @@ public static class InGameMenuGenerator
 
         var surface = spec.Kind switch
         {
-            MenuTextureKind.Panel => MenuTextureFactory.CreatePanel(spec.Width, spec.Height),
+            MenuTextureKind.Panel => MenuTextureFactory.CreatePanel(spec.Width, spec.Height, theme),
             MenuTextureKind.Hover => MenuTextureFactory.CreateHover(spec.Width, spec.Height),
             MenuTextureKind.Marker => MenuTextureFactory.CreateSolid(spec.Width, spec.Height, 255, 40, 40, 230),
-            MenuTextureKind.RowBar => MenuTextureFactory.CreateRowBar(spec.Width, spec.Height, active: false),
-            MenuTextureKind.RowHover => MenuTextureFactory.CreateRowBar(spec.Width, spec.Height, active: true),
-            MenuTextureKind.Tab => MenuTextureFactory.CreateTab(spec.Width, spec.Height, active: false),
-            MenuTextureKind.TabActive => MenuTextureFactory.CreateTab(spec.Width, spec.Height, active: true),
-            MenuTextureKind.Sidebar => MenuTextureFactory.CreateSidebar(spec.Width, spec.Height),
-            MenuTextureKind.Underline => MenuTextureFactory.CreateUnderline(spec.Width, spec.Height),
+            MenuTextureKind.RowBar => MenuTextureFactory.CreateRowBar(spec.Width, spec.Height, active: false, theme),
+            MenuTextureKind.RowHover => MenuTextureFactory.CreateRowBar(spec.Width, spec.Height, active: true, theme),
+            MenuTextureKind.Tab => MenuTextureFactory.CreateTab(spec.Width, spec.Height, active: false, theme),
+            MenuTextureKind.TabActive => MenuTextureFactory.CreateTab(spec.Width, spec.Height, active: true, theme),
+            MenuTextureKind.Sidebar => MenuTextureFactory.CreateSidebar(spec.Width, spec.Height, theme),
+            MenuTextureKind.Underline => MenuTextureFactory.CreateUnderline(spec.Width, spec.Height, theme),
             _ => GdiTextRasterizer.RenderText(spec.Text, spec.Width, spec.Height, spec.FontSize, spec.Bold, spec.Align),
         };
 
