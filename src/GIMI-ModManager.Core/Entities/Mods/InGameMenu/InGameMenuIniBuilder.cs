@@ -67,8 +67,9 @@ public sealed record InGameMenuOptions
     /// v21：行名称接中英词表；值改为「序号/总数」并右对齐。
     /// v22：补入心月狐 100+ mod 扫描出的常用标签翻译。
     /// v23：设置作用域修正后强制重建，确保所有菜单用上参考素材主题。
+    /// v24：补入椿 188 个 mod 扫描出的常用标签翻译。
     /// </summary>
-    public const int CurrentGeneratorVersion = 23;
+    public const int CurrentGeneratorVersion = 24;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
