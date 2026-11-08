@@ -198,6 +198,7 @@ public sealed class InGameMenuService(
             RowOrder = layout?.Order ?? [],
             HiddenRows = layout?.Hidden ?? [],
             Theme = MenuThemes.Get(settings.MenuTheme),
+            ReferenceAssetsDirectory = settings.ReferenceAssetsDirectory ?? string.Empty,
         };
     }
 
