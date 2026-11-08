@@ -173,7 +173,8 @@ public class ModIniToggleParserTests
             $black_hair_v176 = 0,1
             """, "mod.ini");
 
-        Assert.Equal("Black Hair V176", Assert.Single(rows).Label);
+        // 段落名先用驼峰拆成 "Black Hair V176"，再接词表本地化
+        Assert.Equal("黑色发型V176", Assert.Single(rows).Label);
     }
 
     [Fact]
