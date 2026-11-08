@@ -25,4 +25,23 @@ public class InGameMenuSettings
 
     /// <summary>一页最多几行；超出的部分用键盘选中自动切页。</summary>
     public int MaxRowsPerPage { get; set; } = 10;
+
+    /// <summary>菜单皮肤 Id（见 <c>MenuThemes</c>），换皮肤后需要重建菜单。</summary>
+    public string MenuTheme { get; set; } = "default";
+
+    /// <summary>
+    /// 每个 Mod 的菜单行自定义，键是 Mod 目录名（不含 DISABLED_ 前缀）。
+    /// 值为行顺序与隐藏列表；未配置的 Mod 使用 ini 原顺序、全部显示。
+    /// </summary>
+    public Dictionary<string, InGameMenuRowLayout> RowLayouts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>单个 Mod 的菜单行布局。</summary>
+public class InGameMenuRowLayout
+{
+    /// <summary>行顺序；键是 <c>ini 相对路径|段落名</c>。</summary>
+    public List<string> Order { get; set; } = [];
+
+    /// <summary>隐藏的行；键同上。</summary>
+    public List<string> Hidden { get; set; } = [];
 }
