@@ -24,6 +24,12 @@ public sealed record ModIniToggleRow
     /// <summary>循环候选值，按 ini 里出现的顺序原样保留（如 <c>4,8,9</c>）。</summary>
     public IReadOnlyList<string> Values { get; init; } = [];
 
+    /// <summary>
+    /// Mod ini 里 <c>global [persist] $var = …</c> 声明的初始值，用于菜单的「恢复默认」。
+    /// 空表示没有可用的默认值（这一行不参与重置）。
+    /// </summary>
+    public string DefaultValue { get; init; } = string.Empty;
+
     /// <summary>按键类型，如 <c>cycle</c> / <c>hold</c>；空表示 ini 没写。</summary>
     public string KeyType { get; init; } = string.Empty;
 
