@@ -65,8 +65,9 @@ public sealed record InGameMenuOptions
     /// v19：整体缩小。
     /// v20：按全屏截图比例调整尺寸。
     /// v21：行名称接中英词表；值改为「序号/总数」并右对齐。
+    /// v22：补入心月狐 100+ mod 扫描出的常用标签翻译。
     /// </summary>
-    public const int CurrentGeneratorVersion = 21;
+    public const int CurrentGeneratorVersion = 22;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
