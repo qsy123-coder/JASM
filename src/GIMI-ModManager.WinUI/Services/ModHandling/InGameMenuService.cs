@@ -1,5 +1,6 @@
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.Entities.Mods.SkinMod;
 using GIMI_ModManager.WinUI.Contracts.Services;
@@ -62,7 +63,25 @@ public sealed class InGameMenuService(
 
     /// <summary>为一个 Mod 生成菜单。调用方负责后台线程。</summary>
     public InGameMenuGenerationResult GenerateForMod(ISkinMod mod, InGameMenuSettings settings)
-        => InGameMenuGenerator.Generate(mod.FullPath, ToOptions(settings));
+        => InGameMenuGenerator.Generate(mod.FullPath, ToOptions(settings, mod));
+
+    /// <summary>读取这个 Mod 的所有可解析行（用于「自定义菜单行」对话框）。</summary>
+    public IReadOnlyList<ModIniToggleRow> ReadRows(ISkinMod mod)
+        => ModIniToggleParser.ParseDirectory(mod.FullPath);
+
+    /// <summary>读取这个 Mod 的行布局偏好；没有配置时返回空布局。</summary>
+    public InGameMenuRowLayout GetRowLayout(ISkinMod mod, InGameMenuSettings settings)
+        => settings.RowLayouts.TryGetValue(LayoutKey(mod), out var layout)
+            ? layout
+            : new InGameMenuRowLayout();
+
+    /// <summary>保存行布局并落盘。</summary>
+    public async Task SaveRowLayoutAsync(ISkinMod mod, InGameMenuRowLayout layout)
+    {
+        var settings = await ReadSettingsAsync().ConfigureAwait(false);
+        settings.RowLayouts[LayoutKey(mod)] = layout;
+        await SaveSettingsAsync(settings).ConfigureAwait(false);
+    }
 
     /// <summary>移除这个 Mod 的 JASM 菜单（只删自己认得的产物）。</summary>
     public bool RemoveForMod(ISkinMod mod) => InGameMenuGenerator.Remove(mod.FullPath);
@@ -165,10 +184,25 @@ public sealed class InGameMenuService(
         }
     }
 
-    private static InGameMenuOptions ToOptions(InGameMenuSettings settings) => new()
+    private static InGameMenuOptions ToOptions(InGameMenuSettings settings, ISkinMod mod)
     {
-        OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F7" : settings.OpenKeyTokens,
-        OpenKeyDisplay = string.IsNullOrWhiteSpace(settings.OpenKeyDisplay) ? "F7" : settings.OpenKeyDisplay,
-        MaxRowsPerPage = Math.Clamp(settings.MaxRowsPerPage, 1, 20),
-    };
+        var layout = settings.RowLayouts.TryGetValue(LayoutKey(mod), out var configured)
+            ? configured
+            : null;
+
+        return new InGameMenuOptions
+        {
+            OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F7" : settings.OpenKeyTokens,
+            OpenKeyDisplay = string.IsNullOrWhiteSpace(settings.OpenKeyDisplay) ? "F7" : settings.OpenKeyDisplay,
+            MaxRowsPerPage = Math.Clamp(settings.MaxRowsPerPage, 1, 20),
+            RowOrder = layout?.Order ?? [],
+            HiddenRows = layout?.Hidden ?? [],
+            Theme = MenuThemes.Get(settings.MenuTheme),
+        };
+    }
+
+    /// <summary>布局设置的键：Mod 目录名（不含 DISABLED_ 前缀，避免启停后配置失效）。</summary>
+    private static string LayoutKey(ISkinMod mod)
+        => ModFolderHelpers.GetFolderNameWithoutDisabledPrefix(
+            Path.GetFileName(mod.FullPath.TrimEnd(Path.DirectorySeparatorChar)));
 }
