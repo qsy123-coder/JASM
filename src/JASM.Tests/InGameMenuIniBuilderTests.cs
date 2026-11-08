@@ -50,18 +50,19 @@ public class InGameMenuIniBuilderTests
     }
 
     [Fact]
-    public void WritesOpenKeyAndKeyboardBindings()
+    public void WritesOpenKeyAndMouseBindings()
     {
         var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x",
             new InGameMenuOptions { OpenKeyTokens = "CTRL SHIFT VK_M" });
 
         Assert.Contains("key = CTRL SHIFT VK_M", build.IniText);
         Assert.Contains("$jasm_x_open = 0,1", build.IniText);
-        Assert.Contains("key = UP", build.IniText);
-        Assert.Contains("key = DOWN", build.IniText);
-        Assert.Contains("key = F9", build.IniText);
-        // 鼠标点击已停用（游戏内光标被锁定），不要再生成 VK_LBUTTON 绑定
-        Assert.DoesNotContain("VK_LBUTTON", build.IniText);
+        // 纯鼠标交互：Alt+左键点击、Alt+右键拖动（鸣潮按住 Alt 时光标解锁）
+        Assert.Contains("key = ALT VK_LBUTTON", build.IniText);
+        Assert.Contains("key = ALT VK_RBUTTON", build.IniText);
+        Assert.DoesNotContain("key = UP", build.IniText);
+        Assert.DoesNotContain("key = DOWN", build.IniText);
+        Assert.DoesNotContain("key = F9", build.IniText);
     }
 
     [Fact]
@@ -73,7 +74,6 @@ public class InGameMenuIniBuilderTests
         Assert.Equal(2, build.PageCount);
         Assert.Contains("[CommandListJasmPage0_x]", build.IniText);
         Assert.Contains("[CommandListJasmPage1_x]", build.IniText);
-        Assert.Contains("run = CommandListJasmFooter_x", build.IniText);
     }
 
     [Fact]
@@ -82,10 +82,10 @@ public class InGameMenuIniBuilderTests
         var build = InGameMenuIniBuilder.Build([Row("Shoes", values: ["4", "8", "9"])], "x",
             new InGameMenuOptions());
 
-        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/panel.dds");
+        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/row.dds");
         Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/label_00.dds" && t.Text == "Shoes");
         Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/value_00_02.dds" && t.Text == "9");
-        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/key_00.dds");
+        Assert.Contains(build.Textures, t => t.FileName == "JASM_Menu/hint_00.dds");
     }
 
     [Fact]
@@ -123,9 +123,9 @@ public class InGameMenuIniBuilderTests
     {
         var build = InGameMenuIniBuilder.Build([Row("A")], "x", new InGameMenuOptions());
 
-        // 64 + 1*52 + 56
-        Assert.Equal(172, build.PanelHeight);
-        Assert.Equal(560, build.PanelWidth);
+        // 156(行起点) + 1*(64+6) + 3*26 + 16
+        Assert.Equal(320, build.PanelHeight);
+        Assert.Equal(620, build.PanelWidth);
     }
 
     [Fact]
