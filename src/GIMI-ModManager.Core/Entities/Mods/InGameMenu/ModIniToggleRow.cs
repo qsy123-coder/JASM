@@ -39,8 +39,11 @@ public sealed record ModIniToggleRow
     /// <summary>段落里的 <c>condition =</c> 原文；空表示无条件。</summary>
     public string Condition { get; init; } = string.Empty;
 
-    /// <summary>菜单里显示的名字：注释优先，否则由段落名推导。</summary>
+    /// <summary>菜单里显示的名字：注释优先，否则由段落名推导（已本地化）。</summary>
     public string Label { get; init; } = string.Empty;
+
+    /// <summary>本地化之前的原始标签（注释/段落名），写进 manifest 便于排查。</summary>
+    public string RawLabel { get; init; } = string.Empty;
 
     /// <summary>
     /// 菜单行的稳定标识（<c>ini 相对路径|段落名</c>），用于保存「行顺序 / 隐藏」偏好。
