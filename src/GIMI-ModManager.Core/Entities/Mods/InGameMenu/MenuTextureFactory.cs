@@ -46,6 +46,129 @@ public static class MenuTextureFactory
         return surface;
     }
 
+    /// <summary>
+    /// 单行底条：深蓝纵向渐变 + 青色描边 + 内侧金线。
+    /// <paramref name="active"/> 为悬停态：底色更亮、描边更亮。
+    /// </summary>
+    public static RasterSurface CreateRowBar(int width, int height, bool active)
+    {
+        var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
+        const double radius = 10;
+        const double border = 1.6;
+        const double innerInset = 3.5;
+
+        var top = active ? (r: 20, g: 58, b: 90) : (r: 10, g: 28, b: 46);
+        var bottom = active ? (r: 8, g: 26, b: 44) : (r: 5, g: 14, b: 26);
+        var fillAlpha = active ? 240 : 225;
+        var borderColor = active ? (r: 140, g: 235, b: 255) : (r: 90, g: 210, b: 250);
+
+        for (var y = 0; y < surface.Height; y++)
+        {
+            var t = surface.Height <= 1 ? 0 : y / (double)(surface.Height - 1);
+            var r = (byte)(top.r + (bottom.r - top.r) * t);
+            var g = (byte)(top.g + (bottom.g - top.g) * t);
+            var b = (byte)(top.b + (bottom.b - top.b) * t);
+
+            for (var x = 0; x < surface.Width; x++)
+            {
+                var distance = SignedDistanceToRoundedRect(
+                    x + 0.5 - surface.Width / 2.0, y + 0.5 - surface.Height / 2.0,
+                    surface.Width / 2.0, surface.Height / 2.0, radius);
+
+                if (distance > 0)
+                    continue;
+
+                surface.SetPixel(x, y, b, g, r, (byte)fillAlpha);
+
+                if (distance > -border)
+                    surface.SetPixel(x, y, (byte)borderColor.b, (byte)borderColor.g, (byte)borderColor.r, 215);
+
+                // 内侧金线（截图里行框有一圈暖色内边）
+                if (distance > -innerInset && distance < -innerInset + 1.0)
+                    surface.SetPixel(x, y, 80, 170, 210, 150);
+            }
+        }
+
+        return surface;
+    }
+
+    /// <summary>顶部页签：深蓝底 + 底部青色线；选中态更亮。</summary>
+    public static RasterSurface CreateTab(int width, int height, bool active)
+    {
+        var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
+        const double radius = 6;
+
+        for (var y = 0; y < surface.Height; y++)
+        {
+            for (var x = 0; x < surface.Width; x++)
+            {
+                var distance = SignedDistanceToRoundedRect(
+                    x + 0.5 - surface.Width / 2.0, y + 0.5 - surface.Height / 2.0,
+                    surface.Width / 2.0, surface.Height / 2.0, radius);
+
+                if (distance > 0)
+                    continue;
+
+                if (active)
+                    surface.SetPixel(x, y, 128, 92, 40, 235);   // RGB(40,92,128)
+                else
+                    surface.SetPixel(x, y, 38, 22, 8, 205);     // RGB(8,22,38)
+
+                if (distance > -1.4)
+                    surface.SetPixel(x, y, 250, 210, 90, 190);  // RGB(90,210,250)
+
+                // 选中页签底部亮线
+                if (active && y >= surface.Height - 3)
+                    surface.SetPixel(x, y, 255, 240, 160, 230); // RGB(160,240,255)
+            }
+        }
+
+        return surface;
+    }
+
+    /// <summary>左侧竖栏：半透明深色圆角条。</summary>
+    public static RasterSurface CreateSidebar(int width, int height)
+    {
+        var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
+        const double radius = 12;
+
+        for (var y = 0; y < surface.Height; y++)
+        {
+            for (var x = 0; x < surface.Width; x++)
+            {
+                var distance = SignedDistanceToRoundedRect(
+                    x + 0.5 - surface.Width / 2.0, y + 0.5 - surface.Height / 2.0,
+                    surface.Width / 2.0, surface.Height / 2.0, radius);
+
+                if (distance > 0)
+                    continue;
+
+                surface.SetPixel(x, y, 26, 12, 8, 210);
+
+                if (distance > -1.2)
+                    surface.SetPixel(x, y, 120, 80, 60, 170);
+            }
+        }
+
+        return surface;
+    }
+
+    /// <summary>标题下划线：中间亮、两端渐隐的青色线。</summary>
+    public static RasterSurface CreateUnderline(int width, int height)
+    {
+        var surface = new RasterSurface(Math.Max(1, width), Math.Max(1, height));
+
+        for (var x = 0; x < surface.Width; x++)
+        {
+            var t = surface.Width <= 1 ? 0 : x / (double)(surface.Width - 1);
+            var fade = (byte)(255 * Math.Min(1, Math.Min(t, 1 - t) * 6));
+            for (var y = 0; y < surface.Height; y++)
+                surface.SetPixel(x, y, 255, 220, 90, fade);
+        }
+
+        return surface;
+    }
+
     private static RasterSurface CreateRoundedRect(
         int width,
         int height,
