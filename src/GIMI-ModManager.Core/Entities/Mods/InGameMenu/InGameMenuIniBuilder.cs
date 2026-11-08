@@ -68,8 +68,9 @@ public sealed record InGameMenuOptions
     /// v22：补入心月狐 100+ mod 扫描出的常用标签翻译。
     /// v23：设置作用域修正后强制重建，确保所有菜单用上参考素材主题。
     /// v24：补入椿 188 个 mod 扫描出的常用标签翻译。
+    /// v25：参考样式改用 18px 常规字重标签，避免粗体显得被拉伸。
     /// </summary>
-    public const int CurrentGeneratorVersion = 24;
+    public const int CurrentGeneratorVersion = 25;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -313,7 +314,8 @@ public static class InGameMenuIniBuilder
         for (var p = 0; p < pageCount; p++)
         {
             textures.Add(Text($"JASM_Menu/tab_label_{p:00}.dds", (p + 1).ToString(CultureInfo.InvariantCulture),
-                TabWidthFor(options) - 10, TabHeightFor(options) - 4, 20, true,
+                TabWidthFor(options) - 10, TabHeightFor(options) - 4,
+                options.Theme.UseReferenceAssets ? 15 : 20, !options.Theme.UseReferenceAssets,
                 GdiTextRasterizer.TextAlign.Center));
             textures.Add(Text($"JASM_Menu/page_{p:00}.dds", (p + 1).ToString(CultureInfo.InvariantCulture),
                 32, 32, 20, false, GdiTextRasterizer.TextAlign.Center));
@@ -340,13 +342,14 @@ public static class InGameMenuIniBuilder
         // —— 每行文字 ——
         for (var i = 0; i < rowCount; i++)
         {
-            textures.Add(Text($"JASM_Menu/label_{i:00}.dds", rows[i].Label, LabelWidthFor(options), LabelHeight, 22, true,
-                GdiTextRasterizer.TextAlign.Left));
+            var referenceTheme = options.Theme.UseReferenceAssets;
+            textures.Add(Text($"JASM_Menu/label_{i:00}.dds", rows[i].Label, LabelWidthFor(options), LabelHeight,
+                referenceTheme ? 18 : 22, !referenceTheme, GdiTextRasterizer.TextAlign.Left));
 
             if (!string.IsNullOrWhiteSpace(rows[i].KeyDisplay))
             {
-                textures.Add(Text($"JASM_Menu/hint_{i:00}.dds", rows[i].KeyDisplay, HintWidth, HintHeight, 16,
-                    false, GdiTextRasterizer.TextAlign.Right));
+                textures.Add(Text($"JASM_Menu/hint_{i:00}.dds", rows[i].KeyDisplay, HintWidth, HintHeight,
+                    referenceTheme ? 13 : 16, false, GdiTextRasterizer.TextAlign.Right));
             }
 
             for (var valueIndex = 0; valueIndex < rows[i].Values.Count; valueIndex++)
@@ -358,7 +361,7 @@ public static class InGameMenuIniBuilder
                     : GdiTextRasterizer.TextAlign.Left;
 
                 textures.Add(Text($"JASM_Menu/value_{i:00}_{valueIndex:00}.dds", valueText,
-                    LabelWidthFor(options), ValueHeight, 17, false, valueAlign));
+                    LabelWidthFor(options), ValueHeight, referenceTheme ? 15 : 17, false, valueAlign));
             }
         }
 
