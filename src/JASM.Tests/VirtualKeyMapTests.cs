@@ -308,6 +308,7 @@ public class VirtualKeyMapTests
     [InlineData(0xA3, "VK_RCONTROL")]
     [InlineData(0xA1, "VK_RSHIFT")]
     [InlineData(0x5C, "VK_RWIN")]
+    [InlineData(0x5D, "VK_APPS")]   // 右 Alt 右边那个「菜单/文本图标」键
     public void TryGetIniName_MapsSupportedKeysTo3DMigotoNames(ushort virtualKey, string expected)
     {
         Assert.True(VirtualKeyMap.TryGetIniName(virtualKey, out var name));
