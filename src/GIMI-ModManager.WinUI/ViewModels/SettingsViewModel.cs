@@ -185,6 +185,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     /// </summary>
     public PathPicker OverlayScreenshotFolderPicker { get; }
 
+    /// <summary>「参考素材」主题使用的 PNG 目录（参考 Mod 的 GUI\res）。</summary>
+    public PathPicker InGameMenuReferenceAssetsPicker { get; }
+
     [ObservableProperty] private bool _legacyCharacterDetails;
 
     /// <summary>Whether the selected game supports one-click Mod environment setup (e.g. WuWa).</summary>
@@ -250,6 +253,8 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             ? MenuThemes.DefaultId
             : inGameMenuSettings.MenuTheme;
         _suppressThemeChange = false;
+
+        InGameMenuReferenceAssetsPicker.Path = inGameMenuSettings.ReferenceAssetsDirectory;
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
         _logger = logger.ForContext<SettingsViewModel>();
@@ -263,6 +268,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         PathToModsFolderPicker = new PathPicker(ModsFolderValidator.Validators);
 
         OverlayScreenshotFolderPicker = new PathPicker();
+        InGameMenuReferenceAssetsPicker = new PathPicker();
 
         var overlaySettings = localSettingsService.ReadSetting<OverlaySettings>(OverlaySettings.Key,
             SettingScope.App);
@@ -626,6 +632,23 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
     }
 
     /// <summary>3DMigoto / WWMI 已经占用的键，录制时直接拒绝，避免按键冲突。</summary>
+    /// <summary>选择「参考素材」主题要拷贝的 PNG 目录（参考 Mod 的 GUI\res）。</summary>
+    [RelayCommand]
+    private async Task BrowseInGameMenuReferenceAssetsAsync()
+    {
+        await InGameMenuReferenceAssetsPicker.BrowseFolderPathAsync(App.MainWindow);
+        if (!InGameMenuReferenceAssetsPicker.PathHasValue)
+            return;
+
+        var settings = await _inGameMenuService.ReadSettingsAsync();
+        settings.ReferenceAssetsDirectory = InGameMenuReferenceAssetsPicker.Path!;
+        await _inGameMenuService.SaveSettingsAsync(settings);
+
+        HasInGameMenuStatus = true;
+        InGameMenuStatusMessage =
+            "参考素材目录已保存；选择「参考素材（直接拷贝 PNG）」主题后会使用它";
+    }
+
     private static readonly HashSet<string> ReservedMenuKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "F6",  // WWMI: toggle mods
