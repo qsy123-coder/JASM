@@ -18,9 +18,13 @@ using GIMI_ModManager.Core.Entities.Mods.Contract;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.Services.AppManagement;
+using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.ViewModels.CharacterDetailsViewModels.SubViewModels;
@@ -265,6 +269,172 @@ public sealed partial class ModPaneVM(
         }
     }
 
+
+    /// <summary>
+    /// 详情页的「自定义菜单行」：调整顺序与显隐，保存后立即重建这个 Mod 的菜单。
+    /// </summary>
+    [RelayCommand]
+    private async Task CustomizeInGameMenuAsync()
+    {
+        if (!IsModLoaded || IsInGameMenuBusy)
+            return;
+
+        var mod = _loadedMod.Mod;
+        IsInGameMenuBusy = true;
+
+        try
+        {
+            var rows = await Task.Run(() => _inGameMenuService.ReadRows(mod));
+            if (rows.Count == 0)
+            {
+                InGameMenuStatusText = "没有可自定义的 [Key*] 行";
+                return;
+            }
+
+            var settings = await _inGameMenuService.ReadSettingsAsync();
+            var layout = _inGameMenuService.GetRowLayout(mod, settings);
+            var hidden = new HashSet<string>(layout.Hidden, StringComparer.OrdinalIgnoreCase);
+
+            var ordered = new List<ModIniToggleRow>();
+            foreach (var key in layout.Order)
+            {
+                var row = rows.FirstOrDefault(r => string.Equals(r.Key, key, StringComparison.OrdinalIgnoreCase));
+                if (row is not null && !ordered.Contains(row))
+                    ordered.Add(row);
+            }
+
+            foreach (var row in rows)
+            {
+                if (!ordered.Contains(row))
+                    ordered.Add(row);
+            }
+
+            var list = new ListView
+            {
+                Height = 300,
+                SelectionMode = ListViewSelectionMode.Single
+            };
+
+            void Refresh(int select)
+            {
+                list.ItemsSource = ordered
+                    .Select((row, index) =>
+                        $"{index + 1}. {(hidden.Contains(row.Key) ? "✗" : "✓")} {row.Label}" +
+                        (row.IsClickable ? string.Empty : "（不可点击）"))
+                    .ToList();
+
+                if (ordered.Count > 0)
+                    list.SelectedIndex = Math.Clamp(select, 0, ordered.Count - 1);
+            }
+
+            var visibleBox = new CheckBox { Content = "在菜单中显示", IsEnabled = false };
+            var upButton = new Button { Content = "↑ 上移", IsEnabled = false };
+            var downButton = new Button { Content = "↓ 下移", IsEnabled = false };
+
+            list.SelectionChanged += (_, _) =>
+            {
+                var index = list.SelectedIndex;
+                var has = index >= 0 && index < ordered.Count;
+                visibleBox.IsEnabled = has;
+                upButton.IsEnabled = has && index > 0;
+                downButton.IsEnabled = has && index < ordered.Count - 1;
+                if (has)
+                    visibleBox.IsChecked = !hidden.Contains(ordered[index].Key);
+            };
+
+            visibleBox.Click += (_, _) =>
+            {
+                var index = list.SelectedIndex;
+                if (index < 0 || index >= ordered.Count)
+                    return;
+
+                var key = ordered[index].Key;
+                if (visibleBox.IsChecked == true)
+                    hidden.Remove(key);
+                else
+                    hidden.Add(key);
+
+                Refresh(index);
+            };
+
+            upButton.Click += (_, _) =>
+            {
+                var index = list.SelectedIndex;
+                if (index <= 0)
+                    return;
+
+                (ordered[index - 1], ordered[index]) = (ordered[index], ordered[index - 1]);
+                Refresh(index - 1);
+            };
+
+            downButton.Click += (_, _) =>
+            {
+                var index = list.SelectedIndex;
+                if (index < 0 || index >= ordered.Count - 1)
+                    return;
+
+                (ordered[index + 1], ordered[index]) = (ordered[index], ordered[index + 1]);
+                Refresh(index + 1);
+            };
+
+            Refresh(0);
+
+            var dialog = new ContentDialog
+            {
+                Title = "自定义游戏内菜单行",
+                Content = new StackPanel
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "选择一行后可上移/下移或隐藏；✓ = 显示，✗ = 隐藏。",
+                            TextWrapping = TextWrapping.Wrap,
+                            FontSize = 12
+                        },
+                        list,
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Spacing = 8,
+                            Children = { visibleBox, upButton, downButton }
+                        }
+                    }
+                },
+                PrimaryButtonText = "保存",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Primary
+            };
+
+            var windowManagerService = App.GetService<IWindowManagerService>();
+            if (await windowManagerService.ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+                return;
+
+            var newLayout = new InGameMenuRowLayout
+            {
+                Order = ordered.Select(row => row.Key).ToList(),
+                Hidden = hidden.ToList()
+            };
+
+            await _inGameMenuService.SaveRowLayoutAsync(mod, newLayout);
+            var updated = await _inGameMenuService.ReadSettingsAsync();
+            var result = await Task.Run(() => _inGameMenuService.GenerateForMod(mod, updated));
+
+            InGameMenuStatusText = result.Status == InGameMenuGenerationStatus.Generated
+                ? "菜单已按自定义重建"
+                : "保存成功，但重建失败：" + result.Reason;
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 自定义菜单行失败");
+            InGameMenuStatusText = "自定义失败：" + e.Message;
+        }
+        finally
+        {
+            IsInGameMenuBusy = false;
+        }
+    }
 
     private readonly record struct LoadModMessage
     {
