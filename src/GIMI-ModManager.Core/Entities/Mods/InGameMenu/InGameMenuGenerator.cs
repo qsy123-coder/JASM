@@ -196,6 +196,9 @@ public static class InGameMenuGenerator
                 Directory.Delete(assetsDirectory, recursive: true);
             Directory.CreateDirectory(assetsDirectory);
 
+            // 随包分发的字体（HYWenHei-85W）进程私有加载；缺文件时退回系统雅黑
+            GdiTextRasterizer.UseFont(effectiveOptions.FontFilePath, effectiveOptions.FontFamily);
+
             foreach (var texture in build.Textures)
             {
                 if (pngAssets.TryGetValue(texture.Kind, out var sourcePath))
