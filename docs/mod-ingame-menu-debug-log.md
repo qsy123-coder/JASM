@@ -390,7 +390,9 @@ F:\XXMI\WWMI\Mods\character\others\RabbitFX反虚化+发光前置v82自定义版
    - `d3dx.ini` 里有一行 `analyse_frame = no_modifiers VK_F8`。
    - F8 会逐帧触发 `User key activation`（日志可证），把菜单的 `open` 反复 cycle，
      表现为「F8 关不掉菜单 / 一进游戏菜单自己弹出」。
-   - 默认呼出键改为 **F6**（`d3dx.ini` 未占用）；生成器 **v7** 会重建旧菜单。
+   - 默认呼出键先改 **F6**，又发现 F6 是 WWMI 核心的 `toggle mods`
+     （`F:\XXMI\WWMI\Core\WWMI\KeyBindings.ini`），最终改为 **F7**（d3dx.ini / WWMI / 所有 Mod 均未占用）。
+     生成器 **v8** 会重建旧菜单。
 
 
 
