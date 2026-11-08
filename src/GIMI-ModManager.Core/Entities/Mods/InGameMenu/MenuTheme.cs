@@ -32,6 +32,7 @@ public sealed record MenuTheme
     public required MenuColor TabActive { get; init; }
     public required MenuColor TabInactive { get; init; }
     public required MenuColor TabBorder { get; init; }
+    public required MenuColor TabBorderActive { get; init; }
     public required MenuColor TabAccent { get; init; }
 
     // 左侧竖栏与标题下划线
@@ -43,13 +44,40 @@ public sealed record MenuTheme
 /// <summary>内置皮肤。Id 会写进设置文件，改名会丢用户选择。</summary>
 public static class MenuThemes
 {
-    public const string DefaultId = "default";
+    public const string DefaultId = "reference";
 
-    /// <summary>深蓝 + 青色描边的原版风格。</summary>
-    public static readonly MenuTheme Default = new()
+    /// <summary>
+    /// 参考《心·绀星绮愿》GUI 的样式：深灰底、白色两行标题、灰色细线、
+    /// 按钮/页签用米色细描边，整体克制、无彩色发光。
+    /// </summary>
+    public static readonly MenuTheme Reference = new()
     {
-        Id = DefaultId,
-        DisplayName = "深蓝青（默认）",
+        Id = "reference",
+        DisplayName = "深灰米色（参考样式）",
+        PanelFill = MenuColor.Rgb(18, 18, 18, 238),
+        PanelBorder = MenuColor.Rgb(64, 64, 64, 150),
+        RowTop = MenuColor.Rgb(22, 22, 22),
+        RowBottom = MenuColor.Rgb(22, 22, 22),
+        RowTopActive = MenuColor.Rgb(36, 36, 36),
+        RowBottomActive = MenuColor.Rgb(36, 36, 36),
+        RowBorder = MenuColor.Rgb(72, 72, 72, 200),
+        RowBorderActive = MenuColor.Rgb(235, 219, 178), // 米色描边
+        RowInner = MenuColor.Rgb(235, 219, 178, 70),
+        TabActive = MenuColor.Rgb(30, 30, 30, 240),
+        TabInactive = MenuColor.Rgb(20, 20, 20, 220),
+        TabBorder = MenuColor.Rgb(80, 80, 80, 200),
+        TabBorderActive = MenuColor.Rgb(235, 219, 178, 240),
+        TabAccent = MenuColor.Rgb(235, 219, 178),
+        SidebarFill = MenuColor.Rgb(16, 16, 16, 230),
+        SidebarBorder = MenuColor.Rgb(72, 72, 72, 160),
+        Underline = MenuColor.Rgb(150, 150, 150),
+    };
+
+    /// <summary>深蓝 + 青色描边（原默认）。</summary>
+    public static readonly MenuTheme ClassicBlue = new()
+    {
+        Id = "blue",
+        DisplayName = "深蓝青",
         PanelFill = MenuColor.Rgb(18, 22, 30, 236),
         PanelBorder = MenuColor.Rgb(96, 176, 224, 190),
         RowTop = MenuColor.Rgb(10, 28, 46),
@@ -62,6 +90,7 @@ public static class MenuThemes
         TabActive = MenuColor.Rgb(40, 92, 128, 235),
         TabInactive = MenuColor.Rgb(8, 22, 38, 205),
         TabBorder = MenuColor.Rgb(90, 210, 250, 190),
+        TabBorderActive = MenuColor.Rgb(140, 235, 255, 220),
         TabAccent = MenuColor.Rgb(160, 240, 255, 230),
         SidebarFill = MenuColor.Rgb(8, 12, 26, 210),
         SidebarBorder = MenuColor.Rgb(60, 120, 170, 170),
@@ -85,6 +114,7 @@ public static class MenuThemes
         TabActive = MenuColor.Rgb(128, 48, 44, 235),
         TabInactive = MenuColor.Rgb(38, 14, 18, 205),
         TabBorder = MenuColor.Rgb(214, 154, 82, 190),
+        TabBorderActive = MenuColor.Rgb(255, 210, 130, 220),
         TabAccent = MenuColor.Rgb(255, 220, 150, 230),
         SidebarFill = MenuColor.Rgb(28, 10, 14, 210),
         SidebarBorder = MenuColor.Rgb(170, 110, 60, 170),
@@ -108,15 +138,16 @@ public static class MenuThemes
         TabActive = MenuColor.Rgb(70, 70, 70, 235),
         TabInactive = MenuColor.Rgb(24, 24, 24, 205),
         TabBorder = MenuColor.Rgb(200, 200, 200, 190),
+        TabBorderActive = MenuColor.Rgb(245, 245, 245, 220),
         TabAccent = MenuColor.Rgb(245, 245, 245, 230),
         SidebarFill = MenuColor.Rgb(18, 18, 18, 210),
         SidebarBorder = MenuColor.Rgb(150, 150, 150, 170),
         Underline = MenuColor.Rgb(235, 235, 235),
     };
 
-    public static IReadOnlyList<MenuTheme> All { get; } = [Default, Crimson, Ink];
+    public static IReadOnlyList<MenuTheme> All { get; } = [Reference, ClassicBlue, Crimson, Ink];
 
     public static MenuTheme Get(string? id)
         => All.FirstOrDefault(theme => string.Equals(theme.Id, id, StringComparison.OrdinalIgnoreCase))
-           ?? Default;
+           ?? Reference;
 }
