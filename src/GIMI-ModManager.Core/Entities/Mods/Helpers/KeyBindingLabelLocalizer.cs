@@ -89,6 +89,32 @@ public static class KeyBindingLabelLocalizer
         return Localize(name);
     }
 
+    /// <summary>
+    /// 菜单行标签的本地化：短标签走完整词表；多词短语只有在**每个词都能翻译**时才合并成中文，
+    /// 否则保留原文——避免把整句英文注释拆成「鞋子arepicked…」这种中英混杂文本。
+    /// </summary>
+    public static string LocalizeMenuLabel(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            return string.Empty;
+
+        var trimmed = label.Trim();
+
+        // 已是中文 / 没有空格：交给完整规则
+        if (ContainsCjk(trimmed) || !trimmed.Contains(' '))
+            return Localize(trimmed);
+
+        var words = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var word in words)
+        {
+            // 有任何一个词没命中 → 保留整句原文，不拼中英混合
+            if (string.Equals(Localize(word), word, StringComparison.OrdinalIgnoreCase))
+                return trimmed;
+        }
+
+        return Localize(trimmed);
+    }
+
     // ── 归一化 / 分词 ──────────────────────────────────
 
     /// <summary>去掉所有非字母数字字符并转小写，"Swap Hair" / "swap_hair" / "SwapHair" 归一成同一个 key</summary>
