@@ -221,6 +221,13 @@ public class KeyBindingLabelLocalizerTests
     public void LocalizeSectionName_CoversTheCamellyaCollection(string sectionName, string expected)
         => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
 
+    [Theory]
+    [InlineData("[KeyHandcurf]", "袖口")]
+    [InlineData("[KeyInner]", "内衬")]
+    [InlineData("[KeyVail]", "面纱")]
+    public void LocalizeSectionName_CoversTheWeddingOutfitTypos(string sectionName, string expected)
+        => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
+
     // ── 与 ModIniKeyBindingEntry 的接线 ──────────────────────
 
     [Theory]
