@@ -190,6 +190,10 @@ public sealed class InGameMenuService(
             ? configured
             : null;
 
+        // 随包分发的字体：所有用户字形一致（Assets 随发布产物复制）
+        var bundledFont = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts", "zh-cn2.ttf");
+        var hasBundledFont = File.Exists(bundledFont);
+
         return new InGameMenuOptions
         {
             OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F7" : settings.OpenKeyTokens,
@@ -199,6 +203,8 @@ public sealed class InGameMenuService(
             HiddenRows = layout?.Hidden ?? [],
             Theme = MenuThemes.Get(settings.MenuTheme),
             ReferenceAssetsDirectory = settings.ReferenceAssetsDirectory ?? string.Empty,
+            FontFilePath = hasBundledFont ? bundledFont : string.Empty,
+            FontFamily = hasBundledFont ? "HYWenHei-85W" : string.Empty,
         };
     }
 
