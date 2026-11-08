@@ -627,7 +627,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         };
 
         dialog.Opened += (_, _) => keyText.Focus(FocusState.Programmatic);
-        keyText.KeyDown += (_, e) =>
+
+        // 用 dialog 级的 AddHandler(handledEventsToo: true)：菜单键（右 Alt 右边的
+        // Application/VK_APPS）在 TextBox 上可能被当成上下文菜单事件，普通 KeyDown 收不到。
+        void HandleKeyDown(object sender, KeyRoutedEventArgs e)
         {
             e.Handled = true;
 
@@ -658,7 +661,9 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
 
             capturedToken = token;
             dialog.Hide();
-        };
+        }
+
+        dialog.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(HandleKeyDown), handledEventsToo: true);
 
         await _windowManagerService.ShowDialogAsync(dialog);
 
