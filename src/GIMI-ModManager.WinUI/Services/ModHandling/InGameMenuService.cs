@@ -167,8 +167,8 @@ public sealed class InGameMenuService(
 
     private static InGameMenuOptions ToOptions(InGameMenuSettings settings) => new()
     {
-        OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F6" : settings.OpenKeyTokens,
-        OpenKeyDisplay = string.IsNullOrWhiteSpace(settings.OpenKeyDisplay) ? "F6" : settings.OpenKeyDisplay,
+        OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F7" : settings.OpenKeyTokens,
+        OpenKeyDisplay = string.IsNullOrWhiteSpace(settings.OpenKeyDisplay) ? "F7" : settings.OpenKeyDisplay,
         MaxRowsPerPage = Math.Clamp(settings.MaxRowsPerPage, 1, 20),
     };
 }
