@@ -98,6 +98,29 @@ public class InGameMenuIniBuilderTests
     }
 
     [Fact]
+    public void EntryCommandListHasBalancedIfEndifWithDetectionVariable()
+    {
+        var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x", new InGameMenuOptions
+        {
+            DetectionVariable = @"$\JasmABCDEF12\object_detected",
+            GateOnObjectDetected = false,
+        });
+
+        var lines = build.IniText.Split('\n');
+        var start = Array.FindIndex(lines, l => l.StartsWith("[CommandListJasmEntry_", StringComparison.Ordinal));
+        Assert.True(start >= 0);
+        var end = Array.FindIndex(lines, start + 1, l => l.StartsWith('['));
+        if (end < 0)
+            end = lines.Length;
+
+        var ifs = lines[start..end].Count(l => l.TrimStart().StartsWith("if ", StringComparison.Ordinal));
+        var endifs = lines[start..end].Count(l => l.TrimStart().StartsWith("endif", StringComparison.Ordinal));
+
+        // 漏 endif 会让 3DMigoto 把绘制当成无条件执行（F7 改了 open 菜单却不消失）
+        Assert.Equal(ifs, endifs);
+    }
+
+    [Fact]
     public void PaginatesAboveRowLimit()
     {
         var rows = Enumerable.Range(0, 12).Select(i => Row("Item" + i, "var" + i)).ToList();
