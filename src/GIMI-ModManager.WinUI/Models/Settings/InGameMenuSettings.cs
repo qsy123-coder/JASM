@@ -27,7 +27,7 @@ public class InGameMenuSettings
     public int MaxRowsPerPage { get; set; } = 10;
 
     /// <summary>菜单皮肤 Id（见 <c>MenuThemes</c>），换皮肤后需要重建菜单。</summary>
-    public string MenuTheme { get; set; } = "default";
+    public string MenuTheme { get; set; } = "reference";
 
     /// <summary>
     /// 每个 Mod 的菜单行自定义，键是 Mod 目录名（不含 DISABLED_ 前缀）。
