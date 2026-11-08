@@ -634,6 +634,23 @@
                             SelectedValue="{x:Bind ViewModel.SelectedInGameMenuTheme, Mode=TwoWay}"
                             SelectedValuePath="Id" />
                     </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="参考素材目录" />
+                        <TextBox
+                            Grid.Column="1"
+                            IsReadOnly="True"
+                            PlaceholderText="选择参考 Mod 的 GUI\res 目录（仅「参考素材」主题使用）"
+                            Text="{x:Bind ViewModel.InGameMenuReferenceAssetsPicker.Path, Mode=OneWay}" />
+                        <Button
+                            Grid.Column="2"
+                            Command="{x:Bind ViewModel.BrowseInGameMenuReferenceAssetsCommand}"
+                            Content="浏览" />
+                    </Grid>
                     <TextBlock
                         FontSize="12"
                         Foreground="#FFE8A33D"
