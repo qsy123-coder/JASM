@@ -95,20 +95,20 @@ public static class InGameMenuIniBuilder
     private const int AnchorDefaultY = 120;
 
     private const int TitleWidth = 360;
-    private const int TitleHeight = 44;
-    private const int TitleLineGap = 0;
-    private const int UnderlineOffsetY = 94;
+    private const int TitleHeight = 50;
+    private const int TitleLineGap = 4;
+    private const int UnderlineOffsetY = 106;
     private const int UnderlineWidth = 220;
     private const int UnderlineHeight = 3;
 
     private const int TabsOffsetX = 10;
-    private const int TabsOffsetY = 106;
+    private const int TabsOffsetY = 118;
     private const int TabWidth = 160;
     private const int TabHeight = 38;
     private const int TabGap = 10;
 
     private const int SidebarOffsetX = -58;
-    private const int SidebarOffsetY = 106;
+    private const int SidebarOffsetY = 118;
     private const int SidebarWidth = 44;
     private const int SidebarNumberHeight = 40;
     private const int CloseOffsetY = 56;
@@ -116,7 +116,7 @@ public static class InGameMenuIniBuilder
     private const int CloseHeight = 40;
 
     private const int RowOffsetX = 20;
-    private const int RowOffsetY = 156;
+    private const int RowOffsetY = 168;
     private const int RowWidth = 620;
     private const int RowHeight = 64;
     private const int RowGap = 6;
@@ -251,6 +251,10 @@ public static class InGameMenuIniBuilder
 
         // 呼出键
         ini.AppendLine($"[{KeyToggleSection(token)}]");
+        // 多套菜单都绑 F8：不加门控的话，按一次会把所有菜单的 open 一起翻转，
+        // 表现为「F8 关不掉，反而切到另一件 Mod 的菜单」。只让当前加载的角色响应。
+        if (options.GateOnObjectDetected)
+            ini.AppendLine("condition = $object_detected == 1");
         ini.AppendLine($"key = {options.OpenKeyTokens}");
         ini.AppendLine("type = cycle");
         ini.AppendLine($"{v}open = 0,1");
