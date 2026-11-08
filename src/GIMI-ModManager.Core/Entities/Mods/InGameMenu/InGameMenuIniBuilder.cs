@@ -63,9 +63,10 @@ public sealed record InGameMenuOptions
     /// v17：新增「参考素材」主题，直接拷贝参考 Mod 的按钮/页签 PNG。
     /// v18：参考素材样式改用原生素材尺寸、无背板/无下划线、每行米色描边。
     /// v19：整体缩小。
-    /// v20：按全屏截图比例改为 430×56 行、180×30 页签、11 行/页，标题也同步缩小。
+    /// v20：按全屏截图比例调整尺寸。
+    /// v21：行名称接中英词表；值改为「序号/总数」并右对齐。
     /// </summary>
-    public const int CurrentGeneratorVersion = 20;
+    public const int CurrentGeneratorVersion = 21;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -257,7 +258,7 @@ public static class InGameMenuIniBuilder
         => options.Theme.UseReferenceAssets ? 78 : TabsOffsetY;
 
     private static int HintOffsetYFor(InGameMenuOptions options)
-        => options.Theme.UseReferenceAssets ? 12 : HintOffsetY;
+        => options.Theme.UseReferenceAssets ? 4 : HintOffsetY;
 
     public static InGameMenuBuildResult Build(
         IReadOnlyList<ModIniToggleRow> rows,
@@ -347,8 +348,14 @@ public static class InGameMenuIniBuilder
 
             for (var valueIndex = 0; valueIndex < rows[i].Values.Count; valueIndex++)
             {
-                textures.Add(Text($"JASM_Menu/value_{i:00}_{valueIndex:00}.dds", Unquote(rows[i].Values[valueIndex]),
-                    LabelWidthFor(options), ValueHeight, 17, false, GdiTextRasterizer.TextAlign.Left));
+                // 显示「第几个/共几个」（1 起算），而不是原始值 0/1/2
+                var valueText = $"{valueIndex + 1}/{rows[i].Values.Count}";
+                var valueAlign = options.Theme.UseReferenceAssets
+                    ? GdiTextRasterizer.TextAlign.Right
+                    : GdiTextRasterizer.TextAlign.Left;
+
+                textures.Add(Text($"JASM_Menu/value_{i:00}_{valueIndex:00}.dds", valueText,
+                    LabelWidthFor(options), ValueHeight, 17, false, valueAlign));
             }
         }
 
@@ -775,10 +782,11 @@ public static class InGameMenuIniBuilder
 
         var rowY = RowOffsetYFor(options) + (index % rowsPerPage) * (rowHeight + RowGap);
         var arrowOffsetY = reference ? rowHeight / 2 - ArrowHeight / 2 : ArrowOffsetY;
-        var labelOffsetY = reference ? 8 : LabelOffsetY;
-        var valueOffsetY = reference ? 30 : ValueOffsetY;
+        var labelOffsetY = reference ? 4 : LabelOffsetY;
+        var valueOffsetY = reference ? 32 : ValueOffsetY;
         var hintOffsetX = rowWidth - 150;
         var arrowRightOffsetX = rowWidth - ArrowWidth;
+        var valueOffsetX = reference ? rowWidth - LabelWidthFor(options) - 32 : LabelOffsetX;
 
         ini.AppendLine($"; ---- 行 {index}: {SanitizeComment(row.SectionName)} → {SanitizeComment(row.Label)} ----");
         ini.AppendLine($"[{RowCommandList(token, index)}]");
@@ -825,7 +833,7 @@ public static class InGameMenuIniBuilder
 
             ini.AppendLine($"{v}img_w = {LabelWidthFor(options)}");
             ini.AppendLine($"{v}img_h = {ValueHeight}");
-            ini.AppendLine($"{v}img_x = {v}x + {LabelOffsetX}");
+            ini.AppendLine($"{v}img_x = {v}x + {valueOffsetX}");
             ini.AppendLine($"{v}img_y = {v}y + {rowY + valueOffsetY}");
             ini.AppendLine($"{v}tint_a = 0.85");
             ini.AppendLine($"run = {QuadCommandList(token)}");
