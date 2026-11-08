@@ -100,6 +100,10 @@ public static class KeyBindingLabelLocalizer
 
         var trimmed = label.Trim();
 
+        // 作者常把变量名直接当注释（$backdec / $Body Harness），前导 $ 不参与翻译
+        if (trimmed.StartsWith('$'))
+            trimmed = trimmed[1..].Trim();
+
         // 已是中文 / 没有空格：交给完整规则
         if (ContainsCjk(trimmed) || !trimmed.Contains(' '))
             return Localize(trimmed);
@@ -362,6 +366,52 @@ public static class KeyBindingLabelLocalizer
         ["movesmenuleft"] = "菜单左移",
         ["movesmenuright"] = "菜单右移",
         ["xiazhi"] = "夏至",
+
+        // ── 扫尤诺 132 个 mod 后补充 ──
+        ["armsbrace"] = "臂环",
+        ["bodychain"] = "身体链条",
+        ["bodysuit"] = "连体衣",
+        ["featherskirt"] = "羽毛裙",
+        ["footnails"] = "脚趾甲",
+        ["footnails1"] = "脚趾甲1",
+        ["hairflowers"] = "发花",
+        ["libom"] = "礼帽",
+        ["libom1"] = "礼帽1",
+        ["nipplering"] = "乳环",
+        ["skirtband"] = "裙带",
+        ["tacetmark"] = "声痕",
+        ["thighstrap"] = "大腿绑带",
+        ["backdec"] = "背部装饰",
+        ["clothcolor"] = "布料颜色",
+        ["haircolor"] = "头发颜色",
+        ["legbeltb"] = "腿带B",
+        ["legbelts"] = "腿带S",
+        ["backhairdrapes"] = "后发披",
+        ["backtails"] = "后尾",
+        ["backskirt"] = "后裙",
+        ["blueskirt"] = "蓝裙",
+        ["bodyshape"] = "体型",
+        ["bottomribbons"] = "下装缎带",
+        ["frontdrapeshair"] = "前发披",
+        ["frontskirt"] = "前裙",
+        ["hairaccs"] = "发饰",
+        ["hairdrapes"] = "发披",
+        ["jixietui"] = "机械腿",
+        ["shoettoggle"] = "鞋子开关",
+        ["shufenguan"] = "束发冠",
+        ["skirttails"] = "裙尾",
+        ["topribbons"] = "上装缎带",
+        ["xiez"] = "鞋子",
+        ["yindi"] = "阴蒂",
+        ["yuehuan"] = "月环",
+        ["gangtuo"] = "钢托",
+        ["backgroundback"] = "背景后退",
+        ["backgroundmode"] = "背景模式",
+        ["backgroundnext"] = "背景下一个",
+        ["backgroundreloadrandom"] = "背景随机重载",
+        ["portraitsmode"] = "立绘模式",
+        ["portraitsreloadrandom"] = "立绘随机重载",
+        ["xiezi"] = "鞋子",
     };
 
     /// <summary>英文词表（逐词匹配，大小写不敏感）</summary>
@@ -772,6 +822,55 @@ public static class KeyBindingLabelLocalizer
         ["handcurf"] = "袖口",      // Handcuff 的拼写错误，婚礼套里指袖口
         ["inner"] = "内衬",
         ["vail"] = "面纱",          // Veil 的拼写错误
+
+        // ── 扫尤诺 132 个 mod 后补充 ──
+        ["fishnet"] = "渔网袜",
+        ["mega"] = "巨大",
+        ["shoet"] = "鞋子",
+        ["ankle"] = "脚踝",
+        ["ankles"] = "脚踝",
+        ["background"] = "背景",
+        ["reload"] = "重载",
+        ["butterfly"] = "蝴蝶",
+        ["feather"] = "羽毛",
+        ["genki"] = "元气",
+        ["moon"] = "月亮",
+        ["portrait"] = "立绘",
+        ["portraits"] = "立绘",
+        ["rings"] = "戒指",
+        ["rose"] = "玫瑰",
+        ["roses"] = "玫瑰",
+        ["tacet"] = "无音",
+        ["yeti"] = "雪人",
+        ["harness"] = "束带",
+        ["loose"] = "宽松",
+        ["drapes"] = "披挂",
+        ["bob"] = "波波头",
+        ["clit"] = "阴蒂",
+        ["coudes"] = "手肘",
+        ["crocs"] = "洞洞鞋",
+        ["flaps"] = "翻盖",
+        ["hairpin"] = "发夹",
+        ["heaume"] = "头盔",
+        ["mizugi"] = "泳装",
+        ["ruqiu"] = "乳球",
+        ["sfw"] = "安全内容",
+        ["short"] = "短裤",
+        ["stok"] = "丝袜",
+        ["string"] = "绳",
+        ["tassel"] = "流苏",
+        ["thighs"] = "大腿",
+        ["tits"] = "胸部",
+        ["toenails"] = "脚趾甲",
+        ["visor"] = "护目镜",
+        ["gun"] = "枪",
+        ["accessoires"] = "配饰",
+        ["anclet"] = "脚链",
+        ["accesories"] = "配饰",
+        ["cheveux"] = "头发",
+        ["jixie"] = "机械",
+        ["zero"] = "零",
+        ["watergun"] = "水枪",
     };
 
     /// <summary>
@@ -896,5 +995,17 @@ public static class KeyBindingLabelLocalizer
         ["diaodai"] = "吊带",
         ["shouhuan"] = "手环",
         ["shipin"] = "视频",
+
+        // ── 扫尤诺 132 个 mod 后补充 ──
+        ["jiandai"] = "肩带",
+        ["maoer"] = "猫耳",
+        ["paizi"] = "牌子",
+        ["pieds"] = "脚",      // 法语
+        ["wanju"] = "玩具",
+        ["zhuangshi"] = "装饰",
+        ["jixie"] = "机械",
+        ["yindi"] = "阴蒂",
+        ["yuehuan"] = "月环",
+        ["shou"] = "手",
     };
 }
