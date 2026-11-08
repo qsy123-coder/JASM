@@ -23,7 +23,7 @@ public class InGameMenuGeneratorTests : IDisposable
         Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
         Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu.ini")));
         Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu", "manifest.json")));
-        Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu", "panel.dds")));
+        Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu", "row.dds")));
         Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu", "draw_2d.hlsl")));
 
         Assert.Equal(OriginalIni, File.ReadAllText(Path.Combine(mod, "Normal", "mod.ini")));
