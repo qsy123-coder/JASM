@@ -123,8 +123,8 @@ public class InGameMenuIniBuilderTests
     {
         var build = InGameMenuIniBuilder.Build([Row("A")], "x", new InGameMenuOptions());
 
-        // 156(行起点) + 1*(64+6) + 3*26 + 16
-        Assert.Equal(320, build.PanelHeight);
+        // 168(行起点) + 1*(64+6) + 3*26 + 16
+        Assert.Equal(332, build.PanelHeight);
         Assert.Equal(620, build.PanelWidth);
     }
 
