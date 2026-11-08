@@ -362,6 +362,30 @@ F:\XXMI\WWMI\Mods\character\others\RabbitFX反虚化+发光前置v82自定义版
 
 **更正**：第 7 节「鼠标方案作废、改键盘导航」的结论不再成立；键盘导航（↑/↓/F9）保留作为备用路径。
 
+### 5.13 无 namespace 的 Mod + 逐角色门控（2026-11-08 晚）
+
+修好鼠标后暴露出两个更底层的问题：
+
+1. **无 namespace 的 Mod 点击不生效**
+   - 3DMigoto 对没有 `namespace =` 的 ini 用**文件路径**当命名空间，而 Mod 路径通常含中文。
+   - 菜单里写成 `$\Mods\character\绯雪-…\mod.ini\skirt` 会被表达式解析器判为语法错误
+     （日志：`Syntax Error ... \绯雪-…\mod.ini\skirt`，整段 `if` 变成 `Unrecognised entry`）。
+   - 修复：生成菜单时给每个相关 ini **补一行 ASCII namespace**（`; JASM: added namespace…` +
+     `namespace = JasmXXXXXXXX`），菜单改用 `$\JasmXXXXXXXX\var`。只加一行，移除菜单时按标记删掉。
+   - 命名空间种子 = `Mod 绝对路径 + ini 相对路径`，保证不同 Mod 不会撞名（不同 Mod 的 ini 相对路径常常都是 `mod.ini`）。
+
+2. **多份角色菜单叠在一起 / F8 关不掉**
+   - 补 namespace 后，每个 Mod 的 `$object_detected` 变成**按 Mod 隔离**的变量：组件绘制时置 1，
+     Mod 自己的 `[Present]` 再 `post` 回 0。
+   - 门控改用它：`condition` 不能加在呼出键上——3DMigoto 处理按键时 `object_detected` 已经被 post 回 0，
+     会导致「F8 只能打开、关不掉」。现在呼出键无条件，改为在 `[Present]` 里：
+     - 角色不在场（变量为 0）→ 强制 `open = 0`（所以 F8 翻转所有菜单后，只有当前角色那份留下）；
+     - 绘制前再判 `== 1`。
+   - 结果：F8 只影响当前角色的菜单；切换角色时其他菜单自动关闭，不再叠字。
+
+生成器版本：v3（`cursor_screen_x/y`）→ v4（ASCII namespace）→ v5（object_detected 门控）→ v6（门控从按键挪到 Present 自动归零）。
+旧版本菜单会在批量补齐时自动重建。
+
 
 
 
