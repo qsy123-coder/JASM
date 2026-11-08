@@ -236,6 +236,8 @@ public class KeyBindingLabelLocalizerTests
     [InlineData("[KeyTacetmark]", "声痕")]
     [InlineData("[KeyJixieshou]", "机械手")]
     [InlineData("[KeyHairFlowers]", "发花")]
+    [InlineData("[KeyPluses]", "凸点")]
+    [InlineData("[KeyLets]", "腿饰")]
     public void LocalizeSectionName_CoversTheIunoCollection(string sectionName, string expected)
         => Assert.Equal(expected, KeyBindingLabelLocalizer.LocalizeSectionName(sectionName));
 
