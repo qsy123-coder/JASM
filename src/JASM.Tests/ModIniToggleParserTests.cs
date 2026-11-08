@@ -11,6 +11,32 @@ namespace JASM.Tests;
 public class ModIniToggleParserTests
 {
     [Fact]
+    public void ParseDirectoryCapturesGlobalDefaultForReset()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "jasm-defaults-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "mod.ini"), """
+            [Constants]
+            global persist $xiezi = 4
+
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """);
+
+        try
+        {
+            var row = Assert.Single(ModIniToggleParser.ParseDirectory(root));
+            Assert.Equal("4", row.DefaultValue);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ParsesSimpleCycleRowWithNamespace()
     {
         var rows = ModIniToggleParser.ParseText("""
