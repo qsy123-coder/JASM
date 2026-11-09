@@ -202,6 +202,45 @@ GitHub 回退通道上没有 `kind` 字段（API 只给文件名），由 `AppUp
 - **命令 `4` = 归还前台**（浮窗勾选刷新的收尾）：送键前必须先把游戏切到前台（F10 得打到前台窗口上），而游戏是提权运行时，送完键**浮窗自己再也拿不回前台** —— 前台锁只认「最近收到输入的那个进程」，那一刻的所有者是刚注入按键的助手；本进程既抢不回前台，注入解锁那一手又会被 UIPI 静默丢掉（实测）。所以只能请刚注入过的助手 `SetForegroundWindow`。载荷 `4` + 一句柄（与命令 `3` 同格式），回 `OK` / `FAIL:<reason>`；只在「光标压在浮窗上」时才发（键盘导航时用户人在游戏里，抢回来等于把他踢出游戏）。助手版本低于 `4.0.0.0` 时退回旧行为（前台留在游戏上）+ 一条 Warning。
 - **助手是 AOT 发布，需要 MSVC**：只有 CI 的 `windows-latest` 编得动，本机 `dotnet publish ... /p:PublishProfile=FolderProfile.pubxml` 会报 `Platform linker not found`。因此**单 exe 包只能由 CI 产出**（第 9 节）。
 
+## WWMI / 3DMigoto 按键占用速查
+
+给 Mod / 菜单 / 测试补丁选热键前先看这张表。来源：本机 `F:\XXMI\WWMI\Core\WWMI\KeyBindings.ini`、`d3dx.ini`、`Core\Debugger\Debugger.ini`（2026-11-09 核对）。
+
+### 3DMigoto / WWMI 全局占用
+
+| 键 | 用途 | 来源 |
+|---|---|---|
+| `F6` | 切换 Mod 总开关 | `Core\WWMI\KeyBindings.ini` |
+| `F7` | JASM 游戏内菜单呼出（默认，可在设置改） | JASM `InGameMenuSettings.OpenKeyTokens` |
+| `F8` | frame analysis | `d3dx.ini` |
+| `F9` | show_original | `d3dx.ini` |
+| `F10` | reload config / reload fixes；WWMI 首次运行提示 | `d3dx.ini` / `KeyBindings.ini` |
+| `F11` | 实机确认被 WWMI 占用（配置文件里没找到，按占用处理） | 用户反馈 |
+| `F12` / `ALT+F12` / `CTRL+F12` / `SHIFT+F12` | 用户指南 / 兼容模式 / 狩猎指南 / 调试器 | `KeyBindings.ini` / `Debugger.ini` |
+| `X` / `XB_X` | 隐藏 WWMI 通知 | `KeyBindings.ini` |
+| 小键盘 `0-9`、`. / * - +` | 3DMigoto 狩猎 / 标记模式 | `d3dx.ini` |
+| `PrintScreen` | 截图 | `d3dx.ini` |
+| `Ctrl+Alt+Shift+End` | `toggle_input` | `d3dx.ini` |
+| `Ctrl+Alt+F10` | `wipe_user_config` | `d3dx.ini` |
+
+### JASM 自己占用的键
+
+| 键 | 用途 | 说明 |
+|---|---|---|
+| `Ctrl+Alt+J` | 浮窗唤出（默认） | Windows 全局热键，3DMigoto 的 `[Key*]` 收不到 |
+| `Ctrl+Alt+S` | 区域截图（默认） | 同上 |
+| `Ctrl+Alt+↑` / `↓` / `Enter` / `R` | 浮窗导航（注册成功才有） | 候选，被占用会退到备选 |
+| `F7` | 游戏内菜单呼出 | 3DMigoto 键，设置可改 |
+| `Alt+左键` / `Alt+右键` | 游戏内菜单点击 / 拖动 | 见 `InGameMenuIniBuilder` |
+
+### 选键建议
+
+- **不要用 `F6`–`F12`**（`F11` 也按占用处理）。
+- 小键盘与 `+ - * /` 被 3DMigoto 调试模式占用，避开。
+- `Insert` / `Home` / `PageUp` / `PageDown` 在 `d3dx.ini` 里是被注释掉的（3DMigoto 侧空闲），可做测试键；游戏本体是否占用需实机确认。
+- 每个 Mod 作者自己的 `[Key*]` 是**逐 Mod** 的，不在这张表里；给某个 Mod 加键前先扫描它的 ini。
+- 本机 XXMI 版本升级后，这张表要重新核对。
+
 ## Claude 工作要求
 
 0. **先建分支**：任何开发任务开始前先 `git switch -c feat/<topic>`（或 `fix/<topic>`），**禁止直接在 `master` 上修改或提交**。工作区若已有其它任务的未提交改动，改用独立的 `git worktree` 隔离，不要原地切分支。
