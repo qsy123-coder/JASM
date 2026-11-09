@@ -159,6 +159,21 @@ public class ModInstallerService(
             if (!settings.Enabled)
                 return;
 
+            // 开关打开时：每装一个 Mod 就立刻生成（含刚装进来的 DISABLED_ 状态）。
+            // 菜单与 Mod 同目录，启用只是改前缀，所以启用后马上就有现成菜单。
+            if (settings.AutoGenerateOnInstall)
+            {
+                if (!InGameMenuGenerator.HasObjectDetectedVariable(mod.FullPath))
+                    return;
+
+                var result = await Task.Run(() => _inGameMenuService.GenerateForMod(mod, settings))
+                    .ConfigureAwait(false);
+                if (result.Status == InGameMenuGenerationStatus.Generated)
+                    Serilog.Log.Information("[InGameMenu] 安装后已生成：{Mod}（{Reason}）", mod.Name, result.Reason);
+                return;
+            }
+
+            // 开关关闭：旧行为 —— 只给「这一件是当前唯一启用」的生成
             if (!modList.IsModEnabled(mod))
                 return;
 
