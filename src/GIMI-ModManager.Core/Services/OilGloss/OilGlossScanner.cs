@@ -258,7 +258,7 @@ public static class OilGlossScanner
     /// <summary>
     /// 按大小 + 材质槽自动分组：
     /// <list type="bullet">
-    ///   <item>身体组 = 与最大块**同材质槽**的全部可见网格（只给最大一块上油会变成「只有大腿亮」）；</item>
+    ///   <item>身体组 = 所有「从下半身覆盖到躯干」的可见网格（身体皮肤和外套常被拆成多块），再加上它们的同材质槽网格；</item>
     ///   <item>衣物组 = 其余全部可见网格（袜子、裙子、上衣、鞋、配饰都算衣物组）。</item>
     /// </list>
     /// 可见性无法求值时按可见处理；全部都被判定为隐藏时才退回全体候选。
@@ -283,15 +283,9 @@ public static class OilGlossScanner
         var visible = candidates.Where(d => d.VisibleByDefault != false).ToList();
         var pool = visible.Count > 0 ? visible : candidates;
 
-        var bodyAnchor = ChooseBodyAnchor(pool);
-
-        // 身体：同一材质槽的整组网格。材质槽读不出来时退化回「只有身体锚点」。
-        var bodySet = !string.IsNullOrEmpty(bodyAnchor.TextureSlot)
-            ? pool.Where(d => string.Equals(d.TextureSlot, bodyAnchor.TextureSlot, StringComparison.OrdinalIgnoreCase)).ToList()
-            : new List<OilGlossDrawcall> { bodyAnchor };
-
-        if (bodySet.Count == 0)
-            bodySet = new List<OilGlossDrawcall> { bodyAnchor };
+        // 身体：所有「从下半身覆盖到躯干」的网格（身体皮肤和外套经常被拆成两块），
+        // 再加上与它们同材质槽的网格；没有几何信息时退回「最大块 + 同材质槽」。
+        var bodySet = ChooseBodySet(pool);
 
         // 衣物：其余全部可见网格；只有一块时衣物组为空
         var clothSet = pool.Where(d => !bodySet.Any(b => IsSame(b, d))).ToList();
@@ -320,6 +314,38 @@ public static class OilGlossScanner
             Body = bodyResult,
             Cloth = clothResult,
         };
+    }
+
+    /// <summary>
+    /// 身体组：所有「从下半身一直覆盖到躯干」的网格。
+    /// 身体皮肤和外套/裙摆经常是两块独立的网格，只选最大的一块会出现
+    /// 「下半身有油光、上半身没有」；这里把覆盖范围够大的都收进身体组，
+    /// 再带上它们的同材质槽网格（身体被拆成多块时靠材质槽补全）。
+    /// </summary>
+    private static List<OilGlossDrawcall> ChooseBodySet(IReadOnlyList<OilGlossDrawcall> pool)
+    {
+        var fullBody = pool
+            .Where(d => d.HeightMin is <= 0.30 && d.HeightMax is >= 0.60)
+            .ToList();
+
+        if (fullBody.Count == 0)
+        {
+            var anchor = ChooseBodyAnchor(pool);
+            return string.IsNullOrEmpty(anchor.TextureSlot)
+                ? [anchor]
+                : pool.Where(d => string.Equals(d.TextureSlot, anchor.TextureSlot, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+        }
+
+        var bodySlots = fullBody
+            .Where(d => !string.IsNullOrEmpty(d.TextureSlot))
+            .Select(d => d.TextureSlot)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return pool
+            .Where(d => (d.HeightMin is <= 0.30 && d.HeightMax is >= 0.60)
+                        || (!string.IsNullOrEmpty(d.TextureSlot) && bodySlots.Contains(d.TextureSlot)))
+            .ToList();
     }
 
     /// <summary>
