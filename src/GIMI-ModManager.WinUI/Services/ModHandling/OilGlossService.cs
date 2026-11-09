@@ -141,14 +141,15 @@ public sealed class OilGlossService(
 
     public OilGlossScanResult Scan(ISkinMod mod) => OilGlossScanner.Scan(mod.FullPath);
 
-    /// <summary>读取全局油光强度（0..1，默认 0.7）。</summary>
+    /// <summary>读取全局油光强度（0..<see cref="OilGlossProtocol.MaxStrength"/>，默认 0.7）。</summary>
     public async Task<double> GetStrengthAsync(CancellationToken cancellationToken = default)
     {
         var settings = await localSettingsService
             .ReadSettingAsync<OilGlossSettings>(OilGlossSettings.Key, SettingScope.App)
             .ConfigureAwait(false);
 
-        return Math.Clamp(settings?.Strength ?? 0.7, 0, 1);
+        return Math.Clamp(settings?.Strength ?? OilGlossProtocol.DefaultStrength, 0,
+            OilGlossProtocol.MaxStrength);
     }
 
     /// <summary>
@@ -157,7 +158,7 @@ public sealed class OilGlossService(
     /// </summary>
     public async Task<bool> SaveStrengthAsync(double strength, CancellationToken cancellationToken = default)
     {
-        var value = Math.Clamp(strength, 0, 1);
+        var value = Math.Clamp(strength, 0, OilGlossProtocol.MaxStrength);
 
         var settings = await localSettingsService
                            .ReadSettingAsync<OilGlossSettings>(OilGlossSettings.Key, SettingScope.App)
