@@ -14,7 +14,7 @@ public class OilGlossMenuTests : IDisposable
     public OilGlossMenuTests() => Directory.CreateDirectory(_root);
 
     [Fact]
-    public void CreatesMasterBodyAndClothRows()
+    public void CreatesMasterAndStrengthRows()
     {
         var manifest = new OilGlossManifest
         {
@@ -25,21 +25,21 @@ public class OilGlossMenuTests : IDisposable
 
         var rows = OilGlossMenuRows.Create(manifest);
 
-        Assert.Equal(3, rows.Count);
-        Assert.Equal("油光总开关", rows[0].Label);
-        Assert.Equal("身体油光", rows[1].Label);
-        Assert.Equal("油光强度", rows[2].Label);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("油光", rows[0].Label);
+        Assert.Equal("油光强度", rows[1].Label);
         Assert.Equal(@"$\JasmOilABCD1234\jasm_oil_on", rows[0].QualifiedVariable);
         Assert.True(rows[0].IsClickable);
         Assert.Equal("1", rows[0].DefaultValue);
-        Assert.True(rows[2].IsSlider);
-        Assert.Equal(@"$\KatFXMatcap\oilstrength", rows[2].QualifiedVariable);
-        Assert.DoesNotContain(rows, r => r.SectionName == OilGlossMenuRows.ClothSection);
+        Assert.True(rows[1].IsSlider);
+        Assert.Equal(@"$\KatFXMatcap\oilstrength", rows[1].QualifiedVariable);
+        Assert.DoesNotContain(rows, r => r.SectionName is OilGlossMenuRows.BodySection or OilGlossMenuRows.ClothSection);
     }
 
     [Fact]
-    public void ClothOilDefaultsOff()
+    public void IgnoresLegacyGroupFlags()
     {
+        // 旧清单里还有 HasBodyGroup/HasClothGroup，但菜单已经不再生成身体/衣物两行。
         var manifest = new OilGlossManifest
         {
             Namespace = "JasmOilABCD1234",
@@ -49,9 +49,8 @@ public class OilGlossMenuTests : IDisposable
 
         var rows = OilGlossMenuRows.Create(manifest);
 
-        Assert.Equal("1", rows.Single(r => r.SectionName == OilGlossMenuRows.MasterSection).DefaultValue);
-        Assert.Equal("1", rows.Single(r => r.SectionName == OilGlossMenuRows.BodySection).DefaultValue);
-        Assert.Equal("0", rows.Single(r => r.SectionName == OilGlossMenuRows.ClothSection).DefaultValue);
+        Assert.Equal(2, rows.Count);
+        Assert.DoesNotContain(rows, r => r.SectionName is OilGlossMenuRows.BodySection or OilGlossMenuRows.ClothSection);
     }
 
     [Fact]
@@ -73,11 +72,11 @@ public class OilGlossMenuTests : IDisposable
         var ns = apply.Manifest!.Namespace;
 
         Assert.Contains($@"$\{ns}\jasm_oil_on", menu);
-        Assert.Contains($@"$\{ns}\oil_body", menu);
-        Assert.Contains($@"$\{ns}\oil_cloth", menu);
+        // 新补丁只引用总开关，不再写身体/衣物变量。
+        Assert.DoesNotContain($@"$\{ns}\oil_body", menu);
+        Assert.DoesNotContain($@"$\{ns}\oil_cloth", menu);
         Assert.Contains("行 0: [KeyOilMaster]", menu);
-        Assert.Contains("行 1: [KeyOilBody]", menu);
-        Assert.Contains("行 3: [KeyOilStrength]", menu);
+        Assert.Contains("行 1: [KeyOilStrength]", menu);
         Assert.Contains(@"$\KatFXMatcap\oilstrength", menu);
         Assert.Contains("slider_v", menu);
 
@@ -102,10 +101,10 @@ public class OilGlossMenuTests : IDisposable
         });
 
         var manifest = File.ReadAllText(Path.Combine(mod, "JASM_Menu", "manifest.json"));
-        Assert.Contains("油光总开关", manifest);
-        Assert.Contains("身体油光", manifest);
-        Assert.Contains("衣物油光", manifest);
         Assert.Contains("油光强度", manifest);
+        Assert.Contains("油光", manifest);
+        Assert.DoesNotContain("身体油光", manifest);
+        Assert.DoesNotContain("衣物油光", manifest);
     }
 
     [Fact]
