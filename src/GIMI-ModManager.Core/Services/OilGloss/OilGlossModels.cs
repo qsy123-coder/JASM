@@ -26,9 +26,11 @@ public static class OilGlossProtocol
     /// 内嵌本体（<c>Matcap.ini</c> + <c>Oil/*.dds</c>）的版本。
     /// 递增时需要把旧 manifest 里 <c>BodyProvidedByJasm = true</c> 的本体换成新版本。
     /// 2：不再替换 <c>ps-t0</c>，避免头发/衣物被平色贴图覆盖；
-    /// 3：物理键强度上限提高到 2.0。
+    /// 3：物理键强度上限提高到 2.0；
+    /// 4：物理键不能再把 <c>$oilSkin</c> / <c>$oilStrength</c> 设成 0
+    ///    （<c>*</c> 只切样式，<c>-</c> 最低 0.2；关油光交给 F7 总开关）。
     /// </summary>
-    public const int BodyVersion = 3;
+    public const int BodyVersion = 4;
 
     /// <summary>
     /// 补丁分组规则的版本。
