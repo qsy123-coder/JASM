@@ -383,6 +383,128 @@ public sealed partial class ModPaneVM(
         }
     }
 
+    /// <summary>
+    /// 手动调整油光分组：列出 Mod 里所有 drawcall，让用户逐块选「不包 / 身体 / 衣物」。
+    /// 用于自动分组把头发当成身体、或从发型 Mod 里只挑身体的情况。
+    /// </summary>
+    [RelayCommand]
+    private async Task CustomizeOilGroupsAsync()
+    {
+        if (!IsModLoaded || IsOilGlossBusy)
+            return;
+
+        var mod = _loadedMod.Mod;
+        IsOilGlossBusy = true;
+        try
+        {
+            // 这里要绕过「发型 Mod 整包跳过」的默认判定，否则用户没法从发型包里挑身体网格
+            var scan = await Task.Run(() => _oilGlossService.Scan(mod, ignoreHairFolderGuard: true),
+                _cancellationToken);
+
+            var draws = scan.Drawcalls
+                .OrderBy(d => d.IniRelativePath, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(d => d.StartIndex)
+                .ToList();
+
+            if (draws.Count == 0)
+            {
+                OilGlossStatusText = "没有可调整的网格";
+                return;
+            }
+
+            var choices = new List<(OilGlossDrawcall Draw, ComboBox Box)>();
+            var panel = new StackPanel { Spacing = 6 };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "给每块网格选分组。头发变色时，把最大的几块改成「不包」；身体/衣物按需选择。",
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+            });
+
+            foreach (var draw in draws)
+            {
+                var combo = new ComboBox
+                {
+                    ItemsSource = new[] { "不包", "身体", "衣物" },
+                    SelectedIndex = draw.Group switch
+                    {
+                        OilGlossGroup.Body => 1,
+                        OilGlossGroup.Cloth => 2,
+                        _ => 0,
+                    },
+                    MinWidth = 90,
+                };
+
+                var label = string.IsNullOrWhiteSpace(draw.Comment)
+                    ? draw.SectionName
+                    : draw.SectionName + " · " + draw.Comment;
+
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                row.Children.Add(new TextBlock
+                {
+                    Text = $"{label} · {draw.IndexCount} 索引 · 起始 {draw.StartIndex}",
+                    Width = 360,
+                    FontSize = 12,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+                row.Children.Add(combo);
+                panel.Children.Add(row);
+                choices.Add((draw, combo));
+            }
+
+            var dialog = new ContentDialog
+            {
+                Title = "调整油光分组",
+                Content = new ScrollViewer
+                {
+                    Content = panel,
+                    MaxHeight = 420,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                },
+                PrimaryButtonText = "应用",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+
+            var windowManagerService = App.GetService<IWindowManagerService>();
+            if (await windowManagerService.ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+                return;
+
+            var selected = choices.Select(c => c.Draw with
+            {
+                Group = c.Box.SelectedIndex switch
+                {
+                    1 => OilGlossGroup.Body,
+                    2 => OilGlossGroup.Cloth,
+                    _ => (OilGlossGroup?)null,
+                },
+            }).ToList();
+
+            var result = await _oilGlossService.ApplyCustomGroupsAsync(mod, selected, _cancellationToken);
+            if (result.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
+            {
+                RefreshOilGlossStatus();
+                RefreshInGameMenuStatus();
+                _notificationService.ShowNotification("油光已按自定义分组重打", "按 F7 查看效果", null);
+                await RequestGameRefreshAsync();
+            }
+            else
+            {
+                OilGlossStatusText = "应用分组失败：" + result.Reason;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[OilGloss] 调整分组失败");
+            OilGlossStatusText = "调整分组失败：" + e.Message;
+        }
+        finally
+        {
+            IsOilGlossBusy = false;
+        }
+    }
+
     private bool CanEnableOilGloss() => CanToggleOilGloss && !IsOilGlossApplied && !IsOilGlossBusy;
 
     private bool CanDisableOilGloss() => CanToggleOilGloss && IsOilGlossApplied && !IsOilGlossBusy;
