@@ -634,6 +634,11 @@
                             SelectedValue="{x:Bind ViewModel.SelectedInGameMenuTheme, Mode=TwoWay}"
                             SelectedValuePath="Id" />
                     </StackPanel>
+                    <ToggleSwitch
+                        Header="安装后自动生成菜单"
+                        IsOn="{x:Bind ViewModel.AutoGenerateInGameMenuOnInstall, Mode=TwoWay}"
+                        OffContent="关闭：只给当前启用的 Mod 生成"
+                        OnContent="开启：每安装一个 Mod 就生成它的菜单（含未启用）" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
