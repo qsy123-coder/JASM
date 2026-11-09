@@ -41,7 +41,7 @@ public static class IniFileText
 
         var newLine = text.Contains("\r\n") ? "\r\n" : "\n";
         var prefix = AddedNamespaceMarker + newLine + "namespace = " + ns + newLine + newLine;
-        WriteWithOriginalEncoding(path, prefix + text);
+        WriteAllTextPreservingEncoding(path, prefix + text);
         return true;
     }
 
@@ -63,7 +63,7 @@ public static class IniFileText
         if (index < lines.Count && lines[index].Length == 0)
             lines.RemoveAt(index);
 
-        WriteWithOriginalEncoding(path, string.Join(newLine, lines));
+        WriteAllTextPreservingEncoding(path, string.Join(newLine, lines));
         return true;
     }
 
@@ -84,7 +84,11 @@ public static class IniFileText
         return false;
     }
 
-    private static void WriteWithOriginalEncoding(string path, string text)
+    /// <summary>
+    /// 按文件**原有编码与 BOM**回写文本；先写同目录临时文件再原子替换，
+    /// 避免中途失败留下半个 ini。供油光补丁等会改作者 ini 的功能复用。
+    /// </summary>
+    public static void WriteAllTextPreservingEncoding(string path, string text)
     {
         var bytes = File.ReadAllBytes(path);
         var (encoding, preamble) = DetectEncoding(bytes);
@@ -93,6 +97,9 @@ public static class IniFileText
         File.WriteAllBytes(temp, payload);
         File.Move(temp, path, overwrite: true);
     }
+
+    /// <summary>判断文件是否使用 CRLF（补丁插入的新行跟随原文件的换行风格）。</summary>
+    public static bool UsesCrLf(string text) => text.Contains("\r\n", StringComparison.Ordinal);
 
     private static (Encoding Encoding, byte[] Preamble) DetectEncoding(byte[] bytes)
     {
