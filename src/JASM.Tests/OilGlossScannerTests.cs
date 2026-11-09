@@ -144,6 +144,89 @@ public class OilGlossScannerTests : IDisposable
         Assert.Contains("头部", result.Reason);
     }
 
+    [Fact]
+    public void PrefersDrawCallsVisibleInDefaultToggleState()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [Constants]
+            global persist $swapvar_toggle_0 = 0
+            global $draw_component_3_005 = 1
+            global $draw_component_3_002 = 1
+
+            [CommandListProcessToggles]
+            $draw_component_3_005 = ($swapvar_toggle_0 == 1)
+            $draw_component_3_002 = ($swapvar_toggle_0 == 0)
+
+            [TextureOverrideComponent3]
+            if $draw_component_3_005
+            drawindexed = 900, 0, 0
+            endif
+            if $draw_component_3_002
+            drawindexed = 500, 900, 0
+            endif
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Equal(500, result.Body!.IndexCount);
+        Assert.Null(result.Cloth);
+        Assert.False(result.Drawcalls.Single(d => d.IndexCount == 900).VisibleByDefault);
+        Assert.True(result.Drawcalls.Single(d => d.IndexCount == 500).VisibleByDefault);
+    }
+
+    [Fact]
+    public void EvaluatesCompoundToggleExpressions()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [Constants]
+            global persist $swapvar_toggle_1 = 0
+
+            [CommandListProcessToggles]
+            $draw_component_3 = ($swapvar_toggle_1 == -1) || ($swapvar_toggle_1 == 0) || ($swapvar_toggle_1 == 1)
+
+            [TextureOverrideComponent3]
+            if $draw_component_3
+            drawindexed = 700, 0, 0
+            endif
+            if $draw_component_3_035
+            drawindexed = 900, 700, 0
+            endif
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        // $draw_component_3 用默认值求值为真；未定义的 _3_035 按可见处理
+        Assert.Equal(900, result.Body!.IndexCount); // 未知可见性按可见处理，仍按大小选
+        Assert.True(result.Drawcalls.Single(d => d.IndexCount == 700).VisibleByDefault);
+    }
+
+    [Fact]
+    public void FallsBackToAllCandidatesWhenEverythingIsHidden()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [Constants]
+            global persist $swapvar_toggle_0 = 0
+
+            [CommandListProcessToggles]
+            $draw_component_3_005 = ($swapvar_toggle_0 == 1)
+
+            [TextureOverrideComponent3]
+            if $draw_component_3_005
+            drawindexed = 900, 0, 0
+            endif
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Equal(900, result.Body!.IndexCount);
+    }
+
     public void Dispose()
     {
         try
