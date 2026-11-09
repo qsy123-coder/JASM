@@ -220,6 +220,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!--  SelectedIndex 双向绑定：序号 ↔ 模式的换算只在 ViewModel 里一处（见 ModeIndex 注释）  -->
@@ -241,8 +242,28 @@
                     Fill="#FFE8A33D"
                     Visibility="{x:Bind ViewModel.HasPendingChanges, Mode=OneWay}" />
 
-                <Button
+                <!--  与设置页共用的开关：安装 Mod 后自动生成菜单（含 DISABLED_ 状态）。
+                      与「刷新」同一行、在它左边；两处开关通过消息实时同步。  -->
+                <StackPanel
                     Grid.Column="3"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="4">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        Foreground="#B3FFFFFF"
+                        Text="mod安装自动生成按键菜单" />
+                    <ToggleSwitch
+                        MinWidth="0"
+                        OffContent=""
+                        OnContent=""
+                        IsOn="{x:Bind ViewModel.AutoGenerateMenuOnInstall, Mode=TwoWay}"
+                        l:Uids.Uid="Overlay_AutoGenerateMenuOnInstall" />
+                </StackPanel>
+
+                <Button
+                    Grid.Column="4"
                     Command="{x:Bind ViewModel.RefreshNowCommand}"
                     Content="刷新"
                     IsEnabled="{x:Bind ViewModel.RefreshCoordinator.CanRequestRefresh, Mode=OneWay}"
@@ -391,6 +412,14 @@
                     TextWrapping="Wrap"
                     Visibility="{x:Bind ViewModel.HasErrorMessage, Mode=OneWay}" />
 
+                <!--  「生成按键菜单」的结果（成功文案或跳过原因）  -->
+                <TextBlock
+                    FontSize="11"
+                    Foreground="#FF9CC2A8"
+                    Text="{x:Bind ViewModel.InGameMenuStatusMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasInGameMenuStatus, Mode=OneWay}" />
+
                 <!--  提权时的常驻提示。它必须常驻：UIPI 会在 OLE 层把跨完整性级别的拖拽整个掐掉，
                       连 DragOver 都不会触发 —— 所以上面那条"拖拽时才写"的状态行在这里永远等不到机会。
                       用户能看到的只有禁止光标，这句话是浮窗上唯一能告诉他原因的东西。  -->
@@ -440,6 +469,8 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
                             <!--  键盘选中行的高亮：铺在最底层（先声明的在下层），横跨三列、不参与布局。
@@ -448,7 +479,7 @@
                                   为两态去写转换器或 VisualState 都不如一层可显隐的底直白。  -->
                             <Border
                                 Grid.Column="0"
-                                Grid.ColumnSpan="7"
+                                Grid.ColumnSpan="9"
                                 Margin="-4,-2"
                                 Background="#33FFFFFF"
                                 BorderBrush="#FFE8A33D"
@@ -538,10 +569,46 @@
                                 ToolTipService.ToolTip="勾选下一件 Mod（当前这件会自动收起）"
                                 Visibility="{x:Bind ShowNextButton, Mode=OneWay}" />
 
+                            <!--  生成这个 Mod 的游戏内菜单（F7）。每行一个：不依赖「当前启用」，
+                                  未启用的 Mod 也可以先生成好，启用后按 F10 即可用。  -->
+                            <Button
+                                Grid.Column="6"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Margin="2,0,0,0"
+                                Padding="5,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{x:Bind GenerateMenuCommand}"
+                                ToolTipService.ToolTip="生成这个 Mod 的游戏内菜单（F7）">
+                                <FontIcon
+                                    FontSize="12"
+                                    Foreground="#FF8FB8D8"
+                                    Glyph="&#xE8FD;" />
+                            </Button>
+
+                            <!--  打开这个 Mod 的按键菜单：必要时切到该 Mod（启用 + F10 重载），
+                                  再把菜单键（F7）转发给游戏。  -->
+                            <Button
+                                Grid.Column="7"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Margin="2,0,0,0"
+                                Padding="5,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{x:Bind OpenMenuCommand}"
+                                ToolTipService.ToolTip="打开这个 Mod 的按键菜单（会先切到这个 Mod）">
+                                <FontIcon
+                                    FontSize="12"
+                                    Foreground="#FFD8B87A"
+                                    Glyph="&#xE700;" />
+                            </Button>
+
                             <!--  删除：整件 Mod 文件夹移至 Windows 回收站。常驻显示，小档也放得下；
                                   点击只弹浮窗内的确认卡，不直接动盘。  -->
                             <Button
-                                Grid.Column="6"
+                                Grid.Column="8"
                                 MinWidth="0"
                                 MinHeight="0"
                                 Margin="2,0,0,0"
@@ -903,11 +970,15 @@
                         </StackPanel>
 
                         <!--  UHD 贴图修复：档位 + 配置侧修复。哈希侧复用上面的“补全贴图状态”，
-                              配置侧按 Rocket 的 XXMI 方式改 Engine.ini / GameUserSettings.ini（先备份）。  -->
+                              配置侧按 Rocket 的 XXMI 方式改 Engine.ini / GameUserSettings.ini（先备份）。
+
+                              现阶段只开放 HD 修复：整块隐藏，但**不删代码**——命令、绑定、VM
+                              全部保留，日后要放出来把 Visibility 去掉即可。  -->
                         <Border
                             Padding="8"
                             Background="#14FFFFFF"
-                            CornerRadius="6">
+                            CornerRadius="6"
+                            Visibility="Collapsed">
                             <StackPanel Spacing="6">
                                 <TextBlock
                                     FontSize="12"
