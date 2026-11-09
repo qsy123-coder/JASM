@@ -112,6 +112,27 @@ public class OilGlossPatcherTests : IDisposable
     }
 
     [Fact]
+    public void UndoSucceedsWhenBodyFilesAreLockedByTheGame()
+    {
+        // 游戏运行时 3DMigoto 会占用 Matcap.ini；删不掉本体不应让撤销失败。
+        var mod = CreateMod(TwoDrawCallIni);
+        var iniPath = Path.Combine(mod, "mod.ini");
+        var original = File.ReadAllBytes(iniPath);
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+        OilGlossPatcher.Apply(mod, body: body);
+
+        OilGlossUndoResult undo;
+        using (new FileStream(Path.Combine(mod, "Matcap.ini"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            undo = OilGlossPatcher.Undo(mod);
+        }
+
+        Assert.True(undo.Success, undo.Reason);
+        Assert.Equal(original, File.ReadAllBytes(iniPath));
+        Assert.Equal(OilGlossState.NotApplied, OilGlossPatcher.GetStatus(mod).State);
+    }
+
+    [Fact]
     public void UndoRestoresOriginalBytesAndRemovesJasmArtifacts()
     {
         var mod = CreateMod(TwoDrawCallIni);
