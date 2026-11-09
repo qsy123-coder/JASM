@@ -277,6 +277,22 @@
                             TextWrapping="WrapWholeWords"
                             Visibility="{x:Bind ViewModel.HasInGameMenuStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
+                    <!-- 油光：仅鸣潮显示。开启后 F7 菜单会多出总开关 / 身体 / 衣物三行 -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                Visibility="{x:Bind ViewModel.CanToggleOilGloss, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Button
+                            Command="{x:Bind ViewModel.EnableOilGlossCommand}"
+                            Content="开启油光" />
+                        <Button
+                            Command="{x:Bind ViewModel.DisableOilGlossCommand}"
+                            Content="撤销油光" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.OilGlossStatusText, Mode=OneWay}"
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
                     <!-- 按 ini 文件分组，点击文件夹名折叠 -->
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModModel.KeyBindingGroups, Mode=OneWay}">
                         <ItemsRepeater.Layout>
@@ -374,15 +390,28 @@
             </ScrollViewer>
         </Grid>
 
-        <!-- 无按键绑定时显示 -->
-        <StackPanel Grid.Row="4" Margin="0,8,0,0" Orientation="Horizontal" Spacing="6"
+        <!-- 无按键绑定时显示（油光仍可开启：菜单只看注入行也能生成） -->
+        <StackPanel Grid.Row="4" Margin="0,8,0,0" Spacing="10"
                     Visibility="{x:Bind ViewModel.ModModel.HasNoKeyBindings, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-            <FontIcon FontSize="14" Glyph="&#xEDA4;"
-                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                      VerticalAlignment="Center" />
-            <TextBlock Text="此模组无按键绑定" FontSize="12"
-                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                       VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <FontIcon FontSize="14" Glyph="&#xEDA4;"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          VerticalAlignment="Center" />
+                <TextBlock Text="此模组无按键绑定" FontSize="12"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        Visibility="{x:Bind ViewModel.CanToggleOilGloss, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Button Command="{x:Bind ViewModel.EnableOilGlossCommand}" Content="开启油光" />
+                <Button Command="{x:Bind ViewModel.DisableOilGlossCommand}" Content="撤销油光" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.OilGlossStatusText, Mode=OneWay}"
+                    TextWrapping="WrapWholeWords" />
+            </StackPanel>
         </StackPanel>
 
 
