@@ -1,5 +1,6 @@
 using CommunityToolkitWrapper;
 using GIMI_ModManager.Core.Contracts.Services;
+using GIMI_ModManager.Core.Entities.Mods.Helpers;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.WinUI.Contracts.Services;
@@ -41,6 +42,8 @@ internal sealed class OverlayWindowService : IDisposable
     private readonly SelectedGameService _selectedGameService;
     private readonly NotificationManager _notificationManager;
     private readonly ILocalSettingsService _localSettingsService;
+    private readonly OverlayRefreshCoordinator _refreshCoordinator;
+    private readonly IGameKeySender _gameKeySender;
     private readonly ILogger _logger;
 
     /// <summary>
@@ -82,6 +85,8 @@ internal sealed class OverlayWindowService : IDisposable
         _screenshotService = screenshotService;
         _notificationManager = notificationManager;
         _localSettingsService = localSettingsService;
+        _refreshCoordinator = refreshCoordinator;
+        _gameKeySender = gameKeySender;
         _logger = logger.ForContext<OverlayWindowService>();
 
         // ViewModel 不经过 DI：它是 internal 的、且 DI 的 ActivatorUtilities 只认公开构造函数。
@@ -108,6 +113,12 @@ internal sealed class OverlayWindowService : IDisposable
     /// 换回鸣潮时再注册一次 —— 窗口不重建，理由见 <see cref="_window"/> 的说明。
     /// </para>
     /// </summary>
+    /// <summary>
+    /// 最近一次初始化失败的原因。<see cref="ShowOverlayAsync"/> 返回 false 时用它告诉用户真实原因，
+    /// 而不是一律「尚未就绪」。
+    /// </summary>
+    public string? LastInitializationError { get; private set; }
+
     public async Task InitializeAsync()
     {
         // 窗口已经关掉了（进程正在退出）就不要再建了：这时做什么都是在一个空句柄上做，注定失败
@@ -117,7 +128,19 @@ internal sealed class OverlayWindowService : IDisposable
         // 整段都搬回 UI 线程：读游戏之后的每一步都可能碰 XAML 与窗口（建窗口、注册热键、切显隐），
         // 而在线程池上 new Window() 不是普通异常，是 stowed exception（0xc000027b）——
         // 直接把进程打掉、日志里连一行都不留（见 InitializeOnUiThreadAsync 的说明）。
-        await App.MainWindow.DispatcherQueue.EnqueueAsync(InitializeOnUiThreadAsync);
+        try
+        {
+            await App.MainWindow.DispatcherQueue.EnqueueAsync(InitializeOnUiThreadAsync);
+        }
+        catch (Exception e)
+        {
+            // 初始化失败不能把「已为这个游戏初始化过」的记账留在原地：留着的话之后每次
+            // InitializeAsync 都会直接返回，窗口永远建不出来 —— 用户看到的就是
+            // 「有时候打得开，有时候一直提示浮窗尚未就绪」，而且只能重启 JASM。
+            LastInitializationError = e.Message;
+            _initializedForGame = null;
+            _logger.Error(e, "[浮窗] 初始化失败，已回滚记账以便下次重试");
+        }
     }
 
     /// <summary>
@@ -165,9 +188,9 @@ internal sealed class OverlayWindowService : IDisposable
             window = new OverlayWindow(_viewModel, _screenshotService, _logger);
             _window = window;
 
-            // 窗口关闭（正常退出）时把热键注销掉：RegisterHotKey 占的是系统级资源，
-            // 不注销会在进程活着的期间一直扣着这个组合键不放给别的程序。
-            window.Closed += (_, _) => Dispose();
+            // 运行中窗口被关掉（异常、系统事件）时不要永久停用服务：释放热键、清掉窗口引用与
+            // 初始化记账，下次唤出重新建窗口。真正退出由 App 调 Dispose 负责，不在这里做。
+            window.Closed += (_, _) => OnOverlayWindowClosed(window);
 
             // 窗口在构造时就已经被 WinUI 建出来了（可能已可见），这里立刻收起来 ——
             // 浮窗的常态是隐藏，只在热键唤出时出现。
@@ -235,6 +258,24 @@ internal sealed class OverlayWindowService : IDisposable
         if (selectedGame != SupportedGame)
             return false;
 
+        if (await TryShowAsync())
+            return true;
+
+        // 自愈：上一次初始化可能先写了「已为这个游戏初始化过」的记账、中途失败（或窗口被系统
+        // 关掉），于是 InitializeAsync 直接返回、窗口永远建不出来。清掉记账强制重试一次。
+        _initializedForGame = null;
+        await InitializeAsync();
+
+        if (await TryShowAsync())
+            return true;
+
+        _logger.Warning("[浮窗] 打开失败：窗口未创建。最近一次初始化错误：{Error}",
+            LastInitializationError ?? "无");
+        return false;
+    }
+
+    private async Task<bool> TryShowAsync()
+    {
         await InitializeAsync();
 
         return await App.MainWindow.DispatcherQueue.EnqueueAsync(() =>
@@ -324,9 +365,13 @@ internal sealed class OverlayWindowService : IDisposable
         hotkeys.Pressed += ToggleOverlay;
         hotkeys.NavigationPressed += OnNavigationPressed;
         hotkeys.ScreenshotPressed += OnScreenshotPressed;
+        hotkeys.MenuKeyPressed += OnMenuKeyPressed;
 
         if (registerNavigation)
+        {
             hotkeys.RegisterNavigationHotkeys();
+            hotkeys.RegisterMenuHotkey(ResolveInGameMenuVirtualKey());
+        }
 
         var window = _window;
         if (window is null)
@@ -402,6 +447,7 @@ internal sealed class OverlayWindowService : IDisposable
         _hotkeys.Pressed -= ToggleOverlay;
         _hotkeys.NavigationPressed -= OnNavigationPressed;
         _hotkeys.ScreenshotPressed -= OnScreenshotPressed;
+        _hotkeys.MenuKeyPressed -= OnMenuKeyPressed;
         _hotkeys.Dispose();
         _hotkeys = null;
     }
@@ -427,6 +473,67 @@ internal sealed class OverlayWindowService : IDisposable
     /// 注册完再把这一族键写进提示行 —— 只有这样提示里写的才是**真注册上**的那几个，
     /// 某个键被别的程序占了就不会被白纸黑字地承诺出去。
     /// </summary>
+    /// <summary>游戏内菜单的呼出键（读设置，默认 F7）。</summary>
+    private ushort ResolveInGameMenuVirtualKey()
+    {
+        try
+        {
+            var settings = _localSettingsService
+                .ReadSetting<InGameMenuSettings>(InGameMenuSettings.Key, SettingScope.App);
+            return VirtualKeyMap.Resolve(settings?.OpenKeyTokens).VirtualKeyCode ?? 0x76; // VK_F7
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗] 读取游戏内菜单键失败，回退 F7");
+            return 0x76;
+        }
+    }
+
+    /// <summary>
+    /// 把「打开游戏内按键菜单」的键转发给游戏（浮窗显示时会占着前台，游戏收不到）。
+    ///
+    /// 走与「刷新」同一条已验证的送键路：切前台 → 送键 → 交还浮窗。
+    /// **发送前必须先注销我们自己的菜单热键**：<c>RegisterHotKey</c> 会把注入的同键再次
+    /// 截获成给自己的 <c>WM_HOTKEY</c>，游戏就收不到了。
+    /// </summary>
+    public async Task<GameKeySendResult> SendInGameMenuKeyAsync()
+    {
+        var virtualKey = ResolveInGameMenuVirtualKey();
+
+        _hotkeys?.UnregisterMenuHotkey();
+        try
+        {
+            // 浮窗还开着就把前台交还给它；否则焦点留在游戏上（与按键徽章的行为一致）
+            var handback = _window is { IsOverlayVisible: true } && _refreshCoordinator.OverlayWindowHandle != 0
+                ? _refreshCoordinator.OverlayWindowHandle
+                : 0;
+
+            var result = await _gameKeySender.SendKeyAsync(virtualKey, Array.Empty<ushort>(), handback);
+            _logger.Information("[浮窗] 转发菜单键 vk=0x{Vk:X2} 结果={Status}", virtualKey, result.Status);
+            return result;
+        }
+        finally
+        {
+            if (!_disposed && _window is { IsOverlayVisible: true })
+                _hotkeys?.RegisterMenuHotkey(virtualKey);
+        }
+    }
+
+    private void OnMenuKeyPressed() => _ = SendMenuKeyAndAnnounceAsync();
+
+    /// <summary>热键转发菜单键之后，把「怎么操作菜单」写进浮窗状态区。</summary>
+    private async Task SendMenuKeyAndAnnounceAsync()
+    {
+        var result = await SendInGameMenuKeyAsync();
+
+        _viewModel.InGameMenuStatusMessage = result.Status == GameKeySendStatus.Sent
+            ? $"已发送游戏内菜单键。{OverlayViewModel.MenuUsageHint}"
+            : $"菜单键发送失败：{result.Detail ?? result.Status.ToString()}";
+
+        if (result.Status == GameKeySendStatus.Sent)
+            _logger.Information("[浮窗] 菜单用法：{Hint}", OverlayViewModel.MenuUsageHint);
+    }
+
     private void ShowOverlay()
     {
         var window = _window;
@@ -439,6 +546,8 @@ internal sealed class OverlayWindowService : IDisposable
         _viewModel.RefreshCharacters();
 
         _hotkeys?.RegisterNavigationHotkeys();
+        // 浮窗显示期间接管游戏内菜单键：浮窗占着前台，游戏自己收不到
+        _hotkeys?.RegisterMenuHotkey(ResolveInGameMenuVirtualKey());
         window.SetHotkeyHint(_hotkeys?.Hint ?? string.Empty);
         window.ShowOverlay();
     }
@@ -451,6 +560,7 @@ internal sealed class OverlayWindowService : IDisposable
     {
         _window?.HideOverlay();
         _hotkeys?.UnregisterNavigationHotkeys();
+        _hotkeys?.UnregisterMenuHotkey();
     }
 
     /// <summary>
@@ -510,6 +620,22 @@ internal sealed class OverlayWindowService : IDisposable
                 _logger.Debug("[浮窗] 收到不归导航处理的动作 {Action}", action);
                 break;
         }
+    }
+
+    /// <summary>
+    /// 浮窗窗口被关闭但进程还活着（异常、系统事件、XAML 重载等）：释放热键、清掉窗口引用与
+    /// 初始化记账，让下一次唤出能重新建窗口。**不要**在这里把 <see cref="_disposed"/> 置 true，
+    /// 否则服务就永久废了，用户只能重启 JASM。
+    /// </summary>
+    private void OnOverlayWindowClosed(OverlayWindow window)
+    {
+        ReleaseHotkeys();
+
+        if (ReferenceEquals(_window, window))
+            _window = null;
+
+        _initializedForGame = null;
+        _logger.Warning("[浮窗] 窗口已关闭，下次唤出将重新创建");
     }
 
     public void Dispose()
