@@ -265,12 +265,14 @@ public class OilGlossScannerTests : IDisposable
         Directory.CreateDirectory(meshes);
 
         // WWMI 模型 Z 轴向上：0 = 脚底，100 = 头顶。
-        // 0-2 脚底、3-5 躯干（身体）；6-11 头部；12-17 头发（从腰部到头顶）。
+        // 0-2 脚底、3-5 躯干（身体）；6-11 头部；12-17 头发（从腰部到头顶）；
+        // 18-23 上半身外套（与身体分开的另一块）。
         var heights = new[]
         {
             0f, 0f, 0f, 80f, 80f, 80f,
             95f, 96f, 97f, 98f, 99f, 100f,
             55f, 60f, 70f, 80f, 90f, 100f,
+            10f, 30f, 50f, 70f, 85f, 90f,
         };
 
         using (var stream = File.Create(Path.Combine(meshes, "Position.buf")))
@@ -284,12 +286,13 @@ public class OilGlossScannerTests : IDisposable
             }
         }
 
-        // 18 个 32 位索引：三块网格各 6 个。
+        // 24 个 32 位索引：四块网格各 6 个。
         var indexValues = new uint[]
         {
             0, 1, 2, 3, 4, 5,
             6, 7, 8, 9, 10, 11,
             12, 13, 14, 15, 16, 17,
+            18, 19, 20, 21, 22, 23,
         };
         using (var stream = File.Create(Path.Combine(meshes, "Index.buf")))
         using (var writer = new BinaryWriter(stream))
@@ -309,6 +312,9 @@ public class OilGlossScannerTests : IDisposable
 
             [TextureOverrideComponent2]
             drawindexed = 6, 12, 0
+
+            [TextureOverrideComponent3]
+            drawindexed = 6, 18, 0
             """, new UTF8Encoding(false));
 
         var result = OilGlossScanner.Scan(mod);
@@ -316,6 +322,9 @@ public class OilGlossScannerTests : IDisposable
         // 身体：跨下半身到躯干，按高度选它而不是按索引数猜。
         Assert.Equal(0, result.Body!.StartIndex);
         Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.StartIndex == 0).Group);
+
+        // 上半身外套虽然和身体不是同一块，也要跟着身体一起亮。
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.StartIndex == 18).Group);
 
         // 头部整块都在 78% 以上 → 不包油光。
         var head = result.Drawcalls.Single(d => d.StartIndex == 6);
