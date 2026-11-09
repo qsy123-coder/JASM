@@ -365,6 +365,25 @@ public class OilGlossScannerTests : IDisposable
         Assert.Contains("发型", result.Reason);
     }
 
+    [Fact]
+    public void HairFolderGuardCanBeBypassedForManualGrouping()
+    {
+        var mod = Path.Combine(_root, "尤诺-C酱发型 by 布鲁加尔");
+        Directory.CreateDirectory(mod);
+        File.WriteAllText(Path.Combine(mod, "mod.ini"), """
+            namespace = TestMod
+
+            [TextureOverrideComponent0]
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 500, 900, 0
+            """, new UTF8Encoding(false));
+
+        Assert.Null(OilGlossScanner.Scan(mod).Body);
+        Assert.NotNull(OilGlossScanner.Scan(mod, ignoreHairFolderGuard: true).Body);
+    }
+
     public void Dispose()
     {
         try
