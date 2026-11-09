@@ -471,6 +471,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
                             <!--  键盘选中行的高亮：铺在最底层（先声明的在下层），横跨三列、不参与布局。
@@ -479,7 +480,7 @@
                                   为两态去写转换器或 VisualState 都不如一层可显隐的底直白。  -->
                             <Border
                                 Grid.Column="0"
-                                Grid.ColumnSpan="9"
+                                Grid.ColumnSpan="10"
                                 Margin="-4,-2"
                                 Background="#33FFFFFF"
                                 BorderBrush="#FFE8A33D"
@@ -605,10 +606,26 @@
                                     Glyph="&#xE700;" />
                             </Button>
 
+                            <!--  油光：只鸣潮显示。点一下 = 给这个 Mod 添加 / 撤销油光；
+                                  已开启时按钮文字变成「✓油」。  -->
+                            <Button
+                                Grid.Column="8"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Margin="2,0,0,0"
+                                Padding="5,2"
+                                FontSize="10"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{x:Bind ToggleOilGlossCommand}"
+                                Content="{x:Bind OilGlossButtonLabel, Mode=OneWay}"
+                                ToolTipService.ToolTip="{x:Bind OilGlossToolTip, Mode=OneWay}"
+                                Visibility="{x:Bind IsOilGlossSupported, Mode=OneWay}" />
+
                             <!--  删除：整件 Mod 文件夹移至 Windows 回收站。常驻显示，小档也放得下；
                                   点击只弹浮窗内的确认卡，不直接动盘。  -->
                             <Button
-                                Grid.Column="8"
+                                Grid.Column="9"
                                 MinWidth="0"
                                 MinHeight="0"
                                 Margin="2,0,0,0"
