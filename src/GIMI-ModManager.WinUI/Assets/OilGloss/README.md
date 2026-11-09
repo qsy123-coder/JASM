@@ -6,8 +6,18 @@
 - `Oil/*.dds`
 
 **来源**：GameBanana **mods/733773**（“油腻高光特效-任意角色（＊-+）”），作者 **neerajksah**。
-JASM 只做原样分发，不修改素材。若原作者不希望被再分发，请移除本目录，并在
+若原作者不希望被再分发，请移除本目录，并在
 `GIMI-ModManager.WinUI.csproj` 中删除对应的 `EmbeddedResource` 条目。
+
+## JASM 对本体做的修改（从 BodyVersion 2 起）
+
+- 补上 `[ResourceEmpty_Normal]` 定义（原包引用了却没有定义，3DMigoto 会报
+  `Unrecognised entry` 并让整段 `CommandListOilSkin` 失效）。
+- **删除 `CommandListOilSkin` 里的 `ps-t0 = ResourceEmpty_Normal`**。`ps-t0` 在不同
+  shader 上可能是法线/漫反射/其它语义，且 `CommandListClear` 无法恢复原始绑定，
+  会造成头发、衣物整块偏色或贴图被平色覆盖。油光改为只做高光叠加。
+- `BodyVersion` 记录在 `JASM_Oil/manifest.json`；旧版本体（哈希未变）在打开详情页
+  或浮窗刷新时自动升级。
 
 ## 变量与命令（开发者参考）
 
