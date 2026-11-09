@@ -150,6 +150,36 @@ public class UserPreferencesService(ILogger logger, ISkinManagerService skinMana
     }
 
     /// <summary>
+    /// 读取 <c>d3dx_user.ini</c> 里的一个全局变量值；文件/变量不存在时返回 null。
+    /// 油光用它判断 <c>$\katfxmatcap\oilSkin</c> 是否被原版热键在之前的会话里设成了 0。
+    /// </summary>
+    public async Task<string?> GetGlobalVariableAsync(string qualifiedName,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_threeMigotoFolder.Exists)
+            return null;
+
+        var d3dxUserIni = new FileInfo(Path.Combine(_threeMigotoFolder.FullName, D3DX_USER_INI));
+        if (!d3dxUserIni.Exists)
+            return null;
+
+        var key = qualifiedName.Trim();
+        var lines = await File.ReadAllLinesAsync(d3dxUserIni.FullName, cancellationToken).ConfigureAwait(false);
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimStart();
+            if (!trimmed.StartsWith(key, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var equals = trimmed.IndexOf('=');
+            return equals < 0 ? null : trimmed[(equals + 1)..].Trim();
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Overrides the mod preferences in the d3dx_user.ini file with the mod settings preferences
     /// Returns  True if success, returns false if 3MigotoFolder or d3dxUserIni is not found or d3dxUserIni is invalid
     /// </summary>
