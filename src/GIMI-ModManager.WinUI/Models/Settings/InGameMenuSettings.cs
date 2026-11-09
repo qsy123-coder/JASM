@@ -17,6 +17,13 @@ public class InGameMenuSettings
     /// <summary>总开关。关闭后安装/启动都不会再生成菜单，已有菜单不受影响。</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// 安装后立刻给这个 Mod 生成菜单（即使它刚装进来是 DISABLED_ 状态）。
+    /// 菜单与 Mod 同目录，启用只是去掉前缀、整目录改名，所以启用后马上就是现成的。
+    /// 关闭时退回旧行为：只给「当前启用的那一件」生成。
+    /// </summary>
+    public bool AutoGenerateOnInstall { get; set; } = true;
+
     /// <summary>3DMigoto <c>[Key*]</c> 里的写法，  <c>F7</c>、<c>VK_F8</c>。</summary>
     public string OpenKeyTokens { get; set; } = "F7";
 
