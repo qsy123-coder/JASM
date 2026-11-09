@@ -173,7 +173,11 @@ public static class OilGlossScanner
     }
 
     /// <summary>
-    /// 按大小自动分组：优先在「默认形态可见」的 drawcall 里选，最大 = 身体、次大 = 衣物。
+    /// 按大小 + 材质槽自动分组：
+    /// <list type="bullet">
+    ///   <item>身体组 = 与最大块**同材质槽**的全部可见网格（只给最大一块上油会变成「只有大腿亮」）；</item>
+    ///   <item>衣物组 = 其余全部可见网格（袜子、裙子、上衣、鞋、配饰都算衣物组）。</item>
+    /// </list>
     /// 可见性无法求值时按可见处理；全部都被判定为隐藏时才退回全体候选。
     /// </summary>
     public static OilGlossScanResult Group(IReadOnlyList<OilGlossDrawcall> drawcalls)
@@ -196,23 +200,36 @@ public static class OilGlossScanner
         var visible = candidates.Where(d => d.VisibleByDefault != false).ToList();
         var pool = visible.Count > 0 ? visible : candidates;
 
-        var body = pool.OrderByDescending(d => d.IndexCount).First();
-        var cloth = pool
-            .Where(d => d.IniRelativePath != body.IniRelativePath
-                        || d.LineIndex != body.LineIndex)
-            .OrderByDescending(d => d.IndexCount)
-            .FirstOrDefault();
+        var largest = pool.OrderByDescending(d => d.IndexCount).First();
+
+        // 身体：同一材质槽的整组网格。材质槽读不出来时退化回「只有最大块」。
+        var bodySet = !string.IsNullOrEmpty(largest.TextureSlot)
+            ? pool.Where(d => string.Equals(d.TextureSlot, largest.TextureSlot, StringComparison.OrdinalIgnoreCase)).ToList()
+            : new List<OilGlossDrawcall> { largest };
+
+        if (bodySet.Count == 0)
+            bodySet = new List<OilGlossDrawcall> { largest };
+
+        // 衣物：其余全部可见网格；只有一块时衣物组为空
+        var clothSet = pool.Where(d => !bodySet.Any(b => IsSame(b, d))).ToList();
 
         var annotated = drawcalls
-            .Select(d => IsSame(d, body)
+            .Select(d => bodySet.Any(b => IsSame(b, d))
                 ? d with { Group = OilGlossGroup.Body }
-                : IsSame(d, cloth)
+                : clothSet.Any(c => IsSame(c, d))
                     ? d with { Group = OilGlossGroup.Cloth }
                     : d)
             .ToList();
 
-        var bodyResult = annotated.First(d => d.Group == OilGlossGroup.Body);
-        var clothResult = annotated.FirstOrDefault(d => d.Group == OilGlossGroup.Cloth);
+        var bodyResult = annotated
+            .Where(d => d.Group == OilGlossGroup.Body)
+            .OrderByDescending(d => d.IndexCount)
+            .First();
+
+        var clothResult = annotated
+            .Where(d => d.Group == OilGlossGroup.Cloth)
+            .OrderByDescending(d => d.IndexCount)
+            .FirstOrDefault();
 
         return new OilGlossScanResult
         {
