@@ -35,10 +35,11 @@ public class OilGlossPatcherTests : IDisposable
 
         Assert.True(skin >= 0 && draw > skin && clear > draw, text);
 
-        // 每条 drawcall 前后各一对（总开关 + 分组），两条 drawcall 共 8 行 if
-        Assert.Equal(8, CountOccurrences(text, "if $\\"));
-        Assert.Contains("oil_body", text);
-        Assert.Contains("oil_cloth", text);
+        // 每条 drawcall 前后各一个总开关 if，两条 drawcall 共 4 行。
+        Assert.Equal(4, CountOccurrences(text, "if $\\"));
+        Assert.Contains(OilGlossProtocol.MasterVariable, text);
+        Assert.DoesNotContain(OilGlossProtocol.BodyVariable, text);
+        Assert.DoesNotContain(OilGlossProtocol.ClothVariable, text);
     }
 
     [Fact]
@@ -51,7 +52,7 @@ public class OilGlossPatcherTests : IDisposable
         var second = OilGlossPatcher.Apply(mod);
 
         Assert.Equal(OilGlossApplyStatus.AlreadyApplied, second.Status);
-        Assert.Equal(8, CountOccurrences(File.ReadAllText(Path.Combine(mod, "mod.ini")), "if $\\"));
+        Assert.Equal(4, CountOccurrences(File.ReadAllText(Path.Combine(mod, "mod.ini")), "if $\\"));
     }
 
     [Fact]
@@ -64,37 +65,38 @@ public class OilGlossPatcherTests : IDisposable
 
         var applied = result.Manifest!.AppliedDrawcalls;
         Assert.Equal(2, applied.Count);
-        Assert.Contains(applied, d => d.Group == OilGlossGroup.Body && d.IndexCount == 900);
-        Assert.Contains(applied, d => d.Group == OilGlossGroup.Cloth && d.IndexCount == 500);
-        Assert.All(applied, d => Assert.Equal("mod.ini", d.IniRelativePath));
+        Assert.All(applied, d => Assert.Equal(OilGlossGroup.Body, d.Group));
+        Assert.Contains(applied, d => d.IndexCount == 900);
+        Assert.Contains(applied, d => d.IndexCount == 500);
+        Assert.False(result.Manifest.HasClothGroup);
 
         // 重新读盘也要能拿到（「逐块识别」取消时靠它恢复分组）
         Assert.Equal(2, OilGlossPatcher.GetStatus(mod).Manifest!.AppliedDrawcalls.Count);
     }
 
     [Fact]
-    public void ApplySupportsClothOnlySelection()
+    public void ApplySupportsPartialSelection()
     {
-        // 用户把身体块改成「不包」、只保留衣物分组时也要能打补丁。
+        // 用户只勾选部分网格（其余「不包」）时也要能打补丁。
         var mod = CreateMod(TwoDrawCallIni);
         var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
-        var cloth = new OilGlossDrawcall
+        var selected = new OilGlossDrawcall
         {
             IniRelativePath = "mod.ini",
             SectionName = "TextureOverrideComponent0",
             LineIndex = 0,
             IndexCount = 900,
             StartIndex = 0,
-            Group = OilGlossGroup.Cloth,
+            Group = OilGlossGroup.Body,
         };
-        var scan = new OilGlossScanResult { Drawcalls = [cloth], Cloth = cloth };
+        var scan = new OilGlossScanResult { Drawcalls = [selected], Body = selected };
 
         var result = OilGlossPatcher.Apply(mod, scan, body);
 
         Assert.Equal(OilGlossApplyStatus.Applied, result.Status);
-        Assert.False(result.Manifest!.HasBodyGroup);
-        Assert.True(result.Manifest.HasClothGroup);
-        Assert.Contains(OilGlossProtocol.ClothVariable, File.ReadAllText(Path.Combine(mod, "mod.ini")));
+        Assert.True(result.Manifest!.HasBodyGroup);
+        Assert.False(result.Manifest.HasClothGroup);
+        Assert.Contains(OilGlossProtocol.MasterVariable, File.ReadAllText(Path.Combine(mod, "mod.ini")));
     }
 
     [Fact]
