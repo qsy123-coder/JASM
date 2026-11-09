@@ -362,7 +362,8 @@ public partial class ModGridVM(
         if (modVmToToggle is null)
             return;
 
-        using var _ = BusySetter.StartSoftBusy();
+        // 命名为 _busy 而不是 _：方法末尾要用 `_ =` 丢弃后台菜单刷新任务
+        using var _busy = BusySetter.StartSoftBusy();
 
         var modEntryToToggle = _modsBackend.FirstOrDefault(x => x.Id == modVmToToggle.Id);
         if (modEntryToToggle is null)
@@ -405,7 +406,26 @@ public partial class ModGridVM(
         }
 
         RefreshMultipleModsActiveWarning();
+
+        // 启用/禁用是改名操作，CharacterModList 期间关闭了 watcher，不会触发 ModsChanged；
+        // 在这里补/更新菜单，避免「启用后不重启 JASM 直接开游戏 → F7 没有菜单」。
+        _ = RefreshInGameMenuAsync(_modList);
+
         Messenger.Send(new ModChangedMessage(this, modEntryToToggle, null));
+    }
+
+    /// <summary>在后台补/更新当前启用 Mod 的游戏内菜单；失败只记日志，不影响勾选本身。</summary>
+    private static async Task RefreshInGameMenuAsync(ICharacterModList modList)
+    {
+        try
+        {
+            await App.GetService<InGameMenuService>()
+                .RefreshAfterModToggleAsync(modList).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Log.Warning(e, "[ModGrid] 启用 Mod 后生成游戏内菜单失败");
+        }
     }
 
     private async Task UpdateModSettingsAsync(UpdateModSettingsArgument? arg)
