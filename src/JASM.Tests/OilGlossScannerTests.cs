@@ -323,8 +323,9 @@ public class OilGlossScannerTests : IDisposable
         Assert.Equal(0, result.Body!.StartIndex);
         Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.StartIndex == 0).Group);
 
-        // 上半身外套虽然和身体不是同一块，也要跟着身体一起亮。
-        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.StartIndex == 18).Group);
+        // 上半身外套不自动并进身体组：包到不支持的材质上会贴图错误，
+        // 需要时用「逐块识别身体」手动指定。
+        Assert.Equal(OilGlossGroup.Cloth, result.Drawcalls.Single(d => d.StartIndex == 18).Group);
 
         // 头部整块都在 78% 以上 → 不包油光。
         var head = result.Drawcalls.Single(d => d.StartIndex == 6);
