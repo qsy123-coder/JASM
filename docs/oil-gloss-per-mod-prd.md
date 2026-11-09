@@ -64,11 +64,19 @@ JASM 已经有：
   `PickGateNamespace` 修正。
 - 单测：扫描 / 补丁 / 撤销 / 编码 / 菜单注入，共 18 个新测试；全量 1406 个测试通过。
 
-待实机（Phase 0）：
+Phase 0（实机，2026-11-09）已通过：
 
-- 跨命名空间 `if $\JasmOilXXXX\oil_body` 在鸣潮里是否生效；
-- 三行菜单点击后的实际画面变化；
-- `norm` / `ult` 多套 ini 共用一组开关。
+- 跨命名空间 `if $\JasmOilXXXX\jasm_oil_on` **生效**：日志确认条件被编译执行；物理按 Insert 时变量 1↔0 切换，游戏世界里油光亮/灭肉眼可见。
+- 发现并修掉本体缺陷：`CommandListOilSkin` 引用了 `ResourceEmpty_Normal` 却没有定义，3DMigoto 报
+  `Unrecognised entry: ps-t0 = resourceempty_normal`，导致后续 matcap 参数设置失效、油光不显示。
+  已在随包资源里补上 `[ResourceEmpty_Normal] filename = Oil/Empty_Normal.dds`。
+- 油光在**游戏世界**生效；**角色图鉴 / 角色选择界面**不走 matcap 的 shader 路径，看不到油光（不影响游戏内效果）。
+- 注入的 `SendInput` / `PostMessage` 键 3DMigoto 不认，实机验证必须物理按键；F10 会重载 mod ini（WWMI `reload_config`）。
+
+待验证：
+
+- 三行菜单在真机上用物理 Alt+左键点击切换（行已确认出现在 JASM 菜单里）；
+- `norm` / `ult` 多套 ini 共用一组开关（本机测试 Mod 只有单套 ini）。
 
 ---
 
@@ -473,12 +481,12 @@ endif
 | 关闭总开关 | 全部失效 |
 | 撤销后冷启动游戏 | 完全恢复原样 |
 
-**Phase 0 No-Go 条件**：
+**Phase 0 结果**：
 
-1. 跨命名空间 `if $\ns\var` 不被支持；
-2. 菜单行无法在运行时重复读写同一变量。
+1. 跨命名空间 `if $\ns\var`：**通过**（日志 + 世界画面确认）；
+2. 菜单行读写同一变量：待真机点击确认（变量机制与门控相同，无额外风险）。
 
-任一命中 → 回退到「变量写进主 ini 命名空间 + 只支持单套 ini」。
+补充结论：角色图鉴 / 角色选择界面不显示 matcap 油光，属于该场景的 shader 路径差异，验收以游戏世界为准。
 
 ---
 
@@ -511,7 +519,8 @@ endif
 | 风险 | 概率 | 影响 | 对策 |
 |---|---|---|---|
 | **本体版权 / 分发授权**：KatFXMatcap 来自 GameBanana `mods/733773`（作者 neerajksah），随 JASM 内置分发需注明来源并确认授权 | 中 | 高 | 资源目录与关于页注明作者/来源；发布前确认授权；若不允许，退回「首次使用下载」 |
-| 跨命名空间 `if` 不被支持 | 低 | 高 | Phase 0 验证；回退单命名空间方案 |
+| 跨命名空间 `if` 不被支持 | — | — | **已验证通过（2026-11-09）**：条件编译执行、变量切换可见 |
+| 角色图鉴 / 角色选择界面不显示油光 | 高 | 低 | 已知场景差异（该场景不走 matcap shader）；验收以游戏世界为准 |
 | 多个 Mod 同时启用油光时共享 `KatFXMatcap` 命名空间，出现重复 `[CommandList]` / `[Resource]` 段 | 中 | 中 | 素材与段内容完全一致，预期后者覆盖前者、行为不变；Phase 0 用两个角色同时开启验证。若冲突，改为每个 Mod 复制一份并重命名 namespace |
 | 自动分组把衣物判错 | 中 | 中 | 详情页显示分组结果（各组 drawcall 数与索引范围）；提供「重新开启」重算 |
 | 修改作者 ini 导致 Mod 异常 | 中 | 高 | 备份 + 哈希校验 + 一键撤销；门控只加不删 |
