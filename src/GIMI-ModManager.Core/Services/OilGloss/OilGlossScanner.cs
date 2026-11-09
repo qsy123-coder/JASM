@@ -44,6 +44,10 @@ public static class OilGlossScanner
 
         var drawcalls = new List<OilGlossDrawcall>();
 
+        // 所有 ini 都读一遍：drawcall 只在部分文件里，但 $swapvar_toggle /
+        // $draw_component 的默认值与映射关系可能写在别的文件。
+        var texts = new List<string>();
+
         foreach (var file in Directory
                      .EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories)
                      .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
@@ -54,7 +58,9 @@ public static class OilGlossScanner
 
             try
             {
-                drawcalls.AddRange(ScanFile(file, relativePath));
+                var text = IniFileText.ReadAllText(file);
+                texts.Add(text);
+                drawcalls.AddRange(ScanText(text, relativePath));
             }
             catch (IOException)
             {
@@ -65,13 +71,24 @@ public static class OilGlossScanner
             }
         }
 
-        return Group(drawcalls);
+        if (drawcalls.Count == 0)
+            return new OilGlossScanResult { Reason = "没有找到可包油光的 drawindexed" };
+
+        var defaults = OilGlossConditionEvaluator.Evaluate(texts);
+        var annotated = drawcalls
+            .Select(d => d with { VisibleByDefault = OilGlossConditionEvaluator.IsTrue(d.Condition, defaults) })
+            .ToList();
+
+        return Group(annotated);
     }
 
     /// <summary>扫描单个 ini，返回其中的 drawcall（行号基于该文件）。</summary>
     public static IReadOnlyList<OilGlossDrawcall> ScanFile(string filePath, string relativePath)
+        => ScanText(IniFileText.ReadAllText(filePath), relativePath);
+
+    /// <summary>扫描一段 ini 文本，返回其中的 drawcall（行号基于这段文本）。</summary>
+    public static IReadOnlyList<OilGlossDrawcall> ScanText(string text, string relativePath)
     {
-        var text = IniFileText.ReadAllText(filePath);
         if (!text.Contains("[TextureOverride", StringComparison.OrdinalIgnoreCase)
             || !text.Contains("drawindexed", StringComparison.OrdinalIgnoreCase))
         {
@@ -155,7 +172,10 @@ public static class OilGlossScanner
         return result;
     }
 
-    /// <summary>按大小自动分组：最大 = 身体，排除头部后次大 = 衣物。</summary>
+    /// <summary>
+    /// 按大小自动分组：优先在「默认形态可见」的 drawcall 里选，最大 = 身体、次大 = 衣物。
+    /// 可见性无法求值时按可见处理；全部都被判定为隐藏时才退回全体候选。
+    /// </summary>
     public static OilGlossScanResult Group(IReadOnlyList<OilGlossDrawcall> drawcalls)
     {
         if (drawcalls.Count == 0)
@@ -173,8 +193,11 @@ public static class OilGlossScanner
             };
         }
 
-        var body = candidates.OrderByDescending(d => d.IndexCount).First();
-        var cloth = candidates
+        var visible = candidates.Where(d => d.VisibleByDefault != false).ToList();
+        var pool = visible.Count > 0 ? visible : candidates;
+
+        var body = pool.OrderByDescending(d => d.IndexCount).First();
+        var cloth = pool
             .Where(d => d.IniRelativePath != body.IniRelativePath
                         || d.LineIndex != body.LineIndex)
             .OrderByDescending(d => d.IndexCount)
