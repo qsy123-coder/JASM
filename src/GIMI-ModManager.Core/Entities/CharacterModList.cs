@@ -159,11 +159,16 @@ public sealed class CharacterModList : ICharacterModList
         _logger?.Information("Mod {ModName} in {characterFolder} folder was deleted", e.Name, Character.InternalName);
         Task.Run(() =>
         {
-            if (_mods.Any(mod => mod.Mod.FullPath == e.FullPath))
-            {
-                var mod = _mods.First(mod => mod.Mod.FullPath == e.FullPath);
+            // Windows 路径必须大小写不敏感地比：watcher 给的回调路径与 DirectoryInfo 里记的
+            // 路径在盘符 / 父目录大小写上可能不同，字符串 `==` 会漏（现象：删了文件夹，列表里还在）。
+            // 再给一层文件夹名兜底：同一个角色列表里的文件夹名不会重复。
+            var deletedMod = _mods.FirstOrDefault(mod => PathsEqual(mod.Mod.FullPath, e.FullPath))
+                             ?? _mods.FirstOrDefault(mod => string.Equals(mod.Mod.Name, e.Name,
+                                 StringComparison.OrdinalIgnoreCase));
 
-                UnTrackMod(mod.Mod);
+            if (deletedMod is not null)
+            {
+                UnTrackMod(deletedMod.Mod);
             }
             else
             {
@@ -207,7 +212,11 @@ public sealed class CharacterModList : ICharacterModList
 
         Task.Run(async () =>
         {
-            if (_mods.FirstOrDefault(mod => mod.Mod.FullPath == e.OldFullPath) is { } oldModEntry)
+            var oldModEntry = _mods.FirstOrDefault(mod => PathsEqual(mod.Mod.FullPath, e.OldFullPath))
+                              ?? _mods.FirstOrDefault(mod => string.Equals(mod.Mod.Name, e.OldName,
+                                  StringComparison.OrdinalIgnoreCase));
+
+            if (oldModEntry is not null)
             {
                 ISkinMod newSkinMod = null!;
                 try
@@ -381,6 +390,28 @@ public sealed class CharacterModList : ICharacterModList
     private bool ModAlreadyAdded(ISkinMod mod)
     {
         return _mods.Any(m => m.Mod.Equals(mod));
+    }
+
+    /// <summary>
+    /// Windows 路径比较：大小写不敏感，并先做 <c>GetFullPath</c> 规范化（去掉尾部反斜杠）。
+    /// 不能直接用 <c>==</c>：<see cref="FileSystemWatcher"/> 回调里的路径与 <see cref="DirectoryInfo"/>
+    /// 记录的路径在盘符 / 父目录大小写上可能不同，字符串相等会漏掉 —— 现象就是
+    /// 「在资源管理器里删了 Mod 文件夹，JASM 列表与浮窗里还在」。
+    /// </summary>
+    private static bool PathsEqual(string left, string right)
+    {
+        try
+        {
+            var a = Path.GetFullPath(left)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var b = Path.GetFullPath(right)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public void Dispose()
