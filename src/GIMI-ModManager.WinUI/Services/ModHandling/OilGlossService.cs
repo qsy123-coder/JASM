@@ -33,8 +33,7 @@ public sealed class OilGlossService(
 
     public OilGlossStatus GetStatus(ISkinMod mod) => OilGlossPatcher.GetStatus(mod.FullPath);
 
-    public OilGlossScanResult Scan(ISkinMod mod, bool ignoreHairFolderGuard = false)
-        => OilGlossScanner.Scan(mod.FullPath, ignoreHairFolderGuard);
+    public OilGlossScanResult Scan(ISkinMod mod) => OilGlossScanner.Scan(mod.FullPath);
 
     /// <summary>读取全局油光强度（0..1，默认 0.7）。</summary>
     public async Task<double> GetStrengthAsync(CancellationToken cancellationToken = default)
@@ -224,10 +223,43 @@ public sealed class OilGlossService(
         }, cancellationToken).ConfigureAwait(false);
 
         if (result.Status == OilGlossApplyStatus.Applied)
+        {
+            await ResetGroupTogglesAsync(result.Manifest, cancellationToken).ConfigureAwait(false);
             await RegenerateMenuAsync(mod, createIfMissing: createMenuIfMissing, cancellationToken)
                 .ConfigureAwait(false);
+        }
 
         return result;
+    }
+
+    /// <summary>
+    /// 重打补丁后把开关复位成「总开关开、身体开、衣物关」。
+    /// 这三个变量是 persist 的，3DMigoto 会把上一次 F7 里的选择存进 d3dx_user.ini；
+    /// 如果之前把衣物打开过，重新开启油光后头发/脸部（常被分到衣物组）会继续变色。
+    /// 游戏没在运行时写不进去也不影响：变量缺失时用 JASM_Oil.ini 里的默认值。
+    /// </summary>
+    private async Task ResetGroupTogglesAsync(OilGlossManifest? manifest, CancellationToken cancellationToken)
+    {
+        if (manifest is null || string.IsNullOrWhiteSpace(manifest.Namespace))
+            return;
+
+        var prefix = @"$\" + manifest.Namespace + @"\";
+        try
+        {
+            await userPreferencesService
+                .SetGlobalVariableAsync(prefix + OilGlossProtocol.MasterVariable, "1", cancellationToken)
+                .ConfigureAwait(false);
+            await userPreferencesService
+                .SetGlobalVariableAsync(prefix + OilGlossProtocol.BodyVariable, "1", cancellationToken)
+                .ConfigureAwait(false);
+            await userPreferencesService
+                .SetGlobalVariableAsync(prefix + OilGlossProtocol.ClothVariable, "0", cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(e, "[OilGloss] 复位油光分组开关失败");
+        }
     }
 
     private async Task RegenerateMenuAsync(ISkinMod mod, bool createIfMissing, CancellationToken cancellationToken)
