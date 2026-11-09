@@ -1089,12 +1089,31 @@ public partial class ModInstallerVM : ObservableRecipient, INavigationAware, IDi
     {
         if (_characterModList.IsModEnabled(mod))
             _characterModList.DisableMod(mod.Id);
+        _ = RefreshInGameMenuAsync();
     }
 
     private void EnableMod(ISkinMod mod)
     {
         if (!_characterModList.IsModEnabled(mod))
             _characterModList.EnableMod(mod.Id);
+        _ = RefreshInGameMenuAsync();
+    }
+
+    /// <summary>
+    /// 启用/禁用后补/更新游戏内菜单。改名会临时关闭 CharacterModList 的 watcher，
+    /// 不会触发 ModsChanged；不主动补的话「装完 → 直接开游戏」时 F7 没有菜单。
+    /// </summary>
+    private async Task RefreshInGameMenuAsync()
+    {
+        try
+        {
+            await App.GetService<InGameMenuService>()
+                .RefreshAfterModToggleAsync(_characterModList).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[安装] 启用 Mod 后生成游戏内菜单失败");
+        }
     }
 
     private void Finally()
