@@ -559,6 +559,9 @@ public sealed partial class ModPaneVM(
         if (draw.IsHeadLike)
             return "头部/头发";
 
+        if (draw.IsNonOilable)
+            return "贴花/装饰";
+
         if ((draw.Comment + " " + draw.Condition + " " + draw.SectionName)
             .Contains("body", StringComparison.OrdinalIgnoreCase))
             return "身体";
