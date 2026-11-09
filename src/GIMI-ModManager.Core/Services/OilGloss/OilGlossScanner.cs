@@ -42,6 +42,13 @@ public static class OilGlossScanner
             return new OilGlossScanResult { Reason = "Mod 目录不存在" };
         }
 
+        // 纯发型 Mod（名字里就写着 发型/头发/hair）整包跳过：
+        // 它的所有网格都是头发，索引位置规则分不出来，上了油光就是整头变色。
+        if (IsHairOnlyModFolder(modFolderPath))
+        {
+            return new OilGlossScanResult { Reason = "这是一个发型 Mod，默认不包油光" };
+        }
+
         var drawcalls = new List<OilGlossDrawcall>();
 
         // 所有 ini 都读一遍：drawcall 只在部分文件里，但 $swapvar_toggle /
@@ -310,6 +317,19 @@ public static class OilGlossScanner
     {
         var haystack = (condition + " " + textureSlot + " " + comment + " " + section).ToLowerInvariant();
         return HeadKeywords.Any(haystack.Contains);
+    }
+
+    /// <summary>Mod 文件夹名直接表明是发型 Mod（如「尤诺-C酱发型」）时整包跳过。</summary>
+    private static bool IsHairOnlyModFolder(string modFolderPath)
+    {
+        var name = Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (name.StartsWith("DISABLED_", StringComparison.OrdinalIgnoreCase))
+            name = name["DISABLED_".Length..];
+
+        var lower = name.ToLowerInvariant();
+        return lower.Contains("发型", StringComparison.Ordinal)
+               || lower.Contains("头发", StringComparison.Ordinal)
+               || lower.Contains("hair", StringComparison.Ordinal);
     }
 
     private static bool ShouldSkip(string relativePath)
