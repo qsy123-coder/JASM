@@ -12,6 +12,6 @@ public class OilGlossSettings
 {
     [JsonIgnore] public const string Key = "OilGlossSettings";
 
-    /// <summary>油光强度 0.0–1.0（默认 0.7，与本体 ini 的默认值一致）。</summary>
+    /// <summary>油光强度 0.0–2.0（默认 0.7，与本体 ini 的默认值一致）。</summary>
     public double Strength { get; set; } = 0.7;
 }
