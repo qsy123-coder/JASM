@@ -258,8 +258,9 @@ public class OilGlossScannerTests : IDisposable
     }
 
     [Fact]
-    public void SkipsHairOnlyModFolderByName()
+    public void ScansModsWhoseFolderNameMentionsHair()
     {
+        // 「发型」只是 Mod 的名字；不少整模 Mod（例如尤诺-C酱发型）其实带完整身体。
         var mod = Path.Combine(_root, "尤诺-C酱发型 by 布鲁加尔");
         Directory.CreateDirectory(mod);
         File.WriteAllText(Path.Combine(mod, "mod.ini"), """
@@ -274,27 +275,64 @@ public class OilGlossScannerTests : IDisposable
 
         var result = OilGlossScanner.Scan(mod);
 
-        Assert.Null(result.Body);
-        Assert.Contains("发型", result.Reason);
+        Assert.NotNull(result.Body);
+        Assert.Equal(900, result.Body!.IndexCount);
     }
 
     [Fact]
-    public void HairFolderGuardCanBeBypassedForManualGrouping()
+    public void EvaluatesComparisonConditionsInsteadOfVariableTruthiness()
     {
-        var mod = Path.Combine(_root, "尤诺-C酱发型 by 布鲁加尔");
-        Directory.CreateDirectory(mod);
-        File.WriteAllText(Path.Combine(mod, "mod.ini"), """
+        // if $choker == 0 表示「变量为 0 时显示」。只拿 $choker 判真假（0 = 假）
+        // 会把这块从可见集合里排除，进而把真正的身体网格漏掉。
+        var mod = CreateMod("""
             namespace = TestMod
 
-            [TextureOverrideComponent0]
-            drawindexed = 900, 0, 0
+            [Constants]
+            global persist $choker = 0
+            global persist $swapvar_toggle_0 = 0
+            global $draw_component_3_005 = 1
 
-            [TextureOverrideComponent1]
-            drawindexed = 500, 900, 0
-            """, new UTF8Encoding(false));
+            [CommandListProcessToggles]
+            $draw_component_3_005 = ($swapvar_toggle_0 == 1)
 
-        Assert.Null(OilGlossScanner.Scan(mod).Body);
-        Assert.NotNull(OilGlossScanner.Scan(mod, ignoreHairFolderGuard: true).Body);
+            [TextureOverrideComponent3]
+            if $draw_component_3_005
+            drawindexed = 5000, 0, 0
+            endif
+            if $choker == 0
+            drawindexed = 900, 5000, 0
+            endif
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.True(result.Drawcalls.Single(d => d.IndexCount == 900).VisibleByDefault);
+        Assert.False(result.Drawcalls.Single(d => d.IndexCount == 5000).VisibleByDefault);
+        Assert.Equal(900, result.Body!.IndexCount);
+    }
+
+    [Fact]
+    public void IgnoresConditionsFromClosedBranches()
+    {
+        // 身体块紧跟在已结束的 $headacc 分支后面，不能被误判成头部。
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [Constants]
+            global persist $headacc = 0
+
+            [TextureOverrideComponent4]
+            if $headacc == 0
+            drawindexed = 200, 0, 0
+            endif
+            drawindexed = 1000, 200, 0
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.True(result.Drawcalls.Single(d => d.IndexCount == 200).IsHeadLike);
+        Assert.False(result.Drawcalls.Single(d => d.IndexCount == 1000).IsHeadLike);
+        Assert.Equal(1000, result.Body!.IndexCount);
     }
 
     public void Dispose()
