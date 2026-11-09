@@ -78,11 +78,152 @@ public class InGameMenuGeneratorTests : IDisposable
         var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
 
         // 每个 Mod 补了 namespace 后，object_detected 是独立的；用它门控，避免多份菜单同时亮
-        Assert.Contains($@"if $\{ns}\object_detected == 0", menu);
         Assert.Contains($@"if $\{ns}\object_detected == 1", menu);
+        Assert.Contains("present == 0", menu);
         Assert.DoesNotContain(@"condition = $\" + ns, menu);
-        Assert.DoesNotContain("JasmDetect", menu);
+        // 有 per-character 变量时**不再**叠加 hash 信号：hash 命中的是网格资源，
+        // 游戏暂停 / 时间冻结时会让上一件 Mod 一直“在场”，导致两个角色的菜单同时出现。
+        Assert.DoesNotContain("[TextureOverrideJasmDetect", menu);
         Assert.DoesNotContain("age = time -", menu);
+    }
+
+    [Fact]
+    public void GatesOnFileThatActuallySetsObjectDetected()
+    {
+        // 作者把 [Key*] 放在一个 ini、把 $object_detected 放在另一个带命名空间的 ini。
+        // 门控必须指向真正设置变量的命名空间（BodyNs），否则条件永远为 0、菜单不显示。
+        var mod = CreateMod("MultiIni", """
+            namespace = ButtonNs
+
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "05_Body.ini"), """
+            namespace = BodyNs
+
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideComponent0]
+            hash = f8b55eeb
+            $object_detected = 1
+            """);
+
+        InGameMenuGenerator.Generate(mod);
+
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains(@"if $\BodyNs\object_detected == 1", menu);
+        Assert.DoesNotContain(@"$\ButtonNs\object_detected", menu);
+    }
+
+    [Fact]
+    public void DropsGlobalObjectDetectedWhenNamespacedVariableExists()
+    {
+        // 全局 $object_detected 是所有 Mod 共享的：有命名空间变量时不能混进门控，
+        // 否则别的角色把它置 1 时这份菜单也会亮（两个角色的菜单同时出现）。
+        var mod = CreateMod("MixedDetect", """
+            namespace = ButtonNs
+
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "05_Body.ini"), """
+            namespace = BodyNs
+
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideComponent0]
+            hash = f8b55eeb
+            $object_detected = 1
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "03_Aux.ini"), """
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideAux]
+            hash = abcdef01
+            $object_detected = 1
+            """);
+
+        InGameMenuGenerator.Generate(mod);
+
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains(@"$\BodyNs\object_detected", menu);
+        Assert.DoesNotContain("if $object_detected == 1", menu);
+    }
+
+    [Fact]
+    public void GatesOnEveryFormNamespaceWithLogicalOr()
+    {
+        // 普通 / 大招两套形态各有一个 $object_detected；任意一套绘制时菜单都要显示。
+        var mod = CreateMod("TwoForms", """
+            namespace = ButtonNs
+
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "05_Body.ini"), """
+            namespace = BodyNs
+
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideComponent0]
+            hash = f8b55eeb
+            $object_detected = 1
+            """);
+        Directory.CreateDirectory(Path.Combine(mod, "Ult"));
+        File.WriteAllText(Path.Combine(mod, "Ult", "mod.ini"), """
+            namespace = UltNs
+
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideComponent0]
+            hash = abcdef01
+            $object_detected = 1
+            """);
+
+        InGameMenuGenerator.Generate(mod);
+
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains(@"if $\BodyNs\object_detected == 1 || $\UltNs\object_detected == 1", menu);
+        Assert.Contains("present == 0", menu);
+    }
+
+    [Fact]
+    public void GatesOnGlobalObjectDetectedWhenOwnerFileHasNoNamespace()
+    {
+        var mod = CreateMod("GlobalDetect", """
+            namespace = ButtonNs
+
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "05_Body.ini"), """
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideComponent0]
+            hash = f8b55eeb
+            $object_detected = 1
+            """);
+
+        InGameMenuGenerator.Generate(mod);
+
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains("if $object_detected == 1", menu);
+        Assert.Contains("present == 0", menu);
+        Assert.DoesNotContain(@"$\ButtonNs\object_detected", menu);
     }
 
     [Fact]
