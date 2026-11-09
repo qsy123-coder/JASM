@@ -286,12 +286,24 @@
                         <Button
                             Command="{x:Bind ViewModel.DisableOilGlossCommand}"
                             Content="撤销油光" />
+                        <Button
+                            Command="{x:Bind ViewModel.ReapplyOilGlossExcludingLargestCommand}"
+                            Content="排除最大网格重打"
+                            ToolTipService.ToolTip="头发会变色时用：跳过索引数最大的网格重新分组" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="{x:Bind ViewModel.OilGlossStatusText, Mode=OneWay}"
                             TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                    <!-- 油光强度（全局）：拖动停止后写 d3dx_user.ini 并自动 F10 -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                Visibility="{x:Bind ViewModel.IsOilGlossApplied, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="油光强度" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Slider Width="180" Minimum="0" Maximum="1" StepFrequency="0.05"
+                                Value="{x:Bind ViewModel.OilGlossStrength, Mode=TwoWay}" />
                     </StackPanel>
                     <!-- 按 ini 文件分组，点击文件夹名折叠 -->
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModModel.KeyBindingGroups, Mode=OneWay}">
@@ -405,12 +417,24 @@
                         Visibility="{x:Bind ViewModel.CanToggleOilGloss, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Button Command="{x:Bind ViewModel.EnableOilGlossCommand}" Content="开启油光" />
                 <Button Command="{x:Bind ViewModel.DisableOilGlossCommand}" Content="撤销油光" />
+                <Button
+                    Command="{x:Bind ViewModel.ReapplyOilGlossExcludingLargestCommand}"
+                    Content="排除最大网格重打"
+                    ToolTipService.ToolTip="头发会变色时用：跳过索引数最大的网格重新分组" />
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="12"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="{x:Bind ViewModel.OilGlossStatusText, Mode=OneWay}"
                     TextWrapping="WrapWholeWords" />
+            </StackPanel>
+            <!-- 油光强度（全局）：拖动停止后写 d3dx_user.ini 并自动 F10 -->
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        Visibility="{x:Bind ViewModel.IsOilGlossApplied, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Text="油光强度" VerticalAlignment="Center" FontSize="12"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Slider Width="180" Minimum="0" Maximum="1" StepFrequency="0.05"
+                        Value="{x:Bind ViewModel.OilGlossStrength, Mode=TwoWay}" />
             </StackPanel>
         </StackPanel>
 
