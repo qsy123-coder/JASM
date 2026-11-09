@@ -1,4 +1,5 @@
 using System.Text;
+using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.Services.OilGloss;
 
 namespace JASM.Tests;
@@ -176,6 +177,32 @@ public class OilGlossPatcherTests : IDisposable
         File.Delete(Path.Combine(mod, "mod.ini" + OilGlossProtocol.BackupSuffix));
 
         Assert.Equal(OilGlossState.Broken, OilGlossPatcher.GetStatus(mod).State);
+    }
+
+    [Fact]
+    public void UndoWorksAfterMenuGeneratorAddsAsciiNamespace()
+    {
+        var mod = CreateMod("""
+            [TextureOverrideComponent0]
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 500, 900, 0
+            """);
+        var iniPath = Path.Combine(mod, "mod.ini");
+        var original = File.ReadAllBytes(iniPath);
+
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+        OilGlossPatcher.Apply(mod, body: body);
+
+        // 模拟菜单生成器在补丁之后补 namespace（真实 Mod 上发生过，导致撤销误判冲突）
+        IniFileText.TryInsertNamespace(iniPath, "JasmTEST1234");
+        Assert.Equal(OilGlossState.Applied, OilGlossPatcher.GetStatus(mod).State);
+
+        var undo = OilGlossPatcher.Undo(mod);
+
+        Assert.True(undo.Success, undo.Reason);
+        Assert.Equal(original, File.ReadAllBytes(iniPath));
     }
 
     public void Dispose()
