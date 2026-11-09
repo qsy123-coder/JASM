@@ -22,11 +22,12 @@ public static class OilGlossScanner
         ["hat", "hair", "face", "eye", "brow", "head"];
 
     /// <summary>
-    /// 贴花 / 眼睛 / 睫毛这类叠加网格。它们依赖叠加或特殊 shader，
-    /// 被 matcap 包上会在皮肤上出现「贴图错误」，所以默认不包。
+    /// 贴花 / 眼睛 / 睫毛 / 手套这类网格。它们依赖叠加或特殊 shader，
+    /// 被 matcap 包上会在皮肤/手臂上出现「贴图错误」（真机 A/B 对比确认手套会变银白金属反光），
+    /// 所以默认不包。
     /// </summary>
     private static readonly string[] NonOilableKeywords =
-        ["tattoo", "decal", "logo", "censor", "eye", "brow", "lash", "mouth", "teeth", "tongue", "nail"];
+        ["tattoo", "decal", "logo", "censor", "eye", "brow", "lash", "mouth", "teeth", "tongue", "nail", "glove"];
 
     private static readonly string[] SkippedFileNames =
         ["JASM_Menu.ini", OilGlossProtocol.OilIniFileName];
