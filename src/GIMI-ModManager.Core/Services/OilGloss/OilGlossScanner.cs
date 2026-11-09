@@ -79,6 +79,11 @@ public static class OilGlossScanner
             .Select(d => d with { VisibleByDefault = OilGlossConditionEvaluator.IsTrue(d.Condition, defaults) })
             .ToList();
 
+        // 再按索引区间排除头部/头发：WWMI 模型一般「头 → 身 → 衣 → 脚」，
+        // 最前面 18% 常是头发/脸。它们没有名字，光靠关键词抓不到，
+        // 被 matcap 改写颜色后会出现「加完油光头发变色」。
+        annotated = MarkPositionalHead(annotated).ToList();
+
         return Group(annotated);
     }
 
@@ -167,6 +172,56 @@ public static class OilGlossScanner
                 Comment = comment,
                 IsHeadLike = IsHeadLike(condition, textureSlot, comment, section),
             });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 按 WWMI 的索引排列约定排除头部/头发：同一 ini 里最前面 18% 的 drawcall 视为头/发/脸，
+    /// 但**默认可见的最大块**永远保留（它几乎一定是身体）。少于 5 块时不启用，避免把整个小 Mod 排除。
+    /// </summary>
+    private static IReadOnlyList<OilGlossDrawcall> MarkPositionalHead(IReadOnlyList<OilGlossDrawcall> drawcalls)
+    {
+        var result = new List<OilGlossDrawcall>(drawcalls.Count);
+
+        foreach (var group in drawcalls.GroupBy(d => d.IniRelativePath, StringComparer.OrdinalIgnoreCase))
+        {
+            var list = group.ToList();
+            if (list.Count < 5)
+            {
+                result.AddRange(list);
+                continue;
+            }
+
+            var minStart = list.Min(d => d.StartIndex);
+            var maxEnd = list.Max(d => d.StartIndex + d.IndexCount);
+            var span = maxEnd - minStart;
+            if (span <= 0)
+            {
+                result.AddRange(list);
+                continue;
+            }
+
+            var inHeadZone = list.Count(d => (d.StartIndex - minStart) / (double)span < 0.18);
+
+            // 80% 以上都在头部区 → 这多半是纯发型/头部 Mod（发型、头饰、脸）。
+            // 整体排除，绝不能让 matcap 把头发颜色改掉。
+            if (inHeadZone >= list.Count * 0.8)
+            {
+                result.AddRange(list.Select(d => d with { IsHeadLike = true }));
+                continue;
+            }
+
+            var visible = list.Where(d => d.VisibleByDefault != false).ToList();
+            var protectedDraw = (visible.Count > 0 ? visible : list)
+                .OrderByDescending(d => d.IndexCount)
+                .First();
+
+            result.AddRange(list.Select(d =>
+                !IsSame(d, protectedDraw) && (d.StartIndex - minStart) / (double)span < 0.18
+                    ? d with { IsHeadLike = true }
+                    : d));
         }
 
         return result;
