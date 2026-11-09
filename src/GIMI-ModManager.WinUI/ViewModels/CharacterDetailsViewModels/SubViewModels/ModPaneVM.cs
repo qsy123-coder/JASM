@@ -568,6 +568,13 @@ public sealed partial class ModPaneVM(
     /// </summary>
     private static string DescribePart(OilGlossDrawcall draw)
     {
+        if (draw.IsHeadLike)
+            return "头部/头发";
+
+        if ((draw.Comment + " " + draw.Condition + " " + draw.SectionName)
+            .Contains("body", StringComparison.OrdinalIgnoreCase))
+            return "身体";
+
         if (draw.HeightMin is not { } min || draw.HeightMax is not { } max)
             return string.Empty;
 
