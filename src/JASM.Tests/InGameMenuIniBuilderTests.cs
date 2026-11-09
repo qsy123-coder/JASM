@@ -90,11 +90,27 @@ public class InGameMenuIniBuilderTests
         });
 
         // 呼出键不加条件否否则 F8 关不掉）；绘制与自动归零都按当前角色门控
-        Assert.Contains(@"if $\JasmABCDEF12\object_detected == 0", build.IniText);
         Assert.Contains(@"if $\JasmABCDEF12\object_detected == 1", build.IniText);
+        Assert.Contains("$jasm_x_present = 0", build.IniText);
+        Assert.Contains("if $jasm_x_present == 0", build.IniText);
         Assert.DoesNotContain(@"condition = $\JasmABCDEF12\object_detected", build.IniText);
         Assert.DoesNotContain("age = time -", build.IniText);
         Assert.DoesNotContain("[TextureOverrideJasmDetect", build.IniText);
+    }
+
+    [Fact]
+    public void GatesOnEveryDetectionVariableAcrossForms()
+    {
+        var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x", new InGameMenuOptions
+        {
+            DetectionVariables = [@"$\BodyNs\object_detected", @"$\UltNs\object_detected"],
+            GateOnObjectDetected = false,
+        });
+
+        // 任意一套形态在绘制（||）就置 present=1；present==0 才关闭菜单。
+        Assert.Contains(@"if $\BodyNs\object_detected == 1 || $\UltNs\object_detected == 1", build.IniText);
+        Assert.Contains("if $jasm_x_present == 0", build.IniText);
+        Assert.Contains("if $jasm_x_present == 1", build.IniText);
     }
 
     [Fact]
@@ -251,7 +267,8 @@ public class InGameMenuIniBuilderTests
         Assert.Contains("hash = f8b55eeb", build.IniText);
         Assert.Contains("$jasm_x_last_seen = time", build.IniText);
         Assert.Contains("$jasm_x_age = time - $jasm_x_last_seen", build.IniText);
-        Assert.Contains("if $jasm_x_age >= 0.5", build.IniText);
+        Assert.Contains("if $jasm_x_age < 0.5", build.IniText);
+        Assert.Contains("$jasm_x_present = 1", build.IniText);
 
         // 不再用全局共享的 $object_detected 做门控
         Assert.DoesNotContain("if $object_detected == 1", build.IniText);
