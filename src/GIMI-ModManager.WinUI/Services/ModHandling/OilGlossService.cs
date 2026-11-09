@@ -102,8 +102,16 @@ public sealed class OilGlossService(
                 newManifest.BodyProvidedByJasm = true;
                 // 本体还是旧的，强制下一次 GetStatus 继续升级
                 newManifest.BodyVersion = 0;
-                newManifest.BodyFiles = currentManifest.BodyFiles;
-                OilGlossPatcher.WriteManifest(mod.FullPath, newManifest);
+                newManifest.BodyFiles = currentManifest.BodyFiles ?? [];
+
+                try
+                {
+                    OilGlossPatcher.WriteManifest(mod.FullPath, newManifest);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning(e, "[OilGloss] 旧补丁升级后回写清单失败: {Mod}", mod.Name);
+                }
             }
 
             // 新规则下没有任何可包网格（例如纯发型 Mod）：撤销后保持未开启，
