@@ -125,47 +125,17 @@ public sealed record OilGlossDrawcall
     /// <summary>drawindexed 在文件中的行号（0 基）。补丁前会重新扫描，不直接信任它。</summary>
     public required int LineIndex { get; init; }
 
-    /// <summary>索引数量（第一个参数），用于按大小自动分组。</summary>
+    /// <summary>索引数量（第一个参数）。</summary>
     public required int IndexCount { get; init; }
 
     /// <summary>起始索引（第二个参数）。</summary>
     public required int StartIndex { get; init; }
 
-    /// <summary>同一段落里最近的 <c>if $变量</c>，用于判断头部/部位。</summary>
-    public string Condition { get; init; } = string.Empty;
-
-    /// <summary>最近的 <c>ResourceTexture*</c> 贴图槽。</summary>
-    public string TextureSlot { get; init; } = string.Empty;
-
-    /// <summary>drawcall 上方紧邻的 <c>; Draw ...</c> 注释。</summary>
-    public string Comment { get; init; } = string.Empty;
-
-    /// <summary>是否被判定为头部/头发/脸（默认不包油光）。</summary>
+    /// <summary>是否位于 Component0–2（脸/头发/头饰，默认不包油光）。</summary>
     public bool IsHeadLike { get; init; }
 
-    /// <summary>
-    /// 贴花/眼睛/睫毛这类叠加网格（tattoo / decal / eye / brow …）。
-    /// 它们用叠加 shader，被 matcap 包上会在皮肤上出现贴图错误，默认不包。
-    /// </summary>
-    public bool IsNonOilable { get; init; }
-
-    /// <summary>
-    /// 条件变量在默认形态下是否为真；<c>null</c> 表示无法求值（按可见处理）。
-    /// 自动分组优先选可见的 drawcall，避免把补丁打到默认不绘制的网格上。
-    /// </summary>
-    public bool? VisibleByDefault { get; init; }
-
-    /// <summary>自动分组结果；<c>null</c> 表示未被选中。</summary>
+    /// <summary>选中的网格；<c>null</c> 表示不包。</summary>
     public OilGlossGroup? Group { get; init; }
-
-    /// <summary>
-    /// 这块网格在角色高度上的最低点（0 = 脚底，1 = 头顶）。
-    /// 读不到网格数据时为 <c>null</c>，自动分组退回按大小猜。
-    /// </summary>
-    public double? HeightMin { get; init; }
-
-    /// <summary>这块网格在角色高度上的最高点（0 = 脚底，1 = 头顶）。</summary>
-    public double? HeightMax { get; init; }
 }
 
 /// <summary>扫描结果与自动分组。</summary>
