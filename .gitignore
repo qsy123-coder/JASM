@@ -694,3 +694,13 @@ Testing_ZZZ/
 
 # 浮窗修复引擎：由 Build/FetchWuwaModFixer.py 下载并校验，不入库
 /src/GIMI-ModManager.WinUI/Assets/WuwaModFixer/
+
+# Claude Code 本地会话 / worktree（本机开发状态，不入库）
+.claude/
+
+# 本地解包 / 下载的第三方工具与临时目录
+/oil_sc/
+/.tmp-*/
+
+# WinUI 本地构建输出
+/.build-winui-out/
