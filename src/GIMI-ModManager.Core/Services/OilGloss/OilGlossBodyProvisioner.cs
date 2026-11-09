@@ -20,6 +20,8 @@ public static class OilGlossBodyProvisioner
     {
         // BodyVersion 1：加了 [ResourceEmpty_Normal]，但仍替换 ps-t0
         "C2B053270286C00534FFF6B2B6025A749ADE0846705A215ABD86F47FD56C4738",
+        // BodyVersion 2：已移除 ps-t0，但强度物理键上限仍是 1.0
+        "8BC7CFD52F2C386A9A76BD073C20F4E73760D90F0CE150ECF0A476186DE9A230",
     };
 
     /// <summary>Mod 里是否已有 KatFXMatcap 本体。</summary>
