@@ -52,6 +52,12 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     internal const int ScreenshotHotkeyId = HotkeyId + 0x10;
 
     /// <summary>
+    /// 「打开游戏内按键菜单」热键的 id。只在浮窗显示期间注册：浮窗前台下游戏收不到 F7，
+    /// 需要我们把键转发给游戏。与截图键（+0x10）错开。
+    /// </summary>
+    internal const int MenuHotkeyId = HotkeyId + 0x20;
+
+    /// <summary>
     /// 浮窗显示期间的导航键。每个动作一串候选，按顺序试、**每个动作只占一个键**。
     ///
     /// 上下 / 回车只有一个候选：语义固定（上下移动、回车切换），换一个键用户就猜不到了，
@@ -87,6 +93,9 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     /// 不记账就会每次显示都往日志里刷一行同样的话。</summary>
     private readonly HashSet<OverlayHotkeyAction> _navigationFailures = new();
 
+    /// <summary>「打开游戏内菜单」热键当前是否注册着（同样只在浮窗显示期间）。</summary>
+    private bool _menuHotkeyRegistered;
+
     private bool _disposed;
 
     /// <summary>
@@ -112,6 +121,12 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     /// 回调在 UI 线程上；窗口不存在 / 当前不是鸣潮时注册者本身就不会存在。
     /// </summary>
     public event Action? ScreenshotPressed;
+
+    /// <summary>
+    /// 「打开游戏内按键菜单」热键被按下（只在浮窗显示期间注册）。
+    /// 回调方负责把这个键转发给游戏（浮窗占着前台时游戏收不到）。
+    /// </summary>
+    public event Action? MenuKeyPressed;
 
     /// <summary>最终注册成功的那个候选键；<c>null</c> = 一个都没注册上。</summary>
     public OverlayHotkeyCandidate? RegisteredCandidate { get; }
@@ -272,6 +287,13 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
             return;
         }
 
+        if (id == MenuHotkeyId)
+        {
+            _logger.Debug("[浮窗] 收到 WM_HOTKEY，打开游戏内按键菜单");
+            MenuKeyPressed?.Invoke();
+            return;
+        }
+
         foreach (var (navigationId, action, _) in _navigation)
         {
             if (navigationId != id)
@@ -353,6 +375,38 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
     }
 
     /// <summary>
+    /// 注册「打开游戏内按键菜单」热键（通常就是菜单自己的呼出键，如 F7）。**只在浮窗显示期间**：
+    /// 浮窗占着前台时游戏收不到这个键，由浮窗捕获后转发给游戏；隐藏时必须还回去。
+    /// 注册不上（被别的程序占用）只记日志 —— 用户仍可点行上的「打开菜单」按钮。
+    /// </summary>
+    internal void RegisterMenuHotkey(ushort virtualKey)
+    {
+        if (_disposed || _menuHotkeyRegistered)
+            return;
+
+        if (PInvoke.RegisterHotKey(_hwnd, MenuHotkeyId, 0, virtualKey))
+        {
+            _menuHotkeyRegistered = true;
+            _logger.Debug("[浮窗] 菜单键已注册: vk=0x{Vk:X2}", virtualKey);
+        }
+        else
+        {
+            var reason = new Win32Exception(Marshal.GetLastWin32Error()).Message;
+            _logger.Warning("[浮窗] 菜单键 vk=0x{Vk:X2} 注册失败（{Reason}），浮窗显示时只能用按钮打开菜单",
+                virtualKey, reason);
+        }
+    }
+
+    internal void UnregisterMenuHotkey()
+    {
+        if (!_menuHotkeyRegistered)
+            return;
+
+        PInvoke.UnregisterHotKey(_hwnd, MenuHotkeyId);
+        _menuHotkeyRegistered = false;
+    }
+
+    /// <summary>
     /// 标题栏右侧那句提示：唤出键 + **此刻真的注册上**的导航键，如 <c>Ctrl+Alt+J / ↑↓ / Enter / R</c>。
     ///
     /// 一族键共享同一个修饰键前缀，所以前缀只写一次；只列注册上的那些 —— 注册不上却写在提示里
@@ -373,8 +427,9 @@ internal sealed class OverlayHotkeyRegistrar : IDisposable
         // 先摘事件再注销：注销过程中若还有排队中的 WM_HOTKEY 打进来，不该再触发切换
         _monitor.WindowMessageReceived -= OnWindowMessageReceived;
 
-        // 导航键可能还注册着（浮窗可见时退出程序就是这样）：一起还回去，别把它们扣在系统里
+        // 导航键 / 菜单键可能还注册着（浮窗可见时退出程序就是这样）：一起还回去
         UnregisterNavigationHotkeys();
+        UnregisterMenuHotkey();
 
         if (RegisteredCandidate is not null)
         {
