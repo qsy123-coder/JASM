@@ -52,10 +52,10 @@ public static class OilGlossProtocol
     /// <summary>总开关变量名（F7 菜单可切换）。</summary>
     public const string MasterVariable = "jasm_oil_on";
 
-    /// <summary>身体组开关变量名。</summary>
+    /// <summary>旧版身体组开关变量；只为识别/清理旧补丁保留，新补丁不再引用。</summary>
     public const string BodyVariable = "oil_body";
 
-    /// <summary>衣物组开关变量名。</summary>
+    /// <summary>旧版衣物组开关变量；只为识别/清理旧补丁保留，新补丁不再引用。</summary>
     public const string ClothVariable = "oil_cloth";
 
     /// <summary>本体里的强度变量名（命名空间 KatFXMatcap，0.0–1.0）。</summary>
@@ -83,11 +83,9 @@ public static class OilGlossProtocol
             "namespace = " + ns,
             "",
             "[Constants]",
+            // 只有一个总开关：官方做法按 drawcall 包，同一个 drawcall 常同时包含
+            // 身体和衣物，再拆成两个开关只会做出「关了衣物身体还亮」的假开关。
             "global persist $" + MasterVariable + " = 1",
-            "global persist $" + BodyVariable + " = 1",
-            // 衣物默认关闭：多数 Mod 的「衣物」分组会带上裙摆/配饰，默认全开会把整身都打亮；
-            // 想要衣物油光时在 F7 菜单里点一下「衣物油光」即可。
-            "global persist $" + ClothVariable + " = 0",
             "",
             "[End of file.]",
             "",
