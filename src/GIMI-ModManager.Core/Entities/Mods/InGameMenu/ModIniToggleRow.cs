@@ -52,12 +52,18 @@ public sealed record ModIniToggleRow
     public string Key => IniRelativePath + "|" + SectionName;
 
     /// <summary>
-    /// 这一行能否由菜单直接改值。需要：有变量名、至少两个候选值、按键类型是循环/开关类。
+    /// 特殊行：0–1 的拖动滑块（油光强度）。滑块不走 <see cref="Values"/>，
+    /// 由菜单按光标在轨道上的横坐标实时写变量。
+    /// </summary>
+    public bool IsSlider { get; init; }
+
+    /// <summary>
+    /// 这一行能否由菜单直接改值。循环行需要变量名 + 至少两个候选值 + 循环/开关类型；
+    /// 滑块行只需要变量名。
     /// </summary>
     public bool IsClickable =>
         !string.IsNullOrWhiteSpace(VariableName)
-        && Values.Count >= 2
-        && IsCycleLikeType(KeyType);
+        && (IsSlider || (Values.Count >= 2 && IsCycleLikeType(KeyType)));
 
     /// <summary>
     /// 跨命名空间引用变量时的完整写法：<c>$\Namespace\var</c>；无命名空间时为 <c>$var</c>。
