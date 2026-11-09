@@ -1,6 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.Input;
+using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Entities;
 using GIMI_ModManager.Core.GamesService.Interfaces;
+using GIMI_ModManager.WinUI.Services.ModHandling;
+using Serilog;
 
 namespace GIMI_ModManager.WinUI.ViewModels.CharacterGalleryViewModels;
 
@@ -97,6 +100,24 @@ public partial class CharacterGalleryViewModel
                 _modList!.DisableMod(skinEntry.Id);
                 await UpdateGridItemAsync(skinEntry).ConfigureAwait(false);
                 break;
+        }
+
+        // 启用/禁用是改名操作，不会触发 ModsChanged：在这里补/更新游戏内菜单
+        if (_modList is not null)
+            _ = RefreshInGameMenuAsync(_modList);
+    }
+
+    /// <summary>在后台补/更新当前启用 Mod 的游戏内菜单；失败只记日志。</summary>
+    private static async Task RefreshInGameMenuAsync(ICharacterModList modList)
+    {
+        try
+        {
+            await App.GetService<InGameMenuService>()
+                .RefreshAfterModToggleAsync(modList).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Log.Warning(e, "[画廊] 启用 Mod 后生成游戏内菜单失败");
         }
     }
 }
