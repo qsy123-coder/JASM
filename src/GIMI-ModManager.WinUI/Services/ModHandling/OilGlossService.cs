@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using GIMI_ModManager.Core.Contracts.Entities;
+using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.Services;
@@ -21,7 +22,8 @@ public sealed class OilGlossService(
     IGameService gameService,
     InGameMenuService inGameMenuService,
     ILocalSettingsService localSettingsService,
-    UserPreferencesService userPreferencesService)
+    UserPreferencesService userPreferencesService,
+    ISkinManagerService skinManagerService)
 {
     private static readonly ILogger Logger = Log.ForContext<OilGlossService>();
 
@@ -45,6 +47,38 @@ public sealed class OilGlossService(
 
     /// <summary>当前游戏是否支持油光（只有鸣潮）。</summary>
     public bool IsSupported => string.Equals(gameService.GameShortName, "WuWa", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 启动时调用：库里有已开启油光的 Mod 时，检查并复位全局 <c>$oilSkin</c> / <c>$oilstrength</c>。
+    /// 只扫描 <c>JASM_Oil/manifest.json</c>；没有油光 Mod 时完全不碰 <c>d3dx_user.ini</c>。
+    /// </summary>
+    public async Task EnsureGlobalBodyVariablesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsSupported || !HasAnyOilManifest())
+            return;
+
+        await ResetBodyVariablesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private bool HasAnyOilManifest()
+    {
+        try
+        {
+            var root = skinManagerService.ActiveModsFolderPath;
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+                return false;
+
+            return Directory.EnumerateFiles(root, OilGlossProtocol.ManifestFileName, SearchOption.AllDirectories)
+                .Any(path => string.Equals(
+                    Path.GetFileName(Path.GetDirectoryName(path)),
+                    OilGlossProtocol.StateDirectoryName,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     public OilGlossStatus GetStatus(ISkinMod mod)
     {
