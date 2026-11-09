@@ -223,8 +223,8 @@ public static class OilGlossPatcher
                         Group = d.Group!.Value,
                     })
                     .ToList(),
-                HasBodyGroup = scan.Body is not null,
-                HasClothGroup = scan.Cloth is not null,
+                HasBodyGroup = scan.Drawcalls.Any(d => d.Group is not null),
+                HasClothGroup = false,
                 AppliedAtUtc = DateTime.UtcNow,
             };
 
@@ -234,8 +234,8 @@ public static class OilGlossPatcher
             {
                 Status = OilGlossApplyStatus.Applied,
                 Manifest = manifest,
-                BodyCount = scan.Body is null ? 0 : 1,
-                ClothCount = scan.Cloth is null ? 0 : 1,
+                BodyCount = scan.Drawcalls.Count(d => d.Group is not null),
+                ClothCount = 0,
             };
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -364,26 +364,22 @@ public static class OilGlossPatcher
     private static void InsertGates(List<string> lines, OilGlossDrawcall target, string ns, string newLine)
     {
         var indent = new string(lines[target.LineIndex].TakeWhile(char.IsWhiteSpace).ToArray());
+
+        // 只有一个总开关：官方做法按 drawcall 包，一个 drawcall 常同时含身体和衣物，
+        // 再分身体/衣物两个变量只会做出「关了衣物身体还亮」的假开关。
         var master = "if $\\" + ns + "\\" + OilGlossProtocol.MasterVariable;
-        var group = "if $\\" + ns + "\\" + (target.Group == OilGlossGroup.Cloth
-            ? OilGlossProtocol.ClothVariable
-            : OilGlossProtocol.BodyVariable);
 
         var before = new[]
         {
             indent + master,
-            indent + group,
             indent + OilGlossProtocol.OilSkinCommand,
-            indent + "endif",
             indent + "endif",
         };
 
         var after = new[]
         {
             indent + master,
-            indent + group,
             indent + OilGlossProtocol.OilClearCommand,
-            indent + "endif",
             indent + "endif",
         };
 
