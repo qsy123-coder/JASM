@@ -144,6 +144,12 @@ public sealed record OilGlossDrawcall
     public bool IsHeadLike { get; init; }
 
     /// <summary>
+    /// 贴花/眼睛/睫毛这类叠加网格（tattoo / decal / eye / brow …）。
+    /// 它们用叠加 shader，被 matcap 包上会在皮肤上出现贴图错误，默认不包。
+    /// </summary>
+    public bool IsNonOilable { get; init; }
+
+    /// <summary>
     /// 条件变量在默认形态下是否为真；<c>null</c> 表示无法求值（按可见处理）。
     /// 自动分组优先选可见的 drawcall，避免把补丁打到默认不绘制的网格上。
     /// </summary>
