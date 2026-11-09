@@ -119,6 +119,40 @@ public class OilGlossScannerTests : IDisposable
     }
 
     [Fact]
+    public void OnlyExcludesHairDrawsInsideMixedComponentSection()
+    {
+        // 爱弥斯-不善女仆：同一个 TextureOverrideComponent3 里先画 Shoes / Hair Acc，
+        // 后面才是 Body / Top / Skirt。hair 关键词只能影响它自己的 drawcall，
+        // 不能让整段后面的身体网格都被排除（否则油光只包到鞋）。
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideComponent3]
+            ; Draw Component 3 Shoes
+            drawindexed = 43236, 767919, 0
+            if $hair_acc == 0
+            ; Draw Component 3 Hair Acc
+            drawindexed = 23397, 708132, 0
+            endif
+            if $bra == 0
+            ; Draw Component 3 Body 21
+            drawindexed = 110586, 500796, 0
+            endif
+            if $top == 0
+            ; Draw Component 3 Top
+            drawindexed = 46062, 933138, 0
+            endif
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.True(result.Drawcalls.Single(d => d.IndexCount == 23397).IsHeadLike);
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 43236).Group);
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 110586).Group);
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 46062).Group);
+    }
+
+    [Fact]
     public void IgnoresNonComponentSectionsWhenComponentSectionsExist()
     {
         // 官方身体/衣物在 Component3+；没有组件编号的自定义段落不参与，
