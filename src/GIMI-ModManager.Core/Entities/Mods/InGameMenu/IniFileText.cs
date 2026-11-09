@@ -101,6 +101,36 @@ public static class IniFileText
     /// <summary>判断文件是否使用 CRLF（补丁插入的新行跟随原文件的换行风格）。</summary>
     public static bool UsesCrLf(string text) => text.Contains("\r\n", StringComparison.Ordinal);
 
+    /// <summary>
+    /// 计算 ini 的内容哈希，但**忽略 JASM 自己补的 namespace 行**。
+    ///
+    /// 菜单生成器会在油光补丁之后给没有 namespace 的作者 ini 补两行（标记 + namespace）。
+    /// 如果撤销时按原始字节比对哈希，就会把这次 JASM 自己的改动误判成「用户改了文件」而拒绝撤销。
+    /// 这里在求哈希前把这段前缀去掉；文件本来就有 namespace 时等价于普通字节哈希。
+    /// </summary>
+    public static string ComputeContentHash(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var text = Decode(bytes);
+        var newLine = UsesCrLf(text) ? "\r\n" : "\n";
+
+        var lines = text.Split(new[] { newLine }, StringSplitOptions.None).ToList();
+        var index = lines.FindIndex(line => line.Contains(AddedNamespaceMarker, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            lines.RemoveAt(index);
+            if (index < lines.Count && lines[index].TrimStart().StartsWith("namespace", StringComparison.OrdinalIgnoreCase))
+                lines.RemoveAt(index);
+            if (index < lines.Count && lines[index].Length == 0)
+                lines.RemoveAt(index);
+            text = string.Join(newLine, lines);
+        }
+
+        var (encoding, preamble) = DetectEncoding(bytes);
+        var payload = preamble.Concat(encoding.GetBytes(text)).ToArray();
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload));
+    }
+
     private static (Encoding Encoding, byte[] Preamble) DetectEncoding(byte[] bytes)
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
