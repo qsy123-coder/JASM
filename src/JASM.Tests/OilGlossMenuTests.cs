@@ -119,6 +119,38 @@ public class OilGlossMenuTests : IDisposable
     }
 
     [Fact]
+    public void AddsOilRowsEvenWhenAuthorHasClickableMenu()
+    {
+        var mod = CreateMod();
+        File.WriteAllText(Path.Combine(mod, "author_menu.ini"), """
+            [KeyAuthorClick]
+            key = VK_LBUTTON
+            type = hold
+
+            [Present]
+            $my_mouse_x = cursor_x * res_width
+            run = CommandListDrawAuthorMenu
+            """);
+
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+        var apply = OilGlossPatcher.Apply(mod, body: body);
+        Assert.Equal(OilGlossApplyStatus.Applied, apply.Status);
+
+        // OilGlossService.ToOptions 在油光 manifest 存在时会带上这个开关
+        var result = InGameMenuGenerator.Generate(mod, new InGameMenuOptions
+        {
+            ExtraRows = OilGlossMenuRows.Create(apply.Manifest!),
+            AllowWithExistingClickableMenu = true,
+        });
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        var menu = File.ReadAllText(Path.Combine(mod, "JASM_Menu.ini"));
+        Assert.Contains("行 0: [KeyOilMaster]", menu);
+        Assert.Contains("行 1: [KeyOilStrength]", menu);
+        Assert.Contains("行 2: [KeyOilTexture]", menu);
+    }
+
+    [Fact]
     public void GeneratesMenuForModWithoutAnyKeySections()
     {
         var mod = Path.Combine(_root, "OilOnly-" + Guid.NewGuid().ToString("N"));
