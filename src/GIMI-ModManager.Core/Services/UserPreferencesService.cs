@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities;
 using GIMI_ModManager.Core.Helpers;
@@ -108,6 +108,45 @@ public class UserPreferencesService(ILogger logger, ISkinManagerService skinMana
 
         await File.WriteAllLinesAsync(d3dxUserIni.FullName, lines).ConfigureAwait(false);
         _logger.Information("3DMigoto mod preferences cleared for {ModTypes}", getOption.ToString());
+    }
+
+    /// <summary>
+    /// 写入一个**全局**（不属于某个 Mod 的）3DMigoto 变量，比如油光强度
+    /// <c>$\katfxmatcap\oilstrength</c>。已有同名行就替换，没有就追加。
+    /// 变量在游戏里要按 F10 重新读取 d3dx_user.ini 才生效。
+    /// </summary>
+    public async Task<bool> SetGlobalVariableAsync(string qualifiedName, string value,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_threeMigotoFolder.Exists)
+        {
+            _logger.Warning("3DMigoto folder does not exist");
+            return false;
+        }
+
+        var d3dxUserIni = new FileInfo(Path.Combine(_threeMigotoFolder.FullName, D3DX_USER_INI));
+        if (!d3dxUserIni.Exists)
+        {
+            _logger.Information("d3dx_user.ini does not exist in 3DMigoto folder");
+            return false;
+        }
+
+        var lines = (await File.ReadAllLinesAsync(d3dxUserIni.FullName, cancellationToken).ConfigureAwait(false))
+            .ToList();
+
+        var key = qualifiedName.Trim();
+        var index = lines.FindIndex(line =>
+            line.TrimStart().StartsWith(key, StringComparison.OrdinalIgnoreCase));
+
+        var newLine = key + " = " + value;
+        if (index >= 0)
+            lines[index] = newLine;
+        else
+            lines.Add(newLine);
+
+        await File.WriteAllLinesAsync(d3dxUserIni.FullName, lines, cancellationToken).ConfigureAwait(false);
+        _logger.Information("3DMigoto global variable set: {Variable}={Value}", key, value);
+        return true;
     }
 
     /// <summary>
