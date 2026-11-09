@@ -1,5 +1,8 @@
 # KatFXMatcap（油光本体）
 
+> **仅 DX11**：油光依赖 3DMigoto（`d3d11.dll`）注入 shader。游戏使用 DX12 时
+> 3DMigoto 不工作，F7 菜单可能仍显示，但油光不会生效；请把游戏切到 DX11。
+
 本目录是随 JASM 分发的油光资源，运行时由 `OilGlossService` 复制进启用油光的 Mod 根目录：
 
 - `Matcap.ini`
