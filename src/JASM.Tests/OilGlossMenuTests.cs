@@ -14,7 +14,7 @@ public class OilGlossMenuTests : IDisposable
     public OilGlossMenuTests() => Directory.CreateDirectory(_root);
 
     [Fact]
-    public void CreatesMasterAndStrengthRows()
+    public void CreatesMasterStrengthAndTextureRows()
     {
         var manifest = new OilGlossManifest
         {
@@ -25,14 +25,20 @@ public class OilGlossMenuTests : IDisposable
 
         var rows = OilGlossMenuRows.Create(manifest);
 
-        Assert.Equal(2, rows.Count);
+        Assert.Equal(3, rows.Count);
         Assert.Equal("油光", rows[0].Label);
         Assert.Equal("油光强度", rows[1].Label);
+        Assert.Equal("油光贴图", rows[2].Label);
         Assert.Equal(@"$\JasmOilABCD1234\jasm_oil_on", rows[0].QualifiedVariable);
         Assert.True(rows[0].IsClickable);
         Assert.Equal("1", rows[0].DefaultValue);
         Assert.True(rows[1].IsSlider);
         Assert.Equal(@"$\KatFXMatcap\oilstrength", rows[1].QualifiedVariable);
+        Assert.Equal(OilGlossProtocol.MaxStrength, rows[1].SliderMax);
+        Assert.Equal(@"$\KatFXMatcap\oilSkin", rows[2].QualifiedVariable);
+        Assert.Equal(["2", "3", "4", "5", "6", "1"], rows[2].Values);
+        Assert.Equal(["MC6", "MC1", "Oil1", "Oil2", "Wet", "OIl_MC"], rows[2].ValueLabels);
+        Assert.True(rows[2].IsClickable);
         Assert.DoesNotContain(rows, r => r.SectionName is OilGlossMenuRows.BodySection or OilGlossMenuRows.ClothSection);
     }
 
@@ -49,7 +55,7 @@ public class OilGlossMenuTests : IDisposable
 
         var rows = OilGlossMenuRows.Create(manifest);
 
-        Assert.Equal(2, rows.Count);
+        Assert.Equal(3, rows.Count);
         Assert.DoesNotContain(rows, r => r.SectionName is OilGlossMenuRows.BodySection or OilGlossMenuRows.ClothSection);
     }
 
@@ -77,11 +83,15 @@ public class OilGlossMenuTests : IDisposable
         Assert.DoesNotContain($@"$\{ns}\oil_cloth", menu);
         Assert.Contains("行 0: [KeyOilMaster]", menu);
         Assert.Contains("行 1: [KeyOilStrength]", menu);
+        Assert.Contains("行 2: [KeyOilTexture]", menu);
         Assert.Contains(@"$\KatFXMatcap\oilstrength", menu);
+        Assert.Contains(@"$\KatFXMatcap\oilSkin", menu);
         Assert.Contains("slider_v", menu);
+        // 强度上限 2.0 写进滑块轨道
+        Assert.Contains("/ 2 * ", menu);
+        Assert.Contains("slider_v > 2", menu);
 
         // 本体 Matcap.ini 的 [KeyOilToggle] 属于 KatFXMatcap 命名空间，不进菜单
-        Assert.DoesNotContain("oilSkin", menu);
         Assert.DoesNotContain("[KeyOilToggle]", menu);
 
         // 门控变量仍取自作者文件，不会被油光命名空间带偏
@@ -102,6 +112,7 @@ public class OilGlossMenuTests : IDisposable
 
         var manifest = File.ReadAllText(Path.Combine(mod, "JASM_Menu", "manifest.json"));
         Assert.Contains("油光强度", manifest);
+        Assert.Contains("油光贴图", manifest);
         Assert.Contains("油光", manifest);
         Assert.DoesNotContain("身体油光", manifest);
         Assert.DoesNotContain("衣物油光", manifest);
