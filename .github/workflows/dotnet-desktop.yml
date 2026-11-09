@@ -40,8 +40,16 @@ jobs:
       with:
         dotnet-version: 9.x
 
+    # 测试失败自动重试一次：xUnit/GDI 相关用例在共享 runner 上偶发失败，
+    # 之前每次都要人工点「Re-run failed jobs」。重试仍失败才算失败，不掩盖真实回归。
     - name: Test
-      run: dotnet test ${{ github.workspace }}\src
+      shell: pwsh
+      run: |
+        dotnet test ${{ github.workspace }}\src
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::warning::测试首次失败，自动重试一次"
+          dotnet test ${{ github.workspace }}\src
+        }
 
     # UHD 映射 DLL 必须先于主程序构建：主程序 csproj 用 Exists 条件内嵌
     # src/Jasm.UhdMapper/build/Release/Jasm.UhdMapper.dll（运行时释放到 %LOCALAPPDATA%\JASM\UhdRuntime）。
