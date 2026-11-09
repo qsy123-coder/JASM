@@ -427,9 +427,17 @@ public sealed class OilGlossService(
             // 有些 Mod 的菜单完全靠油光三行撑着（没有任何作者 [Key*]）。
             // 撤销油光后生成器会因「没有行」而跳过，旧菜单文件会留下三行指向已删除变量，
             // 所以这里把这种空壳菜单直接移除。
-            if (result.Status is InGameMenuGenerationStatus.SkippedNoRows
-                    or InGameMenuGenerationStatus.SkippedNoClickableRows
-                && !inGameMenuService.HasMenuRows(mod))
+            var emptyShell = result.Status is InGameMenuGenerationStatus.SkippedNoRows
+                                 or InGameMenuGenerationStatus.SkippedNoClickableRows
+                             && !inGameMenuService.HasMenuRows(mod);
+
+            // 作者本身有可点击菜单：撤销油光后生成器会跳过。此时 JASM 菜单只是油光补丁
+            // 带出来的第二份菜单（可能只剩失效的油光行），一并删掉。
+            var oilRemoved = OilGlossPatcher.GetStatus(mod.FullPath).Manifest is null;
+            var staleOilMenu = result.Status == InGameMenuGenerationStatus.SkippedExistingClickableMenu
+                               && oilRemoved;
+
+            if (emptyShell || staleOilMenu)
             {
                 await Task.Run(() => inGameMenuService.RemoveForMod(mod), cancellationToken)
                     .ConfigureAwait(false);
