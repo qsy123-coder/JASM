@@ -49,9 +49,9 @@ public class OilGlossScannerTests : IDisposable
     }
 
     [Fact]
-    public void FallsBackToAllComponentsWhenNoComponent3Exists()
+    public void SkipsModThatOnlyHasHeadComponents()
     {
-        // 少数老 Mod 的身体就在 Component0：没有 3+ 时不能把整个 Mod 排除。
+        // 纯发型 / 只有脸和头的 Mod：Component0–2 全部排除，不能回退成「包全部」。
         var mod = CreateMod("""
             namespace = TestMod
 
@@ -64,8 +64,78 @@ public class OilGlossScannerTests : IDisposable
 
         var result = OilGlossScanner.Scan(mod);
 
-        Assert.All(result.Drawcalls, d => Assert.False(d.IsHeadLike));
-        Assert.All(result.Drawcalls, d => Assert.Equal(OilGlossGroup.Body, d.Group));
+        Assert.All(result.Drawcalls, d => Assert.True(d.IsHeadLike));
+        Assert.All(result.Drawcalls, d => Assert.Null(d.Group));
+        Assert.Null(result.Body);
+        Assert.False(result.HasSelection);
+        Assert.Contains("已全部排除", result.Reason);
+    }
+
+    [Fact]
+    public void SelectsAllTextureOverridesWhenNoComponentSectionsExist()
+    {
+        // 作者用自定义段落名（没有 ComponentN）时，仍然包所有 TextureOverride。
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideBody]
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideCloth]
+            drawindexed = 500, 900, 0
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Equal(2, result.Drawcalls.Count(d => d.Group == OilGlossGroup.Body));
+        Assert.Equal(900, result.Body!.IndexCount);
+    }
+
+    [Fact]
+    public void ExcludesSectionsAndConditionsWithHeadKeywords()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideComponent3]
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideComponent4]
+            ; Draw hair long
+            drawindexed = 500, 900, 0
+
+            [TextureOverrideComponent5]
+            if $hair_swap == 1
+            drawindexed = 400, 1400, 0
+            endif
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 900).Group);
+        Assert.True(result.Drawcalls.Single(d => d.IndexCount == 500).IsHeadLike);
+        Assert.True(result.Drawcalls.Single(d => d.IndexCount == 400).IsHeadLike);
+        Assert.Equal(1, result.Drawcalls.Count(d => d.Group is not null));
+    }
+
+    [Fact]
+    public void IgnoresNonComponentSectionsWhenComponentSectionsExist()
+    {
+        // 官方身体/衣物在 Component3+；没有组件编号的自定义段落不参与，
+        // 避免把作者额外的头发/道具段落包进去。
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideBodyExtra]
+            drawindexed = 700, 0, 0
+
+            [TextureOverrideComponent3]
+            drawindexed = 900, 0, 0
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Single(result.Drawcalls, d => d.Group is not null);
         Assert.Equal(900, result.Body!.IndexCount);
     }
 
