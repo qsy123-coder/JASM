@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using GIMI_ModManager.Core.Helpers;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -40,7 +41,7 @@ public sealed record InGameMenuGenerationResult(
 ///   • <c>&lt;ini 所在目录&gt;/JASM_Menu/</c>（纹理、shader、manifest）
 /// 作者原有文件一个字节都不改，删除这两个路径即可完全回滚。
 /// </summary>
-public static class InGameMenuGenerator
+public static partial class InGameMenuGenerator
 {
     public const string MenuIniFileName = "JASM_Menu.ini";
     public const string AssetsDirectoryName = "JASM_Menu";
@@ -121,15 +122,27 @@ public static class InGameMenuGenerator
                 $"作者已有可点击菜单：{detection.MatchedFile}");
         }
 
-        var rows = ModIniToggleParser.ParseDirectory(modFolderPath);
-        if (rows.Count == 0)
+        var effectiveOptionsInput = options ?? new InGameMenuOptions();
+
+        // 作者 ini 的 [Key*] 行；油光本体自带的三行按键不参与菜单
+        IReadOnlyList<ModIniToggleRow> parsedRows = ModIniToggleParser.ParseDirectory(modFolderPath)
+            .Where(r => string.IsNullOrWhiteSpace(r.Namespace)
+                        || !effectiveOptionsInput.ExcludedNamespaces.Contains(r.Namespace, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        if (parsedRows.Count == 0 && effectiveOptionsInput.ExtraRows.Count == 0)
             return new InGameMenuGenerationResult(
                 InGameMenuGenerationStatus.SkippedNoRows,
                 null, null, 0, 0,
                 "没有解析到任何 [Key*] 段落");
 
-        rows = EnsureAsciiNamespaces(modFolderPath, rows);
-        rows = ApplyRowLayout(rows, options ?? new InGameMenuOptions());
+        parsedRows = EnsureAsciiNamespaces(modFolderPath, parsedRows);
+        parsedRows = ApplyRowLayout(parsedRows, effectiveOptionsInput);
+
+        // 注入行固定置顶；它们不参与行布局，也不改变「菜单落在哪个目录」的判断
+        var rows = effectiveOptionsInput.ExtraRows.Count > 0
+            ? effectiveOptionsInput.ExtraRows.Concat(parsedRows).ToList()
+            : parsedRows;
 
         var clickable = rows.Count(r => r.IsClickable);
         if (clickable == 0)
@@ -139,8 +152,8 @@ public static class InGameMenuGenerator
                 "没有可直接切换的循环变量（[Key*] 里缺少 $变量 = 多值）");
 
         // 放到「拥有最多行」的那个 ini 目录：3DMigoto 的 include_recursive 会加载它，
-        // 且纹理相对路径以 ini 所在目录为准。
-        var targetDirectory = PickTargetDirectory(modFolderPath, rows);
+        // 且纹理相对路径以 ini 所在目录为准。只用作者行判断，避免注入行把目录带偏。
+        var targetDirectory = PickTargetDirectory(modFolderPath, parsedRows);
         var iniPath = Path.Combine(targetDirectory, MenuIniFileName);
         var assetsDirectory = Path.Combine(targetDirectory, AssetsDirectoryName);
 
@@ -152,23 +165,28 @@ public static class InGameMenuGenerator
             return Failed($"{MenuIniFileName} 已存在且不是 JASM 生成的文件，拒绝覆盖");
 
         var effectiveOptions = options ?? new InGameMenuOptions();
-        // 补过 ASCII namespace 之后，每个 Mod 的 $object_detected 都是独立的，
-        // 直接用它做逐角色门控（比 hash 可靠；hash 可能命中共享资源导致叠菜单）。
-        var gateNamespace = rows.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.Namespace))?.Namespace;
-        var detectionVariable = !string.IsNullOrWhiteSpace(gateNamespace)
-                                && ContainsObjectDetected(modFolderPath)
-            ? "$\\" + gateNamespace + "\\object_detected"
-            : string.Empty;
-        var detectionHash = detectionVariable.Length == 0 ? ExtractDetectionHash(modFolderPath) : null;
+        // 逐角色门控：收集所有真正设置 $object_detected = 1 的文件所属命名空间。
+        // 作者常把 [Key*] 与 $object_detected 放在不同 ini（甚至普通 / 大招两套形态）里，
+        // 只取「第一条可点击行」的命名空间会得到一个永远为 0 的条件 —— 菜单根本不显示。
+        var detectionVariables = CollectDetectionVariables(modFolderPath);
+        // 纹理 hash 只作为**兜底**：拿不到 per-character 变量时才用。
+        // 它命中的是网格资源，在游戏暂停 / 时间冻结时会让上一件 Mod 一直「在场」，
+        // 造成两个角色的菜单同时出现（女漂 + 椿 实机复现）。变量门控本身按角色隔离，
+        // 有变量时必须只信变量。
+        var detectionHashes = detectionVariables.Count == 0
+            ? CollectDetectionHashes(modFolderPath)
+            : [];
 
         effectiveOptions = effectiveOptions with
         {
             Title = Truncate(StripDisabledPrefix(Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar))), 40),
-            DetectionHash = detectionHash ?? string.Empty,
-            DetectionVariable = detectionVariable,
+            DetectionHash = detectionHashes.FirstOrDefault() ?? string.Empty,
+            DetectionHashes = detectionHashes,
+            DetectionVariable = string.Empty,
+            DetectionVariables = detectionVariables,
             // 有独立门控变量 / hash 时不再退回未限定的全局 $object_detected
-            GateOnObjectDetected = detectionHash is null
-                                   && detectionVariable.Length == 0
+            GateOnObjectDetected = detectionHashes.Count == 0
+                                   && detectionVariables.Count == 0
                                    && effectiveOptions.GateOnObjectDetected
                                    && ContainsObjectDetected(modFolderPath),
         };
@@ -192,25 +210,23 @@ public static class InGameMenuGenerator
 
         try
         {
-            if (Directory.Exists(assetsDirectory))
-                Directory.Delete(assetsDirectory, recursive: true);
-            Directory.CreateDirectory(assetsDirectory);
-
-            // 随包分发的字体（HYWenHei-85W）进程私有加载；缺文件时退回系统雅黑
-            GdiTextRasterizer.UseFont(effectiveOptions.FontFilePath, effectiveOptions.FontFamily);
-
-            foreach (var texture in build.Textures)
+            // 写完必须自检：曾出现过「纹理一张没写、ini/清单照写、还报已生成」的静默失败，
+            // 表现为游戏里 F7 有按键脉冲但菜单不显示。缺任何一张就整体重试一次；
+            // 仍不完整就报失败，绝不留下指向不存在纹理的菜单。
+            var written = WriteAssets(assetsDirectory, build.Textures, pngAssets, targetDirectory,
+                effectiveOptions);
+            if (written < build.Textures.Count)
             {
-                if (pngAssets.TryGetValue(texture.Kind, out var sourcePath))
-                {
-                    var targetPath = Path.Combine(assetsDirectory,
-                        Path.GetFileNameWithoutExtension(texture.FileName) + ".png");
-                    File.Copy(sourcePath, targetPath, overwrite: true);
-                }
-                else
-                {
-                    WriteTexture(targetDirectory, texture, effectiveOptions.Theme);
-                }
+                Serilog.Log.Warning("[InGameMenu] 纹理写入不完整（{Written}/{Expected}），重试：{Dir}",
+                    written, build.Textures.Count, assetsDirectory);
+                written = WriteAssets(assetsDirectory, build.Textures, pngAssets, targetDirectory,
+                    effectiveOptions);
+            }
+
+            if (written < build.Textures.Count)
+            {
+                TryCleanup(iniPath, assetsDirectory);
+                return Failed($"菜单纹理写入不完整（期望 {build.Textures.Count}，实际 {written}）：{assetsDirectory}");
             }
 
             var shaderPath = Path.Combine(assetsDirectory, "draw_2d.hlsl");
@@ -415,6 +431,9 @@ public static class InGameMenuGenerator
 
     private static string PickTargetDirectory(string modFolderPath, IReadOnlyList<ModIniToggleRow> rows)
     {
+        if (rows.Count == 0)
+            return modFolderPath;
+
         var best = rows
             .Select(r => Path.GetDirectoryName(r.IniRelativePath) ?? string.Empty)
             .GroupBy(dir => dir, StringComparer.OrdinalIgnoreCase)
@@ -425,6 +444,98 @@ public static class InGameMenuGenerator
 
         return Path.Combine(modFolderPath, best);
     }
+
+    /// <summary>
+    /// 收集这个 Mod 里所有真正把 <c>$object_detected</c> 置 1 的文件的门控变量。
+    ///
+    /// 普通 / 大招两套形态各自有一个 <c>$object_detected</c>，因此可能返回多个限定名；
+    /// 菜单用 <c>||</c> 串联，任意一套形态在绘制时都能点亮菜单。
+    /// 文件本身没有 namespace 时变量属于全局命名空间，返回未限定的 <c>$object_detected</c>。
+    /// </summary>
+    private static IReadOnlyList<string> CollectDetectionVariables(string modFolderPath)
+    {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in Directory
+                     .EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories)
+                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string text;
+            try
+            {
+                text = IniFileText.ReadAllText(file);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            var matches = ObjectDetectedAssignment().Matches(text);
+            if (matches.Count == 0)
+                continue;
+
+            var fileNamespace = ReadFileNamespace(text);
+
+            foreach (Match match in matches)
+            {
+                // 赋值本身带限定名时以它为准，否则用文件级 namespace
+                var qualifier = match.Groups[1].Value.Trim();
+                if (qualifier.Length == 0)
+                    qualifier = fileNamespace;
+
+                var variable = qualifier.Length == 0
+                    ? "$object_detected"
+                    : "$\\" + qualifier + "\\object_detected";
+
+                if (seen.Add(variable))
+                    result.Add(variable);
+            }
+        }
+
+        // 全局 $object_detected 是所有 Mod 共享的：只要还有任何一个**命名空间**变量，
+        // 就不能把它混进门控 —— 否则别的角色把全局量置 1 时，这份菜单也会亮
+        //（女漂 + 椿 同时出现就是这个原因）。
+        if (result.Any(v => v.StartsWith("$\\", StringComparison.Ordinal)))
+            result.RemoveAll(v => v == "$object_detected");
+
+        return result;
+    }
+
+    /// <summary>读取文件级 <c>namespace = X</c>；没有则返回空串（变量属于全局命名空间）。</summary>
+    private static string ReadFileNamespace(string text)
+    {
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line[0] is ';' or '/')
+                continue;
+
+            if (!line.StartsWith("namespace", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var eq = line.IndexOf('=');
+            if (eq > 0)
+                return line[(eq + 1)..].Trim().Trim('"');
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// 匹配 <c>$object_detected = 1</c> / <c>$\Ns\object_detected = 1</c>（含 post / 行内注释），
+    /// 捕获其中可选的命名空间。只认赋值为 1 的行，<c>global $object_detected = 0</c> 不算。
+    /// </summary>
+    [GeneratedRegex(@"^\s*(?:post\s+)?\$(?:([^=\s\\]+)\\)?object_detected\s*=\s*1(?:\.0*)?\s*(?:;.*)?$",
+        RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex ObjectDetectedAssignment();
 
     /// <summary>
     /// 提取这个 Mod 用来检测「角色模型正在绘制」的纹理 hash。
@@ -493,6 +604,73 @@ public static class InGameMenuGenerator
     }
 
     /// <summary>
+    /// 收集所有「设置 <c>$object_detected = 1</c> 的 TextureOverride 段」的纹理 hash。
+    /// 多套形态（普通 / 大招）会得到多个 hash，菜单对每个 hash 生成一个检测段，
+    /// 任意一个命中就刷新 <c>last_seen</c> —— 完全不依赖变量命名空间。
+    /// </summary>
+    private static IReadOnlyList<string> CollectDetectionHashes(string modFolderPath)
+    {
+        const int maxHashes = 32; // 防御：异常 Mod 可能有大量同义段
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in Directory
+                     .EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories)
+                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string text;
+            try
+            {
+                text = IniFileText.ReadAllText(file);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            string? sectionHash = null;
+
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.Trim();
+
+                if (line.StartsWith('['))
+                {
+                    sectionHash = null;
+                    continue;
+                }
+
+                if (line.StartsWith("hash", StringComparison.OrdinalIgnoreCase))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq > 0)
+                        sectionHash = line[(eq + 1)..].Trim();
+                    continue;
+                }
+
+                if (sectionHash is not null && ObjectDetectedAssignment().IsMatch(line))
+                {
+                    if (seen.Add(sectionHash))
+                    {
+                        result.Add(sectionHash);
+                        if (result.Count >= maxHashes)
+                            return result;
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Mod 是否提供 <c>$object_detected</c>。没有它说明是常驻前置/后处理类 Mod，
     /// 菜单无法按「当前角色」门控，批量补齐应跳过。
     /// </summary>
@@ -547,15 +725,66 @@ public static class InGameMenuGenerator
         return result;
     }
 
+    /// <summary>
+    /// 新建资产目录并写入全部纹理，返回实际落盘的纹理数（供调用方自检）。
+    /// 抽出来是为了「不完整就整体重试一次」——单独重写失败的几张会留下半新半旧的状态。
+    /// </summary>
+    private static int WriteAssets(
+        string assetsDirectory,
+        IReadOnlyList<MenuTextureSpec> textures,
+        IReadOnlyDictionary<MenuTextureKind, string> pngAssets,
+        string targetDirectory,
+        InGameMenuOptions options)
+    {
+        if (Directory.Exists(assetsDirectory))
+            Directory.Delete(assetsDirectory, recursive: true);
+        Directory.CreateDirectory(assetsDirectory);
+
+        // 随包分发的字体（HYWenHei-85W）进程私有加载；缺文件时退回系统雅黑
+        GdiTextRasterizer.UseFont(options.FontFilePath, options.FontFamily);
+
+        var written = 0;
+        foreach (var texture in textures)
+        {
+            string targetPath;
+            if (pngAssets.TryGetValue(texture.Kind, out var sourcePath))
+            {
+                targetPath = Path.Combine(assetsDirectory,
+                    Path.GetFileNameWithoutExtension(texture.FileName) + ".png");
+                File.Copy(sourcePath, targetPath, overwrite: true);
+            }
+            else
+            {
+                targetPath = Path.Combine(targetDirectory,
+                    texture.FileName.Replace('/', Path.DirectorySeparatorChar));
+                WriteTexture(targetDirectory, texture, options.Theme);
+            }
+
+            if (File.Exists(targetPath))
+                written++;
+            else
+                Serilog.Log.Warning("[InGameMenu] 纹理未落盘：{Path}", targetPath);
+        }
+
+        return written;
+    }
+
     private static void WriteTexture(string targetDirectory, MenuTextureSpec spec, MenuTheme theme)
     {
         var relative = spec.FileName.Replace('/', Path.DirectorySeparatorChar);
         var fullPath = Path.Combine(targetDirectory, relative);
 
-        // 防御：纹理路径绝不能跑出目标目录
-        var normalizedRoot = Path.GetFullPath(targetDirectory) + Path.DirectorySeparatorChar;
+        // 防御：纹理路径绝不能跑出目标目录。
+        // 根路径先去掉尾部斜杠再补一个，避免 targetDirectory 带尾斜杠时拼出 "...\\" 而误判越界
+        // （误判的后果是整份菜单的纹理被静默跳过）。
+        var normalizedRoot = Path.GetFullPath(targetDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
         if (!Path.GetFullPath(fullPath).StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            Serilog.Log.Warning("[InGameMenu] 纹理路径越界，已跳过：{Path}（根：{Root}）", fullPath, normalizedRoot);
             return;
+        }
 
         var surface = spec.Kind switch
         {
