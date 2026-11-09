@@ -3,7 +3,7 @@ using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 namespace GIMI_ModManager.Core.Services.OilGloss;
 
 /// <summary>
-/// 把油光补丁状态转成 F7 菜单的三行：总开关 / 身体 / 衣物。
+/// 把油光补丁状态转成 F7 菜单的两行：油光开关 / 油光强度。
 ///
 /// 这些行不写进任何 ini，而是通过 <see cref="InGameMenuOptions.ExtraRows"/> 直接注入生成器：
 /// 变量的命名空间、候选值、默认值都由 manifest 决定，标签用中文，顺序固定在最前面。
@@ -21,17 +21,12 @@ public static class OilGlossMenuRows
         if (string.IsNullOrWhiteSpace(manifest.Namespace))
             return [];
 
+        // 只有一个总开关 + 强度：官方做法按 drawcall 包，同一个 drawcall 常同时包含
+        // 身体和衣物，再拆成两个开关只会出现「关了衣物身体还亮」的假开关。
         var rows = new List<ModIniToggleRow>
         {
-            CreateRow(MasterSection, OilGlossProtocol.MasterVariable, "油光总开关", "OilMaster", manifest.Namespace),
+            CreateRow(MasterSection, OilGlossProtocol.MasterVariable, "油光", "OilMaster", manifest.Namespace),
         };
-
-        if (manifest.HasBodyGroup)
-            rows.Add(CreateRow(BodySection, OilGlossProtocol.BodyVariable, "身体油光", "OilBody", manifest.Namespace));
-
-        if (manifest.HasClothGroup)
-            rows.Add(CreateRow(ClothSection, OilGlossProtocol.ClothVariable, "衣物油光", "OilCloth",
-                manifest.Namespace, defaultValue: "0"));
 
         // 强度滑块：直接写本体命名空间里的 $oilStrength（0–1），拖到哪算到哪。
         rows.Add(new ModIniToggleRow
