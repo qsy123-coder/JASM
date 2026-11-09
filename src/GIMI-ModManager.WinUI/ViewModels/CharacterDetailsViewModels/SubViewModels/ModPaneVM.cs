@@ -404,8 +404,9 @@ public sealed partial class ModPaneVM(
 
                 var label = new TextBlock
                 {
-                    Text = $"第 {rank} 大块 · {draw.IndexCount / 3:N0} 面",
-                    Width = 200,
+                    Text = $"第 {rank} 大块 · {draw.IndexCount / 3:N0} 面"
+                           + (DescribePart(draw) is { Length: > 0 } part ? " · " + part : string.Empty),
+                    Width = 280,
                     FontSize = 12,
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -559,6 +560,27 @@ public sealed partial class ModPaneVM(
         return _oilGlossService.Scan(mod).Drawcalls
             .Where(d => d.Group is not null)
             .ToList();
+    }
+
+    /// <summary>
+    /// 根据网格在角色高度上的范围，给这块网格一个看得懂的名字
+    /// （WWMI 模型 0 = 脚底，1 = 头顶）。识别不出来时返回空串，只显示「第 N 大块」。
+    /// </summary>
+    private static string DescribePart(OilGlossDrawcall draw)
+    {
+        if (draw.HeightMin is not { } min || draw.HeightMax is not { } max)
+            return string.Empty;
+
+        if (min >= 0.78)
+            return "头部/头发";
+        if (max <= 0.20)
+            return "脚/鞋";
+        if (min <= 0.25 && max >= 0.60)
+            return "身体（含腿）";
+        if (min <= 0.45 && max <= 0.65)
+            return "腿部/下装";
+
+        return string.Empty;
     }
 
     /// <summary>在已应用的分组里找同一块网格（路径 + 段落 + 索引数 + 起始索引）。</summary>
