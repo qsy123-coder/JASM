@@ -205,6 +205,39 @@ public class OilGlossPatcherTests : IDisposable
         Assert.Equal(original, File.ReadAllBytes(iniPath));
     }
 
+    [Fact]
+    public void UndoAcceptsManifestHashThatIncludesNamespace()
+    {
+        var mod = CreateMod("""
+            [TextureOverrideComponent0]
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 500, 900, 0
+            """);
+        var iniPath = Path.Combine(mod, "mod.ini");
+
+        // namespace 在补丁之前就存在 → 补丁文件的“原样字节哈希”包含它
+        IniFileText.TryInsertNamespace(iniPath, "JasmBEFORE123");
+        var original = File.ReadAllBytes(iniPath);
+
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+        OilGlossPatcher.Apply(mod, body: body);
+
+        // 模拟旧 manifest：记录的是包含 namespace 的原样哈希
+        var status = OilGlossPatcher.GetStatus(mod);
+        var oldHash = status.Manifest!.PatchedFiles[0].PatchedSha256;
+        var exactHash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(iniPath)));
+        var manifestPath = Path.Combine(mod, OilGlossProtocol.StateDirectoryName, OilGlossProtocol.ManifestFileName);
+        File.WriteAllText(manifestPath, File.ReadAllText(manifestPath).Replace(oldHash, exactHash));
+
+        Assert.Equal(OilGlossState.Applied, OilGlossPatcher.GetStatus(mod).State);
+        var undo = OilGlossPatcher.Undo(mod);
+        Assert.True(undo.Success, undo.Reason);
+        Assert.Equal(original, File.ReadAllBytes(iniPath));
+    }
+
     public void Dispose()
     {
         try
