@@ -14,7 +14,7 @@ public class OilGlossScannerTests : IDisposable
     public OilGlossScannerTests() => Directory.CreateDirectory(_root);
 
     [Fact]
-    public void PicksLargestAsBodyAndSecondLargestAsCloth()
+    public void SelectsAllNonHeadDrawCalls()
     {
         var mod = CreateMod("""
             namespace = TestMod
@@ -33,11 +33,9 @@ public class OilGlossScannerTests : IDisposable
         var result = OilGlossScanner.Scan(mod);
 
         Assert.NotNull(result.Body);
-        Assert.NotNull(result.Cloth);
+        Assert.Null(result.Cloth);
         Assert.Equal(900, result.Body!.IndexCount);
-        Assert.Equal(500, result.Cloth!.IndexCount);
-        Assert.Equal(OilGlossGroup.Body, result.Body.Group);
-        Assert.Equal(OilGlossGroup.Cloth, result.Cloth.Group);
+        Assert.All(result.Drawcalls, d => Assert.Equal(OilGlossGroup.Body, d.Group));
     }
 
     [Fact]
@@ -145,7 +143,7 @@ public class OilGlossScannerTests : IDisposable
     }
 
     [Fact]
-    public void PrefersDrawCallsVisibleInDefaultToggleState()
+    public void EvaluatesVisibilityWithoutDroppingHiddenVariants()
     {
         var mod = CreateMod("""
             namespace = TestMod
@@ -170,10 +168,9 @@ public class OilGlossScannerTests : IDisposable
 
         var result = OilGlossScanner.Scan(mod);
 
-        Assert.Equal(500, result.Body!.IndexCount);
-        // 默认隐藏的变体不参与身体锚点选择，但会进衣物组：
-        // 用户在菜单里切到该变体后油光仍能生效。
-        Assert.Equal(900, result.Cloth!.IndexCount);
+        // 默认隐藏的变体也包进去：用户切到该变体后油光要能生效。
+        Assert.Equal(900, result.Body!.IndexCount);
+        Assert.Null(result.Cloth);
         Assert.False(result.Drawcalls.Single(d => d.IndexCount == 900).VisibleByDefault);
         Assert.True(result.Drawcalls.Single(d => d.IndexCount == 500).VisibleByDefault);
     }
@@ -230,7 +227,7 @@ public class OilGlossScannerTests : IDisposable
     }
 
     [Fact]
-    public void GroupsAllMeshesSharingBodyMaterialAndEverythingElseAsCloth()
+    public void SelectsAllNonHeadMeshesRegardlessOfMaterial()
     {
         var mod = CreateMod("""
             namespace = TestMod
@@ -252,11 +249,9 @@ public class OilGlossScannerTests : IDisposable
 
         var result = OilGlossScanner.Scan(mod);
 
-        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 900).Group);
-        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 500).Group);
-        Assert.Equal(OilGlossGroup.Cloth, result.Drawcalls.Single(d => d.IndexCount == 400).Group);
+        Assert.All(result.Drawcalls, d => Assert.Equal(OilGlossGroup.Body, d.Group));
         Assert.Equal(900, result.Body!.IndexCount);
-        Assert.Equal(400, result.Cloth!.IndexCount);
+        Assert.Null(result.Cloth);
     }
 
     [Fact]
@@ -325,9 +320,8 @@ public class OilGlossScannerTests : IDisposable
         Assert.Equal(0, result.Body!.StartIndex);
         Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.StartIndex == 0).Group);
 
-        // 上半身外套不自动并进身体组：包到不支持的材质上会贴图错误，
-        // 需要时用「逐块识别身体」手动指定。
-        Assert.Equal(OilGlossGroup.Cloth, result.Drawcalls.Single(d => d.StartIndex == 18).Group);
+        // 上半身外套同样要包油光（现在只有一个组，不再区分身体/衣物）。
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.StartIndex == 18).Group);
 
         // 头部整块都在 78% 以上 → 不包油光。
         var head = result.Drawcalls.Single(d => d.StartIndex == 6);
@@ -391,7 +385,8 @@ public class OilGlossScannerTests : IDisposable
 
         Assert.True(result.Drawcalls.Single(d => d.IndexCount == 900).VisibleByDefault);
         Assert.False(result.Drawcalls.Single(d => d.IndexCount == 5000).VisibleByDefault);
-        Assert.Equal(900, result.Body!.IndexCount);
+        // 可见性只用于提示；默认隐藏的变体也会包油光（切到该形态后生效）。
+        Assert.Equal(5000, result.Body!.IndexCount);
     }
 
     [Fact]
