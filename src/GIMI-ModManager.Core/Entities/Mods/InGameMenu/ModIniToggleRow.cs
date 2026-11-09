@@ -52,10 +52,22 @@ public sealed record ModIniToggleRow
     public string Key => IniRelativePath + "|" + SectionName;
 
     /// <summary>
-    /// 特殊行：0–1 的拖动滑块（油光强度）。滑块不走 <see cref="Values"/>，
+    /// 特殊行：拖动滑块（油光强度）。滑块不走 <see cref="Values"/>，
     /// 由菜单按光标在轨道上的横坐标实时写变量。
     /// </summary>
     public bool IsSlider { get; init; }
+
+    /// <summary>
+    /// 滑块最大值（默认 1.0）。油光强度允许超过 1，菜单轨道按这个上限归一化。
+    /// 非正数按 1 处理。
+    /// </summary>
+    public double SliderMax { get; init; } = 1.0;
+
+    /// <summary>
+    /// 循环值的显示文本（可选），与 <see cref="Values"/> 一一对应。
+    /// 空 / 数量不足时退回到 <c>1/6</c> 这种序号显示。
+    /// </summary>
+    public IReadOnlyList<string> ValueLabels { get; init; } = [];
 
     /// <summary>
     /// 这一行能否由菜单直接改值。循环行需要变量名 + 至少两个候选值 + 循环/开关类型；
