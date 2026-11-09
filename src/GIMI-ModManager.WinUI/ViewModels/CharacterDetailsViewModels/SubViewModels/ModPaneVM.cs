@@ -571,7 +571,7 @@ public sealed partial class ModPaneVM(
         if (draw.HeightMin is not { } min || draw.HeightMax is not { } max)
             return string.Empty;
 
-        if (min >= 0.78)
+        if (min >= 0.75 || (max >= 0.95 && min > 0.25))
             return "头部/头发";
         if (max <= 0.20)
             return "脚/鞋";
