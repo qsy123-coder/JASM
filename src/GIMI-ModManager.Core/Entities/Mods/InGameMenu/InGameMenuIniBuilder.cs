@@ -108,6 +108,12 @@ public sealed record InGameMenuOptions
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
 
+    /// <summary>
+    /// 作者已有可点击菜单时仍生成 JASM 菜单。默认 false，避免普通 Mod 出现两套菜单；
+    /// 启用了油光的 Mod 需要这项强制生成，否则油光行没有地方显示。
+    /// </summary>
+    public bool AllowWithExistingClickableMenu { get; init; }
+
     /// <summary>诊断用：在光标计算位置画一个红色小方块。</summary>
     public bool DebugCursor { get; init; }
 
