@@ -1115,7 +1115,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             item.IsOilGlossApplied = true;
 
             // 菜单由 OilGlossService.EnableAsync 自动生成（无 [Key*] 的 Mod 也一样），这里不再重复生成。
-            InGameMenuStatusMessage = $"已添加油光：{item.Name}（F7 菜单里可分别开关身体 / 衣物）";
+            InGameMenuStatusMessage = $"已添加油光：{item.Name}（F7 菜单里可开关油光、调整强度）";
             _logger.Information("[浮窗] 添加油光：{Mod}", item.Name);
 
             // 补丁/菜单都是磁盘上的 ini，游戏不会自己重新读取 —— 立刻送一次 F10。
