@@ -19,5 +19,8 @@ jobs:
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # manifest 模式才能按 .release-please-manifest.json 的 2.35.1 递增；
+          # 缺这个输入时 action 走旧版单包模式，会把历史提交当成首个版本 → 1.0.0。
+          command: manifest
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
