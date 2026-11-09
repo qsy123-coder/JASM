@@ -1,8 +1,12 @@
+using System.Globalization;
 using System.Reflection;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.GamesService;
+using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.Core.Services.OilGloss;
+using GIMI_ModManager.WinUI.Contracts.Services;
+using GIMI_ModManager.WinUI.Models.Settings;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Services.ModHandling;
@@ -15,9 +19,14 @@ namespace GIMI_ModManager.WinUI.Services.ModHandling;
 /// </summary>
 public sealed class OilGlossService(
     IGameService gameService,
-    InGameMenuService inGameMenuService)
+    InGameMenuService inGameMenuService,
+    ILocalSettingsService localSettingsService,
+    UserPreferencesService userPreferencesService)
 {
     private static readonly ILogger Logger = Log.ForContext<OilGlossService>();
+
+    /// <summary>本体里的强度变量（全局，所有油光 Mod 共用）。</summary>
+    private const string OilStrengthVariable = @"$\katfxmatcap\oilstrength";
 
     /// <summary>当前游戏是否支持油光（只有鸣潮）。</summary>
     public bool IsSupported => string.Equals(gameService.GameShortName, "WuWa", StringComparison.OrdinalIgnoreCase);
@@ -25,6 +34,39 @@ public sealed class OilGlossService(
     public OilGlossStatus GetStatus(ISkinMod mod) => OilGlossPatcher.GetStatus(mod.FullPath);
 
     public OilGlossScanResult Scan(ISkinMod mod) => OilGlossScanner.Scan(mod.FullPath);
+
+    /// <summary>读取全局油光强度（0..1，默认 0.7）。</summary>
+    public async Task<double> GetStrengthAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = await localSettingsService
+            .ReadSettingAsync<OilGlossSettings>(OilGlossSettings.Key, SettingScope.App)
+            .ConfigureAwait(false);
+
+        return Math.Clamp(settings?.Strength ?? 0.7, 0, 1);
+    }
+
+    /// <summary>
+    /// 保存全局油光强度：写 JASM 设置 + 写 3DMigoto 的 <c>d3dx_user.ini</c>
+    /// （<c>$\katfxmatcap\oilstrength</c>）。游戏需要 F10 重新读取后生效。
+    /// </summary>
+    public async Task<bool> SaveStrengthAsync(double strength, CancellationToken cancellationToken = default)
+    {
+        var value = Math.Clamp(strength, 0, 1);
+
+        var settings = await localSettingsService
+                           .ReadSettingAsync<OilGlossSettings>(OilGlossSettings.Key, SettingScope.App)
+                           .ConfigureAwait(false)
+                       ?? new OilGlossSettings();
+
+        settings.Strength = value;
+        await localSettingsService.SaveSettingAsync(OilGlossSettings.Key, settings, SettingScope.App)
+            .ConfigureAwait(false);
+
+        return await userPreferencesService
+            .SetGlobalVariableAsync(OilStrengthVariable,
+                value.ToString("0.###", CultureInfo.InvariantCulture), cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     /// <summary>
     /// 开启油光：复制本体（已有则接管）→ 自动分组 → 打补丁 → 若菜单已生成则重建。
@@ -89,6 +131,85 @@ public sealed class OilGlossService(
 
         if (result.Success)
             await RegenerateMenuAsync(mod, createIfMissing: false, cancellationToken).ConfigureAwait(false);
+
+        return result;
+    }
+
+    /// <summary>
+    /// 重新打补丁，但跳过当前可见网格里**索引数最大的一块**。
+    /// 用于「最大块其实是头发」的 Mod：自动分组会把它当身体，导致头发被 matcap 改色。
+    /// </summary>
+    public async Task<OilGlossApplyResult> ReapplyExcludingLargestAsync(
+        ISkinMod mod,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsSupported)
+            return new OilGlossApplyResult { Status = OilGlossApplyStatus.Failed, Reason = "油光只支持鸣潮（WWMI）" };
+
+        var status = OilGlossPatcher.GetStatus(mod.FullPath);
+        if (status.State is OilGlossState.Applied or OilGlossState.Conflict or OilGlossState.Broken)
+        {
+            var undo = await Task.Run(() => OilGlossPatcher.Undo(mod.FullPath), cancellationToken)
+                .ConfigureAwait(false);
+            if (!undo.Success)
+            {
+                return new OilGlossApplyResult
+                {
+                    Status = OilGlossApplyStatus.Failed,
+                    Reason = "撤销原补丁失败：" + undo.Reason,
+                };
+            }
+        }
+
+        var scan = await Task.Run(() => OilGlossScanner.Scan(mod.FullPath), cancellationToken)
+            .ConfigureAwait(false);
+
+        var largest = scan.Drawcalls
+            .Where(d => d.Group is not null)
+            .OrderByDescending(d => d.IndexCount)
+            .FirstOrDefault();
+
+        if (largest is null)
+        {
+            return new OilGlossApplyResult
+            {
+                Status = OilGlossApplyStatus.NoDrawcalls,
+                Reason = scan.Reason,
+            };
+        }
+
+        var remaining = scan.Drawcalls
+            .Where(d => !(string.Equals(d.IniRelativePath, largest.IniRelativePath, StringComparison.OrdinalIgnoreCase)
+                          && d.LineIndex == largest.LineIndex))
+            .ToList();
+
+        var newScan = OilGlossScanner.Group(remaining);
+        if (newScan.Body is null)
+        {
+            return new OilGlossApplyResult
+            {
+                Status = OilGlossApplyStatus.NoDrawcalls,
+                Reason = "排除最大网格后没有可包油光的网格",
+            };
+        }
+
+        var result = await Task.Run(() =>
+        {
+            var body = OilGlossBodyProvisioner.Ensure(mod.FullPath, EmbeddedOilGlossAssetSource.Instance);
+            if (!body.Success)
+            {
+                return new OilGlossApplyResult
+                {
+                    Status = OilGlossApplyStatus.Failed,
+                    Reason = body.Reason,
+                };
+            }
+
+            return OilGlossPatcher.Apply(mod.FullPath, newScan, body);
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (result.Status == OilGlossApplyStatus.Applied)
+            await RegenerateMenuAsync(mod, createIfMissing: true, cancellationToken).ConfigureAwait(false);
 
         return result;
     }
