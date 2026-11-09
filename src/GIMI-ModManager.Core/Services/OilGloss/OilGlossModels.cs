@@ -163,7 +163,7 @@ public sealed record OilGlossScanResult
     /// <summary>身体组（索引数最大的一块）。</summary>
     public OilGlossDrawcall? Body { get; init; }
 
-    /// <summary>衣物组（排除头部后、除身体外最大的一块）。</summary>
+    /// <summary>衣物组的代表网格（衣物组里索引数最大的一块）。</summary>
     public OilGlossDrawcall? Cloth { get; init; }
 
     /// <summary>没有可包 drawcall 时的原因。</summary>
@@ -187,6 +187,19 @@ public sealed class OilGlossAssetRecord
     public string Sha256 { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// 补丁里选中的一块网格与它的分组。
+/// 「逐块识别（试亮）」会反复重打补丁，取消时要靠它把原来的分组恢复回去。
+/// </summary>
+public sealed class OilGlossAppliedDrawcall
+{
+    public string IniRelativePath { get; set; } = string.Empty;
+    public string SectionName { get; set; } = string.Empty;
+    public int IndexCount { get; set; }
+    public int StartIndex { get; set; }
+    public OilGlossGroup Group { get; set; }
+}
+
 /// <summary>补丁状态清单（<c>JASM_Oil/manifest.json</c>）。</summary>
 public sealed class OilGlossManifest
 {
@@ -196,6 +209,10 @@ public sealed class OilGlossManifest
     public bool BodyProvidedByJasm { get; set; }
     public List<OilGlossAssetRecord> BodyFiles { get; set; } = [];
     public List<OilGlossPatchedFile> PatchedFiles { get; set; } = [];
+
+    /// <summary>本次补丁选中的网格与分组；旧版清单没有这一项（空列表）。</summary>
+    public List<OilGlossAppliedDrawcall> AppliedDrawcalls { get; set; } = [];
+
     public bool HasBodyGroup { get; set; }
     public bool HasClothGroup { get; set; }
     public DateTime AppliedAtUtc { get; set; }
