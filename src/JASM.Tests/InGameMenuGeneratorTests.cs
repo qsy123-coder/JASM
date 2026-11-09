@@ -158,6 +158,60 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void ShowsOnlyTheActiveFormRows()
+    {
+        // 多形态 Mod（普通 / 大招各自的 ini）：非当前形态的行整行不画（不是只置灰），
+        // 两套形态共用同一段槽位，当前形态的行自动顶上来。
+        var mod = CreateMod("FormMod", """
+            namespace = ButtonNs
+
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "norm.ini"), """
+            namespace = NormNs
+
+            [Constants]
+            global $object_detected = 0
+
+            [KeyNormPart]
+            key = VK_1
+            type = cycle
+            $part = 0,1
+
+            [TextureOverrideComponent0]
+            hash = aaaa
+            $object_detected = 1
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "ult.ini"), """
+            namespace = UltNs
+
+            [Constants]
+            global $object_detected = 0
+
+            [KeyUltPart]
+            key = VK_2
+            type = cycle
+            $part = 0,1
+
+            [TextureOverrideComponent0]
+            hash = bbbb
+            $object_detected = 1
+            """);
+
+        InGameMenuGenerator.Generate(mod);
+
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        // 每个形态的行列表整体被形态门控包住：非当前形态整行不画
+        Assert.Contains(@"if $\NormNs\object_detected == 1", menu);
+        Assert.Contains(@"if $\UltNs\object_detected == 1", menu);
+        Assert.DoesNotContain(@"if $\NormNs\object_detected != 1", menu);
+        Assert.DoesNotContain(@"if $\UltNs\object_detected != 1", menu);
+    }
+
+    [Fact]
     public void GatesOnEveryFormNamespaceWithLogicalOr()
     {
         // 普通 / 大招两套形态各有一个 $object_detected；任意一套绘制时菜单都要显示。
