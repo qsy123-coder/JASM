@@ -1,5 +1,9 @@
 # 油光（KatFXMatcap）逐 Mod 可选功能 PRD
 
+> **后续修正**：身体/衣物两组与「三行菜单」已被单一总开关取代；
+> `ps-t0` 替换导致的偏色、旧补丁自动升级等修复见
+> [`oil-gloss-all-mods-prd.md`](oil-gloss-all-mods-prd.md)。
+
 **Version**: 1.0
 **Date**: 2026-11-09
 **Status**: 需求已确认，待实现
