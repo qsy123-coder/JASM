@@ -62,6 +62,18 @@ public sealed record InGameMenuOptions
     public IReadOnlyList<string> DetectionHashes { get; init; } = [];
 
     /// <summary>
+    /// 每个 ini 文件所属形态的门控变量（ini 相对路径 → 完整限定名，如
+    /// <c>$\JasmABCDEF12\object_detected</c>）。
+    ///
+    /// 多形态 Mod（普通 / 大招 / 其他）会在同一份菜单里列出所有形态的按键；只有
+    /// **当前正在绘制的那套形态**的门控变量为 1。用它把非当前形态的行置灰并禁用点击，
+    /// 否则用户会看到「点了没反应」的行（女漂/心这类 norm+ult 包实机反馈）。
+    /// 文件没有命名空间（全局变量）时不参与，全局量无法区分形态。
+    /// </summary>
+    public IReadOnlyDictionary<string, string> RowDetectionVariables { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// 生成器版本，写进 ini 头与 manifest，便于日后失效重生成。
     ///
     /// v3：命中检测改用 <c>cursor_screen_x/y</c>。v2 用 <c>cursor_x/y</c>，
@@ -101,8 +113,10 @@ public sealed record InGameMenuOptions
     /// v32：纹理 hash 只在没有 per-character 变量时兜底；有变量时不再叠加，修「两个角色菜单同时出现」。
     /// v33：门控里只要存在命名空间变量，就丢掉全局 <c>$object_detected</c>（全局量是所有 Mod 共享的）。
     /// v34：新增 0–1 拖动滑块行（油光强度），拖动时实时写 <c>$\KatFXMatcap\oilstrength</c>。
+    /// v35：跳过 DISABLED_ ini/目录；多形态 Mod 的非当前形态行置灰并禁用点击。
+    /// v36：非当前形态的行整行不画（多套形态共用槽位），只显示当前形态对应的按键。
     /// </summary>
-    public const int CurrentGeneratorVersion = 34;
+    public const int CurrentGeneratorVersion = 36;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -329,8 +343,41 @@ public static class InGameMenuIniBuilder
         options = options with { MaxRowsPerPage = rowsPerPage };
 
         var rowCount = rows.Count;
-        var pageCount = Math.Max(1, (rowCount + rowsPerPage - 1) / rowsPerPage);
-        var visibleRows = Math.Min(rowsPerPage, Math.Max(1, rowCount));
+
+        // ── 行槽位（多形态 Mod）────────────────────────────────────────
+        // 「始终显示」的行（油光行、无形态文件的行）占最前面几个槽；
+        // 每个形态的行各自从同一段槽位开始 —— 同一时刻只有一套形态在绘制，
+        // 所以多套形态可以共用槽位：非当前形态的行整体不画、不占位，
+        // 当前形态的行自动顶上来（实机反馈：另一套形态应直接不显示）。
+        var rowSlots = new int[rowCount];
+        var rowVisibility = new string?[rowCount];
+        var groupSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var groupCursors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        var alwaysCount = 0;
+        for (var i = 0; i < rowCount; i++)
+        {
+            if (TryGetFormDetection(rows[i], options, out _))
+                continue;
+            rowSlots[i] = alwaysCount++;
+        }
+
+        for (var i = 0; i < rowCount; i++)
+        {
+            if (!TryGetFormDetection(rows[i], options, out var form))
+                continue;
+
+            var local = groupCursors.TryGetValue(form, out var cursor) ? cursor : 0;
+            rowSlots[i] = alwaysCount + local;
+            groupCursors[form] = local + 1;
+            groupSizes[form] = local + 1;
+            rowVisibility[i] = form;
+        }
+
+        var maxGroupRows = groupSizes.Count == 0 ? 0 : groupSizes.Values.Max();
+        var slotCount = Math.Max(1, alwaysCount + maxGroupRows);
+        var pageCount = Math.Max(1, (slotCount + rowsPerPage - 1) / rowsPerPage);
+        var visibleRows = Math.Min(rowsPerPage, slotCount);
         var menuHeight = RowOffsetYFor(options) + visibleRows * (RowHeightFor(options) + RowGap) + 3 * BottomHintLineGap + 16;
 
         var (titleLine1, titleLine2) = SplitTitle(options.Title);
@@ -469,10 +516,10 @@ public static class InGameMenuIniBuilder
         AppendChrome(ini, v, token, pageCount, visibleRows, rows, menuHeight, options);
 
         for (var p = 0; p < pageCount; p++)
-            AppendPageCommandList(ini, token, p, rowCount, rowsPerPage);
+            AppendPageCommandList(ini, token, p, slotCount, rowsPerPage, rowSlots);
 
         for (var i = 0; i < rowCount; i++)
-            AppendRow(ini, v, token, i, rows[i], options);
+            AppendRow(ini, v, token, i, rowSlots[i], rowVisibility[i], rows[i], options);
 
         AppendResources(ini, token, rows, pageCount, options);
         AppendShader(ini, v, token);
@@ -847,28 +894,56 @@ public static class InGameMenuIniBuilder
         ini.AppendLine();
     }
 
-    private static void AppendPageCommandList(StringBuilder ini, string token, int page, int rowCount, int rowsPerPage)
+    private static void AppendPageCommandList(StringBuilder ini, string token, int page, int slotCount,
+        int rowsPerPage, IReadOnlyList<int> rowSlots)
     {
         ini.AppendLine($"[{PageCommandList(token, page)}]");
         var start = page * rowsPerPage;
-        var end = Math.Min(rowCount, start + rowsPerPage);
+        var end = Math.Min(slotCount, start + rowsPerPage);
         if (start >= end)
+        {
             ini.AppendLine("; 本页无行");
+        }
         else
-            for (var i = start; i < end; i++)
-                ini.AppendLine($"run = {RowCommandList(token, i)}");
+        {
+            // 同一个槽位可能挂着多个形态的行：它们各自按形态门控，只有当前形态会真的画出来
+            for (var slot = start; slot < end; slot++)
+            {
+                for (var i = 0; i < rowSlots.Count; i++)
+                {
+                    if (rowSlots[i] == slot)
+                        ini.AppendLine($"run = {RowCommandList(token, i)}");
+                }
+            }
+        }
+
         ini.AppendLine();
     }
 
-    private static void AppendRow(StringBuilder ini, string v, string token, int index, ModIniToggleRow row,
-        InGameMenuOptions options)
+    /// <summary>
+    /// 这一行所属 ini 的形态门控变量（多形态 Mod）。没有登记（无命名空间 / 不是组件文件）返回 false。
+    /// </summary>
+    private static bool TryGetFormDetection(ModIniToggleRow row, InGameMenuOptions options, out string form)
+    {
+        form = string.Empty;
+        if (!options.RowDetectionVariables.TryGetValue(row.IniRelativePath, out var value)
+            || string.IsNullOrWhiteSpace(value))
+            return false;
+
+        form = value;
+        return true;
+    }
+
+    private static void AppendRow(StringBuilder ini, string v, string token, int index, int slot,
+        string? visibility, ModIniToggleRow row, InGameMenuOptions options)
     {
         var rowWidth = RowWidthFor(options);
         var rowHeight = RowHeightFor(options);
         var rowsPerPage = RowsPerPage(options);
         var reference = options.Theme.UseReferenceAssets;
 
-        var rowY = RowOffsetYFor(options) + (index % rowsPerPage) * (rowHeight + RowGap);
+        var rowY = RowOffsetYFor(options) + (slot % rowsPerPage) * (rowHeight + RowGap);
+
         var arrowOffsetY = reference ? rowHeight / 2 - ArrowHeight / 2 : ArrowOffsetY;
         var labelOffsetY = reference ? 4 : LabelOffsetY;
         var valueOffsetY = reference ? 32 : ValueOffsetY;
@@ -878,6 +953,10 @@ public static class InGameMenuIniBuilder
 
         ini.AppendLine($"; ---- 行 {index}: {SanitizeComment(row.SectionName)} → {SanitizeComment(row.Label)} ----");
         ini.AppendLine($"[{RowCommandList(token, index)}]");
+
+        // 多形态 Mod：非当前形态的行整行不画（多套形态共用同一段槽位，当前形态的行自动顶上来）
+        if (!string.IsNullOrWhiteSpace(visibility))
+            ini.AppendLine($"if {visibility} == 1");
 
         // 命中框
         ini.AppendLine($"{v}in_rect = 0");
@@ -986,6 +1065,10 @@ public static class InGameMenuIniBuilder
             ini.AppendLine("endif");
         }
 
+        // 与行首的形态门控配对
+        if (!string.IsNullOrWhiteSpace(visibility))
+            ini.AppendLine("endif");
+
         ini.AppendLine();
     }
 
@@ -1004,7 +1087,7 @@ public static class InGameMenuIniBuilder
     }
 
     private static void AppendQuad(StringBuilder ini, string v, string token, string resource, string xExpression,
-        string yExpression, int width, int height, decimal alpha)
+        string yExpression, int width, int height, decimal alpha, string? dimWhenTrue = null)
     {
         ini.AppendLine($"ps-t100 = {resource}");
         ini.AppendLine($"{v}img_w = {width}");
@@ -1012,6 +1095,15 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"{v}img_x = {xExpression}");
         ini.AppendLine($"{v}img_y = {yExpression}");
         ini.AppendLine($"{v}tint_a = {alpha.ToString(CultureInfo.InvariantCulture)}");
+
+        // 条件置灰（多形态 Mod 的非当前形态行）：条件成立时降低透明度
+        if (!string.IsNullOrEmpty(dimWhenTrue))
+        {
+            ini.AppendLine($"if {dimWhenTrue}");
+            ini.AppendLine($"    {v}tint_a = 0.35");
+            ini.AppendLine("endif");
+        }
+
         ini.AppendLine($"run = {QuadCommandList(token)}");
     }
 
