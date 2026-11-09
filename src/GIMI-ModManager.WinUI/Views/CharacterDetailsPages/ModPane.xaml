@@ -277,37 +277,22 @@
                             TextWrapping="WrapWholeWords"
                             Visibility="{x:Bind ViewModel.HasInGameMenuStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
-                    <!-- 油光：仅鸣潮显示。开启后 F7 菜单会多出总开关 / 身体 / 衣物三行 -->
+                    <!-- 油光：仅鸣潮显示。一个开关 + 逐块识别；强度在 F7 菜单里调 -->
                     <StackPanel Orientation="Horizontal" Spacing="8"
                                 Visibility="{x:Bind ViewModel.CanToggleOilGloss, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Button
-                            Command="{x:Bind ViewModel.EnableOilGlossCommand}"
-                            Content="开启油光" />
-                        <Button
-                            Command="{x:Bind ViewModel.DisableOilGlossCommand}"
-                            Content="撤销油光" />
-                        <Button
-                            Command="{x:Bind ViewModel.ReapplyOilGlossExcludingLargestCommand}"
-                            Content="排除最大网格重打"
-                            ToolTipService.ToolTip="头发会变色时用：跳过索引数最大的网格重新分组" />
+                            Command="{x:Bind ViewModel.ToggleOilGlossCommand}"
+                            Content="{x:Bind ViewModel.OilGlossToggleLabel, Mode=OneWay}" />
                         <Button
                             Command="{x:Bind ViewModel.CustomizeOilGroupsCommand}"
-                            Content="调整分组"
-                            ToolTipService.ToolTip="手动选择每块网格属于身体、衣物还是不包（头发变色时用）" />
+                            Content="逐块识别身体"
+                            ToolTipService.ToolTip="分不清哪块是身体/头发时用：逐块试亮，回游戏看哪块变亮；点取消会恢复原分组" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="{x:Bind ViewModel.OilGlossStatusText, Mode=OneWay}"
                             TextWrapping="WrapWholeWords" />
-                    </StackPanel>
-                    <!-- 油光强度（全局）：拖动停止后写 d3dx_user.ini 并自动 F10 -->
-                    <StackPanel Orientation="Horizontal" Spacing="8"
-                                Visibility="{x:Bind ViewModel.IsOilGlossApplied, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="油光强度" VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Slider Width="180" Minimum="0" Maximum="1" StepFrequency="0.05"
-                                Value="{x:Bind ViewModel.OilGlossStrength, Mode=TwoWay}" />
                     </StackPanel>
                     <!-- 按 ini 文件分组，点击文件夹名折叠 -->
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModModel.KeyBindingGroups, Mode=OneWay}">
@@ -419,27 +404,19 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="8"
                         Visibility="{x:Bind ViewModel.CanToggleOilGloss, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                <Button Command="{x:Bind ViewModel.EnableOilGlossCommand}" Content="开启油光" />
-                <Button Command="{x:Bind ViewModel.DisableOilGlossCommand}" Content="撤销油光" />
                 <Button
-                    Command="{x:Bind ViewModel.ReapplyOilGlossExcludingLargestCommand}"
-                    Content="排除最大网格重打"
-                    ToolTipService.ToolTip="头发会变色时用：跳过索引数最大的网格重新分组" />
-                <Button Command="{x:Bind ViewModel.CustomizeOilGroupsCommand}" Content="调整分组" />
+                    Command="{x:Bind ViewModel.ToggleOilGlossCommand}"
+                    Content="{x:Bind ViewModel.OilGlossToggleLabel, Mode=OneWay}" />
+                <Button
+                    Command="{x:Bind ViewModel.CustomizeOilGroupsCommand}"
+                    Content="逐块识别身体"
+                    ToolTipService.ToolTip="分不清哪块是身体/头发时用：逐块试亮，回游戏看哪块变亮；点取消会恢复原分组" />
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="12"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="{x:Bind ViewModel.OilGlossStatusText, Mode=OneWay}"
                     TextWrapping="WrapWholeWords" />
-            </StackPanel>
-            <!-- 油光强度（全局）：拖动停止后写 d3dx_user.ini 并自动 F10 -->
-            <StackPanel Orientation="Horizontal" Spacing="8"
-                        Visibility="{x:Bind ViewModel.IsOilGlossApplied, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                <TextBlock Text="油光强度" VerticalAlignment="Center" FontSize="12"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Slider Width="180" Minimum="0" Maximum="1" StepFrequency="0.05"
-                        Value="{x:Bind ViewModel.OilGlossStrength, Mode=TwoWay}" />
             </StackPanel>
         </StackPanel>
 
