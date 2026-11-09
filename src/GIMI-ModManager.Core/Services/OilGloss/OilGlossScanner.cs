@@ -21,6 +21,13 @@ public static class OilGlossScanner
     private static readonly string[] HeadKeywords =
         ["hat", "hair", "face", "eye", "brow", "head"];
 
+    /// <summary>
+    /// 贴花 / 眼睛 / 睫毛这类叠加网格。它们依赖叠加或特殊 shader，
+    /// 被 matcap 包上会在皮肤上出现「贴图错误」，所以默认不包。
+    /// </summary>
+    private static readonly string[] NonOilableKeywords =
+        ["tattoo", "decal", "logo", "censor", "eye", "brow", "lash", "mouth", "teeth", "tongue", "nail"];
+
     private static readonly string[] SkippedFileNames =
         ["JASM_Menu.ini", OilGlossProtocol.OilIniFileName];
 
@@ -228,6 +235,7 @@ public static class OilGlossScanner
                 TextureSlot = textureSlot,
                 Comment = comment,
                 IsHeadLike = IsHeadLike(condition, textureSlot, comment, section),
+                IsNonOilable = IsNonOilable(condition, comment, section),
             });
         }
 
@@ -283,13 +291,13 @@ public static class OilGlossScanner
             return new OilGlossScanResult { Reason = "没有找到可包油光的 drawindexed" };
         }
 
-        var candidates = drawcalls.Where(d => !d.IsHeadLike).ToList();
+        var candidates = drawcalls.Where(d => !d.IsHeadLike && !d.IsNonOilable).ToList();
         if (candidates.Count == 0)
         {
             return new OilGlossScanResult
             {
                 Drawcalls = drawcalls,
-                Reason = "只找到头部/头发/脸的 drawcall，已全部排除",
+                Reason = "只找到头部/头发/贴花类的 drawcall，已全部排除",
             };
         }
 
@@ -341,6 +349,12 @@ public static class OilGlossScanner
     {
         var haystack = (condition + " " + textureSlot + " " + comment + " " + section).ToLowerInvariant();
         return HeadKeywords.Any(haystack.Contains);
+    }
+
+    private static bool IsNonOilable(string condition, string comment, string section)
+    {
+        var haystack = (condition + " " + comment + " " + section).ToLowerInvariant();
+        return NonOilableKeywords.Any(haystack.Contains);
     }
 
     private static bool ShouldSkip(string relativePath)
