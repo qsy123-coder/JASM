@@ -113,16 +113,16 @@ public static partial class InGameMenuGenerator
         if (!Directory.Exists(modFolderPath))
             return Failed("Mod 目录不存在");
 
+        var effectiveOptionsInput = options ?? new InGameMenuOptions();
+
         var detection = ClickableMenuDetector.Detect(modFolderPath);
-        if (detection.HasClickableMenu)
+        if (detection.HasClickableMenu && !effectiveOptionsInput.AllowWithExistingClickableMenu)
         {
             return new InGameMenuGenerationResult(
                 InGameMenuGenerationStatus.SkippedExistingClickableMenu,
                 null, null, 0, 0,
                 $"作者已有可点击菜单：{detection.MatchedFile}");
         }
-
-        var effectiveOptionsInput = options ?? new InGameMenuOptions();
 
         // 作者 ini 的 [Key*] 行；油光本体自带的三行按键不参与菜单
         IReadOnlyList<ModIniToggleRow> parsedRows = ModIniToggleParser.ParseDirectory(modFolderPath)
