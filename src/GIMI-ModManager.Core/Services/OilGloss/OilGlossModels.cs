@@ -22,6 +22,20 @@ public static class OilGlossProtocol
     /// <summary>补丁/清单结构版本；结构变化时递增，旧状态会被视为不兼容。</summary>
     public const int CurrentVersion = 1;
 
+    /// <summary>
+    /// 内嵌本体（<c>Matcap.ini</c> + <c>Oil/*.dds</c>）的版本。
+    /// 递增时需要把旧 manifest 里 <c>BodyProvidedByJasm = true</c> 的本体换成新版本；
+    /// 当前为 2：不再替换 <c>ps-t0</c>，避免头发/衣物被平色贴图覆盖。
+    /// </summary>
+    public const int BodyVersion = 2;
+
+    /// <summary>
+    /// 补丁分组规则的版本。
+    /// 当前为 2：只包 Component3+、单一总开关；旧补丁（身体/衣物两组或包含头部）
+    /// 在读取状态时自动撤销并按新规则重打。
+    /// </summary>
+    public const int PatchVersion = 2;
+
     /// <summary>共享变量所在的 ini 文件名（Mod 根目录）。</summary>
     public const string OilIniFileName = "JASM_Oil.ini";
 
@@ -131,7 +145,10 @@ public sealed record OilGlossDrawcall
     /// <summary>起始索引（第二个参数）。</summary>
     public required int StartIndex { get; init; }
 
-    /// <summary>是否位于 Component0–2（脸/头发/头饰，默认不包油光）。</summary>
+    /// <summary>
+    /// 是否属于头部：Component0–2（脸/头发/头饰），或段落/条件/注释里命中
+    /// hair / head / face / eye / brow / hat 关键词。默认不包油光。
+    /// </summary>
     public bool IsHeadLike { get; init; }
 
     /// <summary>选中的网格；<c>null</c> 表示不包。</summary>
@@ -188,6 +205,13 @@ public sealed class OilGlossManifest
 {
     public int ManifestVersion { get; set; } = OilGlossProtocol.CurrentVersion;
     public int GeneratorVersion { get; set; } = OilGlossProtocol.CurrentVersion;
+
+    /// <summary>JASM 写入的本体版本；旧 manifest 没有该字段时为 0（视为需要升级）。</summary>
+    public int BodyVersion { get; set; }
+
+    /// <summary>补丁分组规则版本；旧 manifest 没有该字段时为 0（视为需要重打）。</summary>
+    public int PatchVersion { get; set; }
+
     public string Namespace { get; set; } = string.Empty;
     public bool BodyProvidedByJasm { get; set; }
     public List<OilGlossAssetRecord> BodyFiles { get; set; } = [];
@@ -251,10 +275,33 @@ public sealed record OilGlossBodyProvisionResult
     /// <summary>Mod 里原本就有 KatFXMatcap 本体（不覆盖）。</summary>
     public bool AlreadyPresent { get; init; }
 
+    /// <summary>本体是否由 JASM 提供（新建时写入，或现有内容与内嵌本体一致）。</summary>
+    public bool BodyProvidedByJasm { get; init; }
+
     /// <summary>这次由 JASM 写入的文件。</summary>
     public IReadOnlyList<OilGlossAssetRecord> WrittenFiles { get; init; } = [];
 
     public string Reason { get; init; } = string.Empty;
 
     public bool Success { get; init; }
+}
+
+/// <summary>把 JASM 写入的旧版本体升级到当前版本的结果。</summary>
+public sealed record OilGlossBodyUpgradeResult
+{
+    public bool Success { get; init; }
+
+    /// <summary>不需要升级（已是最新，或本体不是 JASM 写的）。</summary>
+    public bool Skipped { get; init; }
+
+    public string Reason { get; init; } = string.Empty;
+
+    /// <summary>升级后的完整本体记录（用于回写 manifest）。</summary>
+    public IReadOnlyList<OilGlossAssetRecord> Files { get; init; } = [];
+
+    /// <summary>这次实际写入的文件。</summary>
+    public IReadOnlyList<OilGlossAssetRecord> WrittenFiles { get; init; } = [];
+
+    /// <summary>用户改过、因此被保留的文件。</summary>
+    public IReadOnlyList<string> PreservedFiles { get; init; } = [];
 }
