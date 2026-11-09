@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using Newtonsoft.Json;
@@ -74,7 +73,7 @@ public static class OilGlossPatcher
             }
 
             // 补丁后被外部改过：备份还在，但撤销会覆盖用户的改动 → 标记冲突
-            if (!string.Equals(ComputeSha256(path), file.PatchedSha256, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(IniFileText.ComputeContentHash(path), file.PatchedSha256, StringComparison.OrdinalIgnoreCase))
             {
                 return new OilGlossStatus
                 {
@@ -192,7 +191,7 @@ public static class OilGlossPatcher
                 {
                     RelativePath = relativePath,
                     BackupRelativePath = Path.GetRelativePath(modFolderPath, backupPath),
-                    PatchedSha256 = ComputeSha256(path),
+                    PatchedSha256 = IniFileText.ComputeContentHash(path),
                 });
             }
 
@@ -269,7 +268,7 @@ public static class OilGlossPatcher
             var backup = Path.Combine(modFolderPath, file.BackupRelativePath);
 
             if (!File.Exists(path) || !File.Exists(backup)
-                || !string.Equals(ComputeSha256(path), file.PatchedSha256, StringComparison.OrdinalIgnoreCase))
+                || !string.Equals(IniFileText.ComputeContentHash(path), file.PatchedSha256, StringComparison.OrdinalIgnoreCase))
             {
                 conflicts.Add(file.RelativePath);
             }
@@ -425,8 +424,6 @@ public static class OilGlossPatcher
     private static string GetManifestPath(string modFolderPath)
         => Path.Combine(modFolderPath, OilGlossProtocol.StateDirectoryName, OilGlossProtocol.ManifestFileName);
 
-    private static string ComputeSha256(string path)
-        => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
 
     private static OilGlossApplyResult Failed(string reason)
         => new() { Status = OilGlossApplyStatus.Failed, Reason = reason };
