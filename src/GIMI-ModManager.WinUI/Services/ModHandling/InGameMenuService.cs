@@ -3,14 +3,15 @@ using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.Entities.Mods.SkinMod;
+using GIMI_ModManager.Core.Services.OilGloss;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Settings;
 using Serilog;
 
 namespace GIMI_ModManager.WinUI.Services.ModHandling;
 
-/// <summary>批量补齐的进度（按 Mod 列表，一个角色一次）。</summary>
-public sealed record InGameMenuBatchProgress(int Done, int Total, string CharacterName);
+/// <summary>批量补齐的进度（按角色列表计数；<paramref name="ModName"/> 为当前正在处理的 Mod）。</summary>
+public sealed record InGameMenuBatchProgress(int Done, int Total, string CharacterName, string? ModName = null);
 
 /// <summary>批量补齐里单个 Mod 的结果。</summary>
 public sealed record InGameMenuBatchItem(
@@ -43,6 +44,12 @@ public sealed class InGameMenuService(
     /// <summary>批量补齐同一时间只跑一份，避免用户在设置页连点。</summary>
     private readonly SemaphoreSlim _batchGate = new(1, 1);
 
+    /// <summary>
+    /// 单次菜单写入的串行闸。批量补齐、启用钩子、详情页按钮可能同时触发同一个/相邻 Mod 的生成，
+    /// 并发删目录 + 写文件会互相踩（表现为资产目录只剩 shader/manifest）。这里保证一次只写一个。
+    /// </summary>
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
+
     public async Task<InGameMenuSettings> ReadSettingsAsync()
     {
         var settings = await localSettingsService
@@ -61,9 +68,69 @@ public sealed class InGameMenuService(
     /// <summary>菜单是否存在且由当前生成器版本产出（旧版本菜单需要重建）。</summary>
     public bool HasCurrentMenu(ISkinMod mod) => InGameMenuGenerator.IsUpToDate(mod.FullPath);
 
-    /// <summary>为一个 Mod 生成菜单。调用方负责后台线程。</summary>
+    /// <summary>
+    /// 这个 Mod 是否有可放进菜单的按键行（与生成器的判定一致：<c>[Key*]</c> + 可循环变量）。
+    /// 没有的话生成器只会跳过，菜单也不存在 —— 调用方应提前告诉用户「无法打开菜单」。
+    /// </summary>
+    public bool HasMenuRows(ISkinMod mod)
+        => ModIniToggleParser.ParseDirectory(mod.FullPath).Any(row => row.IsClickable);
+
+    /// <summary>为一个 Mod 生成菜单。调用方负责后台线程；内部串行化，避免并发写同一目录。</summary>
     public InGameMenuGenerationResult GenerateForMod(ISkinMod mod, InGameMenuSettings settings)
-        => InGameMenuGenerator.Generate(mod.FullPath, ToOptions(settings, mod));
+    {
+        _writeGate.Wait();
+        try
+        {
+            return InGameMenuGenerator.Generate(mod.FullPath, ToOptions(settings, mod));
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 启用 / 禁用 Mod 之后调用：给这个角色「当前唯一启用」的那件补/更新菜单。
+    ///
+    /// 为什么必须在这里补：启用/禁用是改文件夹名（加/去 DISABLED_ 前缀），
+    /// <c>CharacterModList</c> 在改名期间会临时关掉 watcher，所以<b>不会</b>触发 ModsChanged；
+    /// 如果不主动补，用户「启用新 Mod → 直接开游戏」时那份 Mod 要么没有菜单、
+    /// 要么还是旧版本菜单，F7 看起来就不生效。多件启用 / 未启用的情况交给设置页批量补齐。
+    /// </summary>
+    public async Task RefreshAfterModToggleAsync(ICharacterModList modList)
+    {
+        try
+        {
+            var settings = await ReadSettingsAsync().ConfigureAwait(false);
+            if (!settings.Enabled)
+                return;
+
+            var enabled = modList.Mods.Where(entry => entry.IsEnabled).Select(entry => entry.Mod).ToList();
+            if (enabled.Count != 1)
+                return;
+
+            var target = enabled[0];
+
+            // 常驻前置/后处理类没有 $object_detected：菜单无法按角色门控，生成器会跳过
+            if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath))
+                return;
+
+            if (HasCurrentMenu(target))
+                return;
+
+            var result = GenerateForMod(target, settings);
+            if (result.Status == InGameMenuGenerationStatus.Generated)
+                Logger.Information("[InGameMenu] 启用后已生成：{Mod}（{Reason}）", target.Name, result.Reason);
+            else
+                Logger.Information("[InGameMenu] 启用后未生成：{Mod}（{Status}: {Reason}）",
+                    target.Name, result.Status, result.Reason);
+        }
+        catch (Exception e)
+        {
+            // 菜单是附加能力：失败只记日志，不能让启用 Mod 本身失败
+            Logger.Warning(e, "[InGameMenu] 启用 Mod 后生成菜单失败");
+        }
+    }
 
     /// <summary>读取这个 Mod 的所有可解析行（用于「自定义菜单行」对话框）。</summary>
     public IReadOnlyList<ModIniToggleRow> ReadRows(ISkinMod mod)
@@ -87,13 +154,16 @@ public sealed class InGameMenuService(
     public bool RemoveForMod(ISkinMod mod) => InGameMenuGenerator.Remove(mod.FullPath);
 
     /// <summary>
-    /// 扫描全部 Mod 列表，给「当前生效」的 Mod 补菜单。
-    /// 已经是当前生成器版本的菜单直接跳过；旧版本菜单（例如 v2 的鼠标命中缺陷）会自动重建。
+    /// 扫描全部 Mod 列表补菜单。默认只给「当前生效」的 Mod 补；
+    /// <paramref name="includeDisabledMods"/> 为 true 时（设置页手动「为所有 Mod 补齐」）
+    /// 连 DISABLED_ 的 Mod 一起生成——启用后立刻就有现成菜单，不用等下一次启动补齐。
+    /// 已经是当前生成器版本的菜单直接跳过；旧版本菜单会自动重建。
     /// </summary>
     public async Task<InGameMenuBatchResult> GenerateForAllAsync(
         IProgress<InGameMenuBatchProgress>? progress = null,
         bool regenerate = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeDisabledMods = false)
     {
         await _batchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -115,14 +185,21 @@ public sealed class InGameMenuService(
                 done++;
 
                 var characterName = list.Character.DisplayName;
-                progress?.Report(new InGameMenuBatchProgress(done, lists.Count, characterName));
 
                 var enabled = list.Mods.Where(entry => entry.IsEnabled).Select(entry => entry.Mod).ToList();
 
-                if (enabled.Count == 0)
+                List<ISkinMod> targets;
+                if (includeDisabledMods)
+                {
+                    // 手动「为所有 Mod 补齐」：DISABLED_ 的也一起生成。菜单与 Mod 同目录，
+                    // 启用时只是去掉前缀、整目录改名，菜单会跟着走；游戏启动时就已就位。
+                    targets = list.Mods.Select(entry => entry.Mod).ToList();
+                }
+                else if (enabled.Count == 0)
+                {
                     continue;
-
-                if (enabled.Count > 1)
+                }
+                else if (enabled.Count > 1)
                 {
                     foreach (var mod in enabled)
                     {
@@ -133,42 +210,51 @@ public sealed class InGameMenuService(
 
                     continue;
                 }
-
-                var target = enabled[0];
-
-                // 常驻前置/后处理类 Mod 没有 $object_detected：菜单无法按角色门控，
-                // 会在任何场景一直显示并与角色菜单叠加，批量补齐直接跳过。
-                if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath))
+                else
                 {
-                    items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
-                        InGameMenuGenerationStatus.SkippedNoObjectDetected,
-                        "常驻 Mod（无 $object_detected），菜单无法按角色门控，已跳过"));
-                    continue;
+                    targets = [enabled[0]];
                 }
 
-                if (!regenerate && HasCurrentMenu(target))
+                foreach (var target in targets)
                 {
-                    items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
-                        InGameMenuGenerationStatus.SkippedAlreadyGenerated, "菜单已存在且为当前版本"));
-                    continue;
-                }
+                    // 逐 Mod 报进度：一个角色下可能有上百个 Mod，只按角色报会看起来「卡死」
+                    progress?.Report(new InGameMenuBatchProgress(done, lists.Count, characterName, target.Name));
 
-                InGameMenuGenerationResult result;
-                try
-                {
-                    result = GenerateForMod(target, settings);
-                }
-                catch (Exception e)
-                {
-                    Logger.Warning(e, "[InGameMenu] 生成失败：{Mod}", target.FullPath);
-                    result = new InGameMenuGenerationResult(
-                        InGameMenuGenerationStatus.Failed, null, null, 0, 0, e.Message);
-                }
+                    // 常驻前置/后处理类 Mod 没有 $object_detected：菜单无法按角色门控，
+                    // 会在任何场景一直显示并与角色菜单叠加，批量补齐直接跳过。
+                    if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath))
+                    {
+                        items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
+                            InGameMenuGenerationStatus.SkippedNoObjectDetected,
+                            "常驻 Mod（无 $object_detected），菜单无法按角色门控，已跳过"));
+                        continue;
+                    }
 
-                items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName, result.Status, result.Reason));
+                    if (!regenerate && HasCurrentMenu(target))
+                    {
+                        items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
+                            InGameMenuGenerationStatus.SkippedAlreadyGenerated, "菜单已存在且为当前版本"));
+                        continue;
+                    }
 
-                if (result.Status == InGameMenuGenerationStatus.Generated)
-                    Logger.Information("[InGameMenu] 已生成：{Mod}（{Reason}）", target.Name, result.Reason);
+                    InGameMenuGenerationResult result;
+                    try
+                    {
+                        result = GenerateForMod(target, settings);
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.Warning(e, "[InGameMenu] 生成失败：{Mod}", target.FullPath);
+                        result = new InGameMenuGenerationResult(
+                            InGameMenuGenerationStatus.Failed, null, null, 0, 0, e.Message);
+                    }
+
+                    items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName, result.Status,
+                        result.Reason));
+
+                    if (result.Status == InGameMenuGenerationStatus.Generated)
+                        Logger.Information("[InGameMenu] 已生成：{Mod}（{Reason}）", target.Name, result.Reason);
+                }
             }
 
             return new InGameMenuBatchResult(
@@ -194,8 +280,17 @@ public sealed class InGameMenuService(
         var bundledFont = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts", "zh-cn2.ttf");
         var hasBundledFont = File.Exists(bundledFont);
 
+        // 油光补丁存在时，把「总开关 / 身体 / 衣物」三行固定注入菜单最前面。
+        // 用 manifest 而不是补丁文件反推：变量的命名空间与是否有衣物组都记在那里。
+        var oilStatus = OilGlossPatcher.GetStatus(mod.FullPath);
+        IReadOnlyList<ModIniToggleRow> oilRows =
+            oilStatus.Manifest is not null
+                ? OilGlossMenuRows.Create(oilStatus.Manifest)
+                : [];
+
         return new InGameMenuOptions
         {
+            ExtraRows = oilRows,
             OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F7" : settings.OpenKeyTokens,
             OpenKeyDisplay = string.IsNullOrWhiteSpace(settings.OpenKeyDisplay) ? "F7" : settings.OpenKeyDisplay,
             MaxRowsPerPage = Math.Clamp(settings.MaxRowsPerPage, 1, 20),
