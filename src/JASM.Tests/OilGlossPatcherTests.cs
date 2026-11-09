@@ -75,6 +75,20 @@ public class OilGlossPatcherTests : IDisposable
     }
 
     [Fact]
+    public void ApplyRecordsCurrentBodyAndPatchVersions()
+    {
+        var mod = CreateMod(TwoDrawCallIni);
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+
+        var result = OilGlossPatcher.Apply(mod, body: body);
+
+        Assert.Equal(OilGlossApplyStatus.Applied, result.Status);
+        Assert.Equal(OilGlossProtocol.BodyVersion, result.Manifest!.BodyVersion);
+        Assert.Equal(OilGlossProtocol.PatchVersion, result.Manifest.PatchVersion);
+        Assert.True(result.Manifest.BodyProvidedByJasm);
+    }
+
+    [Fact]
     public void ApplySupportsPartialSelection()
     {
         // 用户只勾选部分网格（其余「不包」）时也要能打补丁。
@@ -83,7 +97,7 @@ public class OilGlossPatcherTests : IDisposable
         var selected = new OilGlossDrawcall
         {
             IniRelativePath = "mod.ini",
-            SectionName = "TextureOverrideComponent0",
+            SectionName = "TextureOverrideComponent3",
             LineIndex = 0,
             IndexCount = 900,
             StartIndex = 0,
@@ -180,7 +194,7 @@ public class OilGlossPatcherTests : IDisposable
             namespace = TestMod
             ; 中文注释不能乱码
 
-            [TextureOverrideComponent0]
+            [TextureOverrideComponent3]
             drawindexed = 900, 0, 0
             """;
 
@@ -233,7 +247,7 @@ public class OilGlossPatcherTests : IDisposable
         var mod = CreateMod("""
             namespace = TestMod
 
-            [TextureOverrideComponent0]
+            [TextureOverrideComponent3]
             run = CommandList\KatFXMatcap\OilSkin
             drawindexed = 900, 0, 0
             run = CommandList\KatFXMatcap\Clear
@@ -261,10 +275,10 @@ public class OilGlossPatcherTests : IDisposable
     public void UndoWorksAfterMenuGeneratorAddsAsciiNamespace()
     {
         var mod = CreateMod("""
-            [TextureOverrideComponent0]
+            [TextureOverrideComponent3]
             drawindexed = 900, 0, 0
 
-            [TextureOverrideComponent1]
+            [TextureOverrideComponent4]
             drawindexed = 500, 900, 0
             """);
         var iniPath = Path.Combine(mod, "mod.ini");
@@ -287,10 +301,10 @@ public class OilGlossPatcherTests : IDisposable
     public void UndoAcceptsManifestHashThatIncludesNamespace()
     {
         var mod = CreateMod("""
-            [TextureOverrideComponent0]
+            [TextureOverrideComponent3]
             drawindexed = 900, 0, 0
 
-            [TextureOverrideComponent1]
+            [TextureOverrideComponent4]
             drawindexed = 500, 900, 0
             """);
         var iniPath = Path.Combine(mod, "mod.ini");
@@ -330,11 +344,11 @@ public class OilGlossPatcherTests : IDisposable
     private const string TwoDrawCallIni = """
         namespace = TestMod
 
-        [TextureOverrideComponent0]
+        [TextureOverrideComponent3]
         hash = 1
         drawindexed = 900, 0, 0
 
-        [TextureOverrideComponent1]
+        [TextureOverrideComponent4]
         drawindexed = 500, 900, 0
         """;
 
