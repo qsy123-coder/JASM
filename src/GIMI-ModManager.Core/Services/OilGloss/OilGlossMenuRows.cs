@@ -13,6 +13,7 @@ public static class OilGlossMenuRows
     public const string MasterSection = "[KeyOilMaster]";
     public const string BodySection = "[KeyOilBody]";
     public const string ClothSection = "[KeyOilCloth]";
+    public const string StrengthSection = "[KeyOilStrength]";
 
     public static IReadOnlyList<ModIniToggleRow> Create(OilGlossManifest manifest)
     {
@@ -29,7 +30,22 @@ public static class OilGlossMenuRows
             rows.Add(CreateRow(BodySection, OilGlossProtocol.BodyVariable, "身体油光", "OilBody", manifest.Namespace));
 
         if (manifest.HasClothGroup)
-            rows.Add(CreateRow(ClothSection, OilGlossProtocol.ClothVariable, "衣物油光", "OilCloth", manifest.Namespace));
+            rows.Add(CreateRow(ClothSection, OilGlossProtocol.ClothVariable, "衣物油光", "OilCloth",
+                manifest.Namespace, defaultValue: "0"));
+
+        // 强度滑块：直接写本体命名空间里的 $oilStrength（0–1），拖到哪算到哪。
+        rows.Add(new ModIniToggleRow
+        {
+            SectionName = StrengthSection,
+            IniRelativePath = OilGlossProtocol.OilIniFileName,
+            Namespace = OilGlossProtocol.BodyNamespace,
+            VariableName = OilGlossProtocol.StrengthVariable,
+            IsSlider = true,
+            KeyType = "slider",
+            DefaultValue = "0.7",
+            Label = "油光强度",
+            RawLabel = "OilStrength",
+        });
 
         return rows;
     }
@@ -39,14 +55,15 @@ public static class OilGlossMenuRows
         string variable,
         string label,
         string rawLabel,
-        string ns) => new()
+        string ns,
+        string defaultValue = "1") => new()
         {
             SectionName = section,
             IniRelativePath = OilGlossProtocol.OilIniFileName,
             Namespace = ns,
             VariableName = variable,
             Values = ["0", "1"],
-            DefaultValue = "1",
+            DefaultValue = defaultValue,
             KeyType = "cycle",
             KeyDisplay = string.Empty,
             Condition = string.Empty,
