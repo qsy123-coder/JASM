@@ -32,10 +32,11 @@ public static class OilGlossProtocol
 
     /// <summary>
     /// 补丁分组规则的版本。
-    /// 当前为 2：只包 Component3+、单一总开关；旧补丁（身体/衣物两组或包含头部）
-    /// 在读取状态时自动撤销并按新规则重打。
+    /// 2：只包 Component3+、单一总开关；旧补丁（身体/衣物两组或包含头部）自动重打。
+    /// 3：头部关键词改为逐 drawcall 判断 —— 同一个 Component3 段落里先有 Hair
+    ///    再有 Body/Top/Skirt 时，后面的身体网格不再被前面的 hair 条件误排除。
     /// </summary>
-    public const int PatchVersion = 2;
+    public const int PatchVersion = 3;
 
     /// <summary>共享变量所在的 ini 文件名（Mod 根目录）。</summary>
     public const string OilIniFileName = "JASM_Oil.ini";
