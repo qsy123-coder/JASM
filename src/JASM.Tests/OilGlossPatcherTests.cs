@@ -73,6 +73,43 @@ public class OilGlossPatcherTests : IDisposable
     }
 
     [Fact]
+    public void ApplySupportsClothOnlySelection()
+    {
+        // 用户把身体块改成「不包」、只保留衣物分组时也要能打补丁。
+        var mod = CreateMod(TwoDrawCallIni);
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+        var cloth = new OilGlossDrawcall
+        {
+            IniRelativePath = "mod.ini",
+            SectionName = "TextureOverrideComponent0",
+            LineIndex = 0,
+            IndexCount = 900,
+            StartIndex = 0,
+            Group = OilGlossGroup.Cloth,
+        };
+        var scan = new OilGlossScanResult { Drawcalls = [cloth], Cloth = cloth };
+
+        var result = OilGlossPatcher.Apply(mod, scan, body);
+
+        Assert.Equal(OilGlossApplyStatus.Applied, result.Status);
+        Assert.False(result.Manifest!.HasBodyGroup);
+        Assert.True(result.Manifest.HasClothGroup);
+        Assert.Contains(OilGlossProtocol.ClothVariable, File.ReadAllText(Path.Combine(mod, "mod.ini")));
+    }
+
+    [Fact]
+    public void ApplyRejectsScanWithoutAnySelectedGroup()
+    {
+        var mod = CreateMod(TwoDrawCallIni);
+
+        var result = OilGlossPatcher.Apply(mod, new OilGlossScanResult());
+
+        Assert.Equal(OilGlossApplyStatus.NoDrawcalls, result.Status);
+        Assert.Contains("没有选择任何网格", result.Reason);
+        Assert.False(File.Exists(Path.Combine(mod, OilGlossProtocol.OilIniFileName)));
+    }
+
+    [Fact]
     public void UndoRestoresOriginalBytesAndRemovesJasmArtifacts()
     {
         var mod = CreateMod(TwoDrawCallIni);
