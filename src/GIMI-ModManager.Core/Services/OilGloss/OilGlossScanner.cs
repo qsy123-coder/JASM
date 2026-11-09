@@ -269,12 +269,12 @@ public static class OilGlossScanner
     }
 
     /// <summary>
-    /// 按大小 + 材质槽自动分组：
-    /// <list type="bullet">
-    ///   <item>身体组 = 身体锚点 + 与它同材质槽的可见网格（只给一块上油会变成「只有大腿亮」）；</item>
-    ///   <item>衣物组 = 其余全部可见网格（袜子、裙子、上衣、鞋、配饰都算衣物组）。</item>
-    /// </list>
-    /// 可见性无法求值时按可见处理；全部都被判定为隐藏时才退回全体候选。
+    /// 选定要包油光的网格：**所有非头部/头发/脸的 drawcall 合成一组**。
+    ///
+    /// 不再区分身体 / 衣物：官方做法就是按 drawcall 包，而一个 drawcall 经常同时
+    /// 包含身体和衣物的一部分；分成两个开关只会出现「关了衣物身体还亮」这种假开关。
+    /// 头部/头发/脸仍然排除（上了 matcap 会变色）。个别网格需要排除时，
+    /// 用详情页的「逐块识别网格」把它设为「不包」。
     /// </summary>
     public static OilGlossScanResult Group(IReadOnlyList<OilGlossDrawcall> drawcalls)
     {
@@ -293,57 +293,22 @@ public static class OilGlossScanner
             };
         }
 
-        var visible = candidates.Where(d => d.VisibleByDefault != false).ToList();
-        var pool = visible.Count > 0 ? visible : candidates;
-
-        // 身体：只取「身体锚点 + 同材质槽」的网格。
-        // 不要把所有跨下半身的网格都收进来：KatFXMatcap 的 ShaderRegex 匹配面很宽，
-        // 包到衣服/特殊材质上会直接变成贴图错误。身体被拆成上下两块的 Mod
-        // 用详情页的「逐块识别身体」手动补上上半身。
-        var bodyAnchor = ChooseBodyAnchor(pool);
-        var bodySet = !string.IsNullOrEmpty(bodyAnchor.TextureSlot)
-            ? pool.Where(d => string.Equals(d.TextureSlot, bodyAnchor.TextureSlot, StringComparison.OrdinalIgnoreCase)).ToList()
-            : new List<OilGlossDrawcall> { bodyAnchor };
-
-        if (bodySet.Count == 0)
-            bodySet = new List<OilGlossDrawcall> { bodyAnchor };
-
-        // 作者明确标了 body 的其它变体（例如 body / body_squezzed 两套）一起包进身体组：
-        // 只包其中一块时，游戏里切换形态后会出现「点了身体油光但没反应」。
-        foreach (var namedBody in candidates.Where(IsNamedBody))
-        {
-            if (bodySet.All(b => !IsSame(b, namedBody)))
-                bodySet.Add(namedBody);
-        }
-
-        // 衣物：其余全部非头部网格。包含默认隐藏的变体（丝袜/高跟等）——
-        // 隐藏时没有画面，用户在菜单里打开该变体后油光才会出现；
-        // 不包含的话就会出现「切了衣物油光但这个变体没反应」。
-        var clothSet = candidates.Where(d => !bodySet.Any(b => IsSame(b, d))).ToList();
-
         var annotated = drawcalls
-            .Select(d => bodySet.Any(b => IsSame(b, d))
+            .Select(d => candidates.Any(c => IsSame(c, d))
                 ? d with { Group = OilGlossGroup.Body }
-                : clothSet.Any(c => IsSame(c, d))
-                    ? d with { Group = OilGlossGroup.Cloth }
-                    : d)
+                : d)
             .ToList();
 
-        var bodyResult = annotated
-            .Where(d => d.Group == OilGlossGroup.Body)
+        var selected = annotated
+            .Where(d => d.Group is not null)
             .OrderByDescending(d => d.IndexCount)
-            .First();
-
-        var clothResult = annotated
-            .Where(d => d.Group == OilGlossGroup.Cloth)
-            .OrderByDescending(d => d.IndexCount)
-            .FirstOrDefault();
+            .ToList();
 
         return new OilGlossScanResult
         {
             Drawcalls = annotated,
-            Body = bodyResult,
-            Cloth = clothResult,
+            Body = selected.FirstOrDefault(),
+            Cloth = null,
         };
     }
 
@@ -366,27 +331,8 @@ public static class OilGlossScanner
         return !(draw.HeightMin is <= 0.30 && draw.HeightMax is >= 0.60);
     }
 
-    /// <summary>作者在段落名/注释/条件里明确写了 body 的网格（例如 <c>$draw_component_3_body_001</c>）。</summary>
-    private static bool IsNamedBody(OilGlossDrawcall draw)
-        => (draw.Comment + " " + draw.Condition + " " + draw.SectionName)
-            .Contains("body", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// 选身体锚点：有网格高度信息时，选「从下半身一直覆盖到躯干」且跨度最大的那块
-    /// （角色身体皮肤）；没有几何信息时退回索引数最大的一块。
-    /// </summary>
-    private static OilGlossDrawcall ChooseBodyAnchor(IReadOnlyList<OilGlossDrawcall> pool)
-    {
-        var geometric = pool
-            .Where(d => d.HeightMin is <= 0.25 && d.HeightMax is >= 0.60)
-            .OrderByDescending(d => (d.HeightMax ?? 0) - (d.HeightMin ?? 0))
-            .ThenByDescending(d => d.IndexCount)
-            .FirstOrDefault();
-
-        return geometric ?? pool.OrderByDescending(d => d.IndexCount).First();
-    }
-
-    private static bool IsSame(OilGlossDrawcall? left, OilGlossDrawcall? right)        => left is not null
+    private static bool IsSame(OilGlossDrawcall? left, OilGlossDrawcall? right)
+        => left is not null
            && right is not null
            && left.IniRelativePath == right.IniRelativePath
            && left.LineIndex == right.LineIndex;
