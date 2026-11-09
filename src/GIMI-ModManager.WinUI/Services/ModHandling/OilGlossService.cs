@@ -171,13 +171,9 @@ public sealed class OilGlossService(
         if (!IsSupported)
             return new OilGlossApplyResult { Status = OilGlossApplyStatus.Failed, Reason = "油光只支持鸣潮（WWMI）" };
 
-        // 先校验选择，再动旧补丁：没有任何分组时不能先把原补丁撤销掉。
-        var bodyDraw = draws.Where(d => d.Group == OilGlossGroup.Body)
-            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
-        var clothDraw = draws.Where(d => d.Group == OilGlossGroup.Cloth)
-            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
-
-        if (bodyDraw is null && clothDraw is null)
+        // 先校验选择，再动旧补丁：没有任何选中网格时不能先把原补丁撤销掉。
+        var selected = draws.Where(d => d.Group is not null).ToList();
+        if (selected.Count == 0)
         {
             return new OilGlossApplyResult
             {
@@ -204,8 +200,8 @@ public sealed class OilGlossService(
         var scan = new OilGlossScanResult
         {
             Drawcalls = draws,
-            Body = bodyDraw,
-            Cloth = clothDraw,
+            Body = selected.OrderByDescending(d => d.IndexCount).First(),
+            Cloth = null,
         };
 
         var result = await Task.Run(() =>
@@ -234,10 +230,8 @@ public sealed class OilGlossService(
     }
 
     /// <summary>
-    /// 重打补丁后把开关复位成「总开关开、身体开、衣物关」。
-    /// 这三个变量是 persist 的，3DMigoto 会把上一次 F7 里的选择存进 d3dx_user.ini；
-    /// 如果之前把衣物打开过，重新开启油光后头发/脸部（常被分到衣物组）会继续变色。
-    /// 游戏没在运行时写不进去也不影响：变量缺失时用 JASM_Oil.ini 里的默认值。
+    /// 重打补丁后把总开关复位为「开」。
+    /// 这个变量是 persist 的，3DMigoto 会把上一次 F7 里的选择存进 d3dx_user.ini。
     /// </summary>
     private async Task ResetGroupTogglesAsync(OilGlossManifest? manifest, CancellationToken cancellationToken)
     {
@@ -250,16 +244,10 @@ public sealed class OilGlossService(
             await userPreferencesService
                 .SetGlobalVariableAsync(prefix + OilGlossProtocol.MasterVariable, "1", cancellationToken)
                 .ConfigureAwait(false);
-            await userPreferencesService
-                .SetGlobalVariableAsync(prefix + OilGlossProtocol.BodyVariable, "1", cancellationToken)
-                .ConfigureAwait(false);
-            await userPreferencesService
-                .SetGlobalVariableAsync(prefix + OilGlossProtocol.ClothVariable, "0", cancellationToken)
-                .ConfigureAwait(false);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            Logger.Warning(e, "[OilGloss] 复位油光分组开关失败");
+            Logger.Warning(e, "[OilGloss] 复位油光开关失败");
         }
     }
 
