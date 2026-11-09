@@ -338,8 +338,7 @@ public sealed partial class ModPaneVM(
         IsOilGlossBusy = true;
         try
         {
-            // 绕过「发型 Mod 整包跳过」的默认判定：用户可能就是想从发型包里挑出身体网格。
-            var scan = await Task.Run(() => _oilGlossService.Scan(mod, ignoreHairFolderGuard: true),
+            var scan = await Task.Run(() => _oilGlossService.Scan(mod),
                 _cancellationToken);
 
             // 按大小排序并用「第 N 大块」称呼——索引号对用户没有意义。
@@ -546,7 +545,7 @@ public sealed partial class ModPaneVM(
             }).ToList();
         }
 
-        return _oilGlossService.Scan(mod, ignoreHairFolderGuard: true).Drawcalls
+        return _oilGlossService.Scan(mod).Drawcalls
             .Where(d => d.Group is not null)
             .ToList();
     }
