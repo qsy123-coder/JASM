@@ -207,8 +207,10 @@ public static class OilGlossPatcher
             {
                 ManifestVersion = OilGlossProtocol.CurrentVersion,
                 GeneratorVersion = OilGlossProtocol.CurrentVersion,
+                BodyVersion = OilGlossProtocol.BodyVersion,
+                PatchVersion = OilGlossProtocol.PatchVersion,
                 Namespace = ns,
-                BodyProvidedByJasm = body is { AlreadyPresent: false, WrittenFiles.Count: > 0 },
+                BodyProvidedByJasm = body?.BodyProvidedByJasm ?? false,
                 BodyFiles = body?.WrittenFiles.ToList() ?? [],
                 PatchedFiles = patchedFiles,
                 // 记下每块网格的分组：「试亮」取消时要按它恢复，而不是退回自动分组。
@@ -444,7 +446,8 @@ public static class OilGlossPatcher
     private static void DeleteProvisionedBodyFiles(string modFolderPath, OilGlossManifest manifest)
         => OilGlossBodyProvisioner.RemoveWrittenFiles(modFolderPath, manifest.BodyFiles);
 
-    private static void WriteManifest(string modFolderPath, OilGlossManifest manifest)
+    /// <summary>写回状态清单（本体升级后需要更新 <c>BodyFiles</c> / <c>BodyVersion</c>）。</summary>
+    public static void WriteManifest(string modFolderPath, OilGlossManifest manifest)
     {
         var directory = Path.Combine(modFolderPath, OilGlossProtocol.StateDirectoryName);
         Directory.CreateDirectory(directory);
