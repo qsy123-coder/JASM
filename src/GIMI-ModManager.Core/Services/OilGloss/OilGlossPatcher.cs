@@ -131,9 +131,14 @@ public static class OilGlossPatcher
         }
 
         scan ??= OilGlossScanner.Scan(modFolderPath);
-        if (scan.Body is null)
+        // 允许只包衣物（用户把身体块改成「不包」但保留衣物）：只要有一块选中就能打补丁。
+        if (!scan.Drawcalls.Any(d => d.Group is not null))
         {
-            return new OilGlossApplyResult { Status = OilGlossApplyStatus.NoDrawcalls, Reason = scan.Reason };
+            return new OilGlossApplyResult
+            {
+                Status = OilGlossApplyStatus.NoDrawcalls,
+                Reason = string.IsNullOrWhiteSpace(scan.Reason) ? "没有选择任何网格" : scan.Reason,
+            };
         }
 
         var ns = OilGlossProtocol.CreateNamespace(modFolderPath);
