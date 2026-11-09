@@ -139,10 +139,35 @@ public sealed class OilGlossService(
     /// <summary>
     /// 按用户在详情页选好的分组重新打补丁（可只包部分网格，或从发型 Mod 里挑出身体）。
     /// </summary>
-    public async Task<OilGlossApplyResult> ApplyCustomGroupsAsync(
+    public Task<OilGlossApplyResult> ApplyCustomGroupsAsync(
         ISkinMod mod,
         IReadOnlyList<OilGlossDrawcall> draws,
         CancellationToken cancellationToken = default)
+        => ApplyGroupsAsync(mod, draws, createMenuIfMissing: true, cancellationToken);
+
+    /// <summary>
+    /// 逐块识别的「试亮」：只给这一块上油光（归到身体组），其余网格全部不包。
+    /// 不新建菜单（试亮可能只是临时看一看），由调用方刷新游戏（F10）。
+    /// </summary>
+    public Task<OilGlossApplyResult> TrialBodyAsync(
+        ISkinMod mod,
+        OilGlossDrawcall draw,
+        CancellationToken cancellationToken = default)
+        => ApplyGroupsAsync(mod, [draw with { Group = OilGlossGroup.Body }],
+            createMenuIfMissing: false, cancellationToken);
+
+    /// <summary>按记录下来的分组恢复补丁（「逐块识别」取消时用）。</summary>
+    public Task<OilGlossApplyResult> RestoreGroupsAsync(
+        ISkinMod mod,
+        IReadOnlyList<OilGlossDrawcall> draws,
+        CancellationToken cancellationToken = default)
+        => ApplyGroupsAsync(mod, draws, createMenuIfMissing: false, cancellationToken);
+
+    private async Task<OilGlossApplyResult> ApplyGroupsAsync(
+        ISkinMod mod,
+        IReadOnlyList<OilGlossDrawcall> draws,
+        bool createMenuIfMissing,
+        CancellationToken cancellationToken)
     {
         if (!IsSupported)
             return new OilGlossApplyResult { Status = OilGlossApplyStatus.Failed, Reason = "油光只支持鸣潮（WWMI）" };
@@ -199,86 +224,8 @@ public sealed class OilGlossService(
         }, cancellationToken).ConfigureAwait(false);
 
         if (result.Status == OilGlossApplyStatus.Applied)
-            await RegenerateMenuAsync(mod, createIfMissing: true, cancellationToken).ConfigureAwait(false);
-
-        return result;
-    }
-
-    /// <summary>
-    /// 重新打补丁，但跳过当前可见网格里**索引数最大的一块**。
-    /// 用于「最大块其实是头发」的 Mod：自动分组会把它当身体，导致头发被 matcap 改色。
-    /// </summary>
-    public async Task<OilGlossApplyResult> ReapplyExcludingLargestAsync(
-        ISkinMod mod,
-        CancellationToken cancellationToken = default)
-    {
-        if (!IsSupported)
-            return new OilGlossApplyResult { Status = OilGlossApplyStatus.Failed, Reason = "油光只支持鸣潮（WWMI）" };
-
-        var status = OilGlossPatcher.GetStatus(mod.FullPath);
-        if (status.State is OilGlossState.Applied or OilGlossState.Conflict or OilGlossState.Broken)
-        {
-            var undo = await Task.Run(() => OilGlossPatcher.Undo(mod.FullPath), cancellationToken)
+            await RegenerateMenuAsync(mod, createIfMissing: createMenuIfMissing, cancellationToken)
                 .ConfigureAwait(false);
-            if (!undo.Success)
-            {
-                return new OilGlossApplyResult
-                {
-                    Status = OilGlossApplyStatus.Failed,
-                    Reason = "撤销原补丁失败：" + undo.Reason,
-                };
-            }
-        }
-
-        var scan = await Task.Run(() => OilGlossScanner.Scan(mod.FullPath), cancellationToken)
-            .ConfigureAwait(false);
-
-        var largest = scan.Drawcalls
-            .Where(d => d.Group is not null)
-            .OrderByDescending(d => d.IndexCount)
-            .FirstOrDefault();
-
-        if (largest is null)
-        {
-            return new OilGlossApplyResult
-            {
-                Status = OilGlossApplyStatus.NoDrawcalls,
-                Reason = scan.Reason,
-            };
-        }
-
-        var remaining = scan.Drawcalls
-            .Where(d => !(string.Equals(d.IniRelativePath, largest.IniRelativePath, StringComparison.OrdinalIgnoreCase)
-                          && d.LineIndex == largest.LineIndex))
-            .ToList();
-
-        var newScan = OilGlossScanner.Group(remaining);
-        if (newScan.Body is null)
-        {
-            return new OilGlossApplyResult
-            {
-                Status = OilGlossApplyStatus.NoDrawcalls,
-                Reason = "排除最大网格后没有可包油光的网格",
-            };
-        }
-
-        var result = await Task.Run(() =>
-        {
-            var body = OilGlossBodyProvisioner.Ensure(mod.FullPath, EmbeddedOilGlossAssetSource.Instance);
-            if (!body.Success)
-            {
-                return new OilGlossApplyResult
-                {
-                    Status = OilGlossApplyStatus.Failed,
-                    Reason = body.Reason,
-                };
-            }
-
-            return OilGlossPatcher.Apply(mod.FullPath, newScan, body);
-        }, cancellationToken).ConfigureAwait(false);
-
-        if (result.Status == OilGlossApplyStatus.Applied)
-            await RegenerateMenuAsync(mod, createIfMissing: true, cancellationToken).ConfigureAwait(false);
 
         return result;
     }
