@@ -406,8 +406,7 @@ public sealed partial class ModPaneVM(
                 };
                 ToolTipService.SetToolTip(label,
                     $"{draw.IniRelativePath} · {draw.SectionName}"
-                    + (draw.IsHeadLike ? "（名字像头发）" : string.Empty)
-                    + (draw.VisibleByDefault == false ? "（默认隐藏）" : string.Empty));
+                    + (draw.IsHeadLike ? "（Component0–2，默认不包）" : string.Empty));
 
                 var trialButton = new Button { Content = "试亮", FontSize = 12 };
                 trialButtons.Add(trialButton);
@@ -550,36 +549,9 @@ public sealed partial class ModPaneVM(
             .ToList();
     }
 
-    /// <summary>
-    /// 根据网格在角色高度上的范围，给这块网格一个看得懂的名字
-    /// （WWMI 模型 0 = 脚底，1 = 头顶）。识别不出来时返回空串，只显示「第 N 大块」。
-    /// </summary>
+    /// <summary>Component0–2（脸/头发）默认不包，在列表里标出来。</summary>
     private static string DescribePart(OilGlossDrawcall draw)
-    {
-        if (draw.IsHeadLike)
-            return "头部/头发";
-
-        if (draw.IsNonOilable)
-            return "贴花/装饰";
-
-        if ((draw.Comment + " " + draw.Condition + " " + draw.SectionName)
-            .Contains("body", StringComparison.OrdinalIgnoreCase))
-            return "身体";
-
-        if (draw.HeightMin is not { } min || draw.HeightMax is not { } max)
-            return string.Empty;
-
-        if (min >= 0.75 || (max >= 0.95 && min > 0.25))
-            return "头部/头发";
-        if (max <= 0.20)
-            return "脚/鞋";
-        if (min <= 0.25 && max >= 0.60)
-            return "身体（含腿）";
-        if (min <= 0.45 && max <= 0.65)
-            return "腿部/下装";
-
-        return string.Empty;
-    }
+        => draw.IsHeadLike ? "头部/头发" : string.Empty;
 
     /// <summary>在已应用的分组里找同一块网格（路径 + 段落 + 索引数 + 起始索引）。</summary>
     private static OilGlossGroup? FindAppliedGroup(
