@@ -313,9 +313,26 @@ public static class OilGlossPatcher
                 File.Delete(backup);
                 restored.Add(file.RelativePath);
             }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return new OilGlossUndoResult { Success = false, RestoredFiles = restored, Reason = e.Message };
+        }
 
+        // 到这里补丁已经失效（作者 ini 已还原）。本体文件（Matcap.ini / Oil/）
+        // 在游戏运行时会被 3DMigoto 占用，删不掉不应让整次撤销失败——
+        // 残留的本体文件不影响外观，下次重打/撤销会再清理。
+        try
+        {
             DeleteProvisionedBodyFiles(modFolderPath, manifest);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // 忽略：游戏占用
+        }
 
+        try
+        {
             var oilIniPath = Path.Combine(modFolderPath, OilGlossProtocol.OilIniFileName);
             if (File.Exists(oilIniPath))
                 File.Delete(oilIniPath);
