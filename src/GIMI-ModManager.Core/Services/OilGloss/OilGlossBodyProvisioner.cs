@@ -11,6 +11,17 @@ namespace GIMI_ModManager.Core.Services.OilGloss;
 /// </summary>
 public static class OilGlossBodyProvisioner
 {
+    /// <summary>
+    /// JASM 历史版本写入的 <c>Matcap.ini</c> 哈希（有 <c>ps-t0 = ResourceEmpty_Normal</c> 的旧本体）。
+    /// 旧 manifest 可能因为早期 <c>BodyProvidedByJasm</c> 判断错误而丢失所有权；
+    /// 哈希能证明这个文件确实是 JASM 写的，可以安全升级。
+    /// </summary>
+    private static readonly HashSet<string> OutdatedJasmBodyHashes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // BodyVersion 1：加了 [ResourceEmpty_Normal]，但仍替换 ps-t0
+        "C2B053270286C00534FFF6B2B6025A749ADE0846705A215ABD86F47FD56C4738",
+    };
+
     /// <summary>Mod 里是否已有 KatFXMatcap 本体。</summary>
     public static bool HasBody(string modFolderPath)
     {
@@ -57,7 +68,16 @@ public static class OilGlossBodyProvisioner
             return Fail("Mod 目录不存在");
 
         if (HasBody(modFolderPath))
-            return new OilGlossBodyProvisionResult { Success = true, AlreadyPresent = true };
+        {
+            // 现有本体是不是 JASM 当前版本？决定新 manifest 的 BodyProvidedByJasm，
+            // 从而决定以后要不要做版本升级。
+            return new OilGlossBodyProvisionResult
+            {
+                Success = true,
+                AlreadyPresent = true,
+                BodyProvidedByJasm = MatchesEmbeddedBody(modFolderPath, assets),
+            };
+        }
 
         if (assets.AssetPaths.Count == 0)
             return Fail("内置本体资源为空");
@@ -68,28 +88,15 @@ public static class OilGlossBodyProvisioner
         {
             foreach (var relativePath in assets.AssetPaths)
             {
-                var target = Path.Combine(modFolderPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                var normalized = Normalize(relativePath);
+                var target = Path.Combine(modFolderPath, normalized.Replace('/', Path.DirectorySeparatorChar));
                 if (File.Exists(target))
                     continue;
 
-                using var stream = assets.OpenRead(relativePath);
-                if (stream is null)
-                    return Fail("缺少内置资源：" + relativePath);
+                if (!TryWriteAsset(assets, normalized, target, out var record))
+                    return Fail("缺少内置资源：" + normalized);
 
-                using var buffer = new MemoryStream();
-                stream.CopyTo(buffer);
-                var bytes = buffer.ToArray();
-
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                var temp = target + ".jasm.tmp";
-                File.WriteAllBytes(temp, bytes);
-                File.Move(temp, target, overwrite: true);
-
-                written.Add(new OilGlossAssetRecord
-                {
-                    RelativePath = relativePath,
-                    Sha256 = Convert.ToHexString(SHA256.HashData(bytes)),
-                });
+                written.Add(record);
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -101,7 +108,142 @@ public static class OilGlossBodyProvisioner
         {
             Success = true,
             AlreadyPresent = false,
+            BodyProvidedByJasm = true,
             WrittenFiles = written,
+        };
+    }
+
+    /// <summary>
+    /// 把 JASM 写过的旧版本体升级到 <see cref="OilGlossProtocol.BodyVersion"/>。
+    ///
+    /// 只覆盖「当前哈希与 manifest 记录一致」的文件（即 JASM 写的、用户没改过）；
+    /// 用户改过的文件保留，作者自带的本体（<c>BodyProvidedByJasm = false</c>）整体跳过。
+    /// 游戏占用文件时返回失败，调用方可下次重试。
+    /// </summary>
+    public static OilGlossBodyUpgradeResult Upgrade(
+        string modFolderPath,
+        IOilGlossAssetSource assets,
+        OilGlossManifest manifest)
+    {
+        if (!Directory.Exists(modFolderPath))
+            return FailUpgrade("Mod 目录不存在");
+
+        var knownOutdated = IsOutdatedKnownJasmBody(modFolderPath);
+
+        if (!manifest.BodyProvidedByJasm && !knownOutdated)
+            return new OilGlossBodyUpgradeResult
+            {
+                Success = true,
+                Skipped = true,
+                Reason = "本体不是 JASM 写入的，跳过升级",
+            };
+
+        // 早期升级/清单可能只记录了 Matcap.ini，其余本体文件没进 BodyFiles，
+        // 撤销时会留下孤儿 DDS；这种情况下也要走一遍补全。
+        var needsBackfill = manifest.BodyProvidedByJasm
+                            && manifest.BodyFiles.Count < assets.AssetPaths.Count;
+
+        // 已知旧 JASM 本体不看 manifest 版本：早期清单可能把 BodyVersion 写成了当前值。
+        if (manifest.BodyVersion >= OilGlossProtocol.BodyVersion && !knownOutdated && !needsBackfill)
+            return new OilGlossBodyUpgradeResult { Success = true, Skipped = true, Reason = "本体已是最新" };
+
+        var recorded = manifest.BodyFiles
+            .GroupBy(file => Normalize(file.RelativePath), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        // 旧清单丢了 BodyFiles：用当前文件的哈希作为记录，让下面的哈希校验通过并覆盖它。
+        if (knownOutdated && !recorded.ContainsKey(OilGlossProtocol.BodyIniFileName))
+        {
+            var bodyPath = Path.Combine(modFolderPath, OilGlossProtocol.BodyIniFileName);
+            recorded[OilGlossProtocol.BodyIniFileName] = new OilGlossAssetRecord
+            {
+                RelativePath = OilGlossProtocol.BodyIniFileName,
+                Sha256 = HashFile(bodyPath),
+            };
+        }
+
+        var files = new List<OilGlossAssetRecord>();
+        var written = new List<OilGlossAssetRecord>();
+        var preserved = new List<string>();
+
+        try
+        {
+            foreach (var relativePath in assets.AssetPaths)
+            {
+                var normalized = Normalize(relativePath);
+                var target = Path.Combine(modFolderPath, normalized.Replace('/', Path.DirectorySeparatorChar));
+
+                if (!File.Exists(target))
+                {
+                    if (!TryWriteAsset(assets, normalized, target, out var created))
+                        return FailUpgrade("缺少内置资源：" + normalized);
+
+                    written.Add(created);
+                    files.Add(created);
+                    continue;
+                }
+
+                // 没有 manifest 记录：内容与内嵌资源一致才视为 JASM 写的，纳入清单
+                // 以便撤销时能删掉；不一致（作者自己的文件）保持不动。
+                if (!recorded.TryGetValue(normalized, out var previous))
+                {
+                    using var stream = assets.OpenRead(normalized);
+                    if (stream is not null)
+                    {
+                        using var buffer = new MemoryStream();
+                        stream.CopyTo(buffer);
+                        var assetHash = Convert.ToHexString(SHA256.HashData(buffer.ToArray()));
+                        if (string.Equals(HashFile(target), assetHash, StringComparison.OrdinalIgnoreCase))
+                        {
+                            files.Add(new OilGlossAssetRecord
+                            {
+                                RelativePath = normalized,
+                                Sha256 = assetHash,
+                            });
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (!string.Equals(HashFile(target), previous.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    // 用户改过：保留原记录（撤销时同样会跳过它）
+                    preserved.Add(normalized);
+                    files.Add(previous);
+                    continue;
+                }
+
+                if (!TryWriteAsset(assets, normalized, target, out var updated))
+                    return FailUpgrade("缺少内置资源：" + normalized);
+
+                if (!string.Equals(updated.Sha256, previous.Sha256, StringComparison.OrdinalIgnoreCase))
+                    written.Add(updated);
+                files.Add(updated);
+            }
+
+            // 保留清单里但新资源中没有的旧记录，撤销逻辑仍按原哈希处理
+            foreach (var previous in manifest.BodyFiles)
+            {
+                var normalized = Normalize(previous.RelativePath);
+                if (!files.Any(file => string.Equals(Normalize(file.RelativePath), normalized,
+                        StringComparison.OrdinalIgnoreCase)))
+                {
+                    files.Add(previous);
+                }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return FailUpgrade(e.Message);
+        }
+
+        return new OilGlossBodyUpgradeResult
+        {
+            Success = true,
+            Files = files,
+            WrittenFiles = written,
+            PreservedFiles = preserved,
         };
     }
 
@@ -132,6 +274,79 @@ public static class OilGlossBodyProvisioner
             Directory.Delete(oilDirectory);
     }
 
+    /// <summary>把资源写成目标文件；内容相同则不写盘（游戏占用时少一次失败）。</summary>
+    private static bool TryWriteAsset(
+        IOilGlossAssetSource assets,
+        string relativePath,
+        string target,
+        out OilGlossAssetRecord record)
+    {
+        record = new OilGlossAssetRecord();
+
+        using var stream = assets.OpenRead(relativePath);
+        if (stream is null)
+            return false;
+
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        var bytes = buffer.ToArray();
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+
+        record = new OilGlossAssetRecord { RelativePath = relativePath, Sha256 = hash };
+
+        if (File.Exists(target)
+            && string.Equals(HashFile(target), hash, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        WriteAtomically(target, bytes);
+        return true;
+    }
+
+    private static void WriteAtomically(string target, byte[] bytes)
+    {
+        var directory = Path.GetDirectoryName(target);
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
+        var temp = target + ".jasm.tmp";
+        File.WriteAllBytes(temp, bytes);
+        File.Move(temp, target, overwrite: true);
+    }
+
+    /// <summary>现有 <c>Matcap.ini</c> 是否是 JASM 历史版本写入的旧本体。</summary>
+    public static bool IsOutdatedKnownJasmBody(string modFolderPath)
+    {
+        var path = Path.Combine(modFolderPath, OilGlossProtocol.BodyIniFileName);
+        return File.Exists(path) && OutdatedJasmBodyHashes.Contains(HashFile(path));
+    }
+
+    /// <summary>现有 <c>Matcap.ini</c> 是否与内嵌本体逐字节一致（即由 JASM 写入）。</summary>
+    private static bool MatchesEmbeddedBody(string modFolderPath, IOilGlossAssetSource assets)
+    {
+        var target = Path.Combine(modFolderPath, OilGlossProtocol.BodyIniFileName);
+        if (!File.Exists(target))
+            return false;
+
+        using var stream = assets.OpenRead(OilGlossProtocol.BodyIniFileName);
+        if (stream is null)
+            return false;
+
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray().AsSpan().SequenceEqual(File.ReadAllBytes(target));
+    }
+
+    private static string HashFile(string path)
+        => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private static string Normalize(string path) => path.Replace('\\', '/').TrimStart('/');
+
     private static OilGlossBodyProvisionResult Fail(string reason)
         => new() { Success = false, Reason = reason };
+
+    private static OilGlossBodyUpgradeResult FailUpgrade(string reason)
+        => new() { Success = false, Reason = reason };
+
 }
