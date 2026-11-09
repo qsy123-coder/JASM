@@ -24,10 +24,11 @@ public static class OilGlossProtocol
 
     /// <summary>
     /// 内嵌本体（<c>Matcap.ini</c> + <c>Oil/*.dds</c>）的版本。
-    /// 递增时需要把旧 manifest 里 <c>BodyProvidedByJasm = true</c> 的本体换成新版本；
-    /// 当前为 2：不再替换 <c>ps-t0</c>，避免头发/衣物被平色贴图覆盖。
+    /// 递增时需要把旧 manifest 里 <c>BodyProvidedByJasm = true</c> 的本体换成新版本。
+    /// 2：不再替换 <c>ps-t0</c>，避免头发/衣物被平色贴图覆盖；
+    /// 3：物理键强度上限提高到 2.0。
     /// </summary>
-    public const int BodyVersion = 2;
+    public const int BodyVersion = 3;
 
     /// <summary>
     /// 补丁分组规则的版本。
@@ -72,8 +73,20 @@ public static class OilGlossProtocol
     /// <summary>旧版衣物组开关变量；只为识别/清理旧补丁保留，新补丁不再引用。</summary>
     public const string ClothVariable = "oil_cloth";
 
-    /// <summary>本体里的强度变量名（命名空间 KatFXMatcap，0.0–1.0）。</summary>
+    /// <summary>本体里的强度变量名（命名空间 KatFXMatcap）。</summary>
     public const string StrengthVariable = "oilstrength";
+
+    /// <summary>强度默认值（与本体 ini 一致）。</summary>
+    public const double DefaultStrength = 0.7;
+
+    /// <summary>
+    /// 强度上限。本体用 <c>matcap1_opacity</c> 叠加高光，允许 &gt;1 做出更亮的油光；
+    /// 2.0 是菜单滑块与物理键共用的上限。
+    /// </summary>
+    public const double MaxStrength = 2.0;
+
+    /// <summary>本体里的贴图样式变量名（0 = 关，1–6 = 不同 matcap 贴图）。</summary>
+    public const string TextureVariable = "oilSkin";
 
     /// <summary>
     /// 由 Mod 路径推导稳定的 ASCII 命名空间。
