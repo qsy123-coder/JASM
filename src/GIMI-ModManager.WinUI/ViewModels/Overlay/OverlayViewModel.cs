@@ -1089,7 +1089,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
                 var undo = await service.DisableAsync(entry.Mod);
                 if (!undo.Success)
                 {
-                    InGameMenuStatusMessage = $"撤销油光失败：{item.Name}：{undo.Reason}";
+                    var conflictDetail = undo.Conflicts.Count > 0
+                        ? "（" + string.Join(", ", undo.Conflicts) + "）"
+                        : string.Empty;
+                    InGameMenuStatusMessage = $"撤销油光失败：{item.Name}：{undo.Reason}{conflictDetail}";
                     _logger.Warning("[浮窗] 撤销油光失败：{Mod} ({Reason})", item.Name, undo.Reason);
                     return;
                 }
@@ -1097,6 +1100,7 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
                 item.IsOilGlossApplied = false;
                 InGameMenuStatusMessage = $"已撤销油光：{item.Name}";
                 _logger.Information("[浮窗] 撤销油光：{Mod}", item.Name);
+                await RefreshCoordinator.RequestRefreshAsync();
                 return;
             }
 
@@ -1113,6 +1117,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             // 菜单由 OilGlossService.EnableAsync 自动生成（无 [Key*] 的 Mod 也一样），这里不再重复生成。
             InGameMenuStatusMessage = $"已添加油光：{item.Name}（F7 菜单里可分别开关身体 / 衣物）";
             _logger.Information("[浮窗] 添加油光：{Mod}", item.Name);
+
+            // 补丁/菜单都是磁盘上的 ini，游戏不会自己重新读取 —— 立刻送一次 F10。
+            await RefreshCoordinator.RequestRefreshAsync();
         }
         catch (Exception e)
         {
