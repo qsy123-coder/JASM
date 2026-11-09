@@ -28,6 +28,9 @@ public class OilGlossScannerTests : IDisposable
             if $draw_component_7_tattoo
             drawindexed = 500, 900, 0
             endif
+            if $draw_component_3_gloves
+            drawindexed = 700, 1400, 0
+            endif
             """);
 
         var result = OilGlossScanner.Scan(mod);
@@ -35,6 +38,12 @@ public class OilGlossScannerTests : IDisposable
         var tattoo = result.Drawcalls.Single(d => d.IndexCount == 500);
         Assert.True(tattoo.IsNonOilable);
         Assert.Null(tattoo.Group);
+
+        // 手套被 matcap 包上会变银白金属反光（真机确认），默认不包。
+        var gloves = result.Drawcalls.Single(d => d.IndexCount == 700);
+        Assert.True(gloves.IsNonOilable);
+        Assert.Null(gloves.Group);
+
         Assert.Equal(900, result.Body!.IndexCount);
     }
 
