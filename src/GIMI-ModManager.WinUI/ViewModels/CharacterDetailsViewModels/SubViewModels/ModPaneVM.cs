@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkitWrapper;
+using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities;
 using GIMI_ModManager.Core.Entities.Mods.Contract;
@@ -81,15 +82,12 @@ public sealed partial class ModPaneVM(
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanToggleOilGloss))]
-    [NotifyCanExecuteChangedFor(nameof(EnableOilGlossCommand))]
-    [NotifyCanExecuteChangedFor(nameof(DisableOilGlossCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ReapplyOilGlossExcludingLargestCommand))]
+    [NotifyPropertyChangedFor(nameof(OilGlossToggleLabel))]
+    [NotifyCanExecuteChangedFor(nameof(ToggleOilGlossCommand))]
     private bool _isOilGlossApplied;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(EnableOilGlossCommand))]
-    [NotifyCanExecuteChangedFor(nameof(DisableOilGlossCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ReapplyOilGlossExcludingLargestCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ToggleOilGlossCommand))]
     private bool _isOilGlossBusy;
 
     /// <summary>油光状态文案；空 = 不显示。</summary>
@@ -97,13 +95,13 @@ public sealed partial class ModPaneVM(
     [NotifyPropertyChangedFor(nameof(HasOilGlossStatus))]
     private string _oilGlossStatusText = string.Empty;
 
-    /// <summary>全局油光强度 0..1（本体只有一份实例，所有油光 Mod 共用）。</summary>
-    [ObservableProperty] private double _oilGlossStrength = 0.7;
-
     public bool HasOilGlossStatus => !string.IsNullOrEmpty(OilGlossStatusText);
 
     /// <summary>按钮区域是否显示（仅支持的游戏 + 已加载 Mod）。</summary>
     public bool CanToggleOilGloss => IsOilGlossSupported && IsModLoaded;
+
+    /// <summary>详情页唯一的油光按钮：按当前状态在「开启 / 撤销」之间切换。</summary>
+    public string OilGlossToggleLabel => IsOilGlossApplied ? "撤销油光" : "开启油光";
 
     private Guid? _loadedModId;
     private CharacterSkinEntry? _loadedMod;
@@ -203,9 +201,7 @@ public sealed partial class ModPaneVM(
                 _logger.Information("[ModPaneVM]   [{File}] {Section} → '{Key}' (arrow={Arrow})",
                     g.IniFileRelativePath, b.SectionName, b.KeyValue, b.IsArrowKey);
 
-            var oilStrength = await _oilGlossService.GetStrengthAsync(_cancellationToken);
-
-            return new { modEntry, modSettings, keySwaps, keyBindingGroups, oilStrength };
+            return new { modEntry, modSettings, keySwaps, keyBindingGroups };
         }, _cancellationToken);
 
         if (modPaneData is null)
@@ -213,8 +209,6 @@ public sealed partial class ModPaneVM(
 
 
         _loadedMod = modPaneData.modEntry;
-        // 必须在 IsReadOnly=false 之前赋值：否则滑块初始化会触发一次「用户调整」的保存 + F10。
-        OilGlossStrength = modPaneData.oilStrength;
         ModModel = ModPaneFieldsVm.FromModEntry(modPaneData.modEntry, modPaneData.modSettings,
             modPaneData.keySwaps ?? [], modPaneData.keyBindingGroups);
         ModModel.PropertyChanged += ModModel_PropertyChanged;
@@ -231,7 +225,6 @@ public sealed partial class ModPaneVM(
     {
         _loadedModId = null;
         _loadedMod = null;
-        _oilStrengthSaveCts?.Cancel();
         IsInGameMenuGenerated = false;
         InGameMenuStatusText = string.Empty;
         IsOilGlossApplied = false;
@@ -282,8 +275,8 @@ public sealed partial class ModPaneVM(
         };
 
         OnPropertyChanged(nameof(CanToggleOilGloss));
-        EnableOilGlossCommand.NotifyCanExecuteChanged();
-        DisableOilGlossCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(OilGlossToggleLabel));
+        ToggleOilGlossCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -302,90 +295,25 @@ public sealed partial class ModPaneVM(
         }
     }
 
-    private bool CanReapplyOilGlossExcludingLargest()
-        => CanToggleOilGloss && IsOilGlossApplied && !IsOilGlossBusy;
+    private bool CanToggleOilGlossNow() => CanToggleOilGloss && !IsOilGlossBusy;
 
     /// <summary>
-    /// 头发会变色时用：跳过索引数最大的网格，重新分组再打一次补丁。
-    /// 适用于「最大块其实是头发」的 Mod（自动分组会把它当身体）。
+    /// 详情页唯一的油光按钮：未开启时开启，已开启时撤销。
+    /// 拆成两个按钮会让人分不清该点哪个，这里按状态自动切换动作。
     /// </summary>
-    [RelayCommand(CanExecute = nameof(CanReapplyOilGlossExcludingLargest))]
-    private async Task ReapplyOilGlossExcludingLargestAsync()
+    [RelayCommand(CanExecute = nameof(CanToggleOilGlossNow))]
+    private async Task ToggleOilGlossAsync()
     {
-        if (!IsModLoaded)
-            return;
-
-        var mod = _loadedMod.Mod;
-        IsOilGlossBusy = true;
-        try
-        {
-            var result = await _oilGlossService.ReapplyExcludingLargestAsync(mod, _cancellationToken);
-            if (result.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
-            {
-                RefreshOilGlossStatus();
-                RefreshInGameMenuStatus();
-                _notificationService.ShowNotification("油光已重新分组", "已跳过最大的网格；按 F7 查看效果", null);
-                await RequestGameRefreshAsync();
-            }
-            else
-            {
-                OilGlossStatusText = "重新分组失败：" + result.Reason;
-            }
-        }
-        catch (Exception e)
-        {
-            _logger.Warning(e, "[OilGloss] 重新分组失败");
-            OilGlossStatusText = "重新分组失败：" + e.Message;
-        }
-        finally
-        {
-            IsOilGlossBusy = false;
-        }
-    }
-
-    private CancellationTokenSource? _oilStrengthSaveCts;
-
-    partial void OnOilGlossStrengthChanged(double value)
-    {
-        // 加载 Mod 时初始化滑块不应写盘（加载期间 IsReadOnly 为 true）
-        if (IsReadOnly || !IsModLoaded)
-            return;
-
-        _oilStrengthSaveCts?.Cancel();
-        _oilStrengthSaveCts?.Dispose();
-        _oilStrengthSaveCts = new CancellationTokenSource();
-        _ = SaveOilStrengthDebouncedAsync(value, _oilStrengthSaveCts.Token);
-    }
-
-    /// <summary>滑块停止拖动 500ms 后写一次强度并送 F10，避免每动一格都刷新游戏。</summary>
-    private async Task SaveOilStrengthDebouncedAsync(double value, CancellationToken token)
-    {
-        try
-        {
-            await Task.Delay(500, token);
-            var ok = await _oilGlossService.SaveStrengthAsync(value, token);
-            if (token.IsCancellationRequested)
-                return;
-
-            OilGlossStatusText = ok
-                ? $"油光强度：{value:0.00}（正在刷新游戏）"
-                : $"油光强度：{value:0.00}（未找到 d3dx_user.ini，游戏内不生效）";
-
-            if (ok)
-                await RequestGameRefreshAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception e)
-        {
-            _logger.Warning(e, "[OilGloss] 保存强度失败");
-        }
+        if (IsOilGlossApplied)
+            await DisableOilGlossAsync();
+        else
+            await EnableOilGlossAsync();
     }
 
     /// <summary>
-    /// 手动调整油光分组：列出 Mod 里所有 drawcall，让用户逐块选「不包 / 身体 / 衣物」。
-    /// 用于自动分组把头发当成身体、或从发型 Mod 里只挑身体的情况。
+    /// 逐块识别油光分组：每一块都能「试亮」——只给这一块上油光并自动刷新游戏，
+    /// 回游戏看哪块变亮就知道它是身体还是头发，再决定分组。
+    /// 试亮只是临时改写补丁，点「取消」会恢复打开窗口前的分组。
     /// </summary>
     [RelayCommand]
     private async Task CustomizeOilGroupsAsync()
@@ -394,15 +322,30 @@ public sealed partial class ModPaneVM(
             return;
 
         var mod = _loadedMod.Mod;
+
+        // 试亮会反复重打补丁，先把「打开前」的状态记下来，取消时按它恢复。
+        var beforeStatus = _oilGlossService.GetStatus(mod);
+        if (beforeStatus.State is OilGlossState.Conflict or OilGlossState.Broken)
+        {
+            OilGlossStatusText = "补丁状态异常，请先撤销油光再调整：" + beforeStatus.Reason;
+            return;
+        }
+
+        var wasApplied = beforeStatus.State is OilGlossState.Applied;
+        IReadOnlyList<OilGlossDrawcall> previousGroups =
+            wasApplied ? ReadAppliedGroups(mod, beforeStatus) : [];
+
         IsOilGlossBusy = true;
         try
         {
-            // 这里要绕过「发型 Mod 整包跳过」的默认判定，否则用户没法从发型包里挑身体网格
+            // 绕过「发型 Mod 整包跳过」的默认判定：用户可能就是想从发型包里挑出身体网格。
             var scan = await Task.Run(() => _oilGlossService.Scan(mod, ignoreHairFolderGuard: true),
                 _cancellationToken);
 
+            // 按大小排序并用「第 N 大块」称呼——索引号对用户没有意义。
             var draws = scan.Drawcalls
-                .OrderBy(d => d.IniRelativePath, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(d => d.IndexCount)
+                .ThenBy(d => d.IniRelativePath, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(d => d.StartIndex)
                 .ToList();
 
@@ -413,41 +356,105 @@ public sealed partial class ModPaneVM(
             }
 
             var choices = new List<(OilGlossDrawcall Draw, ComboBox Box)>();
-            var panel = new StackPanel { Spacing = 6 };
+            var trialButtons = new List<Button>();
+            var trialBusy = false;
+            var anyTrial = false;
+
+            var trialStatus = new TextBlock
+            {
+                Text = "点「试亮」只会给这一块上油光并自动刷新游戏；回游戏看哪块变亮，就是它。",
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+            };
+
+            var panel = new StackPanel { Spacing = 8 };
             panel.Children.Add(new TextBlock
             {
-                Text = "给每块网格选分组。头发变色时，把最大的几块改成「不包」；身体/衣物按需选择。",
+                Text = "不知道哪块是身体？逐块点「试亮」，回游戏看哪块变亮。"
+                       + "确认后选分组：身体 / 衣物 / 不包（头发选「不包」）。",
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 12,
             });
+            panel.Children.Add(trialStatus);
 
-            foreach (var draw in draws)
+            void SetTrialButtonsEnabled(bool enabled)
             {
+                foreach (var button in trialButtons)
+                    button.IsEnabled = enabled;
+            }
+
+            for (var i = 0; i < draws.Count; i++)
+            {
+                var draw = draws[i];
+                var rank = i + 1;
+
                 var combo = new ComboBox
                 {
                     ItemsSource = new[] { "不包", "身体", "衣物" },
-                    SelectedIndex = draw.Group switch
+                    // 已经开过油光时以补丁里的实际分组为准，否则「取消→再打开→应用」
+                    // 会把用户之前的手动分组覆盖回自动分组。
+                    SelectedIndex = (wasApplied ? FindAppliedGroup(previousGroups, draw) : draw.Group) switch
                     {
                         OilGlossGroup.Body => 1,
                         OilGlossGroup.Cloth => 2,
                         _ => 0,
                     },
-                    MinWidth = 90,
+                    MinWidth = 96,
                 };
 
-                var label = string.IsNullOrWhiteSpace(draw.Comment)
-                    ? draw.SectionName
-                    : draw.SectionName + " · " + draw.Comment;
+                var label = new TextBlock
+                {
+                    Text = $"第 {rank} 大块 · {draw.IndexCount / 3:N0} 面",
+                    Width = 200,
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                };
+                ToolTipService.SetToolTip(label,
+                    $"{draw.IniRelativePath} · {draw.SectionName}"
+                    + (draw.IsHeadLike ? "（名字像头发）" : string.Empty)
+                    + (draw.VisibleByDefault == false ? "（默认隐藏）" : string.Empty));
+
+                var trialButton = new Button { Content = "试亮", FontSize = 12 };
+                trialButtons.Add(trialButton);
+
+                trialButton.Click += async (_, _) =>
+                {
+                    if (trialBusy)
+                        return;
+
+                    trialBusy = true;
+                    anyTrial = true;
+                    trialStatus.Text = $"正在试亮第 {rank} 大块…";
+                    SetTrialButtonsEnabled(false);
+                    try
+                    {
+                        var trial = await _oilGlossService.TrialBodyAsync(mod, draw, _cancellationToken);
+                        if (trial.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
+                        {
+                            trialStatus.Text = $"现在只有第 {rank} 大块带油光，回游戏看看它是不是身体。";
+                            await RequestGameRefreshAsync();
+                        }
+                        else
+                        {
+                            trialStatus.Text = "试亮失败：" + trial.Reason;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.Warning(e, "[OilGloss] 试亮失败");
+                        trialStatus.Text = "试亮失败：" + e.Message;
+                    }
+                    finally
+                    {
+                        trialBusy = false;
+                        SetTrialButtonsEnabled(true);
+                    }
+                };
 
                 var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                row.Children.Add(new TextBlock
-                {
-                    Text = $"{label} · {draw.IndexCount} 索引 · 起始 {draw.StartIndex}",
-                    Width = 360,
-                    FontSize = 12,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    VerticalAlignment = VerticalAlignment.Center,
-                });
+                row.Children.Add(label);
+                row.Children.Add(trialButton);
                 row.Children.Add(combo);
                 panel.Children.Add(row);
                 choices.Add((draw, combo));
@@ -455,7 +462,7 @@ public sealed partial class ModPaneVM(
 
             var dialog = new ContentDialog
             {
-                Title = "调整油光分组",
+                Title = "逐块识别身体",
                 Content = new ScrollViewer
                 {
                     Content = panel,
@@ -467,37 +474,52 @@ public sealed partial class ModPaneVM(
                 DefaultButton = ContentDialogButton.Primary,
             };
 
+            // 试亮进行中不允许关窗，否则「恢复原分组」会和正在写的补丁打架。
+            dialog.Closing += (_, args) =>
+            {
+                if (trialBusy)
+                    args.Cancel = true;
+            };
+
             var windowManagerService = App.GetService<IWindowManagerService>();
-            if (await windowManagerService.ShowDialogAsync(dialog) != ContentDialogResult.Primary)
-                return;
+            var dialogResult = await windowManagerService.ShowDialogAsync(dialog);
 
-            var selected = choices.Select(c => c.Draw with
+            if (dialogResult == ContentDialogResult.Primary)
             {
-                Group = c.Box.SelectedIndex switch
+                var selected = choices.Select(c => c.Draw with
                 {
-                    1 => OilGlossGroup.Body,
-                    2 => OilGlossGroup.Cloth,
-                    _ => (OilGlossGroup?)null,
-                },
-            }).ToList();
+                    Group = c.Box.SelectedIndex switch
+                    {
+                        1 => OilGlossGroup.Body,
+                        2 => OilGlossGroup.Cloth,
+                        _ => (OilGlossGroup?)null,
+                    },
+                }).ToList();
 
-            var result = await _oilGlossService.ApplyCustomGroupsAsync(mod, selected, _cancellationToken);
-            if (result.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
-            {
-                RefreshOilGlossStatus();
-                RefreshInGameMenuStatus();
-                _notificationService.ShowNotification("油光已按自定义分组重打", "按 F7 查看效果", null);
-                await RequestGameRefreshAsync();
+                var applied = await _oilGlossService.ApplyCustomGroupsAsync(mod, selected, _cancellationToken);
+                if (applied.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
+                {
+                    RefreshOilGlossStatus();
+                    RefreshInGameMenuStatus();
+                    _notificationService.ShowNotification("已按选好的分组重打油光", "按 F7 查看效果", null);
+                    await RequestGameRefreshAsync();
+                }
+                else
+                {
+                    OilGlossStatusText = "应用分组失败：" + applied.Reason;
+                }
+
+                return;
             }
-            else
-            {
-                OilGlossStatusText = "应用分组失败：" + result.Reason;
-            }
+
+            // 取消：试亮改写过补丁的话，恢复打开窗口前的分组。
+            if (anyTrial)
+                await RestoreOilGroupsAfterCustomizeAsync(mod, wasApplied, previousGroups);
         }
         catch (Exception e)
         {
-            _logger.Warning(e, "[OilGloss] 调整分组失败");
-            OilGlossStatusText = "调整分组失败：" + e.Message;
+            _logger.Warning(e, "[OilGloss] 逐块识别身体失败");
+            OilGlossStatusText = "逐块识别失败：" + e.Message;
         }
         finally
         {
@@ -505,12 +527,71 @@ public sealed partial class ModPaneVM(
         }
     }
 
-    private bool CanEnableOilGloss() => CanToggleOilGloss && !IsOilGlossApplied && !IsOilGlossBusy;
+    /// <summary>
+    /// 读取当前补丁里每块网格的分组。新清单直接有记录；
+    /// 旧清单没有这项，退回当前 Mod 的自动分组（至少能还原成「最大块 = 身体」）。
+    /// </summary>
+    private IReadOnlyList<OilGlossDrawcall> ReadAppliedGroups(ISkinMod mod, OilGlossStatus status)
+    {
+        if (status.Manifest?.AppliedDrawcalls is { Count: > 0 } recorded)
+        {
+            return recorded.Select(d => new OilGlossDrawcall
+            {
+                IniRelativePath = d.IniRelativePath,
+                SectionName = d.SectionName,
+                LineIndex = 0,
+                IndexCount = d.IndexCount,
+                StartIndex = d.StartIndex,
+                Group = d.Group,
+            }).ToList();
+        }
 
-    private bool CanDisableOilGloss() => CanToggleOilGloss && IsOilGlossApplied && !IsOilGlossBusy;
+        return _oilGlossService.Scan(mod, ignoreHairFolderGuard: true).Drawcalls
+            .Where(d => d.Group is not null)
+            .ToList();
+    }
+
+    /// <summary>在已应用的分组里找同一块网格（路径 + 段落 + 索引数 + 起始索引）。</summary>
+    private static OilGlossGroup? FindAppliedGroup(
+        IReadOnlyList<OilGlossDrawcall> applied,
+        OilGlossDrawcall draw)
+    {
+        var match = applied.FirstOrDefault(p =>
+            string.Equals(p.IniRelativePath, draw.IniRelativePath, StringComparison.OrdinalIgnoreCase)
+            && p.SectionName == draw.SectionName
+            && p.IndexCount == draw.IndexCount
+            && p.StartIndex == draw.StartIndex);
+
+        return match?.Group;
+    }
+
+    /// <summary>「逐块识别」取消后恢复：原本开过就按原分组重打，原本没开就撤销。</summary>
+    private async Task RestoreOilGroupsAfterCustomizeAsync(
+        ISkinMod mod,
+        bool wasApplied,
+        IReadOnlyList<OilGlossDrawcall> previousGroups)
+    {
+        if (!wasApplied || previousGroups.Count == 0)
+        {
+            // 原来没开过，或读不出原分组：撤销掉试亮写进去的补丁，别让它留在 Mod 里。
+            await _oilGlossService.DisableAsync(mod, _cancellationToken);
+        }
+        else
+        {
+            var restored = await _oilGlossService.RestoreGroupsAsync(mod, previousGroups, _cancellationToken);
+            if (restored.Status is not (OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied))
+            {
+                OilGlossStatusText = "恢复原分组失败：" + restored.Reason;
+                return;
+            }
+        }
+
+        RefreshOilGlossStatus();
+        RefreshInGameMenuStatus();
+        await RequestGameRefreshAsync();
+    }
 
     /// <summary>详情页「开启油光」：复制本体 → 自动分组 → 打补丁 → 重建已有菜单。</summary>
-    [RelayCommand(CanExecute = nameof(CanEnableOilGloss))]
     private async Task EnableOilGlossAsync()
     {
         if (!IsModLoaded)
@@ -554,7 +635,6 @@ public sealed partial class ModPaneVM(
     }
 
     /// <summary>详情页「撤销油光」：还原作者 ini、删除 JASM 产物、重建菜单。</summary>
-    [RelayCommand(CanExecute = nameof(CanDisableOilGloss))]
     private async Task DisableOilGlossAsync()
     {
         if (!IsModLoaded)
