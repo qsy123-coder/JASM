@@ -311,6 +311,26 @@
 		</EmbeddedResource>
 	</ItemGroup>
 
+	<!-- 油光本体：KatFXMatcap 的 Matcap.ini + Oil/*.dds，启用油光时复制进 Mod 根目录。
+
+	     用 EmbeddedResource 而不是 Content：单 exe 版磁盘上只有主程序一个文件，
+	     散落的 DDS 复制不进去。LogicalName 与 OilGlossService.EmbeddedOilGlossAssetSource
+	     的查找规则逐字对应（前缀 + 相对路径，子目录用反斜杠）。 -->
+	<ItemGroup>
+		<Content Remove="Assets\OilGloss\**" />
+		<None Remove="Assets\OilGloss\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- 只嵌本体真正需要的文件；README 等说明文件不随开关注入 Mod 目录 -->
+		<EmbeddedResource Include="Assets\OilGloss\Matcap.ini">
+			<LogicalName>JASM.OilGloss.Matcap.ini</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Assets\OilGloss\Oil\*.dds">
+			<LogicalName>JASM.OilGloss.Oil\%(Filename)%(Extension)</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
 	<!-- 提权助手 Elevator.exe 内嵌进主 exe：单 exe 版磁盘上只有一个文件，助手只能这样交付，
 	     运行时由 ElevatorProvisioner 释放到 %LOCALAPPDATA%\JASM。见 ElevatorProvisioning 的类注释。
 
