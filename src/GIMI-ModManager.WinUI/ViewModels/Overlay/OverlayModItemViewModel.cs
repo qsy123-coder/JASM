@@ -220,6 +220,40 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     [RelayCommand]
     private Task OpenMenu() => _openMenu?.Invoke(this) ?? Task.CompletedTask;
 
+    /// <summary>当前游戏是否支持油光（只有鸣潮）；不支持时行右侧不显示「油」按钮。</summary>
+    [ObservableProperty] private bool _isOilGlossSupported;
+
+    /// <summary>这一行 Mod 是否已经打过油光补丁。</summary>
+    [ObservableProperty] private bool _isOilGlossApplied;
+
+    public string OilGlossButtonLabel => IsOilGlossApplied ? "✓油" : "油";
+
+    public string OilGlossToolTip => IsOilGlossApplied ? "撤销这个 Mod 的油光" : "给这个 Mod 添加油光";
+
+    partial void OnIsOilGlossAppliedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(OilGlossButtonLabel));
+        OnPropertyChanged(nameof(OilGlossToolTip));
+    }
+
+    public void SetOilGlossState(bool supported, bool applied)
+    {
+        IsOilGlossSupported = supported;
+        IsOilGlossApplied = applied;
+    }
+
+    /// <summary>点行右侧「油」按钮时执行的动作，由浮窗 ViewModel 注入。</summary>
+    private Func<OverlayModItemViewModel, Task>? _toggleOilGloss;
+
+    public OverlayModItemViewModel WithToggleOilGlossHandler(Func<OverlayModItemViewModel, Task> toggleOilGloss)
+    {
+        _toggleOilGloss = toggleOilGloss;
+        return this;
+    }
+
+    [RelayCommand]
+    private Task ToggleOilGloss() => _toggleOilGloss?.Invoke(this) ?? Task.CompletedTask;
+
     /// <summary>
     /// 把真实状态重新推给界面。
     ///
