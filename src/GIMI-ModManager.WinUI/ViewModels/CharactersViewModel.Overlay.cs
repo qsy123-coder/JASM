@@ -23,7 +23,13 @@ public partial class CharactersViewModel
         if (await overlay.ShowOverlayAsync())
             return;
 
+        // 把初始化失败的真实原因带出来，避免每次都只看到「尚未就绪」而没法排查
+        var reason = overlay.LastInitializationError;
         App.GetService<NotificationManager>().ShowNotification(
-            "浮窗", "当前游戏不支持浮窗，或浮窗尚未就绪。", TimeSpan.FromSeconds(6));
+            "浮窗",
+            string.IsNullOrWhiteSpace(reason)
+                ? "当前游戏不支持浮窗，或浮窗尚未就绪。"
+                : "浮窗初始化失败：" + reason,
+            TimeSpan.FromSeconds(6));
     }
 }
