@@ -73,10 +73,15 @@ Phase 0（实机，2026-11-09）已通过：
 - 油光在**游戏世界**生效；**角色图鉴 / 角色选择界面**不走 matcap 的 shader 路径，看不到油光（不影响游戏内效果）。
 - 注入的 `SendInput` / `PostMessage` 键 3DMigoto 不认，实机验证必须物理按键；F10 会重载 mod ini（WWMI `reload_config`）。
 
-待验证：
+菜单点击与多 ini（2026-11-09 补充验证）：
 
-- 三行菜单在真机上用物理 Alt+左键点击切换（行已确认出现在 JASM 菜单里）；
-- `norm` / `ult` 多套 ini 共用一组开关（本机测试 Mod 只有单套 ini）。
+- 物理 `Alt+左键` 点击 `Phase0 Body` 行后，`d3dx_user.ini` 的
+  `$\JasmOilPhase0\oil_body` 从 1 变成 0，菜单显示从 `2/2` 变成 `1/2`，世界画面里身体组油光消失。
+- 把两个 `TextureOverrideComponent` 拆到第二个 ini（`JASM_OilPart2.ini`，同一 namespace），
+  和主 `mod.ini` 里的组件共用 `$\JasmOilPhase0\oil_body`；一次菜单点击同时控制两份文件的网格，
+  日志里两个文件的所有组件都带着同一个 `oil_body` 条件。多 ini 共享变量成立。
+
+仅剩：用带本功能的新 JASM 构建做一次 UI 冒烟（详情页开启 / 撤销 + F7 三行）。
 
 ---
 
