@@ -258,6 +258,75 @@ public class OilGlossScannerTests : IDisposable
     }
 
     [Fact]
+    public void UsesMeshHeightToPickBodyAndExcludeHeadRegion()
+    {
+        var mod = Path.Combine(_root, "GeometryMod");
+        var meshes = Path.Combine(mod, "Meshes");
+        Directory.CreateDirectory(meshes);
+
+        // WWMI 模型 Z 轴向上：0 = 脚底，100 = 头顶。
+        // 0-2 脚底、3-5 躯干（身体）；6-11 头部；12-17 头发（从腰部到头顶）。
+        var heights = new[]
+        {
+            0f, 0f, 0f, 80f, 80f, 80f,
+            95f, 96f, 97f, 98f, 99f, 100f,
+            55f, 60f, 70f, 80f, 90f, 100f,
+        };
+
+        using (var stream = File.Create(Path.Combine(meshes, "Position.buf")))
+        using (var writer = new BinaryWriter(stream))
+        {
+            foreach (var z in heights)
+            {
+                writer.Write(0f);
+                writer.Write(0f);
+                writer.Write(z);
+            }
+        }
+
+        // 18 个 32 位索引：三块网格各 6 个。
+        var indexValues = new uint[]
+        {
+            0, 1, 2, 3, 4, 5,
+            6, 7, 8, 9, 10, 11,
+            12, 13, 14, 15, 16, 17,
+        };
+        using (var stream = File.Create(Path.Combine(meshes, "Index.buf")))
+        using (var writer = new BinaryWriter(stream))
+        {
+            foreach (var index in indexValues)
+                writer.Write(index);
+        }
+
+        File.WriteAllText(Path.Combine(mod, "mod.ini"), """
+            namespace = TestMod
+
+            [TextureOverrideComponent0]
+            drawindexed = 6, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 6, 6, 0
+
+            [TextureOverrideComponent2]
+            drawindexed = 6, 12, 0
+            """, new UTF8Encoding(false));
+
+        var result = OilGlossScanner.Scan(mod);
+
+        // 身体：跨下半身到躯干，按高度选它而不是按索引数猜。
+        Assert.Equal(0, result.Body!.StartIndex);
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.StartIndex == 0).Group);
+
+        // 头部整块都在 78% 以上 → 不包油光。
+        var head = result.Drawcalls.Single(d => d.StartIndex == 6);
+        Assert.True(head.IsHeadLike);
+        Assert.Null(head.Group);
+
+        // 头发（从腰部到头顶）落到衣物组，默认关闭。
+        Assert.Equal(OilGlossGroup.Cloth, result.Drawcalls.Single(d => d.StartIndex == 12).Group);
+    }
+
+    [Fact]
     public void ScansModsWhoseFolderNameMentionsHair()
     {
         // 「发型」只是 Mod 的名字；不少整模 Mod（例如尤诺-C酱发型）其实带完整身体。
