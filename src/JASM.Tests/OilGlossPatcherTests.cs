@@ -55,6 +55,24 @@ public class OilGlossPatcherTests : IDisposable
     }
 
     [Fact]
+    public void ApplyRecordsSelectedGroupsForRestore()
+    {
+        var mod = CreateMod(TwoDrawCallIni);
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+
+        var result = OilGlossPatcher.Apply(mod, body: body);
+
+        var applied = result.Manifest!.AppliedDrawcalls;
+        Assert.Equal(2, applied.Count);
+        Assert.Contains(applied, d => d.Group == OilGlossGroup.Body && d.IndexCount == 900);
+        Assert.Contains(applied, d => d.Group == OilGlossGroup.Cloth && d.IndexCount == 500);
+        Assert.All(applied, d => Assert.Equal("mod.ini", d.IniRelativePath));
+
+        // 重新读盘也要能拿到（「逐块识别」取消时靠它恢复分组）
+        Assert.Equal(2, OilGlossPatcher.GetStatus(mod).Manifest!.AppliedDrawcalls.Count);
+    }
+
+    [Fact]
     public void UndoRestoresOriginalBytesAndRemovesJasmArtifacts()
     {
         var mod = CreateMod(TwoDrawCallIni);
