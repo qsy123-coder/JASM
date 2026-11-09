@@ -25,13 +25,111 @@ public sealed class OilGlossService(
 {
     private static readonly ILogger Logger = Log.ForContext<OilGlossService>();
 
+    /// <summary>
+    /// 本体升级 / 旧补丁重打都会改写 Mod 文件与 manifest；串行化，避免详情页、浮窗、
+    /// 开启操作并发写同一份。
+    /// </summary>
+    private readonly object _stateLock = new();
+
     /// <summary>本体里的强度变量（全局，所有油光 Mod 共用）。</summary>
     private const string OilStrengthVariable = @"$\katfxmatcap\oilstrength";
 
     /// <summary>当前游戏是否支持油光（只有鸣潮）。</summary>
     public bool IsSupported => string.Equals(gameService.GameShortName, "WuWa", StringComparison.OrdinalIgnoreCase);
 
-    public OilGlossStatus GetStatus(ISkinMod mod) => OilGlossPatcher.GetStatus(mod.FullPath);
+    public OilGlossStatus GetStatus(ISkinMod mod)
+    {
+        var status = OilGlossPatcher.GetStatus(mod.FullPath);
+
+        // 旧版补丁（身体/衣物两组、包含 Component0–2）先按新规则重打；
+        // 旧版本体（ps-t0 替换）再升级。两步都只在打开详情页/浮窗刷新时触发一次。
+        status = RepatchIfOutdated(mod, status);
+        UpgradeBodyIfNeeded(mod, status.Manifest);
+        return status;
+    }
+
+    /// <summary>
+    /// 旧补丁升级：撤销原补丁 → 用当前扫描规则重打。
+    ///
+    /// 只处理 <see cref="OilGlossState.Applied"/> 且 <c>PatchVersion</c> 落后的 manifest；
+    /// Conflict/Broken 一律不动（用户改过或产物缺失，撤销可能覆盖用户改动）。
+    /// </summary>
+    private OilGlossStatus RepatchIfOutdated(ISkinMod mod, OilGlossStatus status)
+    {
+        if (status.State != OilGlossState.Applied
+            || status.Manifest is not { } manifest
+            || manifest.PatchVersion >= OilGlossProtocol.PatchVersion)
+        {
+            return status;
+        }
+
+        lock (_stateLock)
+        {
+            var current = OilGlossPatcher.GetStatus(mod.FullPath);
+            if (current.State != OilGlossState.Applied
+                || current.Manifest is not { } currentManifest
+                || currentManifest.PatchVersion >= OilGlossProtocol.PatchVersion)
+            {
+                return current;
+            }
+
+            Logger.Information("[OilGloss] 升级旧补丁: {Mod}", mod.Name);
+
+            var undo = OilGlossPatcher.Undo(mod.FullPath);
+            if (!undo.Success)
+            {
+                Logger.Warning("[OilGloss] 旧补丁升级失败(撤销): {Mod} {Reason}", mod.Name, undo.Reason);
+                return current;
+            }
+
+            var body = OilGlossBodyProvisioner.Ensure(mod.FullPath, EmbeddedOilGlossAssetSource.Instance);
+            if (!body.Success)
+            {
+                Logger.Warning("[OilGloss] 旧补丁升级失败(本体): {Mod} {Reason}", mod.Name, body.Reason);
+                return OilGlossPatcher.GetStatus(mod.FullPath);
+            }
+
+            var applied = OilGlossPatcher.Apply(mod.FullPath, body: body);
+
+            // 游戏占用旧本体时 Undo 删不掉、Ensure 也换不掉（BodyProvidedByJasm=false）。
+            // 旧 manifest 明确记录过这是 JASM 写的，就保留所有权与旧版本，
+            // 让下一次 GetStatus 在游戏退出后继续升级，而不是把旧本体当成作者的。
+            if (applied.Manifest is { } newManifest
+                && !body.BodyProvidedByJasm
+                && (currentManifest.BodyProvidedByJasm
+                    || OilGlossBodyProvisioner.IsOutdatedKnownJasmBody(mod.FullPath)))
+            {
+                newManifest.BodyProvidedByJasm = true;
+                // 本体还是旧的，强制下一次 GetStatus 继续升级
+                newManifest.BodyVersion = 0;
+                newManifest.BodyFiles = currentManifest.BodyFiles;
+                OilGlossPatcher.WriteManifest(mod.FullPath, newManifest);
+            }
+
+            // 新规则下没有任何可包网格（例如纯发型 Mod）：撤销后保持未开启，
+            // 并清掉这次刚复制的本体，别在 Mod 目录留孤儿文件。
+            if (applied.Status is OilGlossApplyStatus.Failed or OilGlossApplyStatus.NoDrawcalls
+                && body.WrittenFiles.Count > 0)
+            {
+                try
+                {
+                    OilGlossBodyProvisioner.RemoveWrittenFiles(mod.FullPath, body.WrittenFiles);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning(e, "[OilGloss] 旧补丁升级后清理本体失败: {Mod}", mod.Name);
+                }
+            }
+
+            Logger.Information("[OilGloss] 旧补丁升级完成({Mod}): {Status}", mod.Name, applied.Status);
+
+            // 旧菜单里可能还留着「身体油光 / 衣物油光」两行；重打后行模型只剩
+            // 总开关 + 强度，菜单必须重建（没有作者行时会被移除）。
+            _ = RegenerateMenuAsync(mod, createIfMissing: false, CancellationToken.None);
+
+            return OilGlossPatcher.GetStatus(mod.FullPath);
+        }
+    }
 
     public OilGlossScanResult Scan(ISkinMod mod) => OilGlossScanner.Scan(mod.FullPath);
 
@@ -85,6 +183,8 @@ public sealed class OilGlossService(
 
         var result = await Task.Run(() =>
         {
+            UpgradeBodyIfNeeded(mod, OilGlossPatcher.GetStatus(mod.FullPath).Manifest);
+
             var body = OilGlossBodyProvisioner.Ensure(mod.FullPath, EmbeddedOilGlossAssetSource.Instance);
             if (!body.Success)
             {
@@ -248,6 +348,59 @@ public sealed class OilGlossService(
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             Logger.Warning(e, "[OilGloss] 复位油光开关失败");
+        }
+    }
+
+    /// <summary>
+    /// 把 JASM 写过的旧版本体升级到当前版本。
+    ///
+    /// 只覆盖 manifest 里 <c>BodyProvidedByJasm = true</c> 且当前哈希与记录一致的文件；
+    /// 作者自带本体、用户改过的文件都不会被覆盖。失败（游戏占用等）留给下次状态刷新重试。
+    /// </summary>
+    private void UpgradeBodyIfNeeded(ISkinMod mod, OilGlossManifest? manifest)
+    {
+        if (manifest is null)
+            return;
+
+        lock (_stateLock)
+        {
+            // 锁内重新读一次，避免把并发写入的新 manifest（例如刚打完补丁）覆盖回旧内容
+            var current = OilGlossPatcher.GetStatus(mod.FullPath).Manifest;
+            if (current is null)
+                return;
+
+            try
+            {
+                // Upgrade 自己判断：作者本体 / 已是最新会返回 Skipped；
+                // 已知旧 JASM 本体即使 manifest 丢失所有权也会升级。
+                var upgrade = OilGlossBodyProvisioner.Upgrade(
+                    mod.FullPath, EmbeddedOilGlossAssetSource.Instance, current);
+
+                if (!upgrade.Success)
+                {
+                    Logger.Warning("[OilGloss] 本体升级失败({Mod}): {Reason}", mod.Name, upgrade.Reason);
+                    return;
+                }
+
+                if (upgrade.Skipped)
+                    return;
+
+                current.BodyProvidedByJasm = true;
+                current.BodyFiles = upgrade.Files.ToList();
+                current.BodyVersion = OilGlossProtocol.BodyVersion;
+                OilGlossPatcher.WriteManifest(mod.FullPath, current);
+
+                if (upgrade.PreservedFiles.Count > 0)
+                {
+                    Logger.Warning("[OilGloss] 本体升级保留了用户修改的文件({Mod}): {Files}",
+                        mod.Name, string.Join(", ", upgrade.PreservedFiles));
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // 游戏运行时会占用 Matcap.ini；下次刷新/开启时再试
+                Logger.Warning(e, "[OilGloss] 本体升级失败: {Mod}", mod.Name);
+            }
         }
     }
 
