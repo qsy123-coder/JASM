@@ -128,6 +128,8 @@ public static class OilGlossBodyProvisioner
         if (!Directory.Exists(modFolderPath))
             return FailUpgrade("Mod 目录不存在");
 
+        manifest.BodyFiles ??= [];
+
         var knownOutdated = IsOutdatedKnownJasmBody(modFolderPath);
 
         if (!manifest.BodyProvidedByJasm && !knownOutdated)
@@ -319,7 +321,17 @@ public static class OilGlossBodyProvisioner
     public static bool IsOutdatedKnownJasmBody(string modFolderPath)
     {
         var path = Path.Combine(modFolderPath, OilGlossProtocol.BodyIniFileName);
-        return File.Exists(path) && OutdatedJasmBodyHashes.Contains(HashFile(path));
+        if (!File.Exists(path))
+            return false;
+
+        try
+        {
+            return OutdatedJasmBodyHashes.Contains(HashFile(path));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>现有 <c>Matcap.ini</c> 是否与内嵌本体逐字节一致（即由 JASM 写入）。</summary>
@@ -329,13 +341,20 @@ public static class OilGlossBodyProvisioner
         if (!File.Exists(target))
             return false;
 
-        using var stream = assets.OpenRead(OilGlossProtocol.BodyIniFileName);
-        if (stream is null)
-            return false;
+        try
+        {
+            using var stream = assets.OpenRead(OilGlossProtocol.BodyIniFileName);
+            if (stream is null)
+                return false;
 
-        using var buffer = new MemoryStream();
-        stream.CopyTo(buffer);
-        return buffer.ToArray().AsSpan().SequenceEqual(File.ReadAllBytes(target));
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return buffer.ToArray().AsSpan().SequenceEqual(File.ReadAllBytes(target));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static string HashFile(string path)
