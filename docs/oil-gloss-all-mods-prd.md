@@ -142,11 +142,11 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 ### 3. 本体 / 补丁升级与版本化
 
-新增 `OilGlossProtocol.BodyVersion`（本次为 2）与 `PatchVersion`（本次为 2）。
+新增 `OilGlossProtocol.BodyVersion`（本次为 3）与 `PatchVersion`（本次为 2）。
 `manifest.json` 增加：
 
 ```json
-"BodyVersion": 2,
+"BodyVersion": 3,
 "PatchVersion": 2
 ```
 
@@ -196,7 +196,19 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 > 后续若要做共享本体，单独立项；本版不改目录结构，保证撤销仍能逐 Mod 还原。
 
-### 5. 兼容性
+### 5. 强度上限与贴图切换（F7 菜单）
+
+- **强度上限 2.0**：`$oilStrength` 直接作为 `matcap1_opacity`，允许 >1；
+  菜单滑块轨道按 `SliderMax = 2.0` 归一化，拖动/滑块头位置都不再假设 0–1。
+  物理键 `+` / `-` 的循环表同步扩到 2.0。
+- **油光贴图行**：新增 `[KeyOilTexture] 油光贴图` 循环行，直接写
+  `$\KatFXMatcap\oilSkin`，候选值 `2,3,4,5,6,1`，显示文本
+  `MC6 / MC1 / Oil1 / Oil2 / Wet / OIl_MC`。
+  - 不含 0：关油光由「油光」总开关负责，避免出现第二个关闭入口。
+  - 菜单生成器新增 `ValueLabels`（循环值显示文本）与 `SliderMax`（滑块上限）；
+    生成器版本升到 **v35**，旧菜单启动后自动重建。
+
+### 6. 兼容性
 
 - 旧 manifest 没有 `BodyVersion` / `PatchVersion` → 视为 0，允许升级 / 重打。
 - 旧撤消逻辑不变：`BodyFiles` 哈希与当前文件比对，未改才删。
@@ -213,7 +225,7 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 | 位置 | 变更 |
 |---|---|
-| `OilGlossProtocol` | 新增 `BodyVersion = 2`、`PatchVersion = 2` |
+| `OilGlossProtocol` | 新增 `BodyVersion = 3`、`PatchVersion = 2`、`MaxStrength = 2.0`、`TextureVariable` |
 | `OilGlossManifest` | 新增 `int BodyVersion` / `int PatchVersion`（默认 0） |
 | `OilGlossBodyProvisioner` | 新增 `Upgrade`（本体升级 / 清单补全）、`IsOutdatedKnownJasmBody`；`Ensure` 记录 `BodyProvidedByJasm` |
 | `OilGlossScanner` | 删除 Component0–2 回退；新增头发/脸关键词排除 |
@@ -259,6 +271,13 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 - [ ] 用户改过的本体保留，不被覆盖。
 - [ ] 早期清单丢失所有权但 `Matcap.ini` 哈希命中旧 JASM 版本时仍能升级。
 
+### 菜单
+
+- [ ] 油光强度滑块上限为 2.0；拖到最右时滑块头停在轨道末端，变量写入 2.0。
+- [ ] 「油光贴图」行循环 6 种贴图，显示 MC6 / MC1 / Oil1 / Oil2 / Wet / OIl_MC。
+- [ ] 切换贴图不需要 F10；下一帧生效。
+- [ ] 菜单生成器版本为 v35，旧菜单启动后自动重建。
+
 ### 撤销 / 回归
 
 - [ ] 撤销逐字节还原；新旧 manifest 都能撤销。
@@ -283,6 +302,10 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 - `OilGlossPatcher`
   - 新补丁不再引用 `Empty_Normal`；
   - 旧 manifest 撤销兼容。
+- `OilGlossMenuRows` / 菜单生成器
+  - 三行：油光 / 油光强度 / 油光贴图；
+  - 滑块 `SliderMax = 2.0`，生成 ini 里包含 `/ 2 *` 与 `slider_v > 2`；
+  - 贴图行写 `$\KatFXMatcap\oilSkin`，值 2,3,4,5,6,1，显示文本正确。
 
 ### 真实 Mod 回归（本机）
 
