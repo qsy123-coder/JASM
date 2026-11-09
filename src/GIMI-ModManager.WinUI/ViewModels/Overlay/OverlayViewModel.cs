@@ -8,6 +8,7 @@ using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities;
 using GIMI_ModManager.Core.Entities.Mods.Helpers;
+using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
@@ -34,7 +35,7 @@ namespace GIMI_ModManager.WinUI.ViewModels.Overlay;
 /// 唯一搬去后台的是动盘那一步（文件夹改名），它不影响这段约定。
 /// </summary>
 internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient<ModChangedMessage>,
-    IRecipient<ModInstalledMessage>
+    IRecipient<ModInstalledMessage>, IRecipient<InGameMenuAutoGenerateChangedMessage>
 {
     /// <summary>下拉右侧模式控件里的序号。取值与 <c>Segmented</c> 里两个 <c>SegmentedItem</c> 的先后一致。</summary>
     private const int SingleSelectModeIndex = 0;
@@ -110,6 +111,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     /// </summary>
     public ObservableCollection<OverlayModItemViewModel> Mods { get; } = new();
 
+    /// <summary>已经挂过 <see cref="ICharacterModList.ModsChanged"/> 的列表（角色列表可能动态增删）。</summary>
+    private readonly HashSet<ICharacterModList> _subscribedModLists = new();
+
     [ObservableProperty] private OverlayCharacterItem? _selectedCharacter;
     [ObservableProperty] private string _searchText = string.Empty;
 
@@ -128,6 +132,17 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
     public bool HasErrorMessage => !string.IsNullOrEmpty(ErrorMessage);
 
     partial void OnErrorMessageChanged(string? value) => OnPropertyChanged(nameof(HasErrorMessage));
+
+    /// <summary>游戏内菜单的操作提示。生成 / 打开之后都带上，免得用户不知道要按住 Alt 才能点。</summary>
+    internal const string MenuUsageHint = "按住 Alt + 左键点击行切换 · Alt + 右键拖动菜单（F7 打开 / 关闭）";
+
+    /// <summary>「生成按键菜单」按钮的结果提示（成功/跳过原因）。</summary>
+    [ObservableProperty] private string? _inGameMenuStatusMessage;
+
+    public bool HasInGameMenuStatus => !string.IsNullOrEmpty(InGameMenuStatusMessage);
+
+    partial void OnInGameMenuStatusMessageChanged(string? value) =>
+        OnPropertyChanged(nameof(HasInGameMenuStatus));
 
     /// <summary>
     /// 提权时的那句常驻提示（<c>null</c> = 不提权，那一行自己塌掉）。见 <see cref="AppElevation.IsDragDropBlocked"/>。
@@ -672,6 +687,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         // 放在**空态判断之前**：列表空着的时候更要收得到「刚装了 Mod」这条消息，否则空态就是个死局。
         IsActive = true;
 
+        // 与设置页共用的「安装后自动生成菜单」开关：每次唤出浮窗同步一次
+        _ = RefreshAutoGenerateMenuOnInstallAsync();
+
         // 重建会 Clear 集合，ComboBox 跟着把 SelectedCharacter 置回 null —— 先把「原来选的是谁」记下来。
         // 装了新 Mod 的那种刷新，优先选**刚装的那个角色**（见 Receive 的说明）。
         var previous = preferCharacterInternalName
@@ -730,6 +748,14 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
     private void BuildCharacterList()
     {
+        // 外部（资源管理器 / 其它程序）动 Mods 目录时，CharacterModList 的 watcher 会触发
+        // ModsChanged —— 挂上它，浮窗才能同步增删 Mod。用 HashSet 去重：角色列表可能动态增删。
+        foreach (var list in _skinManagerService.CharacterModLists)
+        {
+            if (_subscribedModLists.Add(list))
+                list.ModsChanged += OnModListChanged;
+        }
+
         Characters.Clear();
 
         // 只取有 Mod 的：关掉某个角色（DisableModListAsync）会把它从 CharacterModLists 里摘掉，这里也就跟着消失
@@ -740,6 +766,64 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
 
         foreach (var character in characters)
             Characters.Add(new OverlayCharacterItem(character));
+    }
+
+    /// <summary>
+    /// 外部改动了某个角色的 Mod 目录（删除 / 新增 / 改名）：同步浮窗。
+    /// 事件来自 FileSystemWatcher 的线程池线程；集合与 x:Bind 属性只能在 UI 线程改。
+    /// </summary>
+    private void OnModListChanged(object? sender, ModFolderChangedArgs e)
+    {
+        if (sender is not ICharacterModList changedList)
+            return;
+
+        if (App.MainWindow?.DispatcherQueue is not { } dispatcher)
+            return;
+
+        dispatcher.TryEnqueue(() =>
+        {
+            _logger.Information("[浮窗] Mod 目录变化（{Change}：{Name}），刷新列表",
+                e.ChangeType, e.NewName);
+
+            var selected = SelectedCharacter?.Character;
+            if (selected is not null
+                && ResolveModList(selected) is { } currentList
+                && string.Equals(currentList.AbsModsFolderPath, changedList.AbsModsFolderPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                // 当前正在看这个角色：整批重建行。新增、删除、改名都由它兜住。
+                LoadMods(selected);
+            }
+
+            RefreshCharactersPreservingSelection();
+        });
+    }
+
+    /// <summary>角色下拉里的「有 Mod 的角色」集合变了才重建，并尽量保住当前选中。</summary>
+    private void RefreshCharactersPreservingSelection()
+    {
+        var selectedName = SelectedCharacter?.Character.InternalName.ToString();
+
+        var currentNames = Characters
+            .Select(c => c.Character.InternalName.ToString())
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var wantedNames = _skinManagerService.CharacterModLists
+            .Where(list => list.Mods.Count > 0)
+            .Select(list => list.Character.InternalName.ToString())
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (currentNames.SequenceEqual(wantedNames, StringComparer.OrdinalIgnoreCase))
+            return;
+
+        // 先解开绑定：Clear 时 ComboBox 会把 SelectedItem 置空并回调进来
+        SelectedCharacter = null;
+        BuildCharacterList();
+        SelectedCharacter = Characters.FirstOrDefault(c =>
+                              string.Equals(c.Character.InternalName.ToString(), selectedName,
+                                  StringComparison.OrdinalIgnoreCase))
+                          ?? Characters.FirstOrDefault();
     }
 
     partial void OnSelectedCharacterChanged(OverlayCharacterItem? value)
@@ -806,7 +890,10 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             : entries
                 .Select(entry =>
                 {
-                    var item = OverlayModItemViewModel.FromEntry(entry).WithToggleHandler(ToggleModAsync);
+                    var item = OverlayModItemViewModel.FromEntry(entry)
+                        .WithToggleHandler(ToggleModAsync)
+                        .WithGenerateMenuHandler(GenerateMenuForModAsync)
+                        .WithOpenMenuHandler(OpenMenuForModAsync);
 
                     // NSFW 名单按 Id 比对，所以红标跟着 Mod 本身走：改名、换自定义名、甚至开/关一次
                     //（文件夹加上又去掉 DISABLED_ 前缀）都不会把它弄丢。
@@ -882,6 +969,12 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
             // 取消勾选不动别人 —— 用户取消时想要的是"这件不要了"，不是"随便给我换一件"。
             if (item.IsEnabled && !IsMultiSelectMode)
                 await DisableOtherModsAsync(modList, item);
+
+            // 菜单跟着「当前唯一启用的那件」走：启用/禁用是改名操作，不会触发 ModsChanged，
+            // 所以必须在这里补/更新菜单。必须 **await**：下面单选模式会立刻送 F10，
+            // 若菜单还没生成完，游戏重载时就看不到新菜单（表现为「启用后 F10 没反应」）。
+            if (!IsMultiSelectMode)
+                await RefreshInGameMenuAsync(modList);
         }
         catch (Exception e)
         {
@@ -916,6 +1009,203 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         // 连点同一个角色的不同 Mod 正是靠这一点才点得动。
         await RefreshCoordinator.RequestRefreshAsync();
         HasPendingChanges = false;
+    }
+
+    /// <summary>
+    /// 行右侧「生成菜单」：给这一行 Mod 生成/重建游戏内菜单（不管它当前是否启用）。
+    /// 生成后按 F10 或点「刷新」让游戏重载 Mod ini。
+    /// </summary>
+    private async Task GenerateMenuForModAsync(OverlayModItemViewModel item)
+    {
+        var modList = ResolveModList(SelectedCharacter?.Character);
+        var entry = modList?.Mods.FirstOrDefault(m => m.Id == item.Id);
+        if (entry is null)
+        {
+            InGameMenuStatusMessage = "找不到这个 Mod 对应的条目，重新打开浮窗试试";
+            return;
+        }
+
+        try
+        {
+            var service = App.GetService<InGameMenuService>();
+
+            // 生成是磁盘 + GDI 重活，放后台；随后回到 UI 线程再改绑定属性
+            // （不 ConfigureAwait(false)，否则 x:Bind 改 Visibility 会抛 0x8001010E）。
+            var settings = await service.ReadSettingsAsync();
+            var result = await Task.Run(() => service.GenerateForMod(entry.Mod, settings));
+
+            InGameMenuStatusMessage = result.Status == InGameMenuGenerationStatus.Generated
+                ? $"菜单已生成：{item.Name}。{MenuUsageHint}"
+                : $"{item.Name}：{result.Reason}";
+            _logger.Information("[浮窗] 生成菜单：{Mod} → {Status}（{Reason}）",
+                item.Name, result.Status, result.Reason);
+
+            if (result.Status == InGameMenuGenerationStatus.Generated)
+                _logger.Information("[浮窗] 菜单用法：{Hint}", MenuUsageHint);
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "[浮窗] 生成菜单失败：{Mod}", item.Name);
+            InGameMenuStatusMessage = "生成失败：" + e.Message;
+        }
+    }
+
+    /// <summary>安装 Mod 后是否自动生成菜单（与设置页共用同一份设置）。</summary>
+    [ObservableProperty] private bool _autoGenerateMenuOnInstall = true;
+
+    private bool _suppressAutoGenerateSave;
+
+    partial void OnAutoGenerateMenuOnInstallChanged(bool value)
+    {
+        if (_suppressAutoGenerateSave)
+            return;
+
+        _ = SaveAutoGenerateMenuOnInstallAsync(value);
+    }
+
+    private async Task SaveAutoGenerateMenuOnInstallAsync(bool value)
+    {
+        try
+        {
+            var service = App.GetService<InGameMenuService>();
+            var settings = await service.ReadSettingsAsync();
+            if (settings.AutoGenerateOnInstall == value)
+                return;
+
+            settings.AutoGenerateOnInstall = value;
+            await service.SaveSettingsAsync(settings);
+
+            // 设置页里那个开关同步显示成同一个状态
+            Messenger.Send(new InGameMenuAutoGenerateChangedMessage(this, value));
+
+            InGameMenuStatusMessage = value
+                ? "已开启：以后每安装一个 Mod 就自动生成它的菜单"
+                : "已关闭：安装时不再自动生成菜单";
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗] 保存「安装后自动生成菜单」失败");
+        }
+    }
+
+    /// <summary>
+    /// 行右侧「打开菜单」：切到这个 Mod（必要时启用并让游戏重载），再把游戏内菜单键转发给游戏。
+    /// 游戏内菜单只属于「当前启用的那一件」，所以未启用的 Mod 要先切过去才有菜单可开。
+    /// </summary>
+    private async Task OpenMenuForModAsync(OverlayModItemViewModel item)
+    {
+        var modList = ResolveModList(SelectedCharacter?.Character);
+        var entry = modList?.Mods.FirstOrDefault(m => m.Id == item.Id);
+        if (modList is null || entry is null)
+        {
+            InGameMenuStatusMessage = "找不到这个 Mod 对应的条目，重新打开浮窗试试";
+            return;
+        }
+
+        // 没有按键映射的 Mod 生成器本来就会跳过，菜单不存在，切 Mod + 发 F10 也是白折腾。
+        // 先在这里提醒用户（与生成器同一套判定：有没有可点击的 [Key*] 行）。
+        var menuService = App.GetService<InGameMenuService>();
+        var hasMenuRows = await Task.Run(() => menuService.HasMenuRows(entry.Mod));
+        if (!hasMenuRows)
+        {
+            const string reason = "这个 Mod 没有按键映射，无法打开游戏内菜单。";
+            InGameMenuStatusMessage = $"「{item.Name}」{reason}";
+            _notificationManager.ShowNotification("打开菜单", $"「{item.Name}」{reason}",
+                TimeSpan.FromSeconds(4));
+            _logger.Information("[浮窗] 打开菜单被拒绝：{Mod} 没有可点击的按键行", item.Name);
+            return;
+        }
+
+        try
+        {
+            if (!entry.IsEnabled)
+            {
+                // 与勾选框同一条独占逻辑：单选模式下先把同角色其它件收起来
+                if (!IsMultiSelectMode)
+                    await DisableOtherModsAsync(modList, item);
+
+                item.IsEnabled = await Task.Run(() => modList.ToggleMod(item.Id));
+                Messenger.Send(new ModChangedMessage(this, entry, null));
+
+                // 先生成/更新这份菜单，再让游戏重载（F10），最后才送菜单键
+                await RefreshInGameMenuAsync(modList);
+                await RefreshCoordinator.RequestRefreshAsync();
+
+                // 等游戏把 mod 池重载完（日志实测一次 F10 重载约 5s），
+                // 否则菜单键打过去时旧 Mod 还没换掉，菜单可能属于上一件。
+                await Task.Delay(6000);
+            }
+
+            var overlayService = App.GetService<OverlayWindowService>();
+            var result = await overlayService.SendInGameMenuKeyAsync();
+
+            InGameMenuStatusMessage = result.Status == GameKeySendStatus.Sent
+                ? $"已打开按键菜单：{item.Name}。{MenuUsageHint}"
+                : $"菜单键发送失败：{result.Detail ?? result.Status.ToString()}";
+
+            if (result.Status == GameKeySendStatus.Sent)
+                _logger.Information("[浮窗] 菜单用法：{Hint}", MenuUsageHint);
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "[浮窗] 打开按键菜单失败：{Mod}", item.Name);
+            InGameMenuStatusMessage = "打开菜单失败：" + e.Message;
+        }
+    }
+
+    /// <summary>设置页改了同一个开关：同步浮窗上的显示（不反向落盘）。</summary>
+    public void Receive(InGameMenuAutoGenerateChangedMessage message)
+    {
+        if (ReferenceEquals(message.Sender, this))
+            return;
+
+        if (App.MainWindow?.DispatcherQueue is not { } dispatcher)
+            return;
+
+        dispatcher.TryEnqueue(() =>
+        {
+            if (AutoGenerateMenuOnInstall == message.Value)
+                return;
+
+            _suppressAutoGenerateSave = true;
+            AutoGenerateMenuOnInstall = message.Value;
+            _suppressAutoGenerateSave = false;
+        });
+    }
+
+    /// <summary>浮窗每次唤出时同步一次设置页里的开关状态（两边是同一份设置）。</summary>
+    private async Task RefreshAutoGenerateMenuOnInstallAsync()
+    {
+        try
+        {
+            var settings = await App.GetService<InGameMenuService>().ReadSettingsAsync();
+            if (AutoGenerateMenuOnInstall == settings.AutoGenerateOnInstall)
+                return;
+
+            _suppressAutoGenerateSave = true;
+            AutoGenerateMenuOnInstall = settings.AutoGenerateOnInstall;
+            _suppressAutoGenerateSave = false;
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[浮窗] 读取「安装后自动生成菜单」失败");
+        }
+    }
+
+    /// <summary>
+    /// 在后台补/更新这个角色当前启用 Mod 的游戏内菜单；失败只记日志，不影响勾选本身。
+    /// </summary>
+    private static async Task RefreshInGameMenuAsync(ICharacterModList modList)
+    {
+        try
+        {
+            var service = App.GetService<InGameMenuService>();
+            await service.RefreshAfterModToggleAsync(modList).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Log.Warning(e, "[浮窗] 启用 Mod 后生成游戏内菜单失败");
+        }
     }
 
     /// <summary>
