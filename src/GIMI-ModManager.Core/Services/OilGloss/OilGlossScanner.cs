@@ -38,6 +38,8 @@ public static class OilGlossScanner
     private static readonly Regex DrawIndexedRegex =
         new(@"^\s*drawindexed\s*=\s*(\d+)\s*,\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex IfRegex = new(@"^if\s+.+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ComponentIndexRegex =
+        new(@"TextureOverrideComponent(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TextureSlotRegex =
         new(@"ResourceTexture(\w+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex DrawCommentRegex = new(@"^\s*;\s*Draw\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -99,21 +101,32 @@ public static class OilGlossScanner
         //     只看 min 会漏掉长发（0.44–0.97），它会被分进衣物组，一开衣物油光就整头变绿。
         // 覆盖到下半身的大块（身体）不受影响。
         var heights = OilGlossMeshGeometry.TryAnalyze(modFolderPath, annotated);
-        if (heights is not null)
-        {
-            annotated = annotated
-                .Select(d => heights.TryGetValue((d.IniRelativePath, d.StartIndex, d.IndexCount), out var range)
-                    ? d with
-                    {
-                        HeightMin = range.Min,
-                        HeightMax = range.Max,
-                        IsHeadLike = d.IsHeadLike
-                                     || range.Min >= 0.75
-                                     || (range.Max >= 0.95 && range.Min > 0.25),
-                    }
-                    : d)
-                .ToList();
-        }
+
+        // 只有 Mod 确实存在 Component3 及以后的网格时，才把 0–2 当脸/头发排除。
+        // 如果整个 Mod 只有 0–2（不少老 Mod 的身体就在 Component0），说明编号约定不适用。
+        var hasLaterComponents = annotated.Any(d => GetComponentIndex(d) >= 3);
+
+        annotated = annotated
+            .Select(d =>
+            {
+                var draw = heights is not null
+                           && heights.TryGetValue((d.IniRelativePath, d.StartIndex, d.IndexCount), out var range)
+                    ? d with { HeightMin = range.Min, HeightMax = range.Max }
+                    : d;
+
+                // 官方说明：身体/衣物通常位于 [TextureOverrideComponent3] 及更靠后的段落。
+                // 0–2 多为脸/头发——没有几何信息（多套 Meshes 的 Mod）时只能靠这条兜底，
+                // 否则它们会全部落进衣物组，一开衣物油光就把脸/头发糊掉。
+                var headByComponent = hasLaterComponents && IsHeadComponent(draw);
+                var headByHeight = draw.HeightMin is { } min && draw.HeightMax is { } max
+                                   && (min >= 0.75 || (max >= 0.95 && min > 0.25));
+
+                return draw with
+                {
+                    IsHeadLike = draw.IsHeadLike || headByComponent || headByHeight,
+                };
+            })
+            .ToList();
 
         return Group(annotated);
     }
@@ -295,8 +308,18 @@ public static class OilGlossScanner
         if (bodySet.Count == 0)
             bodySet = new List<OilGlossDrawcall> { bodyAnchor };
 
-        // 衣物：其余全部可见网格；只有一块时衣物组为空
-        var clothSet = pool.Where(d => !bodySet.Any(b => IsSame(b, d))).ToList();
+        // 作者明确标了 body 的其它变体（例如 body / body_squezzed 两套）一起包进身体组：
+        // 只包其中一块时，游戏里切换形态后会出现「点了身体油光但没反应」。
+        foreach (var namedBody in candidates.Where(IsNamedBody))
+        {
+            if (bodySet.All(b => !IsSame(b, namedBody)))
+                bodySet.Add(namedBody);
+        }
+
+        // 衣物：其余全部非头部网格。包含默认隐藏的变体（丝袜/高跟等）——
+        // 隐藏时没有画面，用户在菜单里打开该变体后油光才会出现；
+        // 不包含的话就会出现「切了衣物油光但这个变体没反应」。
+        var clothSet = candidates.Where(d => !bodySet.Any(b => IsSame(b, d))).ToList();
 
         var annotated = drawcalls
             .Select(d => bodySet.Any(b => IsSame(b, d))
@@ -323,6 +346,30 @@ public static class OilGlossScanner
             Cloth = clothResult,
         };
     }
+
+    private static int GetComponentIndex(OilGlossDrawcall draw)
+    {
+        var match = ComponentIndexRegex.Match(draw.SectionName);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var index) ? index : -1;
+    }
+
+    /// <summary>
+    /// <c>[TextureOverrideComponent0/1/2]</c> 默认视为脸/头发/头饰（官方说明：身体/衣物
+    /// 通常在 Component3 及更靠后）。有几何信息且它明确覆盖下半身时除外——
+    /// 少数 Mod 会把身体放在前面的段落。
+    /// </summary>
+    private static bool IsHeadComponent(OilGlossDrawcall draw)
+    {
+        if (GetComponentIndex(draw) is < 0 or > 2)
+            return false;
+
+        return !(draw.HeightMin is <= 0.30 && draw.HeightMax is >= 0.60);
+    }
+
+    /// <summary>作者在段落名/注释/条件里明确写了 body 的网格（例如 <c>$draw_component_3_body_001</c>）。</summary>
+    private static bool IsNamedBody(OilGlossDrawcall draw)
+        => (draw.Comment + " " + draw.Condition + " " + draw.SectionName)
+            .Contains("body", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 选身体锚点：有网格高度信息时，选「从下半身一直覆盖到躯干」且跨度最大的那块
