@@ -69,11 +69,13 @@ public sealed class InGameMenuService(
     public bool HasCurrentMenu(ISkinMod mod) => InGameMenuGenerator.IsUpToDate(mod.FullPath);
 
     /// <summary>
-    /// 这个 Mod 是否有可放进菜单的按键行（与生成器的判定一致：<c>[Key*]</c> + 可循环变量）。
-    /// 没有的话生成器只会跳过，菜单也不存在 —— 调用方应提前告诉用户「无法打开菜单」。
+    /// 这个 Mod 是否有可放进菜单的行。
+    /// 除了作者 <c>[Key*]</c> 里的可循环变量，**启用了油光的 Mod** 也有三行注入行
+    /// （总开关 / 身体 / 衣物）—— 这类 Mod 即使没有任何按键映射，也能生成油光菜单。
     /// </summary>
     public bool HasMenuRows(ISkinMod mod)
-        => ModIniToggleParser.ParseDirectory(mod.FullPath).Any(row => row.IsClickable);
+        => ModIniToggleParser.ParseDirectory(mod.FullPath).Any(row => row.IsClickable)
+           || OilGlossPatcher.GetStatus(mod.FullPath).Manifest is not null;
 
     /// <summary>为一个 Mod 生成菜单。调用方负责后台线程；内部串行化，避免并发写同一目录。</summary>
     public InGameMenuGenerationResult GenerateForMod(ISkinMod mod, InGameMenuSettings settings)
