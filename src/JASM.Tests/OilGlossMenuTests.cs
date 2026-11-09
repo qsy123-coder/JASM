@@ -84,6 +84,47 @@ public class OilGlossMenuTests : IDisposable
         Assert.Contains("衣物油光", manifest);
     }
 
+    [Fact]
+    public void GeneratesMenuForModWithoutAnyKeySections()
+    {
+        var mod = Path.Combine(_root, "OilOnly-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(mod);
+        File.WriteAllText(Path.Combine(mod, "mod.ini"), """
+            namespace = TestMod
+
+            [Constants]
+            global $object_detected = 0
+
+            [TextureOverrideComponent0]
+            hash = f8b55eeb
+            match_first_index = 0
+            $object_detected = 1
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 500, 900, 0
+
+            [Present]
+            if $object_detected
+                post $object_detected = 0
+            endif
+            """, new UTF8Encoding(false));
+
+        var body = OilGlossBodyProvisioner.Ensure(mod, CreateAssets());
+        var apply = OilGlossPatcher.Apply(mod, body: body);
+        Assert.Equal(OilGlossApplyStatus.Applied, apply.Status);
+
+        // 完全没有 [Key*]：只靠注入的油光三行也应该能生成菜单
+        var result = InGameMenuGenerator.Generate(mod, new InGameMenuOptions
+        {
+            ExtraRows = OilGlossMenuRows.Create(apply.Manifest!),
+        });
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        var menu = File.ReadAllText(Path.Combine(mod, "JASM_Menu.ini"));
+        Assert.Contains("行 0: [KeyOilMaster]", menu);
+    }
+
     public void Dispose()
     {
         try
