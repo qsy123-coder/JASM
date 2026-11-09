@@ -34,8 +34,12 @@ public static class OilGlossScanner
         new(@"ResourceTexture(\w+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex DrawCommentRegex = new(@"^\s*;\s*Draw\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    /// <summary>扫描整个 Mod 目录。单个文件读失败不会拖垮整次扫描。</summary>
-    public static OilGlossScanResult Scan(string modFolderPath)
+    /// <summary>
+    /// 扫描整个 Mod 目录。单个文件读失败不会拖垮整次扫描。
+    /// <paramref name="ignoreHairFolderGuard"/> 为 true 时跳过「发型 Mod 整包排除」的判定，
+    /// 供详情页的「调整油光分组」手动挑选身体网格使用。
+    /// </summary>
+    public static OilGlossScanResult Scan(string modFolderPath, bool ignoreHairFolderGuard = false)
     {
         if (!Directory.Exists(modFolderPath))
         {
@@ -44,7 +48,7 @@ public static class OilGlossScanner
 
         // 纯发型 Mod（名字里就写着 发型/头发/hair）整包跳过：
         // 它的所有网格都是头发，索引位置规则分不出来，上了油光就是整头变色。
-        if (IsHairOnlyModFolder(modFolderPath))
+        if (!ignoreHairFolderGuard && IsHairOnlyModFolder(modFolderPath))
         {
             return new OilGlossScanResult { Reason = "这是一个发型 Mod，默认不包油光" };
         }
