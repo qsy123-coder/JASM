@@ -70,8 +70,8 @@ public sealed class InGameMenuService(
 
     /// <summary>
     /// 这个 Mod 是否有可放进菜单的行。
-    /// 除了作者 <c>[Key*]</c> 里的可循环变量，**启用了油光的 Mod** 也有三行注入行
-    /// （总开关 / 身体 / 衣物）—— 这类 Mod 即使没有任何按键映射，也能生成油光菜单。
+    /// 除了作者 <c>[Key*]</c> 里的可循环变量，**启用了油光的 Mod** 也有注入行
+    /// （总开关 / 油光强度 / 油光贴图）—— 这类 Mod 即使没有任何按键映射，也能生成油光菜单。
     /// </summary>
     public bool HasMenuRows(ISkinMod mod)
         => ModIniToggleParser.ParseDirectory(mod.FullPath).Any(row => row.IsClickable)
@@ -299,6 +299,9 @@ public sealed class InGameMenuService(
         return new InGameMenuOptions
         {
             ExtraRows = oilRows,
+            // 作者已有可点击菜单时，普通 Mod 仍然跳过（避免两套菜单）；
+            // 但启用了油光的 Mod 必须生成，否则油光行根本进不了 F7。
+            AllowWithExistingClickableMenu = oilRows.Count > 0,
             OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F7" : settings.OpenKeyTokens,
             OpenKeyDisplay = string.IsNullOrWhiteSpace(settings.OpenKeyDisplay) ? "F7" : settings.OpenKeyDisplay,
             MaxRowsPerPage = Math.Clamp(settings.MaxRowsPerPage, 1, 20),
