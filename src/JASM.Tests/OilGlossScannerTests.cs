@@ -267,7 +267,7 @@ public class OilGlossScannerTests : IDisposable
             drawindexed = 1000, 0, 0
 
             [TextureOverrideComponent1]
-            drawindexed = 5000, 1000, 0
+            drawindexed = 5000, 2000, 0
 
             [TextureOverrideComponent2]
             drawindexed = 3000, 10000, 0
@@ -282,8 +282,38 @@ public class OilGlossScannerTests : IDisposable
         var result = OilGlossScanner.Scan(mod);
 
         Assert.True(result.Drawcalls.Single(d => d.StartIndex == 0).IsHeadLike);
-        Assert.False(result.Drawcalls.Single(d => d.StartIndex == 1000).IsHeadLike); // 最大块永不按位置排除
+        // 最大块落在 5%–10%：保留为身体
+        Assert.False(result.Drawcalls.Single(d => d.StartIndex == 2000).IsHeadLike);
         Assert.False(result.Drawcalls.Single(d => d.StartIndex == 10000).IsHeadLike);
+    }
+
+    [Fact]
+    public void ExcludesExtremeHeadLargestAndKeepsNextBody()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideComponent0]
+            drawindexed = 30000, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 20000, 4000, 0
+
+            [TextureOverrideComponent2]
+            drawindexed = 10000, 20000, 0
+
+            [TextureOverrideComponent3]
+            drawindexed = 5000, 30000, 0
+
+            [TextureOverrideComponent4]
+            drawindexed = 2000, 40000, 0
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        // 0%–5% 的最大块是头发，即使索引数最大也排除
+        Assert.True(result.Drawcalls.Single(d => d.StartIndex == 0).IsHeadLike);
+        Assert.Equal(20000, result.Body!.IndexCount);
     }
 
     [Fact]
