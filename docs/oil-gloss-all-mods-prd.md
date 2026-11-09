@@ -80,7 +80,10 @@ Phase 1 已把 KatFXMatcap 油光做成详情页 / 浮窗的一键开关。实�
 
 - [ ] Component3+ 的网格被包；Component0–2（身体绒毛/头发/脸）默认不包。
 - [ ] Mod 只有 Component0–2 时不再「包全部」；返回「只找到脸/头发网格，已跳过」。
-- [ ] 段落名 / 邻近条件 / 邻近注释里带 `hair / head / face / eye / brow` 的网格不包。
+- [ ] 每个 drawcall 只按自己的局部上下文判断：向前最多 20 行，遇到上一个 drawcall /
+      段落头就停；`hair / head / face / eye / brow` 只影响它自己那一块。
+- [ ] 同一个 Component3 段落里先画头发、后画身体时，身体网格仍然被包
+      （爱弥斯-不善女仆就是这种结构，旧规则会把身体全排除）。
 - [ ] 包进去的网格色相不变：油光只做高光叠加，不再替换 `ps-t0`。
 - [ ] 纯发型 Mod（网格全在 Component0–2）整包跳过；若作者把头发放在 Component3+，
       油光只允许提亮，不允许偏色。
@@ -127,7 +130,8 @@ ps-t0 = ResourceEmpty_Normal
 | 有 `TextureOverrideComponent3+` | 只包这些段落里的 `drawindexed` |
 | 只有 Component0–2 | **不包**，返回「只找到脸/头发网格」 |
 | 完全没有 ComponentN 段落 | 包所有 `[TextureOverride*]` 里的 `drawindexed`，但跳过名字/条件/注释带头发关键词的 |
-| 段落名 / 条件变量 / 邻近注释含 `hair/head/face/eye/brow` | 不包 |
+| drawcall 自己的局部上下文（向前 20 行，遇到上一个 drawcall / 段落头停止）含 `hair/head/face/eye/brow` | 不包 |
+| 同一个 Component 段落里既有头发又有身体 | 只排除头发那一块，身体照常包 |
 
 删除当前「没有 Component3+ 就包全部」的回退。原因是它会命中纯发型 Mod
 （C酱 11 块全是头发），而官方的身体网格本来就在 Component3+；Component0–2 的
@@ -142,12 +146,12 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 ### 3. 本体 / 补丁升级与版本化
 
-新增 `OilGlossProtocol.BodyVersion`（本次为 3）与 `PatchVersion`（本次为 2）。
+新增 `OilGlossProtocol.BodyVersion`（本次为 3）与 `PatchVersion`（本次为 3）。
 `manifest.json` 增加：
 
 ```json
 "BodyVersion": 3,
-"PatchVersion": 2
+"PatchVersion": 3
 ```
 
 升级流程（`OilGlossBodyProvisioner.Upgrade`）：
@@ -231,7 +235,7 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 | 位置 | 变更 |
 |---|---|
-| `OilGlossProtocol` | 新增 `BodyVersion = 3`、`PatchVersion = 2`、`MaxStrength = 2.0`、`TextureVariable` |
+| `OilGlossProtocol` | 新增 `BodyVersion = 3`、`PatchVersion = 3`、`MaxStrength = 2.0`、`TextureVariable` |
 | `OilGlossManifest` | 新增 `int BodyVersion` / `int PatchVersion`（默认 0） |
 | `OilGlossBodyProvisioner` | 新增 `Upgrade`（本体升级 / 清单补全）、`IsOutdatedKnownJasmBody`；`Ensure` 记录 `BodyProvidedByJasm` |
 | `OilGlossScanner` | 删除 Component0–2 回退；新增头发/脸关键词排除 |
@@ -270,7 +274,9 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 - [ ] Component3+ 全覆盖，Component0–2 全排除。
 - [ ] 只有 Component0–2 的 Mod 返回「只找到脸/头发网格」，不包。
-- [ ] 段落/条件/注释带 hair/head/face/eye 的网格不包。
+- [ ] 段落/条件/注释带 hair/head/face/eye 的网格不包，但只影响它自己那一块。
+- [ ] 同一个 Component3 段落里先有 Hair Acc / Hair Ribbon、后有 Body / Top / Skirt 时，
+      身体网格仍被包（爱弥斯-不善女仆）。
 - [ ] 网格全在 Component0–2 的 Mod 整包跳过。
 - [ ] 旧补丁自动升级；`BodyVersion` / `PatchVersion` 写入 manifest。
 - [ ] 旧补丁的门控从「总开关 + 身体/衣物」变成「总开关」一层。
@@ -302,7 +308,8 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 - `OilGlossScanner`
   - Component0–2 排除；只有 0–2 时不回退；
   - 无 ComponentN 时包全部并跳过 hair 关键词；
-  - 只有 Component0–2 时返回原因（不回退包全部）。
+  - 只有 Component0–2 时返回原因（不回退包全部）；
+  - 同一个 Component 段落里头发/身体混合时，只排除头发 drawcall。
 - `OilGlossBodyProvisioner`
   - 旧版 JASM 本体（哈希匹配）被升级；
   - 用户改过的本体不升级；
