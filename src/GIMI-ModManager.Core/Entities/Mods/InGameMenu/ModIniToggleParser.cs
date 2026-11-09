@@ -32,6 +32,10 @@ public static partial class ModIniToggleParser
             if (string.Equals(Path.GetFileName(file), GeneratedMenuFileName, StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            // 3DMigoto 不加载 DISABLED_ 目录 / 文件：解析进来只会得到一堆点了没反应的行
+            if (InGameMenuPathFilter.IsDisabled(modFolderPath, file))
+                continue;
+
             var relativePath = Path.GetRelativePath(modFolderPath, file);
 
             try

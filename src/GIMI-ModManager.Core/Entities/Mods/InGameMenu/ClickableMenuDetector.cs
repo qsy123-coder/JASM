@@ -24,6 +24,10 @@ public static partial class ClickableMenuDetector
             if (string.Equals(Path.GetFileName(file), "JASM_Menu.ini", StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            // DISABLED_ 文件 / 目录不会被游戏加载，里面的菜单不构成"作者已有可点击菜单"
+            if (InGameMenuPathFilter.IsDisabled(modFolderPath, file))
+                continue;
+
             string text;
             try
             {

@@ -51,6 +51,44 @@ public class ModIniToggleParserTests
     }
 
     [Fact]
+    public void ParseDirectorySkipsDisabledFilesAndFolders()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "jasm-disabled-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "DISABLED_norm"));
+        File.WriteAllText(Path.Combine(root, "mod.ini"), """
+            [KeyShoes]
+            key = VK_DOWN
+            type = cycle
+            $xiezi = 4,8,9
+            """);
+        File.WriteAllText(Path.Combine(root, "DISABLED_mod.ini"), """
+            [KeyGhost]
+            key = VK_UP
+            type = cycle
+            $ghost = 0,1
+            """);
+        File.WriteAllText(Path.Combine(root, "DISABLED_norm", "mod.ini"), """
+            [KeyGhost2]
+            key = VK_LEFT
+            type = cycle
+            $ghost2 = 0,1
+            """);
+
+        try
+        {
+            // 3DMigoto 不加载 DISABLED_ 文件 / 目录：这些行进了菜单也点不动
+            var rows = ModIniToggleParser.ParseDirectory(root);
+            var row = Assert.Single(rows);
+            Assert.Equal("[KeyShoes]", row.SectionName);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ParseDirectoryCapturesGlobalDefaultForReset()
     {
         var root = Path.Combine(Path.GetTempPath(), "jasm-defaults-" + Guid.NewGuid().ToString("N"));

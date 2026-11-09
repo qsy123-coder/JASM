@@ -177,8 +177,12 @@ public static partial class InGameMenuGenerator
             ? CollectDetectionHashes(modFolderPath)
             : [];
 
+        // 每个 ini 文件所属形态的门控变量：多形态 Mod 里用来置灰/禁用非当前形态的行
+        var rowDetectionVariables = CollectRowDetectionVariables(modFolderPath);
+
         effectiveOptions = effectiveOptions with
         {
+            RowDetectionVariables = rowDetectionVariables,
             Title = Truncate(StripDisabledPrefix(Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar))), 40),
             DetectionHash = detectionHashes.FirstOrDefault() ?? string.Empty,
             DetectionHashes = detectionHashes,
@@ -464,6 +468,11 @@ public static partial class InGameMenuGenerator
             if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            // 3DMigoto 不加载 DISABLED_ 目录 / 文件：里面的 $object_detected 永远不会被置 1，
+            // 拿它做门控会让菜单永远不显示
+            if (InGameMenuPathFilter.IsDisabled(modFolderPath, file))
+                continue;
+
             string text;
             try
             {
@@ -505,6 +514,52 @@ public static partial class InGameMenuGenerator
         //（女漂 + 椿 同时出现就是这个原因）。
         if (result.Any(v => v.StartsWith("$\\", StringComparison.Ordinal)))
             result.RemoveAll(v => v == "$object_detected");
+
+        return result;
+    }
+
+    /// <summary>
+    /// 收集「每个 ini 文件 → 它所属形态的门控变量」。只在文件确实设置
+    /// <c>$object_detected = 1</c> 且带命名空间时记录；全局变量无法区分形态，不参与。
+    /// 键是相对 Mod 根目录的 ini 路径（与 <see cref="ModIniToggleRow.IniRelativePath"/> 一致）。
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> CollectRowDetectionVariables(string modFolderPath)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in Directory
+                     .EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories)
+                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (InGameMenuPathFilter.IsDisabled(modFolderPath, file))
+                continue;
+
+            string text;
+            try
+            {
+                text = IniFileText.ReadAllText(file);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            if (!ObjectDetectedAssignment().IsMatch(text))
+                continue;
+
+            var ns = ReadFileNamespace(text);
+            if (string.IsNullOrWhiteSpace(ns))
+                continue; // 全局 $object_detected 是所有 Mod 共享的，不能区分形态
+
+            result[Path.GetRelativePath(modFolderPath, file)] = "$\\" + ns + "\\object_detected";
+        }
 
         return result;
     }
@@ -555,6 +610,11 @@ public static partial class InGameMenuGenerator
                      .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
             if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // 3DMigoto 不加载 DISABLED_ 目录 / 文件：里面的 $object_detected 永远不会被置 1，
+            // 拿它做门控会让菜单永远不显示
+            if (InGameMenuPathFilter.IsDisabled(modFolderPath, file))
                 continue;
 
             string text;
@@ -621,6 +681,11 @@ public static partial class InGameMenuGenerator
             if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            // 3DMigoto 不加载 DISABLED_ 目录 / 文件：里面的 $object_detected 永远不会被置 1，
+            // 拿它做门控会让菜单永远不显示
+            if (InGameMenuPathFilter.IsDisabled(modFolderPath, file))
+                continue;
+
             string text;
             try
             {
@@ -681,6 +746,11 @@ public static partial class InGameMenuGenerator
         foreach (var file in Directory.EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories))
         {
             if (string.Equals(Path.GetFileName(file), MenuIniFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // 3DMigoto 不加载 DISABLED_ 目录 / 文件：里面的 $object_detected 永远不会被置 1，
+            // 拿它做门控会让菜单永远不显示
+            if (InGameMenuPathFilter.IsDisabled(modFolderPath, file))
                 continue;
 
             try
