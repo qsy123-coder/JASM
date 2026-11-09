@@ -22,8 +22,10 @@
 ## 变量与命令（开发者参考）
 
 - `namespace = KatFXMatcap`
-- `$oilSkin`：0 = 关，2 = 默认；`*` 循环
-- `$oilStrength`：默认 0.7；`+` / `-` 调整
+- `$oilSkin`：0 = 关；1–6 = 不同 matcap 贴图（2 = MC6 默认）；`*` 循环。
+  JASM 的 F7 菜单「油光贴图」行直接切换 1–6，不包含 0（关由总开关负责）。
+- `$oilStrength`：默认 0.7，范围 0–2.0；`+` / `-` 调整。
+  JASM 的 F7 菜单「油光强度」滑块上限为 2.0。
 - `CommandList\KatFXMatcap\OilSkin` / `Clear`：逐 drawcall 开始 / 结束油光
 
 补丁由 `GIMI-ModManager.Core/Services/OilGloss/` 生成，变量放在
