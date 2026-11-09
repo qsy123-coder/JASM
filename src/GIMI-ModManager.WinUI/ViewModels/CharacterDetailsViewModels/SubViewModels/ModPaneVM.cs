@@ -23,6 +23,7 @@ using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
+using GIMI_ModManager.WinUI.Services.Overlay;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -82,17 +83,22 @@ public sealed partial class ModPaneVM(
     [NotifyPropertyChangedFor(nameof(CanToggleOilGloss))]
     [NotifyCanExecuteChangedFor(nameof(EnableOilGlossCommand))]
     [NotifyCanExecuteChangedFor(nameof(DisableOilGlossCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReapplyOilGlossExcludingLargestCommand))]
     private bool _isOilGlossApplied;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EnableOilGlossCommand))]
     [NotifyCanExecuteChangedFor(nameof(DisableOilGlossCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReapplyOilGlossExcludingLargestCommand))]
     private bool _isOilGlossBusy;
 
     /// <summary>油光状态文案；空 = 不显示。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOilGlossStatus))]
     private string _oilGlossStatusText = string.Empty;
+
+    /// <summary>全局油光强度 0..1（本体只有一份实例，所有油光 Mod 共用）。</summary>
+    [ObservableProperty] private double _oilGlossStrength = 0.7;
 
     public bool HasOilGlossStatus => !string.IsNullOrEmpty(OilGlossStatusText);
 
@@ -197,7 +203,9 @@ public sealed partial class ModPaneVM(
                 _logger.Information("[ModPaneVM]   [{File}] {Section} → '{Key}' (arrow={Arrow})",
                     g.IniFileRelativePath, b.SectionName, b.KeyValue, b.IsArrowKey);
 
-            return new { modEntry, modSettings, keySwaps, keyBindingGroups };
+            var oilStrength = await _oilGlossService.GetStrengthAsync(_cancellationToken);
+
+            return new { modEntry, modSettings, keySwaps, keyBindingGroups, oilStrength };
         }, _cancellationToken);
 
         if (modPaneData is null)
@@ -205,6 +213,8 @@ public sealed partial class ModPaneVM(
 
 
         _loadedMod = modPaneData.modEntry;
+        // 必须在 IsReadOnly=false 之前赋值：否则滑块初始化会触发一次「用户调整」的保存 + F10。
+        OilGlossStrength = modPaneData.oilStrength;
         ModModel = ModPaneFieldsVm.FromModEntry(modPaneData.modEntry, modPaneData.modSettings,
             modPaneData.keySwaps ?? [], modPaneData.keyBindingGroups);
         ModModel.PropertyChanged += ModModel_PropertyChanged;
@@ -221,6 +231,7 @@ public sealed partial class ModPaneVM(
     {
         _loadedModId = null;
         _loadedMod = null;
+        _oilStrengthSaveCts?.Cancel();
         IsInGameMenuGenerated = false;
         InGameMenuStatusText = string.Empty;
         IsOilGlossApplied = false;
@@ -275,6 +286,103 @@ public sealed partial class ModPaneVM(
         DisableOilGlossCommand.NotifyCanExecuteChanged();
     }
 
+    /// <summary>
+    /// 让游戏重新读取 Mod ini（F10）。油光补丁与菜单都是磁盘文件，
+    /// 不刷新的话游戏里看不到任何变化。
+    /// </summary>
+    private async Task RequestGameRefreshAsync()
+    {
+        try
+        {
+            await App.GetService<OverlayRefreshCoordinator>().RequestRefreshAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[OilGloss] 请求游戏刷新失败");
+        }
+    }
+
+    private bool CanReapplyOilGlossExcludingLargest()
+        => CanToggleOilGloss && IsOilGlossApplied && !IsOilGlossBusy;
+
+    /// <summary>
+    /// 头发会变色时用：跳过索引数最大的网格，重新分组再打一次补丁。
+    /// 适用于「最大块其实是头发」的 Mod（自动分组会把它当身体）。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanReapplyOilGlossExcludingLargest))]
+    private async Task ReapplyOilGlossExcludingLargestAsync()
+    {
+        if (!IsModLoaded)
+            return;
+
+        var mod = _loadedMod.Mod;
+        IsOilGlossBusy = true;
+        try
+        {
+            var result = await _oilGlossService.ReapplyExcludingLargestAsync(mod, _cancellationToken);
+            if (result.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
+            {
+                RefreshOilGlossStatus();
+                RefreshInGameMenuStatus();
+                _notificationService.ShowNotification("油光已重新分组", "已跳过最大的网格；按 F7 查看效果", null);
+                await RequestGameRefreshAsync();
+            }
+            else
+            {
+                OilGlossStatusText = "重新分组失败：" + result.Reason;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[OilGloss] 重新分组失败");
+            OilGlossStatusText = "重新分组失败：" + e.Message;
+        }
+        finally
+        {
+            IsOilGlossBusy = false;
+        }
+    }
+
+    private CancellationTokenSource? _oilStrengthSaveCts;
+
+    partial void OnOilGlossStrengthChanged(double value)
+    {
+        // 加载 Mod 时初始化滑块不应写盘（加载期间 IsReadOnly 为 true）
+        if (IsReadOnly || !IsModLoaded)
+            return;
+
+        _oilStrengthSaveCts?.Cancel();
+        _oilStrengthSaveCts?.Dispose();
+        _oilStrengthSaveCts = new CancellationTokenSource();
+        _ = SaveOilStrengthDebouncedAsync(value, _oilStrengthSaveCts.Token);
+    }
+
+    /// <summary>滑块停止拖动 500ms 后写一次强度并送 F10，避免每动一格都刷新游戏。</summary>
+    private async Task SaveOilStrengthDebouncedAsync(double value, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(500, token);
+            var ok = await _oilGlossService.SaveStrengthAsync(value, token);
+            if (token.IsCancellationRequested)
+                return;
+
+            OilGlossStatusText = ok
+                ? $"油光强度：{value:0.00}（正在刷新游戏）"
+                : $"油光强度：{value:0.00}（未找到 d3dx_user.ini，游戏内不生效）";
+
+            if (ok)
+                await RequestGameRefreshAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[OilGloss] 保存强度失败");
+        }
+    }
+
     private bool CanEnableOilGloss() => CanToggleOilGloss && !IsOilGlossApplied && !IsOilGlossBusy;
 
     private bool CanDisableOilGloss() => CanToggleOilGloss && IsOilGlossApplied && !IsOilGlossBusy;
@@ -302,6 +410,7 @@ public sealed partial class ModPaneVM(
                         ? "按 F7 打开游戏内菜单即可切换身体 / 衣物油光"
                         : "生成游戏内菜单后，可在 F7 里切换身体 / 衣物油光";
                     _notificationService.ShowNotification("油光已开启", hint, null);
+                    await RequestGameRefreshAsync();
                 }
             }
             else
@@ -339,10 +448,14 @@ public sealed partial class ModPaneVM(
                 RefreshOilGlossStatus();
                 RefreshInGameMenuStatus();
                 _notificationService.ShowNotification("油光已撤销", "作者 ini 已还原，油光菜单行会在菜单重建后消失", null);
+                await RequestGameRefreshAsync();
             }
             else
             {
-                OilGlossStatusText = "撤销失败：" + result.Reason;
+                var conflictDetail = result.Conflicts.Count > 0
+                    ? "（" + string.Join(", ", result.Conflicts) + "）"
+                    : string.Empty;
+                OilGlossStatusText = "撤销失败：" + result.Reason + conflictDetail;
             }
         }
         catch (Exception e)
