@@ -322,8 +322,10 @@ public class OilGlossScannerTests : IDisposable
         Assert.True(head.IsHeadLike);
         Assert.Null(head.Group);
 
-        // 头发（从腰部到头顶）落到衣物组，默认关闭。
-        Assert.Equal(OilGlossGroup.Cloth, result.Drawcalls.Single(d => d.StartIndex == 12).Group);
+        // 头发从腰部伸到头顶：不能分进衣物组，否则开衣物油光就整头变绿。
+        var hair = result.Drawcalls.Single(d => d.StartIndex == 12);
+        Assert.True(hair.IsHeadLike);
+        Assert.Null(hair.Group);
     }
 
     [Fact]
