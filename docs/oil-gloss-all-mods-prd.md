@@ -146,11 +146,11 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 ### 3. 本体 / 补丁升级与版本化
 
-新增 `OilGlossProtocol.BodyVersion`（本次为 3）与 `PatchVersion`（本次为 3）。
+新增 `OilGlossProtocol.BodyVersion`（本次为 4）与 `PatchVersion`（本次为 3）。
 `manifest.json` 增加：
 
 ```json
-"BodyVersion": 3,
+"BodyVersion": 4,
 "PatchVersion": 3
 ```
 
@@ -204,7 +204,8 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 - **强度上限 2.0**：`$oilStrength` 直接作为 `matcap1_opacity`，允许 >1；
   菜单滑块轨道按 `SliderMax = 2.0` 归一化，拖动/滑块头位置都不再假设 0–1。
-  物理键 `+` / `-` 的循环表同步扩到 2.0。
+  物理键 `+` / `-` 的循环表同步扩到 2.0，最低 0.2；`*` 只在 1–6 之间切换样式，
+不再能把 `$oilSkin` 设成 0。关油光统一交给「油光」总开关。
 - **油光贴图行**：新增 `[KeyOilTexture] 油光贴图` 循环行，直接写
   `$\KatFXMatcap\oilSkin`，候选值 `2,3,4,5,6,1`，显示文本
   `MC6 / MC1 / Oil1 / Oil2 / Wet / OIl_MC`。
@@ -218,7 +219,21 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
   - 撤销油光后，如果生成器因作者菜单而跳过，删除这份由油光带出来的第二菜单，
     不留下失效的油光行。
 
-### 6. 兼容性
+### 6. 隐藏的关闭路径：`$oilSkin` / `$oilStrength`
+
+这两个变量是 `global persist`，所有油光 Mod 共用。原版 KatFXMatcap 的 `*` / `-`
+热键会把它们存成 0；一旦为 0，`CommandListOilSkin` 直接不生效 ——
+F7 菜单里的油光行照常显示，但画面完全没有油光，是「有菜单没效果」最常见的原因。
+
+- JASM 在**开启油光 / 打补丁 / 本次会话第一次打开油光 Mod**时检查一次：
+  - `$oilSkin` 缺失或 <= 0 → 写回 `2`（MC6）；
+  - `$oilStrength` 缺失或 <= 0 → 写回 JASM 保存的强度（默认 0.7）。
+  - 只复位异常值，不覆盖用户选的样式/强度。
+- 本体 **BodyVersion 4**：物理键不再能设 0（`*` 只切 1–6，`-` 最低 0.2）；
+  关油光统一由 F7 总开关负责。
+- 写入 `d3dx_user.ini` 后需要 F10 / 重启游戏才会被 3DMigoto 重新读取。
+
+### 7. 兼容性
 
 - 旧 manifest 没有 `BodyVersion` / `PatchVersion` → 视为 0，允许升级 / 重打。
 - 旧撤消逻辑不变：`BodyFiles` 哈希与当前文件比对，未改才删。
@@ -235,7 +250,7 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 
 | 位置 | 变更 |
 |---|---|
-| `OilGlossProtocol` | 新增 `BodyVersion = 3`、`PatchVersion = 3`、`MaxStrength = 2.0`、`TextureVariable` |
+| `OilGlossProtocol` | 新增 `BodyVersion = 4`、`PatchVersion = 3`、`MaxStrength = 2.0`、`TextureVariable` |
 | `OilGlossManifest` | 新增 `int BodyVersion` / `int PatchVersion`（默认 0） |
 | `OilGlossBodyProvisioner` | 新增 `Upgrade`（本体升级 / 清单补全）、`IsOutdatedKnownJasmBody`；`Ensure` 记录 `BodyProvidedByJasm` |
 | `OilGlossScanner` | 删除 Component0–2 回退；新增头发/脸关键词排除 |
@@ -291,6 +306,9 @@ Component3+，在 `ps-t0` 修复后只会得到中性高光，不再偏色。
 - [ ] 菜单生成器版本为 v35，旧菜单启动后自动重建。
 - [ ] 作者自带可点击菜单的 Mod 开启油光后，仍能生成含油光行的 JASM 菜单。
 - [ ] 撤销油光后，这份第二菜单被移除（不残留失效的油光行）。
+- [ ] 原版 `*` / `-` 把 `$oilSkin` / `$oilStrength` 存成 0 后，重新打开 JASM
+      或开启任意油光 Mod 会把异常值复位；F10 后油光恢复。
+- [ ] 复位不覆盖用户已经选好的贴图样式和强度。
 
 ### 撤销 / 回归
 
