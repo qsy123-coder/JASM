@@ -1,5 +1,6 @@
 using System.Reflection;
 using GIMI_ModManager.Core.Contracts.Entities;
+using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.Services.OilGloss;
 using Serilog;
@@ -98,8 +99,19 @@ public sealed class OilGlossService(
         try
         {
             var settings = await inGameMenuService.ReadSettingsAsync().ConfigureAwait(false);
-            await Task.Run(() => inGameMenuService.GenerateForMod(mod, settings), cancellationToken)
+            var result = await Task.Run(() => inGameMenuService.GenerateForMod(mod, settings), cancellationToken)
                 .ConfigureAwait(false);
+
+            // 有些 Mod 的菜单完全靠油光三行撑着（没有任何作者 [Key*]）。
+            // 撤销油光后生成器会因「没有行」而跳过，旧菜单文件会留下三行指向已删除变量，
+            // 所以这里把这种空壳菜单直接移除。
+            if (result.Status is InGameMenuGenerationStatus.SkippedNoRows
+                    or InGameMenuGenerationStatus.SkippedNoClickableRows
+                && !inGameMenuService.HasMenuRows(mod))
+            {
+                await Task.Run(() => inGameMenuService.RemoveForMod(mod), cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
