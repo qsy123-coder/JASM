@@ -34,6 +34,15 @@ public sealed class OilGlossService(
     /// <summary>本体里的强度变量（全局，所有油光 Mod 共用）。</summary>
     private const string OilStrengthVariable = @"$\katfxmatcap\oilstrength";
 
+    /// <summary>本体里的贴图样式变量（全局，所有油光 Mod 共用；0 = 关）。</summary>
+    private const string OilSkinVariable = @"$\katfxmatcap\oilskin";
+
+    /// <summary>贴图默认值：MC6（本体 ini 的默认值）。</summary>
+    private const string DefaultOilSkin = "2";
+
+    /// <summary>本次会话是否已经检查过全局油光变量（打开详情页/浮窗时只做一次）。</summary>
+    private bool _bodyVariablesChecked;
+
     /// <summary>当前游戏是否支持油光（只有鸣潮）。</summary>
     public bool IsSupported => string.Equals(gameService.GameShortName, "WuWa", StringComparison.OrdinalIgnoreCase);
 
@@ -45,6 +54,16 @@ public sealed class OilGlossService(
         // 旧版本体（ps-t0 替换）再升级。两步都只在打开详情页/浮窗刷新时触发一次。
         status = RepatchIfOutdated(mod, status);
         UpgradeBodyIfNeeded(mod, status.Manifest);
+
+        // 原版热键（* / -）会把全局 $oilSkin / $oilStrength 存成 0。
+        // 这两个变量是所有油光 Mod 共用的，一旦为 0，菜单照常显示但画面没有任何油光。
+        // 每次启动/打开油光 Mod 时检查一次，只在 0/缺失时复位，不动用户选的样式/强度。
+        if (!_bodyVariablesChecked && status.State == OilGlossState.Applied)
+        {
+            _bodyVariablesChecked = true;
+            _ = ResetBodyVariablesAsync(CancellationToken.None);
+        }
+
         return status;
     }
 
@@ -227,7 +246,10 @@ public sealed class OilGlossService(
         // 加油光后**必须**有菜单：三行油光只在菜单里。哪怕这个 Mod 完全没有 [Key*]，
         // 也顺手生成一份只含油光行的菜单，用户不用再手动点「生成菜单」。
         if (result.Status == OilGlossApplyStatus.Applied)
+        {
+            await ResetBodyVariablesAsync(cancellationToken).ConfigureAwait(false);
             await RegenerateMenuAsync(mod, createIfMissing: true, cancellationToken).ConfigureAwait(false);
+        }
 
         return result;
     }
@@ -331,6 +353,7 @@ public sealed class OilGlossService(
         if (result.Status == OilGlossApplyStatus.Applied)
         {
             await ResetGroupTogglesAsync(result.Manifest, cancellationToken).ConfigureAwait(false);
+            await ResetBodyVariablesAsync(cancellationToken).ConfigureAwait(false);
             await RegenerateMenuAsync(mod, createIfMissing: createMenuIfMissing, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -359,6 +382,56 @@ public sealed class OilGlossService(
             Logger.Warning(e, "[OilGloss] 复位油光开关失败");
         }
     }
+
+    /// <summary>
+    /// 复位所有油光 Mod 共用的 <c>$\katfxmatcap\oilSkin</c> / <c>oilstrength</c>。
+    ///
+    /// 原版 KatFXMatcap 的 <c>*</c> / <c>-</c> 热键会把这两个 persist 变量存成 0；
+    /// 一旦为 0，F7 菜单里的油光行照常显示，但画面没有任何油光 —— 这是「有菜单没效果」
+    /// 最常见的原因。只在变量缺失或 &lt;= 0 时复位，不覆盖用户选择的贴图/强度。
+    /// 写入 d3dx_user.ini 后需要 F10 或重启游戏才会被 3DMigoto 重新读取。
+    /// </summary>
+    private async Task ResetBodyVariablesAsync(CancellationToken cancellationToken)
+    {
+        if (!IsSupported)
+            return;
+
+        try
+        {
+            var skin = await userPreferencesService
+                .GetGlobalVariableAsync(OilSkinVariable, cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsPositiveNumber(skin))
+            {
+                await userPreferencesService
+                    .SetGlobalVariableAsync(OilSkinVariable, DefaultOilSkin, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var strengthText = await userPreferencesService
+                .GetGlobalVariableAsync(OilStrengthVariable, cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsPositiveNumber(strengthText))
+            {
+                var strength = await GetStrengthAsync(cancellationToken).ConfigureAwait(false);
+                if (strength <= 0)
+                    strength = OilGlossProtocol.DefaultStrength;
+
+                await userPreferencesService
+                    .SetGlobalVariableAsync(OilStrengthVariable,
+                        strength.ToString("0.###", CultureInfo.InvariantCulture), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (Exception e)
+        {
+            // 维护任务：失败只记日志，不能因为 d3dx_user.ini 读写出问题影响详情页/浮窗
+            Logger.Warning(e, "[OilGloss] 复位全局油光变量失败");
+        }
+    }
+
+    private static bool IsPositiveNumber(string? text)
+        => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && value > 0;
 
     /// <summary>
     /// 把 JASM 写过的旧版本体升级到当前版本。
