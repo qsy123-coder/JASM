@@ -93,8 +93,11 @@ public static class OilGlossScanner
         // 不按索引区间猜：WWMI 的组件顺序不固定，按位置猜会把「最大的身体块」
         // 当成头发排掉，出现「身体没油光、头发反而变色」。
         //
-        // 有网格数据时补上每块的高度范围：整块都在 78% 以上的（脸/头发/头饰）
-        // 直接不包油光，身体则优先选「从下半身覆盖到躯干」的那块。
+        // 有网格数据时补上每块的高度范围：
+        //   - 整块都在头部区域（75% 以上，例如脸/刘海/头饰）→ 不包油光；
+        //   - 从腰部/上半身一直伸到头顶、却不覆盖下半身的（长发、发饰）→ 也不包。
+        //     只看 min 会漏掉长发（0.44–0.97），它会被分进衣物组，一开衣物油光就整头变绿。
+        // 覆盖到下半身的大块（身体）不受影响。
         var heights = OilGlossMeshGeometry.TryAnalyze(modFolderPath, annotated);
         if (heights is not null)
         {
@@ -104,7 +107,9 @@ public static class OilGlossScanner
                     {
                         HeightMin = range.Min,
                         HeightMax = range.Max,
-                        IsHeadLike = d.IsHeadLike || range.Min >= 0.78,
+                        IsHeadLike = d.IsHeadLike
+                                     || range.Min >= 0.75
+                                     || (range.Max >= 0.95 && range.Min > 0.25),
                     }
                     : d)
                 .ToList();
