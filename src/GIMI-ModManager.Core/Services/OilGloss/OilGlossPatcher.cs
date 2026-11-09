@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using Newtonsoft.Json;
@@ -73,7 +74,7 @@ public static class OilGlossPatcher
             }
 
             // 补丁后被外部改过：备份还在，但撤销会覆盖用户的改动 → 标记冲突
-            if (!string.Equals(IniFileText.ComputeContentHash(path), file.PatchedSha256, StringComparison.OrdinalIgnoreCase))
+            if (!MatchesPatchedFile(path, file.PatchedSha256))
             {
                 return new OilGlossStatus
                 {
@@ -268,7 +269,7 @@ public static class OilGlossPatcher
             var backup = Path.Combine(modFolderPath, file.BackupRelativePath);
 
             if (!File.Exists(path) || !File.Exists(backup)
-                || !string.Equals(IniFileText.ComputeContentHash(path), file.PatchedSha256, StringComparison.OrdinalIgnoreCase))
+                || !MatchesPatchedFile(path, file.PatchedSha256))
             {
                 conflicts.Add(file.RelativePath);
             }
@@ -420,6 +421,18 @@ public static class OilGlossPatcher
         var json = JsonConvert.SerializeObject(manifest, Formatting.Indented);
         File.WriteAllText(Path.Combine(directory, OilGlossProtocol.ManifestFileName), json, Utf8NoBom);
     }
+
+    /// <summary>
+    /// 补丁文件是否仍是当初写入的内容。
+    /// 兼容两种记录方式：旧 manifest 的哈希可能包含、也可能不包含随后补上的 JASM namespace；
+    /// 新 manifest 记录的是忽略 namespace 的哈希。原样哈希与剥离 namespace 后的哈希任一匹配即算未改。
+    /// </summary>
+    private static bool MatchesPatchedFile(string path, string expected)
+        => string.Equals(ComputeSha256(path), expected, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(IniFileText.ComputeContentHash(path), expected, StringComparison.OrdinalIgnoreCase);
+
+    private static string ComputeSha256(string path)
+        => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
 
     private static string GetManifestPath(string modFolderPath)
         => Path.Combine(modFolderPath, OilGlossProtocol.StateDirectoryName, OilGlossProtocol.ManifestFileName);
