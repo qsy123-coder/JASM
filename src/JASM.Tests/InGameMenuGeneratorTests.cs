@@ -328,6 +328,30 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void GeneratesMenuWithExtraRowsEvenWhenAuthorHasClickableMenu()
+    {
+        // 油光补丁必须能出现在 F7 里：作者自己的可点击菜单不再是硬性跳过条件。
+        var mod = CreateMod("MyMod");
+        File.WriteAllText(Path.Combine(mod, "Normal", "menu.ini"), """
+            [KeyMouseClick]
+            key = VK_LBUTTON
+            type = hold
+
+            [Present]
+            $my_mouse_x = cursor_x * res_width
+            run = CommandListDrawUI
+            """);
+
+        var result = InGameMenuGenerator.Generate(mod, new InGameMenuOptions
+        {
+            AllowWithExistingClickableMenu = true,
+        });
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu.ini")));
+    }
+
+    [Fact]
     public void SkipsModWithoutClickableRows()
     {
         var mod = CreateMod("MyMod", """
