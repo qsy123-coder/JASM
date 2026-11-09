@@ -86,14 +86,27 @@ internal static class OilGlossConditionEvaluator
         return values;
     }
 
-    /// <summary>条件变量在默认配置下是否为真；变量未知时返回 <c>null</c>。</summary>
-    public static bool? IsTrue(string? variable, IReadOnlyDictionary<string, double> values)
+    /// <summary>
+    /// 条件在默认配置下是否为真；无法求值时返回 <c>null</c>。
+    /// 条件可能是完整表达式（<c>$choker == 0</c>），不能只拿变量名判断真假——
+    /// 否则「变量为 0 时显示」会被当成「变量为真时显示」，把身体网格全部排除。
+    /// </summary>
+    public static bool? IsTrue(string? condition, IReadOnlyDictionary<string, double> values)
     {
-        if (string.IsNullOrWhiteSpace(variable))
+        if (string.IsNullOrWhiteSpace(condition))
             return null;
 
-        var name = variable.Trim().TrimStart('$');
-        return values.TryGetValue(name, out var value) ? Math.Abs(value) > double.Epsilon : null;
+        var expression = condition.Trim();
+        var commentIndex = expression.IndexOf(';');
+        if (commentIndex >= 0)
+            expression = expression[..commentIndex].Trim();
+
+        if (expression.Length == 0)
+            return null;
+
+        return ExpressionParser.TryEvaluate(expression, values, out var result)
+            ? Math.Abs(result) > double.Epsilon
+            : null;
     }
 
     private static string StripInlineComment(string line)
