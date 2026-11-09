@@ -58,6 +58,9 @@ public static class OilGlossProtocol
     /// <summary>衣物组开关变量名。</summary>
     public const string ClothVariable = "oil_cloth";
 
+    /// <summary>本体里的强度变量名（命名空间 KatFXMatcap，0.0–1.0）。</summary>
+    public const string StrengthVariable = "oilstrength";
+
     /// <summary>
     /// 由 Mod 路径推导稳定的 ASCII 命名空间。
     /// 与 <see cref="GIMI_ModManager.Core.Entities.Mods.InGameMenu.InGameMenuGenerator"/>
@@ -82,7 +85,9 @@ public static class OilGlossProtocol
             "[Constants]",
             "global persist $" + MasterVariable + " = 1",
             "global persist $" + BodyVariable + " = 1",
-            "global persist $" + ClothVariable + " = 1",
+            // 衣物默认关闭：多数 Mod 的「衣物」分组会带上裙摆/配饰，默认全开会把整身都打亮；
+            // 想要衣物油光时在 F7 菜单里点一下「衣物油光」即可。
+            "global persist $" + ClothVariable + " = 0",
             "",
             "[End of file.]",
             "",
