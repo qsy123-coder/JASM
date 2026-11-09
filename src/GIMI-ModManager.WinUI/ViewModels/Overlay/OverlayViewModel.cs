@@ -13,6 +13,7 @@ using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Interfaces;
 using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services;
+using GIMI_ModManager.Core.Services.OilGloss;
 using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Models.Settings;
 using GIMI_ModManager.WinUI.Services;
@@ -885,6 +886,9 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         // 行对象整批重建了：上一次的"面板目标是哪一行"不再作数，重算后要重新滚一次
         _keyPanelTargetId = null;
 
+        var oilService = App.GetService<OilGlossService>();
+        var oilSupported = oilService.IsSupported;
+
         _allMods = entries is null
             ? new List<OverlayModItemViewModel>()
             : entries
@@ -893,7 +897,12 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
                     var item = OverlayModItemViewModel.FromEntry(entry)
                         .WithToggleHandler(ToggleModAsync)
                         .WithGenerateMenuHandler(GenerateMenuForModAsync)
-                        .WithOpenMenuHandler(OpenMenuForModAsync);
+                        .WithOpenMenuHandler(OpenMenuForModAsync)
+                        .WithToggleOilGlossHandler(ToggleOilGlossForModAsync);
+
+                    var oilState = oilService.GetStatus(entry.Mod);
+                    item.SetOilGlossState(oilSupported,
+                        oilState.State is OilGlossState.Applied or OilGlossState.Conflict);
 
                     // NSFW 名单按 Id 比对，所以红标跟着 Mod 本身走：改名、换自定义名、甚至开/关一次
                     //（文件夹加上又去掉 DISABLED_ 前缀）都不会把它弄丢。
@@ -1047,6 +1056,75 @@ internal sealed partial class OverlayViewModel : ObservableRecipient, IRecipient
         {
             _logger.Error(e, "[浮窗] 生成菜单失败：{Mod}", item.Name);
             InGameMenuStatusMessage = "生成失败：" + e.Message;
+        }
+    }
+
+    /// <summary>
+    /// 行右侧「油光」：给这一行 Mod 添加 / 撤销油光。
+    /// 添加成功后如果还没有游戏内菜单，顺手生成一份（只有油光行的 Mod 也能用）。
+    /// </summary>
+    private async Task ToggleOilGlossForModAsync(OverlayModItemViewModel item)
+    {
+        var modList = ResolveModList(SelectedCharacter?.Character);
+        var entry = modList?.Mods.FirstOrDefault(m => m.Id == item.Id);
+        if (entry is null)
+        {
+            InGameMenuStatusMessage = "找不到这个 Mod 对应的条目，重新打开浮窗试试";
+            return;
+        }
+
+        var service = App.GetService<OilGlossService>();
+        if (!service.IsSupported)
+        {
+            InGameMenuStatusMessage = "油光只支持鸣潮（WWMI）";
+            return;
+        }
+
+        var applied = service.GetStatus(entry.Mod).State is OilGlossState.Applied or OilGlossState.Conflict;
+
+        try
+        {
+            if (applied)
+            {
+                var undo = await service.DisableAsync(entry.Mod);
+                if (!undo.Success)
+                {
+                    InGameMenuStatusMessage = $"撤销油光失败：{item.Name}：{undo.Reason}";
+                    _logger.Warning("[浮窗] 撤销油光失败：{Mod} ({Reason})", item.Name, undo.Reason);
+                    return;
+                }
+
+                item.IsOilGlossApplied = false;
+                InGameMenuStatusMessage = $"已撤销油光：{item.Name}";
+                _logger.Information("[浮窗] 撤销油光：{Mod}", item.Name);
+                return;
+            }
+
+            var result = await service.EnableAsync(entry.Mod);
+            if (result.Status is not (OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied))
+            {
+                InGameMenuStatusMessage = $"添加油光失败：{item.Name}：{result.Reason}";
+                _logger.Warning("[浮窗] 添加油光失败：{Mod} ({Reason})", item.Name, result.Reason);
+                return;
+            }
+
+            item.IsOilGlossApplied = true;
+
+            // 没有菜单的 Mod（常见于完全没有 [Key*] 的包）顺手生成一份，否则用户还要再点一次「生成菜单」。
+            var menuService = App.GetService<InGameMenuService>();
+            if (!menuService.HasGeneratedMenu(entry.Mod))
+            {
+                var settings = await menuService.ReadSettingsAsync();
+                await Task.Run(() => menuService.GenerateForMod(entry.Mod, settings));
+            }
+
+            InGameMenuStatusMessage = $"已添加油光：{item.Name}（F7 菜单里可分别开关身体 / 衣物）";
+            _logger.Information("[浮窗] 添加油光：{Mod}", item.Name);
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "[浮窗] 油光操作失败：{Mod}", item.Name);
+            InGameMenuStatusMessage = "油光操作失败：" + e.Message;
         }
     }
 
