@@ -103,7 +103,7 @@ public static class OilGlossScanner
         var lines = text.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
         var result = new List<OilGlossDrawcall>();
         var section = string.Empty;
-        var sectionHasHeadKeyword = false;
+        var sectionStart = 0;
 
         for (var i = 0; i < lines.Length; i++)
         {
@@ -111,17 +111,12 @@ public static class OilGlossScanner
             if (sectionMatch.Success)
             {
                 section = sectionMatch.Groups[1].Value.Trim();
-                sectionHasHeadKeyword = HeadKeywordRegex.IsMatch(section);
+                sectionStart = i;
                 continue;
             }
 
             if (!section.StartsWith("TextureOverride", StringComparison.OrdinalIgnoreCase))
                 continue;
-
-            // 条件 / 注释 / 贴图绑定里出现 hair/head/face… 时，整段都按头部处理。
-            // 宁可少包，也不要把头发包进油光。
-            if (!sectionHasHeadKeyword && HeadKeywordRegex.IsMatch(lines[i]))
-                sectionHasHeadKeyword = true;
 
             var drawMatch = DrawIndexedRegex.Match(lines[i]);
             if (!drawMatch.Success)
@@ -138,7 +133,9 @@ public static class OilGlossScanner
                 LineIndex = i,
                 IndexCount = indexCount,
                 StartIndex = int.Parse(drawMatch.Groups[2].Value),
-                IsHeadLike = sectionHasHeadKeyword || IsHeadComponent(section),
+                IsHeadLike = IsHeadComponent(section)
+                             || HeadKeywordRegex.IsMatch(section)
+                             || HasHeadKeywordNear(lines, i, sectionStart),
             });
         }
 
@@ -188,6 +185,31 @@ public static class OilGlossScanner
 
     /// <summary>Component0–2 = 身体绒毛 / 头发 / 脸，默认不包油光。</summary>
     private static bool IsHeadComponent(string sectionName) => GetComponentIndex(sectionName) is >= 0 and <= 2;
+
+    /// <summary>
+    /// 只检查这个 drawcall 自己的局部上下文：向前最多 20 行，遇到上一个 drawcall 或段落头就停。
+    ///
+    /// 不能把整个 <c>[TextureOverride*]</c> 段落标成头部：同一个 Component3 段落里经常
+    /// 同时有 Hair Acc / Hair Ribbon 和 Body / Top / Skirt。按段落打标会让前面的 hair
+    /// 关键词污染后面所有身体 drawcall（爱弥斯-不善女仆就是身体全被排除，油光只包到鞋）。
+    /// </summary>
+    private static bool HasHeadKeywordNear(string[] lines, int drawIndex, int sectionStart)
+    {
+        if (HeadKeywordRegex.IsMatch(lines[drawIndex]))
+            return true;
+
+        var from = Math.Max(sectionStart, drawIndex - 20);
+        for (var i = drawIndex - 1; i >= from; i--)
+        {
+            if (DrawIndexedRegex.IsMatch(lines[i]) || SectionRegex.IsMatch(lines[i]))
+                break;
+
+            if (HeadKeywordRegex.IsMatch(lines[i]))
+                return true;
+        }
+
+        return false;
+    }
 
     private static bool IsSame(OilGlossDrawcall? left, OilGlossDrawcall? right)
         => left is not null
