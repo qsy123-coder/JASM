@@ -257,6 +257,63 @@ public class OilGlossScannerTests : IDisposable
         Assert.Equal(400, result.Cloth!.IndexCount);
     }
 
+    [Fact]
+    public void ExcludesHeadZoneByIndexPositionButKeepsLargest()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideComponent0]
+            drawindexed = 1000, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 5000, 1000, 0
+
+            [TextureOverrideComponent2]
+            drawindexed = 3000, 10000, 0
+
+            [TextureOverrideComponent3]
+            drawindexed = 2000, 20000, 0
+
+            [TextureOverrideComponent4]
+            drawindexed = 1000, 30000, 0
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.True(result.Drawcalls.Single(d => d.StartIndex == 0).IsHeadLike);
+        Assert.False(result.Drawcalls.Single(d => d.StartIndex == 1000).IsHeadLike); // 最大块永不按位置排除
+        Assert.False(result.Drawcalls.Single(d => d.StartIndex == 10000).IsHeadLike);
+    }
+
+    [Fact]
+    public void RejectsHairOnlyModWhoseDrawsAllSitInHeadZone()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideComponent0]
+            drawindexed = 1000, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 1000, 1000, 0
+
+            [TextureOverrideComponent2]
+            drawindexed = 1000, 2000, 0
+
+            [TextureOverrideComponent3]
+            drawindexed = 1000, 3000, 0
+
+            [TextureOverrideComponent4]
+            drawindexed = 100000, 4000, 0
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Null(result.Body);
+        Assert.Contains("头部", result.Reason);
+    }
+
     public void Dispose()
     {
         try
