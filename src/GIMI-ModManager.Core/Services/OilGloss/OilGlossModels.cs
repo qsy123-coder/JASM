@@ -153,6 +153,15 @@ public sealed record OilGlossDrawcall
 
     /// <summary>自动分组结果；<c>null</c> 表示未被选中。</summary>
     public OilGlossGroup? Group { get; init; }
+
+    /// <summary>
+    /// 这块网格在角色高度上的最低点（0 = 脚底，1 = 头顶）。
+    /// 读不到网格数据时为 <c>null</c>，自动分组退回按大小猜。
+    /// </summary>
+    public double? HeightMin { get; init; }
+
+    /// <summary>这块网格在角色高度上的最高点（0 = 脚底，1 = 头顶）。</summary>
+    public double? HeightMax { get; init; }
 }
 
 /// <summary>扫描结果与自动分组。</summary>
