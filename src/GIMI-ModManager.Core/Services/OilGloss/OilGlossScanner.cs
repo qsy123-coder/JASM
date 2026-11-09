@@ -12,8 +12,9 @@ namespace GIMI_ModManager.Core.Services.OilGloss;
 ///   <item>忽略数量为 0 的 drawindexed（WWMI 模型里常见，包上会变成空的资源切换）。</item>
 /// </list>
 ///
-/// 分组是纯启发式：最大的一块当身体，排除头部后最大的一块当衣物。
+/// 分组是纯启发式：最大的一块（以及同材质槽的网格）当身体，其余可见网格当衣物。
 /// 一个 drawcall 同时含身体和衣物时分不开，只能整块归到一组——这是自动分组的已知边界。
+/// 分错时用详情页的「逐块识别身体」手动指定。
 /// </summary>
 public static class OilGlossScanner
 {
@@ -90,10 +91,10 @@ public static class OilGlossScanner
             .Select(d => d with { VisibleByDefault = OilGlossConditionEvaluator.IsTrue(d.Condition, defaults) })
             .ToList();
 
-        // 再按索引区间排除头部/头发：WWMI 模型一般「头 → 身 → 衣 → 脚」，
-        // 最前面 18% 常是头发/脸。它们没有名字，光靠关键词抓不到，
-        // 被 matcap 改写颜色后会出现「加完油光头发变色」。
-        annotated = MarkPositionalHead(annotated).ToList();
+        // 头部/头发只按关键词排除（hat/hair/face/eye/brow/head）。
+        // 不再按索引区间猜：WWMI 的组件顺序不固定，按位置猜会把「最大的身体块」
+        // 当成头发排掉，出现「身体没油光、头发反而变色」。头部没名字的包用
+        // 详情页「调整分组」手动指定。
 
         return Group(annotated);
     }
@@ -183,62 +184,6 @@ public static class OilGlossScanner
                 Comment = comment,
                 IsHeadLike = IsHeadLike(condition, textureSlot, comment, section),
             });
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// 按 WWMI 的索引排列约定排除头部/头发：同一 ini 里最前面 10% 的 drawcall 视为头/发/脸，
-    /// **一律不包油光**。唯一例外：默认可见的最大块落在 5%–10% 区间时仍留作身体
-    /// （例如女漂的 _3_002）；落在 0%–5% 的最大块几乎一定是头发（例如阿比盖尔的长发），照样排除。
-    /// 少于 5 块时不启用，避免把整个小 Mod 排除。
-    /// </summary>
-    private static IReadOnlyList<OilGlossDrawcall> MarkPositionalHead(IReadOnlyList<OilGlossDrawcall> drawcalls)
-    {
-        var result = new List<OilGlossDrawcall>(drawcalls.Count);
-
-        foreach (var group in drawcalls.GroupBy(d => d.IniRelativePath, StringComparer.OrdinalIgnoreCase))
-        {
-            var list = group.ToList();
-            if (list.Count < 5)
-            {
-                result.AddRange(list);
-                continue;
-            }
-
-            var minStart = list.Min(d => d.StartIndex);
-            var maxEnd = list.Max(d => d.StartIndex + d.IndexCount);
-            var span = maxEnd - minStart;
-            if (span <= 0)
-            {
-                result.AddRange(list);
-                continue;
-            }
-
-            var inHeadZone = list.Count(d => (d.StartIndex - minStart) / (double)span < 0.10);
-
-            // 80% 以上都在头部区 → 这多半是纯发型/头部 Mod（发型、头饰、脸）。
-            // 整体排除，绝不能让 matcap 把头发颜色改掉。
-            if (inHeadZone >= list.Count * 0.8)
-            {
-                result.AddRange(list.Select(d => d with { IsHeadLike = true }));
-                continue;
-            }
-
-            // 头部区一律不包油光。唯一例外：起点 ≥5% 的可见块里索引数最大的那一块留作身体——
-            // 0%–5% 的块几乎一定是头发（例如阿比盖尔的长发），必须排除；
-            // 起点在 5%–10% 的身体块（例如女漂的 _3_002）要保留。
-            var visible = list.Where(d => d.VisibleByDefault != false).ToList();
-            var protectedDraw = visible
-                .Where(d => (d.StartIndex - minStart) / (double)span >= 0.05)
-                .OrderByDescending(d => d.IndexCount)
-                .FirstOrDefault();
-
-            result.AddRange(list.Select(d =>
-                !IsSame(d, protectedDraw) && (d.StartIndex - minStart) / (double)span < 0.10
-                    ? d with { IsHeadLike = true }
-                    : d));
         }
 
         return result;
