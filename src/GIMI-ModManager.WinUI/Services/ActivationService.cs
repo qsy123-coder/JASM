@@ -340,6 +340,21 @@ public class ActivationService : IActivationService
                 Serilog.Log.Warning(e, "[InGameMenu] 启动批量补齐失败");
             }
         });
+
+        // 油光：原版 KatFXMatcap 的 * / - 热键会把全局 $oilSkin / $oilStrength 存成 0，
+        // 表现为「F7 菜单有油光行、画面没效果」。启动时检查一次，只在异常时复位。
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var oilService = App.GetService<GIMI_ModManager.WinUI.Services.ModHandling.OilGlossService>();
+                await oilService.EnsureGlobalBodyVariablesAsync().ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                Serilog.Log.Warning(e, "[OilGloss] 启动复位全局变量失败");
+            }
+        });
     }
 
     const int MinimizedPosition = -32000;
