@@ -129,6 +129,12 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     /// <summary>勾选这一行时要执行的动作，由浮窗的 ViewModel 在造行时注入。</summary>
     private Func<OverlayModItemViewModel, Task>? _toggleMod;
 
+    /// <summary>点这一行的「生成菜单」时要执行的动作，同样由浮窗的 ViewModel 注入。</summary>
+    private Func<OverlayModItemViewModel, Task>? _generateMenu;
+
+    /// <summary>点这一行的「打开菜单」时要执行的动作（切到该 Mod 并打开游戏内 F7 菜单）。</summary>
+    private Func<OverlayModItemViewModel, Task>? _openMenu;
+
     /// <summary>作者为空时界面上把那行藏掉，免得整行多出一个空行。</summary>
     public bool HasAuthor => !string.IsNullOrWhiteSpace(Author);
 
@@ -191,6 +197,28 @@ internal sealed partial class OverlayModItemViewModel : ObservableObject, IOverl
     /// </summary>
     [RelayCommand]
     private Task ToggleMod() => _toggleMod?.Invoke(this) ?? Task.CompletedTask;
+
+    /// <summary>挂上「生成这个 Mod 的游戏内菜单」的回调（行右侧的生成按钮用）。</summary>
+    public OverlayModItemViewModel WithGenerateMenuHandler(Func<OverlayModItemViewModel, Task> generateMenu)
+    {
+        _generateMenu = generateMenu;
+        return this;
+    }
+
+    /// <summary>行右侧生成按钮。每个行一个命令实例：连点同一行被挡住，不同行互不影响。</summary>
+    [RelayCommand]
+    private Task GenerateMenu() => _generateMenu?.Invoke(this) ?? Task.CompletedTask;
+
+    /// <summary>挂上「切到这个 Mod 并打开它的按键菜单」的回调。</summary>
+    public OverlayModItemViewModel WithOpenMenuHandler(Func<OverlayModItemViewModel, Task> openMenu)
+    {
+        _openMenu = openMenu;
+        return this;
+    }
+
+    /// <summary>行右侧「打开菜单」按钮。</summary>
+    [RelayCommand]
+    private Task OpenMenu() => _openMenu?.Invoke(this) ?? Task.CompletedTask;
 
     /// <summary>
     /// 把真实状态重新推给界面。
