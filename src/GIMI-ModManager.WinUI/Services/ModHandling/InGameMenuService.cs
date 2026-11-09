@@ -75,7 +75,11 @@ public sealed class InGameMenuService(
     /// </summary>
     public bool HasMenuRows(ISkinMod mod)
         => ModIniToggleParser.ParseDirectory(mod.FullPath).Any(row => row.IsClickable)
-           || OilGlossPatcher.GetStatus(mod.FullPath).Manifest is not null;
+           || HasOilMenu(mod);
+
+    /// <summary>这个 Mod 是否启用了油光（有 manifest 时说明菜单至少有油光三行）。</summary>
+    private static bool HasOilMenu(ISkinMod mod)
+        => OilGlossPatcher.GetStatus(mod.FullPath).Manifest is not null;
 
     /// <summary>为一个 Mod 生成菜单。调用方负责后台线程；内部串行化，避免并发写同一目录。</summary>
     public InGameMenuGenerationResult GenerateForMod(ISkinMod mod, InGameMenuSettings settings)
@@ -113,8 +117,9 @@ public sealed class InGameMenuService(
 
             var target = enabled[0];
 
-            // 常驻前置/后处理类没有 $object_detected：菜单无法按角色门控，生成器会跳过
-            if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath))
+            // 常驻前置/后处理类没有 $object_detected：菜单无法按角色门控，生成器会跳过。
+            // 但启用了油光的 Mod 必须有三行油光菜单，即使没有门控变量也照常生成。
+            if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath) && !HasOilMenu(target))
                 return;
 
             if (HasCurrentMenu(target))
@@ -224,7 +229,8 @@ public sealed class InGameMenuService(
 
                     // 常驻前置/后处理类 Mod 没有 $object_detected：菜单无法按角色门控，
                     // 会在任何场景一直显示并与角色菜单叠加，批量补齐直接跳过。
-                    if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath))
+                    // 例外：启用了油光的 Mod 必须有油光菜单，没有门控变量也照常生成。
+                    if (!InGameMenuGenerator.HasObjectDetectedVariable(target.FullPath) && !HasOilMenu(target))
                     {
                         items.Add(new InGameMenuBatchItem(target.Id, target.Name, characterName,
                             InGameMenuGenerationStatus.SkippedNoObjectDetected,
