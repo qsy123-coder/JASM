@@ -227,6 +227,36 @@ public class OilGlossScannerTests : IDisposable
         Assert.Equal(900, result.Body!.IndexCount);
     }
 
+    [Fact]
+    public void GroupsAllMeshesSharingBodyMaterialAndEverythingElseAsCloth()
+    {
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideComponent3]
+            ResourceTexture23
+            if $draw_component_3_002
+            drawindexed = 900, 0, 0
+            endif
+            ResourceTexture23
+            if $draw_component_3_006
+            drawindexed = 500, 100, 0
+            endif
+
+            [TextureOverrideComponent4]
+            ResourceTexture11
+            drawindexed = 400, 200, 0
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 900).Group);
+        Assert.Equal(OilGlossGroup.Body, result.Drawcalls.Single(d => d.IndexCount == 500).Group);
+        Assert.Equal(OilGlossGroup.Cloth, result.Drawcalls.Single(d => d.IndexCount == 400).Group);
+        Assert.Equal(900, result.Body!.IndexCount);
+        Assert.Equal(400, result.Cloth!.IndexCount);
+    }
+
     public void Dispose()
     {
         try
