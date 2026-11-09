@@ -5,6 +5,7 @@ using System.Reflection;
 using Windows.Storage.Pickers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using GIMI_ModManager.Core.Contracts.Entities;
 using GIMI_ModManager.Core.Contracts.Services;
 using GIMI_ModManager.Core.Entities.Mods.Helpers;
@@ -27,6 +28,7 @@ using GIMI_ModManager.WinUI.Services.ModHandling;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using GIMI_ModManager.WinUI.Services.Overlay;
 using GIMI_ModManager.WinUI.Validators.PreConfigured;
+using GIMI_ModManager.WinUI.ViewModels.Messages;
 using GIMI_ModManager.WinUI.ViewModels.SettingsViewModels;
 using GIMI_ModManager.WinUI.Views;
 using GIMI_ModManager.WinUI.ViewModels.SubVms;
@@ -41,7 +43,8 @@ using Windows.UI.Core;
 
 namespace GIMI_ModManager.WinUI.ViewModels;
 
-public partial class SettingsViewModel : ObservableRecipient, INavigationAware
+public partial class SettingsViewModel : ObservableRecipient, INavigationAware,
+    IRecipient<InGameMenuAutoGenerateChangedMessage>
 {
     private readonly IThemeSelectorService _themeSelectorService;
     private readonly ILogger _logger;
@@ -98,6 +101,70 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             InGameMenuStatusMessage = "切换主题失败：" + e.Message;
         }
     }
+    /// <summary>安装后是否立刻给新装的 Mod 生成菜单（含刚装进来还是 DISABLED_ 的状态）。</summary>
+    [ObservableProperty] private bool _autoGenerateInGameMenuOnInstall = true;
+
+    /// <summary>收到浮窗同步过来的值时，避免再反向落盘一次。</summary>
+    private bool _suppressAutoGenerateSave;
+
+    partial void OnAutoGenerateInGameMenuOnInstallChanged(bool value)
+    {
+        if (_suppressAutoGenerateSave)
+            return;
+
+        _ = SaveAutoGenerateInGameMenuOnInstallAsync(value);
+    }
+
+    /// <summary>浮窗里改了同一个开关：同步设置页上的显示（不反向落盘）。</summary>
+    public void Receive(InGameMenuAutoGenerateChangedMessage message)
+    {
+        if (ReferenceEquals(message.Sender, this))
+            return;
+
+        if (App.MainWindow?.DispatcherQueue is not { } dispatcher)
+            return;
+
+        dispatcher.TryEnqueue(() =>
+        {
+            if (AutoGenerateInGameMenuOnInstall == message.Value)
+                return;
+
+            _suppressAutoGenerateSave = true;
+            AutoGenerateInGameMenuOnInstall = message.Value;
+            _suppressAutoGenerateSave = false;
+
+            HasInGameMenuStatus = true;
+            InGameMenuStatusMessage = message.Value
+                ? "已开启：以后每安装一个 Mod 就自动生成它的菜单"
+                : "已关闭：安装时不再自动生成，只给当前启用的 Mod 生成";
+        });
+    }
+
+    private async Task SaveAutoGenerateInGameMenuOnInstallAsync(bool value)
+    {
+        try
+        {
+            var settings = await _inGameMenuService.ReadSettingsAsync();
+            if (settings.AutoGenerateOnInstall == value)
+                return;
+
+            settings.AutoGenerateOnInstall = value;
+            await _inGameMenuService.SaveSettingsAsync(settings);
+
+            // 浮窗里那个开关同步显示成同一个状态
+            Messenger.Send(new InGameMenuAutoGenerateChangedMessage(this, value));
+
+            HasInGameMenuStatus = true;
+            InGameMenuStatusMessage = value
+                ? "已开启：以后每安装一个 Mod 就自动生成它的菜单"
+                : "已关闭：安装时不再自动生成，只给当前启用的 Mod 生成";
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[InGameMenu] 保存「安装后自动生成」设置失败");
+        }
+    }
+
     [ObservableProperty] private string _inGameMenuStatusMessage = string.Empty;
     [ObservableProperty] private bool _hasInGameMenuStatus;
     [ObservableProperty] private bool _isInGameMenuGenerating;
@@ -253,6 +320,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
             ? MenuThemes.DefaultId
             : inGameMenuSettings.MenuTheme;
         _suppressThemeChange = false;
+
+        // 直接写字段：走属性会触发 OnChanged 再保存一次（此时值相同，但没必要多一次 IO）
+        _autoGenerateInGameMenuOnInstall = inGameMenuSettings.AutoGenerateOnInstall;
+
+        // ObservableRecipient 只有 IsActive=true 才会注册 IRecipient；
+        // 「安装后自动生成菜单」需要与浮窗实时同步。
+        IsActive = true;
 
         GenshinProcessManager = genshinProcessManager;
         ThreeDMigtoProcessManager = threeDMigtoProcessManager;
@@ -612,9 +686,13 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware
         try
         {
             var progress = new Progress<InGameMenuBatchProgress>(p =>
-                InGameMenuStatusMessage = $"正在处理 {p.CharacterName}（{p.Done}/{p.Total}）…");
+                InGameMenuStatusMessage = p.ModName is null
+                    ? $"正在处理 {p.CharacterName}（{p.Done}/{p.Total}）…"
+                    : $"正在处理 {p.CharacterName} · {p.ModName}（{p.Done}/{p.Total}）…");
 
-            var result = await Task.Run(() => _inGameMenuService.GenerateForAllAsync(progress));
+            // 「为所有 Mod 补齐」：连 DISABLED_ 的一起生成，启用时无需再等菜单生成
+            var result = await Task.Run(() =>
+                _inGameMenuService.GenerateForAllAsync(progress, includeDisabledMods: true));
 
             InGameMenuStatusMessage = result.Failed > 0
                 ? $"完成：生成 {result.Generated}，跳过 {result.Skipped}，失败 {result.Failed}（详见日志）"
