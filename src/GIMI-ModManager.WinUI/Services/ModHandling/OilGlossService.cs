@@ -171,6 +171,21 @@ public sealed class OilGlossService(
         if (!IsSupported)
             return new OilGlossApplyResult { Status = OilGlossApplyStatus.Failed, Reason = "油光只支持鸣潮（WWMI）" };
 
+        // 先校验选择，再动旧补丁：没有任何分组时不能先把原补丁撤销掉。
+        var bodyDraw = draws.Where(d => d.Group == OilGlossGroup.Body)
+            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
+        var clothDraw = draws.Where(d => d.Group == OilGlossGroup.Cloth)
+            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
+
+        if (bodyDraw is null && clothDraw is null)
+        {
+            return new OilGlossApplyResult
+            {
+                Status = OilGlossApplyStatus.NoDrawcalls,
+                Reason = "没有选择任何网格",
+            };
+        }
+
         var status = OilGlossPatcher.GetStatus(mod.FullPath);
         if (status.State is OilGlossState.Applied or OilGlossState.Conflict or OilGlossState.Broken)
         {
@@ -184,20 +199,6 @@ public sealed class OilGlossService(
                     Reason = "撤销原补丁失败：" + undo.Reason,
                 };
             }
-        }
-
-        var bodyDraw = draws.Where(d => d.Group == OilGlossGroup.Body)
-            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
-        var clothDraw = draws.Where(d => d.Group == OilGlossGroup.Cloth)
-            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
-
-        if (bodyDraw is null && clothDraw is null)
-        {
-            return new OilGlossApplyResult
-            {
-                Status = OilGlossApplyStatus.NoDrawcalls,
-                Reason = "没有选择任何网格",
-            };
         }
 
         var scan = new OilGlossScanResult
