@@ -206,6 +206,18 @@ public static class OilGlossPatcher
                 BodyProvidedByJasm = body is { AlreadyPresent: false, WrittenFiles.Count: > 0 },
                 BodyFiles = body?.WrittenFiles.ToList() ?? [],
                 PatchedFiles = patchedFiles,
+                // 记下每块网格的分组：「试亮」取消时要按它恢复，而不是退回自动分组。
+                AppliedDrawcalls = scan.Drawcalls
+                    .Where(d => d.Group is not null)
+                    .Select(d => new OilGlossAppliedDrawcall
+                    {
+                        IniRelativePath = d.IniRelativePath,
+                        SectionName = d.SectionName,
+                        IndexCount = d.IndexCount,
+                        StartIndex = d.StartIndex,
+                        Group = d.Group!.Value,
+                    })
+                    .ToList(),
                 HasBodyGroup = scan.Body is not null,
                 HasClothGroup = scan.Cloth is not null,
                 AppliedAtUtc = DateTime.UtcNow,
