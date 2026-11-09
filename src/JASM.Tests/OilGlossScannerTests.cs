@@ -171,7 +171,9 @@ public class OilGlossScannerTests : IDisposable
         var result = OilGlossScanner.Scan(mod);
 
         Assert.Equal(500, result.Body!.IndexCount);
-        Assert.Null(result.Cloth);
+        // 默认隐藏的变体不参与身体锚点选择，但会进衣物组：
+        // 用户在菜单里切到该变体后油光仍能生效。
+        Assert.Equal(900, result.Cloth!.IndexCount);
         Assert.False(result.Drawcalls.Single(d => d.IndexCount == 900).VisibleByDefault);
         Assert.True(result.Drawcalls.Single(d => d.IndexCount == 500).VisibleByDefault);
     }
