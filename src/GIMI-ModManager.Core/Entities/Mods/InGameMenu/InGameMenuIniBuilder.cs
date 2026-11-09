@@ -100,8 +100,9 @@ public sealed record InGameMenuOptions
     /// v31：生成后自检纹理数量，缺一张就整体重试；仍缺则报失败（修「静默生成 0 张纹理」的残缺菜单）。
     /// v32：纹理 hash 只在没有 per-character 变量时兜底；有变量时不再叠加，修「两个角色菜单同时出现」。
     /// v33：门控里只要存在命名空间变量，就丢掉全局 <c>$object_detected</c>（全局量是所有 Mod 共享的）。
+    /// v34：新增 0–1 拖动滑块行（油光强度），拖动时实时写 <c>$\KatFXMatcap\oilstrength</c>。
     /// </summary>
-    public const int CurrentGeneratorVersion = 33;
+    public const int CurrentGeneratorVersion = 34;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -382,6 +383,9 @@ public static class InGameMenuIniBuilder
             GdiTextRasterizer.TextAlign.Center));
         textures.Add(Text("JASM_Menu/arrow_right.dds", "›", ArrowWidth, ArrowHeight, 26, false,
             GdiTextRasterizer.TextAlign.Center));
+        // 滑块（油光强度）的拖动条与滑块头
+        textures.Add(new MenuTextureSpec("JASM_Menu/slider_knob.dds", MenuTextureKind.Marker, string.Empty,
+            14, 26, 0, false, GdiTextRasterizer.TextAlign.Left));
 
         // —— 底部说明 ——
         textures.Add(Text("JASM_Menu/hint_1.dds", "按住 Alt：左键点击切换 · 右键拖动菜单",
@@ -503,6 +507,7 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"global {v}my = 0");
         ini.AppendLine($"global {v}scale = 1");
         ini.AppendLine($"global {v}in_rect = 0");
+        ini.AppendLine($"global {v}slider_v = 0.7");
         ini.AppendLine($"global {v}img_w = 0");
         ini.AppendLine($"global {v}img_h = 0");
         ini.AppendLine($"global {v}img_x = 0");
@@ -894,17 +899,52 @@ public static class InGameMenuIniBuilder
             rowWidth, rowHeight, 1);
         ini.AppendLine("endif");
 
-        // 左箭头
-        AppendQuad(ini, v, token, ResourceName("ArrowLeft", token), $"{v}x + {ArrowLeftOffsetX}",
-            $"{v}y + {rowY + arrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
+        // 左箭头（滑块不需要）
+        if (!row.IsSlider)
+        {
+            AppendQuad(ini, v, token, ResourceName("ArrowLeft", token), $"{v}x + {ArrowLeftOffsetX}",
+                $"{v}y + {rowY + arrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
+        }
 
         // 名称（不可点击的行调暗）
         var labelTint = row.IsClickable ? 1m : 0.45m;
         AppendQuad(ini, v, token, ResourceName($"Label{index:00}", token), $"{v}x + {LabelOffsetX}",
             $"{v}y + {rowY + labelOffsetY}", LabelWidthFor(options), LabelHeight, labelTint);
 
-        // 当前值：按 ini 的值列表选纹理
-        if (row.IsClickable)
+        // 滑块行：拖动条 + 滑块头，按住 Alt+左键在轨道上拖动实时写变量
+        if (row.IsSlider)
+        {
+            var trackX = (int)(rowWidth * 0.42);
+            var trackW = (int)(rowWidth * 0.45);
+            var trackY = rowHeight / 2 - 4;
+            const int trackH = 8;
+
+            AppendQuad(ini, v, token, ResourceName("Row", token), $"{v}x + {RowOffsetX + trackX}",
+                $"{v}y + {rowY + trackY}", trackW, trackH, 0.55m);
+
+            // 滑块头位置由当前强度决定
+            AppendQuad(ini, v, token, ResourceName("SliderKnob", token),
+                $"{v}x + {RowOffsetX + trackX} + ({row.QualifiedVariable}) * {trackW} - 7",
+                $"{v}y + {rowY + trackY - 9}", 14, trackH + 18, 1m);
+
+            ini.AppendLine($"{v}in_rect = 0");
+            AppendHitRect(ini, v, $"{v}x + {RowOffsetX + trackX}", $"{v}y + {rowY + trackY - 10}", trackW, trackH + 20);
+            ini.AppendLine($"if {v}in_rect == 1");
+            ini.AppendLine($"    if {v}click_guard == 1");
+            ini.AppendLine($"        {v}slider_v = ({v}mx / {v}scale - ({v}x + {RowOffsetX + trackX})) / {trackW}");
+            ini.AppendLine($"        if {v}slider_v < 0");
+            ini.AppendLine($"            {v}slider_v = 0");
+            ini.AppendLine("        endif");
+            ini.AppendLine($"        if {v}slider_v > 1");
+            ini.AppendLine($"            {v}slider_v = 1");
+            ini.AppendLine("        endif");
+            ini.AppendLine($"        {row.QualifiedVariable} = {v}slider_v");
+            ini.AppendLine("    endif");
+            ini.AppendLine("endif");
+        }
+
+        // 当前值：按 ini 的值列表选纹理（滑块没有值列表）
+        if (row.IsClickable && !row.IsSlider)
         {
             ini.AppendLine($"ps-t100 = {ResourceName($"Value{index:00}_00", token)}");
             for (var valueIndex = 1; valueIndex < row.Values.Count; valueIndex++)
@@ -929,12 +969,15 @@ public static class InGameMenuIniBuilder
                 $"{v}y + {rowY + HintOffsetYFor(options)}", HintWidth, HintHeight, 0.7m);
         }
 
-        // 右箭头
-        AppendQuad(ini, v, token, ResourceName("ArrowRight", token), $"{v}x + {arrowRightOffsetX}",
-            $"{v}y + {rowY + arrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
+        // 右箭头（滑块不需要）
+        if (!row.IsSlider)
+        {
+            AppendQuad(ini, v, token, ResourceName("ArrowRight", token), $"{v}x + {arrowRightOffsetX}",
+                $"{v}y + {rowY + arrowOffsetY}", ArrowWidth, ArrowHeight, 0.9m);
+        }
 
-        // Alt+左键点击切换
-        if (row.IsClickable)
+        // Alt+左键点击切换（滑块由上面的拖动逻辑处理）
+        if (row.IsClickable && !row.IsSlider)
         {
             ini.AppendLine($"if {v}in_rect == 1");
             ini.AppendLine($"    if {v}click == 1");
@@ -1023,6 +1066,7 @@ public static class InGameMenuIniBuilder
         Res("Panel", "JASM_Menu/panel.dds");
         Res("Row", "JASM_Menu/row.dds");
         Res("RowHover", "JASM_Menu/row_hover.dds");
+        Res("SliderKnob", "JASM_Menu/slider_knob.dds");
         Res("ArrowLeft", "JASM_Menu/arrow_left.dds");
         Res("ArrowRight", "JASM_Menu/arrow_right.dds");
         Res("HintLine1", "JASM_Menu/hint_1.dds");
