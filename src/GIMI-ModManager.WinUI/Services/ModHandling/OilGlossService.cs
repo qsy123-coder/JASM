@@ -33,7 +33,8 @@ public sealed class OilGlossService(
 
     public OilGlossStatus GetStatus(ISkinMod mod) => OilGlossPatcher.GetStatus(mod.FullPath);
 
-    public OilGlossScanResult Scan(ISkinMod mod) => OilGlossScanner.Scan(mod.FullPath);
+    public OilGlossScanResult Scan(ISkinMod mod, bool ignoreHairFolderGuard = false)
+        => OilGlossScanner.Scan(mod.FullPath, ignoreHairFolderGuard);
 
     /// <summary>读取全局油光强度（0..1，默认 0.7）。</summary>
     public async Task<double> GetStrengthAsync(CancellationToken cancellationToken = default)
@@ -131,6 +132,74 @@ public sealed class OilGlossService(
 
         if (result.Success)
             await RegenerateMenuAsync(mod, createIfMissing: false, cancellationToken).ConfigureAwait(false);
+
+        return result;
+    }
+
+    /// <summary>
+    /// 按用户在详情页选好的分组重新打补丁（可只包部分网格，或从发型 Mod 里挑出身体）。
+    /// </summary>
+    public async Task<OilGlossApplyResult> ApplyCustomGroupsAsync(
+        ISkinMod mod,
+        IReadOnlyList<OilGlossDrawcall> draws,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsSupported)
+            return new OilGlossApplyResult { Status = OilGlossApplyStatus.Failed, Reason = "油光只支持鸣潮（WWMI）" };
+
+        var status = OilGlossPatcher.GetStatus(mod.FullPath);
+        if (status.State is OilGlossState.Applied or OilGlossState.Conflict or OilGlossState.Broken)
+        {
+            var undo = await Task.Run(() => OilGlossPatcher.Undo(mod.FullPath), cancellationToken)
+                .ConfigureAwait(false);
+            if (!undo.Success)
+            {
+                return new OilGlossApplyResult
+                {
+                    Status = OilGlossApplyStatus.Failed,
+                    Reason = "撤销原补丁失败：" + undo.Reason,
+                };
+            }
+        }
+
+        var bodyDraw = draws.Where(d => d.Group == OilGlossGroup.Body)
+            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
+        var clothDraw = draws.Where(d => d.Group == OilGlossGroup.Cloth)
+            .OrderByDescending(d => d.IndexCount).FirstOrDefault();
+
+        if (bodyDraw is null && clothDraw is null)
+        {
+            return new OilGlossApplyResult
+            {
+                Status = OilGlossApplyStatus.NoDrawcalls,
+                Reason = "没有选择任何网格",
+            };
+        }
+
+        var scan = new OilGlossScanResult
+        {
+            Drawcalls = draws,
+            Body = bodyDraw,
+            Cloth = clothDraw,
+        };
+
+        var result = await Task.Run(() =>
+        {
+            var provision = OilGlossBodyProvisioner.Ensure(mod.FullPath, EmbeddedOilGlossAssetSource.Instance);
+            if (!provision.Success)
+            {
+                return new OilGlossApplyResult
+                {
+                    Status = OilGlossApplyStatus.Failed,
+                    Reason = provision.Reason,
+                };
+            }
+
+            return OilGlossPatcher.Apply(mod.FullPath, scan, provision);
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (result.Status == OilGlossApplyStatus.Applied)
+            await RegenerateMenuAsync(mod, createIfMissing: true, cancellationToken).ConfigureAwait(false);
 
         return result;
     }
