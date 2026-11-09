@@ -290,6 +290,10 @@
                             Command="{x:Bind ViewModel.ReapplyOilGlossExcludingLargestCommand}"
                             Content="排除最大网格重打"
                             ToolTipService.ToolTip="头发会变色时用：跳过索引数最大的网格重新分组" />
+                        <Button
+                            Command="{x:Bind ViewModel.CustomizeOilGroupsCommand}"
+                            Content="调整分组"
+                            ToolTipService.ToolTip="手动选择每块网格属于身体、衣物还是不包（头发变色时用）" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
@@ -421,6 +425,7 @@
                     Command="{x:Bind ViewModel.ReapplyOilGlossExcludingLargestCommand}"
                     Content="排除最大网格重打"
                     ToolTipService.ToolTip="头发会变色时用：跳过索引数最大的网格重新分组" />
+                <Button Command="{x:Bind ViewModel.CustomizeOilGroupsCommand}" Content="调整分组" />
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="12"
