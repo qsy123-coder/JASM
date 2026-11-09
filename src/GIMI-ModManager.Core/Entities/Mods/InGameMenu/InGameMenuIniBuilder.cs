@@ -101,8 +101,9 @@ public sealed record InGameMenuOptions
     /// v32：纹理 hash 只在没有 per-character 变量时兜底；有变量时不再叠加，修「两个角色菜单同时出现」。
     /// v33：门控里只要存在命名空间变量，就丢掉全局 <c>$object_detected</c>（全局量是所有 Mod 共享的）。
     /// v34：新增 0–1 拖动滑块行（油光强度），拖动时实时写 <c>$\KatFXMatcap\oilstrength</c>。
+    /// v35：滑块支持自定义上限（油光强度上限提高到 2.0）；循环行支持按值显示文本（油光贴图名）。
     /// </summary>
-    public const int CurrentGeneratorVersion = 34;
+    public const int CurrentGeneratorVersion = 35;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -410,8 +411,10 @@ public static class InGameMenuIniBuilder
 
             for (var valueIndex = 0; valueIndex < rows[i].Values.Count; valueIndex++)
             {
-                // 显示「第几个/共几个」（1 起算），而不是原始值 0/1/2
-                var valueText = $"{valueIndex + 1}/{rows[i].Values.Count}";
+                // 有显示文本（如油光贴图名）就用文本，否则显示「第几个/共几个」（1 起算）
+                var valueText = valueIndex < rows[i].ValueLabels.Count
+                    ? rows[i].ValueLabels[valueIndex]
+                    : $"{valueIndex + 1}/{rows[i].Values.Count}";
                 var valueAlign = options.Theme.UseReferenceAssets
                     ? GdiTextRasterizer.TextAlign.Right
                     : GdiTextRasterizer.TextAlign.Left;
@@ -918,25 +921,27 @@ public static class InGameMenuIniBuilder
             var trackW = (int)(rowWidth * 0.45);
             var trackY = rowHeight / 2 - 4;
             const int trackH = 8;
+            var sliderMax = row.SliderMax > 0 ? row.SliderMax : 1.0;
+            var sliderMaxText = sliderMax.ToString("0.###", CultureInfo.InvariantCulture);
 
             AppendQuad(ini, v, token, ResourceName("Row", token), $"{v}x + {RowOffsetX + trackX}",
                 $"{v}y + {rowY + trackY}", trackW, trackH, 0.55m);
 
-            // 滑块头位置由当前强度决定
+            // 滑块头位置按 0..SliderMax 归一化到轨道宽度
             AppendQuad(ini, v, token, ResourceName("SliderKnob", token),
-                $"{v}x + {RowOffsetX + trackX} + ({row.QualifiedVariable}) * {trackW} - 7",
+                $"{v}x + {RowOffsetX + trackX} + ({row.QualifiedVariable}) / {sliderMaxText} * {trackW} - 7",
                 $"{v}y + {rowY + trackY - 9}", 14, trackH + 18, 1m);
 
             ini.AppendLine($"{v}in_rect = 0");
             AppendHitRect(ini, v, $"{v}x + {RowOffsetX + trackX}", $"{v}y + {rowY + trackY - 10}", trackW, trackH + 20);
             ini.AppendLine($"if {v}in_rect == 1");
             ini.AppendLine($"    if {v}click_guard == 1");
-            ini.AppendLine($"        {v}slider_v = ({v}mx / {v}scale - ({v}x + {RowOffsetX + trackX})) / {trackW}");
+            ini.AppendLine($"        {v}slider_v = ({v}mx / {v}scale - ({v}x + {RowOffsetX + trackX})) / {trackW} * {sliderMaxText}");
             ini.AppendLine($"        if {v}slider_v < 0");
             ini.AppendLine($"            {v}slider_v = 0");
             ini.AppendLine("        endif");
-            ini.AppendLine($"        if {v}slider_v > 1");
-            ini.AppendLine($"            {v}slider_v = 1");
+            ini.AppendLine($"        if {v}slider_v > {sliderMaxText}");
+            ini.AppendLine($"            {v}slider_v = {sliderMaxText}");
             ini.AppendLine("        endif");
             ini.AppendLine($"        {row.QualifiedVariable} = {v}slider_v");
             ini.AppendLine("    endif");
