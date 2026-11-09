@@ -266,9 +266,7 @@ public sealed partial class ModPaneVM(
         IsOilGlossApplied = status.State is OilGlossState.Applied or OilGlossState.Conflict;
         OilGlossStatusText = status.State switch
         {
-            OilGlossState.Applied => status.Manifest is { HasClothGroup: true }
-                ? "已开启（身体 / 衣物）"
-                : "已开启（仅身体）",
+            OilGlossState.Applied => "已开启",
             OilGlossState.Broken => "补丁不完整：" + status.Reason,
             OilGlossState.Conflict => "补丁文件被修改：" + status.Reason,
             _ => "未开启",
@@ -311,9 +309,9 @@ public sealed partial class ModPaneVM(
     }
 
     /// <summary>
-    /// 逐块识别油光分组：每一块都能「试亮」——只给这一块上油光并自动刷新游戏，
-    /// 回游戏看哪块变亮就知道它是身体还是头发，再决定分组。
-    /// 试亮只是临时改写补丁，点「取消」会恢复打开窗口前的分组。
+    /// 逐块识别要包油光的网格：每一块都能「试亮」——只给这一块上油光并自动刷新游戏，
+    /// 回游戏看效果，再决定它包不包油光。
+    /// 试亮只是临时改写补丁，点「取消」会恢复打开窗口前的选择。
     /// </summary>
     [RelayCommand]
     private async Task CustomizeOilGroupsAsync()
@@ -369,9 +367,9 @@ public sealed partial class ModPaneVM(
             var panel = new StackPanel { Spacing = 8 };
             panel.Children.Add(new TextBlock
             {
-                Text = "不知道哪块是身体？逐块点「试亮」，回游戏看哪块变亮。"
-                       + "确认后选分组：身体 / 衣物 / 不包（头发选「不包」）。"
-                       + "全部选「不包」= 关闭这个 Mod 的油光。",
+                Text = "不知道哪块会出问题？逐块点「试亮」，回游戏看效果。"
+                       + "确认后选「包裹油光」或「不包」；全部选「不包」= 关闭这个 Mod 的油光。"
+                       + "头部/头发会按网格高度自动排除。",
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 12,
             });
@@ -390,15 +388,10 @@ public sealed partial class ModPaneVM(
 
                 var combo = new ComboBox
                 {
-                    ItemsSource = new[] { "不包", "身体", "衣物" },
-                    // 已经开过油光时以补丁里的实际分组为准，否则「取消→再打开→应用」
-                    // 会把用户之前的手动分组覆盖回自动分组。
-                    SelectedIndex = (wasApplied ? FindAppliedGroup(previousGroups, draw) : draw.Group) switch
-                    {
-                        OilGlossGroup.Body => 1,
-                        OilGlossGroup.Cloth => 2,
-                        _ => 0,
-                    },
+                    ItemsSource = new[] { "不包", "包裹油光" },
+                    // 已经开过油光时以补丁里的实际选择为准，否则「取消→再打开→应用」
+                    // 会把用户之前的排除项覆盖回自动选择。
+                    SelectedIndex = (wasApplied ? FindAppliedGroup(previousGroups, draw) : draw.Group) is not null ? 1 : 0,
                     MinWidth = 96,
                 };
 
@@ -463,7 +456,7 @@ public sealed partial class ModPaneVM(
 
             var dialog = new ContentDialog
             {
-                Title = "逐块识别身体",
+                Title = "逐块识别网格",
                 Content = new ScrollViewer
                 {
                     Content = panel,
@@ -489,12 +482,7 @@ public sealed partial class ModPaneVM(
             {
                 var selected = choices.Select(c => c.Draw with
                 {
-                    Group = c.Box.SelectedIndex switch
-                    {
-                        1 => OilGlossGroup.Body,
-                        2 => OilGlossGroup.Cloth,
-                        _ => (OilGlossGroup?)null,
-                    },
+                    Group = c.Box.SelectedIndex == 1 ? OilGlossGroup.Body : (OilGlossGroup?)null,
                 }).ToList();
 
                 // 全部选「不包」= 关闭这个 Mod 的油光（包括试亮留下的临时补丁）。
@@ -529,7 +517,7 @@ public sealed partial class ModPaneVM(
         }
         catch (Exception e)
         {
-            _logger.Warning(e, "[OilGloss] 逐块识别身体失败");
+            _logger.Warning(e, "[OilGloss] 逐块识别失败");
             OilGlossStatusText = "逐块识别失败：" + e.Message;
         }
         finally
@@ -649,8 +637,8 @@ public sealed partial class ModPaneVM(
                 if (result.Status == OilGlossApplyStatus.Applied)
                 {
                     var hint = _inGameMenuService.HasGeneratedMenu(mod)
-                        ? "按 F7 打开游戏内菜单即可切换身体 / 衣物油光"
-                        : "生成游戏内菜单后，可在 F7 里切换身体 / 衣物油光";
+                        ? "按 F7 打开游戏内菜单即可开关油光、调整强度"
+                        : "生成游戏内菜单后，可在 F7 里开关油光、调整强度";
                     _notificationService.ShowNotification("油光已开启", hint, null);
                     await RequestGameRefreshAsync();
                 }
