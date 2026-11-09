@@ -118,13 +118,13 @@ public class OilGlossMenuTests : IDisposable
             [Constants]
             global $object_detected = 0
 
-            [TextureOverrideComponent0]
+            [TextureOverrideComponent3]
             hash = f8b55eeb
             match_first_index = 0
             $object_detected = 1
             drawindexed = 900, 0, 0
 
-            [TextureOverrideComponent1]
+            [TextureOverrideComponent4]
             drawindexed = 500, 900, 0
 
             [Present]
@@ -174,13 +174,13 @@ public class OilGlossMenuTests : IDisposable
             type = cycle
             $xiezi = 4,8,9
 
-            [TextureOverrideComponent0]
+            [TextureOverrideComponent3]
             hash = f8b55eeb
             match_first_index = 0
             $object_detected = 1
             drawindexed = 900, 0, 0
 
-            [TextureOverrideComponent1]
+            [TextureOverrideComponent4]
             drawindexed = 500, 900, 0
 
             [Present]
