@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <UserControl
     x:Class="GIMI_ModManager.WinUI.Views.CharacterDetailsPages.ModPane"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -285,8 +285,8 @@
                             Content="{x:Bind ViewModel.OilGlossToggleLabel, Mode=OneWay}" />
                         <Button
                             Command="{x:Bind ViewModel.CustomizeOilGroupsCommand}"
-                            Content="逐块识别身体"
-                            ToolTipService.ToolTip="分不清哪块是身体/头发时用：逐块试亮，回游戏看哪块变亮；点取消会恢复原分组" />
+                            Content="逐块识别网格"
+                            ToolTipService.ToolTip="某块网格出问题时用：逐块试亮，回游戏看效果；可把出问题的块设为「不包」" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
@@ -409,8 +409,8 @@
                     Content="{x:Bind ViewModel.OilGlossToggleLabel, Mode=OneWay}" />
                 <Button
                     Command="{x:Bind ViewModel.CustomizeOilGroupsCommand}"
-                    Content="逐块识别身体"
-                    ToolTipService.ToolTip="分不清哪块是身体/头发时用：逐块试亮，回游戏看哪块变亮；点取消会恢复原分组" />
+                    Content="逐块识别网格"
+                    ToolTipService.ToolTip="某块网格出问题时用：逐块试亮，回游戏看效果；可把出问题的块设为「不包」" />
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="12"
