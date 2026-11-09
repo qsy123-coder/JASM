@@ -25,13 +25,33 @@ public class OilGlossMenuTests : IDisposable
 
         var rows = OilGlossMenuRows.Create(manifest);
 
-        Assert.Equal(2, rows.Count);
+        Assert.Equal(3, rows.Count);
         Assert.Equal("油光总开关", rows[0].Label);
         Assert.Equal("身体油光", rows[1].Label);
+        Assert.Equal("油光强度", rows[2].Label);
         Assert.Equal(@"$\JasmOilABCD1234\jasm_oil_on", rows[0].QualifiedVariable);
         Assert.True(rows[0].IsClickable);
         Assert.Equal("1", rows[0].DefaultValue);
+        Assert.True(rows[2].IsSlider);
+        Assert.Equal(@"$\KatFXMatcap\oilstrength", rows[2].QualifiedVariable);
         Assert.DoesNotContain(rows, r => r.SectionName == OilGlossMenuRows.ClothSection);
+    }
+
+    [Fact]
+    public void ClothOilDefaultsOff()
+    {
+        var manifest = new OilGlossManifest
+        {
+            Namespace = "JasmOilABCD1234",
+            HasBodyGroup = true,
+            HasClothGroup = true,
+        };
+
+        var rows = OilGlossMenuRows.Create(manifest);
+
+        Assert.Equal("1", rows.Single(r => r.SectionName == OilGlossMenuRows.MasterSection).DefaultValue);
+        Assert.Equal("1", rows.Single(r => r.SectionName == OilGlossMenuRows.BodySection).DefaultValue);
+        Assert.Equal("0", rows.Single(r => r.SectionName == OilGlossMenuRows.ClothSection).DefaultValue);
     }
 
     [Fact]
@@ -57,6 +77,9 @@ public class OilGlossMenuTests : IDisposable
         Assert.Contains($@"$\{ns}\oil_cloth", menu);
         Assert.Contains("行 0: [KeyOilMaster]", menu);
         Assert.Contains("行 1: [KeyOilBody]", menu);
+        Assert.Contains("行 3: [KeyOilStrength]", menu);
+        Assert.Contains(@"$\KatFXMatcap\oilstrength", menu);
+        Assert.Contains("slider_v", menu);
 
         // 本体 Matcap.ini 的 [KeyOilToggle] 属于 KatFXMatcap 命名空间，不进菜单
         Assert.DoesNotContain("oilSkin", menu);
@@ -82,6 +105,7 @@ public class OilGlossMenuTests : IDisposable
         Assert.Contains("油光总开关", manifest);
         Assert.Contains("身体油光", manifest);
         Assert.Contains("衣物油光", manifest);
+        Assert.Contains("油光强度", manifest);
     }
 
     [Fact]
