@@ -73,8 +73,10 @@ public sealed class OilGlossService(
             return applied;
         }, cancellationToken).ConfigureAwait(false);
 
+        // 加油光后**必须**有菜单：三行油光只在菜单里。哪怕这个 Mod 完全没有 [Key*]，
+        // 也顺手生成一份只含油光行的菜单，用户不用再手动点「生成菜单」。
         if (result.Status == OilGlossApplyStatus.Applied)
-            await RegenerateMenuIfPresentAsync(mod, cancellationToken).ConfigureAwait(false);
+            await RegenerateMenuAsync(mod, createIfMissing: true, cancellationToken).ConfigureAwait(false);
 
         return result;
     }
@@ -86,14 +88,14 @@ public sealed class OilGlossService(
             .ConfigureAwait(false);
 
         if (result.Success)
-            await RegenerateMenuIfPresentAsync(mod, cancellationToken).ConfigureAwait(false);
+            await RegenerateMenuAsync(mod, createIfMissing: false, cancellationToken).ConfigureAwait(false);
 
         return result;
     }
 
-    private async Task RegenerateMenuIfPresentAsync(ISkinMod mod, CancellationToken cancellationToken)
+    private async Task RegenerateMenuAsync(ISkinMod mod, bool createIfMissing, CancellationToken cancellationToken)
     {
-        if (!inGameMenuService.HasGeneratedMenu(mod))
+        if (!createIfMissing && !inGameMenuService.HasGeneratedMenu(mod))
             return;
 
         try
