@@ -81,7 +81,18 @@ Phase 0（实机，2026-11-09）已通过：
   和主 `mod.ini` 里的组件共用 `$\JasmOilPhase0\oil_body`；一次菜单点击同时控制两份文件的网格，
   日志里两个文件的所有组件都带着同一个 `oil_body` 条件。多 ini 共享变量成立。
 
-仅剩：用带本功能的新 JASM 构建做一次 UI 冒烟（详情页开启 / 撤销 + F7 三行）。
+UI 冒烟（2026-11-09，集成分支构建）：
+
+- 详情页「开启油光」→ 状态变为「已开启（身体 / 衣物）」；`JASM_Oil.ini`、
+  `JASM_Oil/manifest.json`、`Matcap.ini`、`Oil/`、`mod.ini.jasm_oil.bak` 全部落盘；
+- F7 菜单前三行是「油光总开关 / 身体油光 / 衣物油光」（注入行，中文标签）；
+- 实机画面油光可见；「撤销油光」能完整还原作者 ini 并删除 JASM 产物。
+
+自动分组修正（同日）：仅按索引数会选中 `$draw_component_*` 默认关闭、实际不绘制的网格
+（例如 `_3_005` / `_3_022`），补丁打上但默认造型看不到油光。新增
+`OilGlossConditionEvaluator`：读取 `[Constants]` 的 `global` 默认值，再让
+`[CommandListProcessToggles]` 里的重算赋值覆盖它，自动分组优先选默认可见的 drawcall。
+本机 rover Mod 因此从 `_3_005`/`_3_022` 改为 `_3_002`（身体）/ `_3_028`（衣物）。
 
 ---
 
@@ -207,10 +218,13 @@ Oil/Oil_Normal.dds  Empty_Normal.dds  Wet.dds
 分组：
 
 1. 排除头部：条件变量 / 贴图槽 / 紧邻注释里出现 `hat / hair / face / eye / brow / head`；
-2. **身体组** = 索引数（`drawindexed` 第一个参数）最大的那一块；
-3. **衣物组** = 排除头部后、除身体外最大的那一块；
-4. 只有一块 drawcall 时：身体组 = 它，衣物组为空；
-5. 衣物组为空时，菜单不显示「衣物油光」行。
+2. **优先默认可见**：读取 `[Constants]` 的 `global` 默认值，再让
+   `[CommandListProcessToggles]` 里的 `$draw_component_* = (...)` 重算赋值覆盖它，
+   只在默认可见的 drawcall 里选；求不出可见性的按可见处理，全部被判定隐藏时退回全体；
+3. **身体组** = 候选里索引数（`drawindexed` 第一个参数）最大的一块；
+4. **衣物组** = 除身体外最大的一块；
+5. 只有一块 drawcall 时：身体组 = 它，衣物组为空；
+6. 衣物组为空时，菜单不显示「衣物油光」行。
 
 **已知局限**（写进详情页说明）：
 
