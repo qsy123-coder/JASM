@@ -370,7 +370,8 @@ public sealed partial class ModPaneVM(
             panel.Children.Add(new TextBlock
             {
                 Text = "不知道哪块是身体？逐块点「试亮」，回游戏看哪块变亮。"
-                       + "确认后选分组：身体 / 衣物 / 不包（头发选「不包」）。",
+                       + "确认后选分组：身体 / 衣物 / 不包（头发选「不包」）。"
+                       + "全部选「不包」= 关闭这个 Mod 的油光。",
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 12,
             });
@@ -494,6 +495,16 @@ public sealed partial class ModPaneVM(
                         _ => (OilGlossGroup?)null,
                     },
                 }).ToList();
+
+                // 全部选「不包」= 关闭这个 Mod 的油光（包括试亮留下的临时补丁）。
+                if (selected.All(c => c.Group is null))
+                {
+                    if (_oilGlossService.GetStatus(mod).State is not OilGlossState.NotApplied)
+                        await DisableOilGlossAsync();
+                    else
+                        RefreshOilGlossStatus();
+                    return;
+                }
 
                 var applied = await _oilGlossService.ApplyCustomGroupsAsync(mod, selected, _cancellationToken);
                 if (applied.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
