@@ -17,6 +17,7 @@ using GIMI_ModManager.Core.Entities;
 using GIMI_ModManager.Core.Entities.Mods.Contract;
 using GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 using GIMI_ModManager.Core.Helpers;
+using GIMI_ModManager.Core.Services.OilGloss;
 using GIMI_ModManager.WinUI.Services;
 using GIMI_ModManager.WinUI.Services.AppManagement;
 using GIMI_ModManager.WinUI.Models.Settings;
@@ -34,7 +35,8 @@ public sealed partial class ModPaneVM(
     NotificationManager notificationService,
     ModSettingsService modSettingsService,
     ImageHandlerService imageHandlerService,
-    InGameMenuService inGameMenuService)
+    InGameMenuService inGameMenuService,
+    OilGlossService oilGlossService)
     : ObservableRecipient, IRecipient<ModChangedMessage>
 {
     private readonly ILogger _logger = Log.ForContext<ModPaneVM>();
@@ -43,6 +45,7 @@ public sealed partial class ModPaneVM(
     private readonly ModSettingsService _modSettingsService = modSettingsService;
     private readonly ImageHandlerService _imageHandlerService = imageHandlerService;
     private readonly InGameMenuService _inGameMenuService = inGameMenuService;
+    private readonly OilGlossService _oilGlossService = oilGlossService;
     private readonly ILanguageLocalizer _localizer = App.GetService<ILanguageLocalizer>();
 
     private readonly AsyncLock _loadModLock = new();
@@ -69,6 +72,32 @@ public sealed partial class ModPaneVM(
     [ObservableProperty] private bool _isInGameMenuBusy;
 
     public bool HasInGameMenuStatus => !string.IsNullOrEmpty(InGameMenuStatusText);
+
+    /// <summary>当前游戏是否支持油光（仅鸣潮）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleOilGloss))]
+    private bool _isOilGlossSupported;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleOilGloss))]
+    [NotifyCanExecuteChangedFor(nameof(EnableOilGlossCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DisableOilGlossCommand))]
+    private bool _isOilGlossApplied;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(EnableOilGlossCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DisableOilGlossCommand))]
+    private bool _isOilGlossBusy;
+
+    /// <summary>油光状态文案；空 = 不显示。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOilGlossStatus))]
+    private string _oilGlossStatusText = string.Empty;
+
+    public bool HasOilGlossStatus => !string.IsNullOrEmpty(OilGlossStatusText);
+
+    /// <summary>按钮区域是否显示（仅支持的游戏 + 已加载 Mod）。</summary>
+    public bool CanToggleOilGloss => IsOilGlossSupported && IsModLoaded;
 
     private Guid? _loadedModId;
     private CharacterSkinEntry? _loadedMod;
@@ -182,6 +211,7 @@ public sealed partial class ModPaneVM(
         _loadedModId = modId;
         IsReadOnly = false;
         RefreshInGameMenuStatus();
+        RefreshOilGlossStatus();
     }
 
     private void ModModel_PropertyChanged(object? sender, PropertyChangedEventArgs e) => SaveModSettingsCommand.NotifyCanExecuteChanged();
@@ -193,6 +223,8 @@ public sealed partial class ModPaneVM(
         _loadedMod = null;
         IsInGameMenuGenerated = false;
         InGameMenuStatusText = string.Empty;
+        IsOilGlossApplied = false;
+        OilGlossStatusText = string.Empty;
         if (ModModel.IsLoaded)
             ModModel.PropertyChanged -= ModModel_PropertyChanged;
         ModModel = new ModPaneFieldsVm();
@@ -211,6 +243,117 @@ public sealed partial class ModPaneVM(
 
         IsInGameMenuGenerated = _inGameMenuService.HasGeneratedMenu(_loadedMod.Mod);
         InGameMenuStatusText = IsInGameMenuGenerated ? "已生成游戏内菜单（F7 打开，↑/↓ 选择，F9 切换）" : string.Empty;
+    }
+
+    /// <summary>刷新「详情页 → 油光」的状态。只有鸣潮显示入口。</summary>
+    private void RefreshOilGlossStatus()
+    {
+        if (!IsModLoaded)
+        {
+            IsOilGlossSupported = false;
+            IsOilGlossApplied = false;
+            OilGlossStatusText = string.Empty;
+            OnPropertyChanged(nameof(CanToggleOilGloss));
+            return;
+        }
+
+        IsOilGlossSupported = _oilGlossService.IsSupported;
+        var status = _oilGlossService.GetStatus(_loadedMod.Mod);
+        IsOilGlossApplied = status.State is OilGlossState.Applied or OilGlossState.Conflict;
+        OilGlossStatusText = status.State switch
+        {
+            OilGlossState.Applied => status.Manifest is { HasClothGroup: true }
+                ? "已开启（身体 / 衣物）"
+                : "已开启（仅身体）",
+            OilGlossState.Broken => "补丁不完整：" + status.Reason,
+            OilGlossState.Conflict => "补丁文件被修改：" + status.Reason,
+            _ => "未开启",
+        };
+
+        OnPropertyChanged(nameof(CanToggleOilGloss));
+        EnableOilGlossCommand.NotifyCanExecuteChanged();
+        DisableOilGlossCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanEnableOilGloss() => CanToggleOilGloss && !IsOilGlossApplied && !IsOilGlossBusy;
+
+    private bool CanDisableOilGloss() => CanToggleOilGloss && IsOilGlossApplied && !IsOilGlossBusy;
+
+    /// <summary>详情页「开启油光」：复制本体 → 自动分组 → 打补丁 → 重建已有菜单。</summary>
+    [RelayCommand(CanExecute = nameof(CanEnableOilGloss))]
+    private async Task EnableOilGlossAsync()
+    {
+        if (!IsModLoaded)
+            return;
+
+        var mod = _loadedMod.Mod;
+        IsOilGlossBusy = true;
+        try
+        {
+            var result = await _oilGlossService.EnableAsync(mod, _cancellationToken);
+
+            if (result.Status is OilGlossApplyStatus.Applied or OilGlossApplyStatus.AlreadyApplied)
+            {
+                RefreshOilGlossStatus();
+                RefreshInGameMenuStatus();
+                if (result.Status == OilGlossApplyStatus.Applied)
+                {
+                    var hint = _inGameMenuService.HasGeneratedMenu(mod)
+                        ? "按 F7 打开游戏内菜单即可切换身体 / 衣物油光"
+                        : "生成游戏内菜单后，可在 F7 里切换身体 / 衣物油光";
+                    _notificationService.ShowNotification("油光已开启", hint, null);
+                }
+            }
+            else
+            {
+                IsOilGlossApplied = false;
+                OilGlossStatusText = (result.Status == OilGlossApplyStatus.NoDrawcalls ? "没有可包油光的网格：" : "开启失败：")
+                                     + result.Reason;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[OilGloss] 详情页开启油光失败");
+            OilGlossStatusText = "开启失败：" + e.Message;
+        }
+        finally
+        {
+            IsOilGlossBusy = false;
+        }
+    }
+
+    /// <summary>详情页「撤销油光」：还原作者 ini、删除 JASM 产物、重建菜单。</summary>
+    [RelayCommand(CanExecute = nameof(CanDisableOilGloss))]
+    private async Task DisableOilGlossAsync()
+    {
+        if (!IsModLoaded)
+            return;
+
+        var mod = _loadedMod.Mod;
+        IsOilGlossBusy = true;
+        try
+        {
+            var result = await _oilGlossService.DisableAsync(mod, _cancellationToken);
+            if (result.Success)
+            {
+                RefreshOilGlossStatus();
+                RefreshInGameMenuStatus();
+                _notificationService.ShowNotification("油光已撤销", "作者 ini 已还原，油光菜单行会在菜单重建后消失", null);
+            }
+            else
+            {
+                OilGlossStatusText = "撤销失败：" + result.Reason;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Warning(e, "[OilGloss] 详情页撤销油光失败");
+            OilGlossStatusText = "撤销失败：" + e.Message;
+        }
+        finally
+        {
+            IsOilGlossBusy = false;
+        }
     }
 
     /// <summary>详情页的「生成游戏内菜单」。已有作者可点击菜单时会被生成器跳过。</summary>
