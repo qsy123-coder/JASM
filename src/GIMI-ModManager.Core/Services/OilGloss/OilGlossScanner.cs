@@ -9,7 +9,11 @@ namespace GIMI_ModManager.Core.Services.OilGloss;
 ///   <item>只处理 <c>[TextureOverride*]</c> 段落里的 drawcall（命令列表里的透明层绘制包了也无效）；</item>
 ///   <item>忽略数量为 0 的 drawindexed（WWMI 模型里常见，包上会变成空的资源切换）；</item>
 ///   <item>只包 <c>[TextureOverrideComponent3]</c> 及以后的段落 —— 官方说明身体/衣物的 drawcall
-///         通常在这里，而 Component0–2 是脸 / 头发 / 头饰。Mod 完全没有 Component3+ 时就包全部。</item>
+///         通常在这里，而 Component0–2 是身体绒毛 / 头发 / 脸；</item>
+///   <item>Mod 完全没有 ComponentN 段落时（作者用自定义段落名），包所有
+///         <c>[TextureOverride*]</c> 里的 drawcall，但跳过命中头部关键词的段落；</item>
+///   <item>只有 Component0–2 的 Mod 直接跳过，不再回退成「包全部」——
+///         回退会让纯发型 Mod 的头发也上油光。</item>
 /// </list>
 ///
 /// 不做身体/衣物分组：同一个 drawcall 经常同时包含身体和衣物，拆成两个开关只会做出
@@ -28,6 +32,14 @@ public static class OilGlossScanner
         new(@"^\s*drawindexed\s*=\s*(\d+)\s*,\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ComponentIndexRegex =
         new(@"TextureOverrideComponent(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// 头部关键词（与 split_oil.py 一致）。只用于**排除**，不做身体识别。
+    /// 用词边界避免 "that" / "thread" 之类的误判。
+    /// </summary>
+    private static readonly Regex HeadKeywordRegex = new(
+        @"(?<![A-Za-z0-9])(hair|head|face|eye|brow|hat)(?![A-Za-z0-9])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>扫描整个 Mod 目录。单个文件读失败不会拖垮整次扫描。</summary>
     public static OilGlossScanResult Scan(string modFolderPath)
@@ -61,13 +73,14 @@ public static class OilGlossScanner
         if (drawcalls.Count == 0)
             return new OilGlossScanResult { Reason = "没有找到可包油光的 drawindexed" };
 
-        // 只有 Mod 确实存在 Component3+ 的网格时，才把 0–2 当脸/头发排除。
-        // 如果整个 Mod 只有 0–2（少数老 Mod 的身体就在 Component0），就全部包上。
-        var hasLaterComponents = drawcalls.Any(d => GetComponentIndex(d) >= 3);
+        // 有 ComponentN 段落时，只认 Component3+：0–2 是头，非组件段落（自定义名）
+        // 也不在官方身体/衣物约定里，一并排除。完全没有组件段落时才走「包全部」。
+        var hasComponentSections = drawcalls.Any(d => GetComponentIndex(d) >= 0);
         var annotated = drawcalls
             .Select(d => d with
             {
-                IsHeadLike = hasLaterComponents && GetComponentIndex(d) is >= 0 and <= 2,
+                IsHeadLike = d.IsHeadLike
+                             || (hasComponentSections && GetComponentIndex(d) < 3),
             })
             .ToList();
 
@@ -90,6 +103,7 @@ public static class OilGlossScanner
         var lines = text.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
         var result = new List<OilGlossDrawcall>();
         var section = string.Empty;
+        var sectionHasHeadKeyword = false;
 
         for (var i = 0; i < lines.Length; i++)
         {
@@ -97,11 +111,17 @@ public static class OilGlossScanner
             if (sectionMatch.Success)
             {
                 section = sectionMatch.Groups[1].Value.Trim();
+                sectionHasHeadKeyword = HeadKeywordRegex.IsMatch(section);
                 continue;
             }
 
             if (!section.StartsWith("TextureOverride", StringComparison.OrdinalIgnoreCase))
                 continue;
+
+            // 条件 / 注释 / 贴图绑定里出现 hair/head/face… 时，整段都按头部处理。
+            // 宁可少包，也不要把头发包进油光。
+            if (!sectionHasHeadKeyword && HeadKeywordRegex.IsMatch(lines[i]))
+                sectionHasHeadKeyword = true;
 
             var drawMatch = DrawIndexedRegex.Match(lines[i]);
             if (!drawMatch.Success)
@@ -118,6 +138,7 @@ public static class OilGlossScanner
                 LineIndex = i,
                 IndexCount = indexCount,
                 StartIndex = int.Parse(drawMatch.Groups[2].Value),
+                IsHeadLike = sectionHasHeadKeyword || IsHeadComponent(section),
             });
         }
 
@@ -136,7 +157,7 @@ public static class OilGlossScanner
             return new OilGlossScanResult
             {
                 Drawcalls = drawcalls,
-                Reason = "只找到 Component0–2（脸/头发）里的 drawcall，已全部排除",
+                Reason = "只找到脸/头发/头部网格（Component0–2 或命中头部关键词），已全部排除",
             };
         }
 
@@ -157,11 +178,16 @@ public static class OilGlossScanner
         };
     }
 
-    private static int GetComponentIndex(OilGlossDrawcall draw)
+    private static int GetComponentIndex(OilGlossDrawcall draw) => GetComponentIndex(draw.SectionName);
+
+    private static int GetComponentIndex(string sectionName)
     {
-        var match = ComponentIndexRegex.Match(draw.SectionName);
+        var match = ComponentIndexRegex.Match(sectionName);
         return match.Success && int.TryParse(match.Groups[1].Value, out var index) ? index : -1;
     }
+
+    /// <summary>Component0–2 = 身体绒毛 / 头发 / 脸，默认不包油光。</summary>
+    private static bool IsHeadComponent(string sectionName) => GetComponentIndex(sectionName) is >= 0 and <= 2;
 
     private static bool IsSame(OilGlossDrawcall? left, OilGlossDrawcall? right)
         => left is not null
