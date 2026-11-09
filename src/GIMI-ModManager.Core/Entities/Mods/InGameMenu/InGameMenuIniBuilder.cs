@@ -41,6 +41,27 @@ public sealed record InGameMenuOptions
     public string DetectionVariable { get; init; } = string.Empty;
 
     /// <summary>
+    /// 多套形态（普通 / 大招）时，每个真正设置 <c>$object_detected = 1</c> 的文件各有一个命名空间。
+    /// 只要<b>任意一个</b>为 1（<c>||</c>）就认为角色在场；全部不为 1 才把菜单关掉。
+    ///
+    /// 只取「第一条可点击行所在文件」的命名空间是不够的：作者常把按钮放在
+    /// <c>02_xxx.ini</c>、把 <c>$object_detected</c> 放在 <c>05_xxx.ini</c>，那样门控永远为 0，
+    /// 菜单从未出现过——这是「多 ini Mod 菜单不显示」的根因。
+    /// </summary>
+    public IReadOnlyList<string> DetectionVariables { get; init; } = [];
+
+    /// <summary>
+    /// 与 <see cref="DetectionVariables"/> 并行的第二信号：Mod 里设置
+    /// <c>$object_detected = 1</c> 的每个 TextureOverride 段所用的 <c>hash</c>。
+    ///
+    /// 菜单自己生成 <c>[TextureOverrideJasmDetect_*]</c> 段匹配这些 hash，只要该作者的网格
+    /// 被绘制就刷新 <c>last_seen</c>。它完全不依赖变量命名空间 / <c>$object_detected</c>
+    /// 是否真的被赋值，因此能覆盖变量门控失效的 Mod（未来新增的 Mod 也一样）。
+    /// 两个信号取「或」：任一成立就认为角色在场。
+    /// </summary>
+    public IReadOnlyList<string> DetectionHashes { get; init; } = [];
+
+    /// <summary>
     /// 生成器版本，写进 ini 头与 manifest，便于日后失效重生成。
     ///
     /// v3：命中检测改用 <c>cursor_screen_x/y</c>。v2 用 <c>cursor_x/y</c>，
@@ -72,8 +93,15 @@ public sealed record InGameMenuOptions
     /// v26：改用随包分发的 HYWenHei-85W 字体 + 3× 超采样渲染。
     /// v27：补入尤诺 132 个 mod 扫描出的标签翻译。
     /// v28：补齐尤诺菜单剩余 Pluses/Lets 两行。
+    /// v29：门控改为收集所有设置 <c>$object_detected = 1</c> 的命名空间并 <c>||</c> 串联。
+    ///      修多 ini / 多形态 Mod 门控指向错误命名空间、菜单永远不显示的问题。
+    /// v30：门控增加「纹理 hash 检测」并行信号（任意形态命中即在场），变量门控失效时仍能显示；
+    ///      启用/禁用 Mod 后立即生成菜单，不再依赖重启 JASM 触发的启动补齐。
+    /// v31：生成后自检纹理数量，缺一张就整体重试；仍缺则报失败（修「静默生成 0 张纹理」的残缺菜单）。
+    /// v32：纹理 hash 只在没有 per-character 变量时兜底；有变量时不再叠加，修「两个角色菜单同时出现」。
+    /// v33：门控里只要存在命名空间变量，就丢掉全局 <c>$object_detected</c>（全局量是所有 Mod 共享的）。
     /// </summary>
-    public const int CurrentGeneratorVersion = 28;
+    public const int CurrentGeneratorVersion = 33;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -86,6 +114,21 @@ public sealed record InGameMenuOptions
 
     /// <summary>要隐藏的行（<see cref="ModIniToggleRow.Key"/> 列表）。</summary>
     public IReadOnlyCollection<string> HiddenRows { get; init; } = [];
+
+    /// <summary>
+    /// 由调用方直接注入的额外行（如油光总开关 / 身体 / 衣物），固定排在菜单最前面。
+    ///
+    /// 为什么不用「在 ini 里写无 key 的 <c>[Key*]</c> 段」：3DMigoto 是否接受没有
+    /// <c>key =</c> 的段落未经实机验证，且行顺序/标签不好控制。注入行完全由代码决定。
+    /// </summary>
+    public IReadOnlyList<ModIniToggleRow> ExtraRows { get; init; } = [];
+
+    /// <summary>
+    /// 不参与菜单解析的命名空间。默认排除 KatFXMatcap 本体自带的
+    /// <c>[KeyOilToggle]</c> / <c>[KeyOilIncrease]</c> / <c>[KeyOilDecrease]</c>，
+    /// 避免菜单里多出三行强度/样式开关（物理键仍然可用）。
+    /// </summary>
+    public IReadOnlyCollection<string> ExcludedNamespaces { get; init; } = ["KatFXMatcap"];
 
     /// <summary>菜单皮肤；换皮肤后需要重建菜单。</summary>
     public MenuTheme Theme { get; init; } = MenuThemes.Reference;
@@ -468,22 +511,36 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"global {v}first_frame = 1");
         ini.AppendLine($"global {v}last_seen = -1000");
         ini.AppendLine($"global {v}age = 0");
+        ini.AppendLine($"global {v}present = 0");
         ini.AppendLine();
     }
 
     /// <summary>
-    /// 逐角色检测：用 Mod 自己设置 <c>$object_detected = 1</c> 时的纹理 hash，
+    /// 逐角色检测：用 Mod 里设置 <c>$object_detected = 1</c> 的纹理 hash，
     /// 只有该角色的模型在绘制时才会刷新 <c>last_seen</c>。
+    /// 多套形态可以有多个 hash，任意一个命中都算角色在场。
     /// </summary>
     private static void AppendDetector(StringBuilder ini, string v, string token, InGameMenuOptions options)
     {
-        if (string.IsNullOrWhiteSpace(options.DetectionHash))
-            return;
+        var hashes = options.DetectionHashes.Count > 0
+            ? options.DetectionHashes
+            : string.IsNullOrWhiteSpace(options.DetectionHash)
+                ? []
+                : [options.DetectionHash];
 
-        ini.AppendLine($"[{DetectorSection(token)}]");
-        ini.AppendLine($"hash = {options.DetectionHash}");
-        ini.AppendLine($"{v}last_seen = time");
-        ini.AppendLine();
+        var index = 0;
+        foreach (var hash in hashes)
+        {
+            if (string.IsNullOrWhiteSpace(hash))
+                continue;
+
+            var section = index == 0 ? DetectorSection(token) : $"{DetectorSection(token)}_{index}";
+            ini.AppendLine($"[{section}]");
+            ini.AppendLine($"hash = {hash}");
+            ini.AppendLine($"{v}last_seen = time");
+            ini.AppendLine();
+            index++;
+        }
     }
 
     private static void AppendPresent(StringBuilder ini, string v, string token, InGameMenuOptions options,
@@ -526,41 +583,52 @@ public static class InGameMenuIniBuilder
         ini.AppendLine($"{v}key_pulse_prev = {v}key_pulse");
         ini.AppendLine();
 
-        // 有 DetectionVariable 时用 Mod 自己的 object_detected（补 namespace 后已按 Mod 隔离），
-        // 不再靠 hash 猜测：hash 可能命中共享资源，导致多份菜单同时亮。
-        if (string.IsNullOrWhiteSpace(options.DetectionVariable)
-            && !string.IsNullOrWhiteSpace(options.DetectionHash))
-        {
-            ini.AppendLine("; 逐角色门控：超过 0.5s 没检测到该角色模型就关闭菜单");
-            ini.AppendLine($"{v}age = time - {v}last_seen");
-            ini.AppendLine($"if {v}age >= 0.5");
-            ini.AppendLine($"    {v}open = 0");
-            ini.AppendLine("endif");
-            ini.AppendLine();
-        }
+        // 门控变量集合：多套形态（普通 / 大招）各自有一个 object_detected 时全部列出。
+        // 单个变量时输出与旧版完全一致；多个变量用 ||（任意形态在场即显示）。
+        var detectionVariables = new List<string>();
+        if (options.DetectionVariables.Count > 0)
+            detectionVariables.AddRange(options.DetectionVariables);
+        else if (!string.IsNullOrWhiteSpace(options.DetectionVariable))
+            detectionVariables.Add(options.DetectionVariable);
+        else if (options.GateOnObjectDetected)
+            detectionVariables.Add("$object_detected");
+
+        // 两个信号取“或”：作者变量（多形态 = 多个命名空间）或纹理 hash（多形态 = 多个 hash）。
+        // 任一成立就算角色在场。hash 不依赖变量命名空间，是变量门控失效时的兜底。
+        var hasDetectionHashes = options.DetectionHashes.Count > 0
+                                 || !string.IsNullOrWhiteSpace(options.DetectionHash);
+        var hasGate = hasDetectionHashes || detectionVariables.Count > 0;
 
         // 角色不在场时自动关闭：呼出键会翻转所有菜单的 open，但只有当前角色那份能留下；
         // 其余在同帧被压回 0，避免多份菜单叠在一起，也避免切角色后突然弹出。
-        if (!string.IsNullOrWhiteSpace(options.DetectionVariable))
+        if (hasGate)
         {
-            ini.AppendLine($"if {options.DetectionVariable} == 0");
-            ini.AppendLine($"    {v}open = 0");
-            ini.AppendLine("endif");
-            ini.AppendLine();
-        }
-        else if (options.GateOnObjectDetected)
-        {
-            ini.AppendLine("if $object_detected == 0");
+            ini.AppendLine($"{v}present = 0");
+            if (hasDetectionHashes)
+            {
+                ini.AppendLine("; 纹理 hash 检测：0.5s 内见过作者的网格就算在场");
+                ini.AppendLine($"{v}age = time - {v}last_seen");
+                ini.AppendLine($"if {v}age < 0.5");
+                ini.AppendLine($"    {v}present = 1");
+                ini.AppendLine("endif");
+            }
+
+            if (detectionVariables.Count > 0)
+            {
+                ini.AppendLine($"if {string.Join(" || ", detectionVariables.Select(x => x + " == 1"))}");
+                ini.AppendLine($"    {v}present = 1");
+                ini.AppendLine("endif");
+            }
+
+            ini.AppendLine($"if {v}present == 0");
             ini.AppendLine($"    {v}open = 0");
             ini.AppendLine("endif");
             ini.AppendLine();
         }
 
         ini.AppendLine($"if {v}open == 1");
-        if (!string.IsNullOrWhiteSpace(options.DetectionVariable))
-            ini.AppendLine($"if {options.DetectionVariable} == 1");
-        else if (options.GateOnObjectDetected)
-            ini.AppendLine("if $object_detected == 1");
+        if (hasGate)
+            ini.AppendLine($"if {v}present == 1");
 
         // 必须用 cursor_screen_x/y（物理屏幕像素），不能用 cursor_x/y：
         // 后者在游戏隐藏光标时**冻结**在上一次可见位置，菜单能画出来但鼠标永远落不进
@@ -628,9 +696,9 @@ public static class InGameMenuIniBuilder
         ini.AppendLine("    endif");
         ini.AppendLine();
         ini.AppendLine($"    run = {MenuDrawCommandList(token)}");
-        // 逐个关闭门控 if：DetectionVariable 和 GateOnObjectDetected 都会额外开一层。
-        // 漏掉任何一个 endif，3DMigoto 会把绘制当成无条件执行 —— 表现为「F7 改了 open 但菜单不消失」。
-        if (!string.IsNullOrWhiteSpace(options.DetectionVariable) || options.GateOnObjectDetected)
+        // 门控 if 会额外开一层；漏掉 endif 会让 3DMigoto 把绘制当成无条件执行
+        // —— 表现为「F7 改了 open 但菜单不消失」。
+        if (hasGate)
             ini.AppendLine("endif");
         ini.AppendLine("endif");
         ini.AppendLine();
