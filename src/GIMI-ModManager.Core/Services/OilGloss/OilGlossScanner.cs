@@ -27,31 +27,29 @@ public static class OilGlossScanner
     private static readonly string[] SkippedFilePrefixes =
         ["disabled_", "_depth", "light"];
 
+    /// <summary>
+    /// 这些条件只是 WWMI 的「状态缓存 / 已检测」守卫，与网格是否可见无关；
+    /// 拿它们判断可见性会把整块身体排除掉。
+    /// </summary>
+    private static readonly string[] IgnoredConditionMarkers =
+        ["state_id", "mod_enabled", "object_detected"];
+
     private static readonly Regex SectionRegex = new(@"^\s*\[(.+?)\]\s*$", RegexOptions.Compiled);
     private static readonly Regex DrawIndexedRegex =
         new(@"^\s*drawindexed\s*=\s*(\d+)\s*,\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ConditionRegex = new(@"^\s*if\s+(\$[\w\\]+)", RegexOptions.Compiled);
+    private static readonly Regex IfRegex = new(@"^if\s+.+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TextureSlotRegex =
         new(@"ResourceTexture(\w+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex DrawCommentRegex = new(@"^\s*;\s*Draw\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// 扫描整个 Mod 目录。单个文件读失败不会拖垮整次扫描。
-    /// <paramref name="ignoreHairFolderGuard"/> 为 true 时跳过「发型 Mod 整包排除」的判定，
-    /// 供详情页的「调整油光分组」手动挑选身体网格使用。
     /// </summary>
-    public static OilGlossScanResult Scan(string modFolderPath, bool ignoreHairFolderGuard = false)
+    public static OilGlossScanResult Scan(string modFolderPath)
     {
         if (!Directory.Exists(modFolderPath))
         {
             return new OilGlossScanResult { Reason = "Mod 目录不存在" };
-        }
-
-        // 纯发型 Mod（名字里就写着 发型/头发/hair）整包跳过：
-        // 它的所有网格都是头发，索引位置规则分不出来，上了油光就是整头变色。
-        if (!ignoreHairFolderGuard && IsHairOnlyModFolder(modFolderPath))
-        {
-            return new OilGlossScanResult { Reason = "这是一个发型 Mod，默认不包油光" };
         }
 
         var drawcalls = new List<OilGlossDrawcall>();
@@ -116,17 +114,37 @@ public static class OilGlossScanner
         var result = new List<OilGlossDrawcall>();
         var section = string.Empty;
 
+        // 当前 drawcall 真正嵌套在哪些 if 里。必须跟踪 endif：
+        // 只看「上面最近的 if」会把已经结束的分支算进来（例如身体块被上一个
+        // "$headacc == 0" 分支误判成头部）。
+        var conditionStack = new List<string>();
+
         for (var i = 0; i < lines.Length; i++)
         {
             var sectionMatch = SectionRegex.Match(lines[i]);
             if (sectionMatch.Success)
             {
                 section = sectionMatch.Groups[1].Value.Trim();
+                conditionStack.Clear();
                 continue;
             }
 
             if (!section.StartsWith("TextureOverride", StringComparison.OrdinalIgnoreCase))
                 continue;
+
+            var trimmed = lines[i].Trim();
+            if (trimmed.StartsWith("endif", StringComparison.OrdinalIgnoreCase))
+            {
+                if (conditionStack.Count > 0)
+                    conditionStack.RemoveAt(conditionStack.Count - 1);
+                continue;
+            }
+
+            if (IfRegex.IsMatch(trimmed))
+            {
+                conditionStack.Add(GetConditionText(trimmed));
+                continue;
+            }
 
             var drawMatch = DrawIndexedRegex.Match(lines[i]);
             if (!drawMatch.Success)
@@ -137,21 +155,14 @@ public static class OilGlossScanner
                 continue;
 
             var startIndex = int.Parse(drawMatch.Groups[2].Value);
-            var condition = string.Empty;
+            var condition = GetInnermostCondition(conditionStack);
             var textureSlot = string.Empty;
 
-            // 往回最多 30 行找同一段落里的条件与贴图槽；遇到上一个段落头就停
+            // 往回最多 30 行找同一段落里的贴图槽；遇到上一个段落头就停
             for (var j = i - 1; j >= 0 && j >= i - 30; j--)
             {
                 if (SectionRegex.IsMatch(lines[j]))
                     break;
-
-                if (condition.Length == 0)
-                {
-                    var conditionMatch = ConditionRegex.Match(lines[j]);
-                    if (conditionMatch.Success)
-                        condition = conditionMatch.Groups[1].Value.Trim();
-                }
 
                 if (textureSlot.Length == 0)
                 {
@@ -187,6 +198,40 @@ public static class OilGlossScanner
         }
 
         return result;
+    }
+
+    /// <summary>去掉行尾注释后的 if 条件表达式。</summary>
+    private static string GetConditionText(string trimmedIfLine)
+    {
+        var text = trimmedIfLine["if".Length..].Trim();
+        var commentIndex = text.IndexOf(';');
+        return commentIndex >= 0 ? text[..commentIndex].Trim() : text;
+    }
+
+    /// <summary>
+    /// 取最内层的「变量条件」。JASM 自己插入的油光门控必须跳过，
+    /// 否则补过丁的文件会把 <c>$\JasmOil...\oil_body</c> 当成作者写的条件。
+    /// </summary>
+    private static string GetInnermostCondition(IReadOnlyList<string> conditionStack)
+    {
+        for (var i = conditionStack.Count - 1; i >= 0; i--)
+        {
+            var condition = conditionStack[i];
+            if (!condition.TrimStart().StartsWith('$'))
+                continue;
+
+            if (condition.Contains(OilGlossProtocol.MasterVariable, StringComparison.OrdinalIgnoreCase)
+                || condition.Contains(OilGlossProtocol.BodyVariable, StringComparison.OrdinalIgnoreCase)
+                || condition.Contains(OilGlossProtocol.ClothVariable, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (IgnoredConditionMarkers.Any(marker => condition.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            return condition;
+        }
+
+        return string.Empty;
     }
 
     /// <summary>
@@ -266,19 +311,6 @@ public static class OilGlossScanner
     {
         var haystack = (condition + " " + textureSlot + " " + comment + " " + section).ToLowerInvariant();
         return HeadKeywords.Any(haystack.Contains);
-    }
-
-    /// <summary>Mod 文件夹名直接表明是发型 Mod（如「尤诺-C酱发型」）时整包跳过。</summary>
-    private static bool IsHairOnlyModFolder(string modFolderPath)
-    {
-        var name = Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        if (name.StartsWith("DISABLED_", StringComparison.OrdinalIgnoreCase))
-            name = name["DISABLED_".Length..];
-
-        var lower = name.ToLowerInvariant();
-        return lower.Contains("发型", StringComparison.Ordinal)
-               || lower.Contains("头发", StringComparison.Ordinal)
-               || lower.Contains("hair", StringComparison.Ordinal);
     }
 
     private static bool ShouldSkip(string relativePath)
