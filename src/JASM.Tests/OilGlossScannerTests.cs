@@ -14,6 +14,31 @@ public class OilGlossScannerTests : IDisposable
     public OilGlossScannerTests() => Directory.CreateDirectory(_root);
 
     [Fact]
+    public void ExcludesTattooAndOverlayDrawCalls()
+    {
+        // 贴花用叠加 shader，包上 matcap 会在皮肤上出现贴图错误。
+        var mod = CreateMod("""
+            namespace = TestMod
+
+            [TextureOverrideComponent3]
+            ; Draw Component 3 body
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideComponent7]
+            if $draw_component_7_tattoo
+            drawindexed = 500, 900, 0
+            endif
+            """);
+
+        var result = OilGlossScanner.Scan(mod);
+
+        var tattoo = result.Drawcalls.Single(d => d.IndexCount == 500);
+        Assert.True(tattoo.IsNonOilable);
+        Assert.Null(tattoo.Group);
+        Assert.Equal(900, result.Body!.IndexCount);
+    }
+
+    [Fact]
     public void SelectsAllNonHeadDrawCalls()
     {
         var mod = CreateMod("""
