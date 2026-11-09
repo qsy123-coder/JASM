@@ -140,6 +140,12 @@ public sealed record OilGlossDrawcall
     /// <summary>是否被判定为头部/头发/脸（默认不包油光）。</summary>
     public bool IsHeadLike { get; init; }
 
+    /// <summary>
+    /// 条件变量在默认形态下是否为真；<c>null</c> 表示无法求值（按可见处理）。
+    /// 自动分组优先选可见的 drawcall，避免把补丁打到默认不绘制的网格上。
+    /// </summary>
+    public bool? VisibleByDefault { get; init; }
+
     /// <summary>自动分组结果；<c>null</c> 表示未被选中。</summary>
     public OilGlossGroup? Group { get; init; }
 }
