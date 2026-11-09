@@ -178,8 +178,10 @@ public static class OilGlossScanner
     }
 
     /// <summary>
-    /// 按 WWMI 的索引排列约定排除头部/头发：同一 ini 里最前面 18% 的 drawcall 视为头/发/脸，
-    /// 但**默认可见的最大块**永远保留（它几乎一定是身体）。少于 5 块时不启用，避免把整个小 Mod 排除。
+    /// 按 WWMI 的索引排列约定排除头部/头发：同一 ini 里最前面 10% 的 drawcall 视为头/发/脸，
+    /// **一律不包油光**。唯一例外：默认可见的最大块落在 5%–10% 区间时仍留作身体
+    /// （例如女漂的 _3_002）；落在 0%–5% 的最大块几乎一定是头发（例如阿比盖尔的长发），照样排除。
+    /// 少于 5 块时不启用，避免把整个小 Mod 排除。
     /// </summary>
     private static IReadOnlyList<OilGlossDrawcall> MarkPositionalHead(IReadOnlyList<OilGlossDrawcall> drawcalls)
     {
@@ -203,7 +205,7 @@ public static class OilGlossScanner
                 continue;
             }
 
-            var inHeadZone = list.Count(d => (d.StartIndex - minStart) / (double)span < 0.18);
+            var inHeadZone = list.Count(d => (d.StartIndex - minStart) / (double)span < 0.10);
 
             // 80% 以上都在头部区 → 这多半是纯发型/头部 Mod（发型、头饰、脸）。
             // 整体排除，绝不能让 matcap 把头发颜色改掉。
@@ -213,13 +215,17 @@ public static class OilGlossScanner
                 continue;
             }
 
+            // 头部区一律不包油光。唯一例外：起点 ≥5% 的可见块里索引数最大的那一块留作身体——
+            // 0%–5% 的块几乎一定是头发（例如阿比盖尔的长发），必须排除；
+            // 起点在 5%–10% 的身体块（例如女漂的 _3_002）要保留。
             var visible = list.Where(d => d.VisibleByDefault != false).ToList();
-            var protectedDraw = (visible.Count > 0 ? visible : list)
+            var protectedDraw = visible
+                .Where(d => (d.StartIndex - minStart) / (double)span >= 0.05)
                 .OrderByDescending(d => d.IndexCount)
-                .First();
+                .FirstOrDefault();
 
             result.AddRange(list.Select(d =>
-                !IsSame(d, protectedDraw) && (d.StartIndex - minStart) / (double)span < 0.18
+                !IsSame(d, protectedDraw) && (d.StartIndex - minStart) / (double)span < 0.10
                     ? d with { IsHeadLike = true }
                     : d));
         }
