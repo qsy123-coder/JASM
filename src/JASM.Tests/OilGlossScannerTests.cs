@@ -344,6 +344,27 @@ public class OilGlossScannerTests : IDisposable
         Assert.Contains("头部", result.Reason);
     }
 
+    [Fact]
+    public void SkipsHairOnlyModFolderByName()
+    {
+        var mod = Path.Combine(_root, "尤诺-C酱发型 by 布鲁加尔");
+        Directory.CreateDirectory(mod);
+        File.WriteAllText(Path.Combine(mod, "mod.ini"), """
+            namespace = TestMod
+
+            [TextureOverrideComponent0]
+            drawindexed = 900, 0, 0
+
+            [TextureOverrideComponent1]
+            drawindexed = 500, 900, 0
+            """, new UTF8Encoding(false));
+
+        var result = OilGlossScanner.Scan(mod);
+
+        Assert.Null(result.Body);
+        Assert.Contains("发型", result.Reason);
+    }
+
     public void Dispose()
     {
         try
