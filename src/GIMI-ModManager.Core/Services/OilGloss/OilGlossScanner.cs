@@ -89,10 +89,26 @@ public static class OilGlossScanner
             .Select(d => d with { VisibleByDefault = OilGlossConditionEvaluator.IsTrue(d.Condition, defaults) })
             .ToList();
 
-        // 头部/头发只按关键词排除（hat/hair/face/eye/brow/head）。
-        // 不再按索引区间猜：WWMI 的组件顺序不固定，按位置猜会把「最大的身体块」
-        // 当成头发排掉，出现「身体没油光、头发反而变色」。头部没名字的包用
-        // 详情页「调整分组」手动指定。
+        // 头部/头发先按关键词排除（hat/hair/face/eye/brow/head）。
+        // 不按索引区间猜：WWMI 的组件顺序不固定，按位置猜会把「最大的身体块」
+        // 当成头发排掉，出现「身体没油光、头发反而变色」。
+        //
+        // 有网格数据时补上每块的高度范围：整块都在 78% 以上的（脸/头发/头饰）
+        // 直接不包油光，身体则优先选「从下半身覆盖到躯干」的那块。
+        var heights = OilGlossMeshGeometry.TryAnalyze(modFolderPath, annotated);
+        if (heights is not null)
+        {
+            annotated = annotated
+                .Select(d => heights.TryGetValue((d.IniRelativePath, d.StartIndex, d.IndexCount), out var range)
+                    ? d with
+                    {
+                        HeightMin = range.Min,
+                        HeightMax = range.Max,
+                        IsHeadLike = d.IsHeadLike || range.Min >= 0.78,
+                    }
+                    : d)
+                .ToList();
+        }
 
         return Group(annotated);
     }
@@ -262,15 +278,15 @@ public static class OilGlossScanner
         var visible = candidates.Where(d => d.VisibleByDefault != false).ToList();
         var pool = visible.Count > 0 ? visible : candidates;
 
-        var largest = pool.OrderByDescending(d => d.IndexCount).First();
+        var bodyAnchor = ChooseBodyAnchor(pool);
 
-        // 身体：同一材质槽的整组网格。材质槽读不出来时退化回「只有最大块」。
-        var bodySet = !string.IsNullOrEmpty(largest.TextureSlot)
-            ? pool.Where(d => string.Equals(d.TextureSlot, largest.TextureSlot, StringComparison.OrdinalIgnoreCase)).ToList()
-            : new List<OilGlossDrawcall> { largest };
+        // 身体：同一材质槽的整组网格。材质槽读不出来时退化回「只有身体锚点」。
+        var bodySet = !string.IsNullOrEmpty(bodyAnchor.TextureSlot)
+            ? pool.Where(d => string.Equals(d.TextureSlot, bodyAnchor.TextureSlot, StringComparison.OrdinalIgnoreCase)).ToList()
+            : new List<OilGlossDrawcall> { bodyAnchor };
 
         if (bodySet.Count == 0)
-            bodySet = new List<OilGlossDrawcall> { largest };
+            bodySet = new List<OilGlossDrawcall> { bodyAnchor };
 
         // 衣物：其余全部可见网格；只有一块时衣物组为空
         var clothSet = pool.Where(d => !bodySet.Any(b => IsSame(b, d))).ToList();
@@ -301,8 +317,22 @@ public static class OilGlossScanner
         };
     }
 
-    private static bool IsSame(OilGlossDrawcall? left, OilGlossDrawcall? right)
-        => left is not null
+    /// <summary>
+    /// 选身体锚点：有网格高度信息时，选「从下半身一直覆盖到躯干」且跨度最大的那块
+    /// （角色身体皮肤）；没有几何信息时退回索引数最大的一块。
+    /// </summary>
+    private static OilGlossDrawcall ChooseBodyAnchor(IReadOnlyList<OilGlossDrawcall> pool)
+    {
+        var geometric = pool
+            .Where(d => d.HeightMin is <= 0.25 && d.HeightMax is >= 0.60)
+            .OrderByDescending(d => (d.HeightMax ?? 0) - (d.HeightMin ?? 0))
+            .ThenByDescending(d => d.IndexCount)
+            .FirstOrDefault();
+
+        return geometric ?? pool.OrderByDescending(d => d.IndexCount).First();
+    }
+
+    private static bool IsSame(OilGlossDrawcall? left, OilGlossDrawcall? right)        => left is not null
            && right is not null
            && left.IniRelativePath == right.IniRelativePath
            && left.LineIndex == right.LineIndex;
