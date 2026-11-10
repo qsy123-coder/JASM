@@ -474,11 +474,11 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
-    public void DropsRowsWhoseNamespaceCannotBeWrittenIntoExpressions()
+    public void RewritesUnsafeNamespaceAndKeepsRowsUsable()
     {
-        // 作者命名空间带连字符（Mods\Xin-HunSha 是常见写法）：这个变量写进 3DMigoto
-        // 表达式会整行报 Syntax Error，取值永远显示最后一个、点击也写不对；
-        // 更糟的是无法识别的 if 会被丢掉、让里面的语句无条件执行。这类行必须整行移除。
+        // 作者命名空间带连字符（Mods\Xin-HunSha 是常见写法）：变量写进 3DMigoto 表达式
+        // 会整行报 Syntax Error（门控还会 fail-open）。v40 起生成前统一改写成 ASCII
+        // 安全名，菜单就能像普通 Mod 一样直接读写变量，而不是把行整批丢掉。
         var mod = CreateMod("HyphenRows", """
             namespace = Mods\Xin-HunSha
 
@@ -499,17 +499,23 @@ public class InGameMenuGeneratorTests : IDisposable
         var result = InGameMenuGenerator.Generate(mod);
 
         Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+
+        var authorIni = File.ReadAllText(Path.Combine(mod, "Normal", "mod.ini"));
+        Assert.Contains(IniNamespaceRewriter.RenamedMarkerPrefix + @"Mods\Xin-HunSha", authorIni);
+        var safeNs = System.Text.RegularExpressions.Regex
+            .Match(authorIni, @"namespace = (JasmNs[0-9A-F]{8})").Groups[1].Value;
+        Assert.True(safeNs.Length > 0, authorIni);
+
         var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains($@"$\{safeNs}\qunzi", menu);
         Assert.Contains(@"$\SafeNs\xiezi", menu);
         Assert.DoesNotContain("Xin-HunSha", menu);
-        Assert.DoesNotContain("[KeyQunzi]", menu);
     }
 
     [Fact]
-    public void FallsBackToHashGatingWhenNamespaceCannotBeReferenced()
+    public void GatesOnRenamedObjectDetectedVariable()
     {
-        // 变量门控写不进表达式时退回纹理 hash（纯数字，不受解析字符集限制）。
-        // 不退回就只能写一条语法错误的 if，而它会让 present 永远为 1。
+        // 改名后门控能直接指向作者的 object_detected，不必退回纹理 hash。
         var mod = CreateMod("HyphenGate", """
             namespace = Mods\Xin-HunSha
 
@@ -526,30 +532,48 @@ public class InGameMenuGeneratorTests : IDisposable
             match_first_index = 0
             $object_detected = 1
             """);
-        File.WriteAllText(Path.Combine(mod, "Normal", "02_Safe.ini"), """
-            namespace = SafeNs
-
-            [KeyShoes]
-            key = VK_UP
-            type = cycle
-            $xiezi = 0,1
-            """);
 
         var result = InGameMenuGenerator.Generate(mod);
 
         Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        var authorIni = File.ReadAllText(Path.Combine(mod, "Normal", "mod.ini"));
+        var safeNs = System.Text.RegularExpressions.Regex
+            .Match(authorIni, @"namespace = (JasmNs[0-9A-F]{8})").Groups[1].Value;
+
         var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains($@"if $\{safeNs}\object_detected == 1", menu);
+        Assert.DoesNotContain("[TextureOverrideJasmDetect_", menu);
         Assert.DoesNotContain("Xin-HunSha", menu);
-        Assert.Contains("[TextureOverrideJasmDetect_", menu);
-        Assert.Contains("hash = 9bb8b247", menu);
-        Assert.Contains("age = time -", menu);
+    }
+
+    [Fact]
+    public void RemoveRestoresRenamedNamespace()
+    {
+        var mod = CreateMod("HyphenRestore", """
+            namespace = Mods\Xin-HunSha
+
+            [KeyQunzi]
+            key = VK_DOWN
+            type = cycle
+            $qunzi = 0,1
+            """);
+        var iniPath = Path.Combine(mod, "Normal", "mod.ini");
+        var original = File.ReadAllText(iniPath);
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, InGameMenuGenerator.Generate(mod).Status);
+        Assert.NotEqual(original, File.ReadAllText(iniPath));
+
+        Assert.True(InGameMenuGenerator.Remove(mod));
+
+        Assert.Equal(original, File.ReadAllText(iniPath));
+        Assert.False(Directory.Exists(Path.Combine(mod, "Normal", "JASM_Menu")));
     }
 
     [Fact]
     public void RemovesStaleMenuWhenEveryRowVariableIsUnaddressable()
     {
-        // 旧版本会给这类 Mod 生成一份「点了没反应、按 F7 必然弹出」的菜单；
-        // 现在一条可驱动的行都不剩，旧菜单必须从磁盘上清掉，否则它还会继续串菜单。
+        // 变量名本身带连字符时改不了名（改名只针对命名空间），这一行没法被菜单读写；
+        // 只剩这种行时整个菜单不生成，旧版本留下的菜单也要清掉。
         var mod = CreateMod("HyphenOnly");
         Assert.Equal(InGameMenuGenerationStatus.Generated, InGameMenuGenerator.Generate(mod).Status);
 
@@ -557,12 +581,12 @@ public class InGameMenuGeneratorTests : IDisposable
         Assert.True(File.Exists(iniPath));
 
         File.WriteAllText(Path.Combine(mod, "Normal", "mod.ini"), """
-            namespace = Mods\Xin-HunSha
+            namespace = SafeNs
 
             [KeyQunzi]
             key = VK_DOWN
             type = cycle
-            $qunzi = 0,1
+            $bad-name = 0,1
             """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         var result = InGameMenuGenerator.Generate(mod);
