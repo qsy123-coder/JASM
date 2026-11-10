@@ -299,9 +299,6 @@ public sealed class InGameMenuService(
         return new InGameMenuOptions
         {
             ExtraRows = oilRows,
-            // 作者已有可点击菜单时，普通 Mod 仍然跳过（避免两套菜单）；
-            // 但启用了油光的 Mod 必须生成，否则油光行根本进不了 F7。
-            AllowWithExistingClickableMenu = oilRows.Count > 0,
             OpenKeyTokens = string.IsNullOrWhiteSpace(settings.OpenKeyTokens) ? "F7" : settings.OpenKeyTokens,
             OpenKeyDisplay = string.IsNullOrWhiteSpace(settings.OpenKeyDisplay) ? "F7" : settings.OpenKeyDisplay,
             MaxRowsPerPage = Math.Clamp(settings.MaxRowsPerPage, 1, 20),

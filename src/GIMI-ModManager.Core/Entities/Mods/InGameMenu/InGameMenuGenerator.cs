@@ -10,7 +10,6 @@ namespace GIMI_ModManager.Core.Entities.Mods.InGameMenu;
 public enum InGameMenuGenerationStatus
 {
     Generated,
-    SkippedExistingClickableMenu,
     SkippedNoRows,
     SkippedNoClickableRows,
     /// <summary>同一角色同时启用了多件 Mod：按「只给当前生效的那一件」规则跳过。</summary>
@@ -115,13 +114,17 @@ public static partial class InGameMenuGenerator
 
         var effectiveOptionsInput = options ?? new InGameMenuOptions();
 
+        // 作者已有可点击菜单时也照常生成：JASM 菜单只在按 F7 时显示，
+        // 不与作者常驻菜单争抢；而「[Present] + 光标 + 鼠标键」的检测规则会把
+        // 可拖动的帮助图 / 浮层误判成菜单（绯雪 mod 的 draw_image.ini）。
+        // 检测结果只用于日志，方便解释「屏幕上为什么可能有两份菜单」。
         var detection = ClickableMenuDetector.Detect(modFolderPath);
-        if (detection.HasClickableMenu && !effectiveOptionsInput.AllowWithExistingClickableMenu)
+        if (detection.HasClickableMenu)
         {
-            return new InGameMenuGenerationResult(
-                InGameMenuGenerationStatus.SkippedExistingClickableMenu,
-                null, null, 0, 0,
-                $"作者已有可点击菜单：{detection.MatchedFile}");
+            Serilog.Log.Information(
+                "[InGameMenu] 检测到作者可点击菜单，仍生成 JASM 菜单：{Mod}（{File}）",
+                Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar)),
+                detection.MatchedFile);
         }
 
         // 作者 ini 的 [Key*] 行；油光本体自带的三行按键不参与菜单

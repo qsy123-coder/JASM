@@ -673,7 +673,7 @@ public sealed partial class ModPaneVM(
         }
     }
 
-    /// <summary>详情页的「生成游戏内菜单」。已有作者可点击菜单时会被生成器跳过。</summary>
+    /// <summary>详情页的「生成游戏内菜单」。作者已有菜单时也照常生成，只有没有可切换行才跳过。</summary>
     [RelayCommand]
     private async Task GenerateInGameMenuAsync()
     {
@@ -690,7 +690,6 @@ public sealed partial class ModPaneVM(
             InGameMenuStatusText = result.Status switch
             {
                 InGameMenuGenerationStatus.Generated => "菜单已生成（F7 打开，↑/↓ 选择，F9 切换）",
-                InGameMenuGenerationStatus.SkippedExistingClickableMenu => "作者已自带可点击菜单，已跳过",
                 InGameMenuGenerationStatus.SkippedNoRows => "没有可用的 [Key*] 段落，已跳过",
                 InGameMenuGenerationStatus.SkippedNoClickableRows => "没有可切换的循环变量，已跳过",
                 _ => "生成失败：" + result.Reason,

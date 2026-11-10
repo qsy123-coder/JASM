@@ -381,8 +381,14 @@ public static partial class ModIniToggleParser
 
         foreach (var row in rows)
         {
+            // 没有显式 namespace 时，限定名只有变量名；但 3DMigoto 用 ini 路径当默认命名空间，
+            // 两个文件里的同名变量并不是同一个变量（多形态 Mod 的普通 / 大招常各写一份 $swapvar_*）。
+            // 此时按「文件 + 变量」去重，否则后一个文件的行会被整批丢掉。
+            // 有 namespace 时限定名本身就能区分文件，仍按变量去重（同文件多段绑定只留第一行）。
             var key = row.IsClickable
-                ? row.QualifiedVariable
+                ? string.IsNullOrEmpty(row.Namespace)
+                    ? row.IniRelativePath + "|" + row.VariableName
+                    : row.QualifiedVariable
                 : row.SectionName + "|" + row.IniRelativePath;
 
             if (seen.Add(key))

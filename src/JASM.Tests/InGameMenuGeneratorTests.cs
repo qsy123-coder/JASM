@@ -5,7 +5,7 @@ namespace JASM.Tests;
 
 /// <summary>
 /// 端到端（文件层）验证：生成只新增 JASM_Menu.ini + JASM_Menu/，作者 ini 字节不变；
-/// 移除能精确删干净；已有可点击菜单的 Mod 会被跳过。
+/// 移除能精确删干净；作者已有可点击菜单时仍会生成。
 /// </summary>
 public class InGameMenuGeneratorTests : IDisposable
 {
@@ -212,6 +212,61 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void KeepsEveryFormRowWhenAuthorInisHaveNoNamespace()
+    {
+        // 真实案例（心月狐）：普通 / 大招两套形态各一份 ini，变量同名、作者都没写 namespace。
+        // 首次生成必须同时保留两套行并给两个文件各补一个 ASCII namespace；
+        // 否则只剩第一套，另一套形态在游戏里没有菜单行（要靠再生成一次才“恢复”）。
+        var mod = CreateMod("MultiFormNamespaceLess", """
+            [Constants]
+            global $object_detected = 0
+
+            [KeySwapAccessory]
+            key = /
+            type = cycle
+            $swapvar_accessory = -1, 0
+
+            [TextureOverrideComponent3]
+            hash = normalhash
+            $object_detected = 1
+            """);
+        Directory.CreateDirectory(Path.Combine(mod, "ult"));
+        File.WriteAllText(Path.Combine(mod, "ult", "mod.ini"), """
+            [Constants]
+            global $object_detected = 0
+
+            [KeySwapAccessory]
+            key = /
+            type = cycle
+            $swapvar_accessory = -1, 0
+
+            [TextureOverrideComponent4]
+            hash = ulthash
+            $object_detected = 1
+            """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        var result = InGameMenuGenerator.Generate(mod);
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        Assert.Equal(2, result.ClickableRowCount);
+
+        var normalNs = System.Text.RegularExpressions.Regex.Match(
+            File.ReadAllText(Path.Combine(mod, "Normal", "mod.ini")), @"namespace = (Jasm[0-9A-F]{8})")
+            .Groups[1].Value;
+        var ultNs = System.Text.RegularExpressions.Regex.Match(
+            File.ReadAllText(Path.Combine(mod, "ult", "mod.ini")), @"namespace = (Jasm[0-9A-F]{8})")
+            .Groups[1].Value;
+
+        Assert.NotEmpty(normalNs);
+        Assert.NotEmpty(ultNs);
+        Assert.NotEqual(normalNs, ultNs);
+
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains($@"$\{normalNs}\swapvar_accessory", menu);
+        Assert.Contains($@"$\{ultNs}\swapvar_accessory", menu);
+    }
+
+    [Fact]
     public void GatesOnEveryFormNamespaceWithLogicalOr()
     {
         // 普通 / 大招两套形态各有一个 $object_detected；任意一套绘制时菜单都要显示。
@@ -362,8 +417,10 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
-    public void SkipsModThatAlreadyHasClickableMenu()
+    public void GeneratesMenuEvenWhenAuthorHasClickableMenu()
     {
+        // 可拖动的帮助图 / 浮层同样有 [Present] + 光标 + 鼠标键（绯雪 mod 的 draw_image.ini），
+        // 不能据此拒绝生成；JASM 菜单只在 F7 时显示，与作者菜单共存。
         var mod = CreateMod("MyMod");
         File.WriteAllText(Path.Combine(mod, "Normal", "menu.ini"), """
             [KeyMouseClick]
@@ -377,14 +434,14 @@ public class InGameMenuGeneratorTests : IDisposable
 
         var result = InGameMenuGenerator.Generate(mod);
 
-        Assert.Equal(InGameMenuGenerationStatus.SkippedExistingClickableMenu, result.Status);
-        Assert.False(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu.ini")));
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu.ini")));
     }
 
     [Fact]
-    public void GeneratesMenuWithExtraRowsEvenWhenAuthorHasClickableMenu()
+    public void GeneratesMenuWithExtraRowsWhenAuthorHasClickableMenu()
     {
-        // 油光补丁必须能出现在 F7 里：作者自己的可点击菜单不再是硬性跳过条件。
+        // 油光补丁必须能出现在 F7 里：作者自己的可点击菜单不再是跳过条件。
         var mod = CreateMod("MyMod");
         File.WriteAllText(Path.Combine(mod, "Normal", "menu.ini"), """
             [KeyMouseClick]
@@ -396,10 +453,7 @@ public class InGameMenuGeneratorTests : IDisposable
             run = CommandListDrawUI
             """);
 
-        var result = InGameMenuGenerator.Generate(mod, new InGameMenuOptions
-        {
-            AllowWithExistingClickableMenu = true,
-        });
+        var result = InGameMenuGenerator.Generate(mod);
 
         Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
         Assert.True(File.Exists(Path.Combine(mod, "Normal", "JASM_Menu.ini")));
