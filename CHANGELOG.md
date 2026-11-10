@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.36.1](https://github.com/qsy123-coder/JASM/compare/v2.36.0...v2.36.1) (2026-11-10)
+
+
+### Features
+
+* **ingame-menu:** 生成菜单前把作者的非法命名空间改写成 ASCII 安全名，心月狐等 Mod 恢复按键菜单 ([39d01fe](https://github.com/qsy123-coder/JASM/commit/39d01fe185af12490c5e9e0eb8751a1adcec910d))
+* **ingame-menu:** 新增变量引用合法性判定 ([9064574](https://github.com/qsy123-coder/JASM/commit/9064574e699067e87ffc84359b2d270436257958))
+
+### Bug Fixes
+
+* **ingame-menu:** 门控不再因命名空间连字符写成语法错误而「永远在场」（修复按 F7 连带打开别的角色菜单） ([d98558e](https://github.com/qsy123-coder/JASM/commit/d98558eeb5dfdbbbceb6248746adb6add0227d61))
+* **ingame-menu:** 内容哈希忽略命名空间改名，撤销油光不会误判为冲突 ([3dd306d](https://github.com/qsy123-coder/JASM/commit/3dd306dd3d1acac25a155920f19733de8a36b641))
+* **ingame-menu:** 作者已有可点击菜单时仍生成 JASM 菜单 ([d2df90d](https://github.com/qsy123-coder/JASM/commit/d2df90dbf09e1a9b2b507c2ada307e261aa80640))
+* **apphost:** 关闭主程序 / 更新器的 CET_COMPAT 标记，修复部分 Windows 10 双击无反应 ([3e599f4](https://github.com/qsy123-coder/JASM/commit/3e599f4dc09a8b62a9d8c76ec5806fdf8b551afd), [356ef19](https://github.com/qsy123-coder/JASM/commit/356ef19a3190562b1455960baf97c873d03b2832))
+* **modenv:** 按导入表检查 XXMI 启动器负载，负载不全时整包替换 ([29bf4a5](https://github.com/qsy123-coder/JASM/commit/29bf4a5d959386f919b0503d2017c90daf679617), [4012901](https://github.com/qsy123-coder/JASM/commit/4012901f168615f215f60b788c759534ae284f16))
+* **release:** 打包前校验产物不带 CET_COMPAT 标记 ([eb5855b](https://github.com/qsy123-coder/JASM/commit/eb5855b3a25e8edf9d8c6604106a6182ee5328f6))
+
 ## [2.36.0](https://github.com/qsy123-coder/JASM/compare/jasm-v2.35.1...jasm-v2.36.0) (2026-11-09)
 
 
