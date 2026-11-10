@@ -121,8 +121,11 @@ public sealed record InGameMenuOptions
     ///      不再把变量写进表达式 —— 门控退回纹理 hash，无法驱动的行整行移除。旧版本把这类
     ///      <c>if</c> 写成语法错误，3DMigoto 会丢掉条件、让 <c>present = 1</c> 无条件执行，
     ///      结果按 F7 会连带打开别的角色的菜单。
+    /// v40：不再放弃这类 Mod —— 生成前把作者的非法命名空间统一改写成 ASCII 安全名
+    ///      （<c>JasmNsXXXXXXXX</c>，带标记行，移除菜单时还原），菜单像普通 Mod 一样
+    ///      直接读写变量；只有变量名本身非法（无法改名）的行才降级为移除。
     /// </summary>
-    public const int CurrentGeneratorVersion = 39;
+    public const int CurrentGeneratorVersion = 40;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -486,7 +489,7 @@ public static class InGameMenuIniBuilder
 
         ini.AppendLine("; ============================================================");
         ini.AppendLine("; JASM 游戏内切换菜单（自动生成，请勿手改）");
-        ini.AppendLine("; 删除本文件与 JASM_Menu 目录即可完全移除；作者原有 ini 未被修改");
+        ini.AppendLine("; 删除本文件与 JASM_Menu 目录即可完全移除；作者 ini 里补写的 namespace / 命名空间改名会由「移除菜单」还原");
         ini.AppendLine($"; generator = {options.GeneratorVersion}   rows = {rowCount}   pages = {pageCount}");
         ini.AppendLine("; ============================================================");
         ini.AppendLine();
