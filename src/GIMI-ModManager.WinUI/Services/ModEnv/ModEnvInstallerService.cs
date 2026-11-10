@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using GIMI_ModManager.Core.GamesService;
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services;
 using GIMI_ModManager.WinUI.Models.ModEnvSetup;
 using GIMI_ModManager.WinUI.Models.Options;
@@ -115,10 +116,14 @@ public class ModEnvInstallerService
     /// <paramref name="mirrorTargetDirs"/> lists extra absolute folders that receive a second copy of the
     /// same payload. Used for the XXMI base package, which the official layout keeps both at the XXMI root
     /// and under <c>Resources\Packages\XXMI</c> (the installed-package copy every deployment derives from).
+    /// <paramref name="pruneStaleSubDir"/> optionally turns the install into a whole-subtree replace: a
+    /// relative directory (e.g. <c>Resources\Bin</c>) whose files are deleted from the target when the new
+    /// package does not contain them. Only the launcher uses it — its payload is Python + native extensions
+    /// that must all come from one version (see <see cref="XxmiLauncherPayloadInspector"/>).
     /// </summary>
     public async Task InstallPackageAsync(ModEnvPackage pkg, string targetRoot, string? subDir,
         IProgress<string>? progress, CancellationToken ct, IReadOnlyCollection<string>? preserveExistingFiles = null,
-        IReadOnlyCollection<string>? mirrorTargetDirs = null)
+        IReadOnlyCollection<string>? mirrorTargetDirs = null, string? pruneStaleSubDir = null)
     {
         Directory.CreateDirectory(StagingDir);
         var zipPath = await DownloadWithResumeAsync(pkg, progress, ct).ConfigureAwait(false);
@@ -135,6 +140,9 @@ public class ModEnvInstallerService
         // double the bandwidth and let one copy land while the other fails half-way.
         foreach (var mirrorDir in mirrorTargetDirs ?? Array.Empty<string>())
             await CopyToTargetAsync(extractedFolder, mirrorDir, progress, ct, preserveExistingFiles).ConfigureAwait(false);
+
+        if (!string.IsNullOrWhiteSpace(pruneStaleSubDir))
+            PruneStaleFiles(extractedFolder, targetDir, pruneStaleSubDir, progress);
 
         TryCleanup(extractRoot);
         TryCleanup(zipPath);
@@ -392,6 +400,73 @@ public class ModEnvInstallerService
         {
             DirectoryCopy(subDir, Path.Combine(destDir, Path.GetFileName(subDir)), overwrite, preserveExistingFiles);
         }
+    }
+
+    /// <summary>
+    /// 删除目标子目录里「包内没有」的文件，让这次安装成为整包替换。
+    ///
+    /// 为什么需要：<see cref="DirectoryCopy"/> 只覆盖同名文件，旧版本多出来的文件会一直留着。XXMI
+    /// 启动器对这点特别敏感 —— 它的 PyAV 扩展按**带哈希的具体 DLL 名**链接
+    /// （<c>avutil-61-&lt;hash&gt;.dll</c>），一旦 <c>av\**\*.pyd</c> 与 <c>av.libs</c> 分别来自两代，
+    /// <c>import av</c> 就会在启动器初始化阶段抛 DLL 加载失败。旧「源码布局」留下的 <c>.py</c> 与
+    /// 新版 <c>.pyd</c> 混在同一个目录里也是同一类问题。
+    ///
+    /// 只扫 <paramref name="relativeSubDir"/> 这一层（启动器是 <c>Resources\Bin</c>），不碰 XXMI 根目录
+    /// 或 <c>WWMI\</c> —— 那里是用户配置、Mods 和游戏包。启动器自己的日志保留，排查问题要用。
+    /// 清理失败不算安装失败（新文件已经就位），只记一条警告：目标目录需要管理员权限时就是这种情形。
+    /// </summary>
+    private void PruneStaleFiles(string extractedFolder, string targetDir, string relativeSubDir,
+        IProgress<string>? progress)
+    {
+        var sourceDir = Path.Combine(extractedFolder, relativeSubDir);
+        var targetSubDir = Path.Combine(targetDir, relativeSubDir);
+
+        // 包里没有这个子目录说明布局变了，不去猜哪些文件该删。
+        if (!Directory.Exists(sourceDir) || !Directory.Exists(targetSubDir))
+            return;
+
+        var expected = Directory.EnumerateFiles(sourceDir, "*", SearchOption.AllDirectories)
+            .Select(file => Path.GetRelativePath(sourceDir, file))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var removed = 0;
+        try
+        {
+            // 先物化成清单再删：边枚举边删同一棵树会漏项。
+            var stale = Directory.EnumerateFiles(targetSubDir, "*", SearchOption.AllDirectories)
+                .Where(file => !file.EndsWith(".log", StringComparison.OrdinalIgnoreCase))
+                .Where(file => !expected.Contains(Path.GetRelativePath(targetSubDir, file)))
+                .ToList();
+
+            foreach (var file in stale)
+            {
+                File.Delete(file);
+                removed++;
+            }
+
+            // 旧版本独有的目录（例如源码布局的 av\audio）删空后一并清掉；自底向上。
+            var emptyCandidates = Directory.EnumerateDirectories(targetSubDir, "*", SearchOption.AllDirectories)
+                .OrderByDescending(dir => dir.Length)
+                .ToList();
+
+            foreach (var dir in emptyCandidates)
+            {
+                if (!Directory.EnumerateFileSystemEntries(dir).Any())
+                    Directory.Delete(dir);
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            _logger.Warning(ex, "Could not prune stale files under {Dir}", targetSubDir);
+            progress?.Report("旧版启动器文件未能完全清理（权限不足）；若启动器仍崩溃，请以管理员身份运行 JASM 后重新配置。");
+            return;
+        }
+
+        if (removed == 0)
+            return;
+
+        _logger.Information("Pruned {Count} stale file(s) under {Dir}", removed, targetSubDir);
+        progress?.Report($"已清理 {removed} 个旧版启动器文件。");
     }
 
     private void TryCleanup(string path)
