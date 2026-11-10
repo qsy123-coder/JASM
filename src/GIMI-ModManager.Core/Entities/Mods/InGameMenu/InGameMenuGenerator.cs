@@ -147,12 +147,46 @@ public static partial class InGameMenuGenerator
             ? effectiveOptionsInput.ExtraRows.Concat(parsedRows).ToList()
             : parsedRows;
 
+        // 变量引用写不进 3DMigoto 表达式（作者命名空间带连字符等）时，这一行既读不出值
+        // 也点不动；更糟的是门控 if 会整行失效，让 present 永远为 1 —— 按 F7 会
+        // 连带打开别的角色那份菜单（实机日志：Variable not recognized / Unrecognised entry）。
+        // 所以这类行整行移除，不做「看起来能点」的假开关。
+        var unaddressableRows = rows
+            .Where(row => row.HasToggleTarget && !row.IsClickable)
+            .ToList();
+
+        if (unaddressableRows.Count > 0)
+        {
+            var sample = unaddressableRows[0];
+            Serilog.Log.Warning(
+                "[InGameMenu] {Count} 行的变量命名空间含 3DMigoto 表达式不支持的字符，已移除：{Mod}（示例 {Section} → {Variable}）",
+                unaddressableRows.Count,
+                Path.GetFileName(modFolderPath.TrimEnd(Path.DirectorySeparatorChar)),
+                sample.SectionName,
+                sample.QualifiedVariable);
+
+            rows = rows.Where(row => !row.HasToggleTarget || row.IsClickable).ToList();
+        }
+
         var clickable = rows.Count(r => r.IsClickable);
         if (clickable == 0)
+        {
+            // 旧版生成器会把这类行当成可点击行，菜单还会因门控语法错误「永远在场」；
+            // 既然这份 Mod 已经没有能驱动的行，旧菜单不能继续留在游戏里。
+            // 只在这个「非法命名空间」场景清理：用户自己把行全隐藏了不算菜单失效。
+            if (unaddressableRows.Count > 0 && IsGenerated(modFolderPath))
+            {
+                Serilog.Log.Information("[InGameMenu] 已移除不可用的旧菜单：{Mod}", modFolderPath);
+                Remove(modFolderPath);
+            }
+
             return new InGameMenuGenerationResult(
                 InGameMenuGenerationStatus.SkippedNoClickableRows,
                 null, null, rows.Count, 0,
-                "没有可直接切换的循环变量（[Key*] 里缺少 $变量 = 多值）");
+                unaddressableRows.Count > 0
+                    ? $"没有可驱动的循环变量（{unaddressableRows.Count} 行因命名空间含非法字符被移除）"
+                    : "没有可直接切换的循环变量（[Key*] 里缺少 $变量 = 多值）");
+        }
 
         // 放到「拥有最多行」的那个 ini 目录：3DMigoto 的 include_recursive 会加载它，
         // 且纹理相对路径以 ini 所在目录为准。只用作者行判断，避免注入行把目录带偏。
@@ -171,12 +205,15 @@ public static partial class InGameMenuGenerator
         // 逐角色门控：收集所有真正设置 $object_detected = 1 的文件所属命名空间。
         // 作者常把 [Key*] 与 $object_detected 放在不同 ini（甚至普通 / 大招两套形态）里，
         // 只取「第一条可点击行」的命名空间会得到一个永远为 0 的条件 —— 菜单根本不显示。
-        var detectionVariables = CollectDetectionVariables(modFolderPath);
+        var detectionSet = CollectDetectionVariables(modFolderPath);
+        var detectionVariables = detectionSet.Variables;
         // 纹理 hash 只作为**兜底**：拿不到 per-character 变量时才用。
+        // 变量因命名空间含非法字符（连字符等）写不进表达式时同样退回 hash ——
+        // hash 是纯数字，不受表达式字符集限制。
         // 它命中的是网格资源，在游戏暂停 / 时间冻结时会让上一件 Mod 一直「在场」，
         // 造成两个角色的菜单同时出现（女漂 + 椿 实机复现）。变量门控本身按角色隔离，
-        // 有变量时必须只信变量。
-        var detectionHashes = detectionVariables.Count == 0
+        // 有可用变量时必须只信变量。
+        var detectionHashes = detectionVariables.Count == 0 || detectionSet.Dropped > 0
             ? CollectDetectionHashes(modFolderPath)
             : [];
 
@@ -191,9 +228,12 @@ public static partial class InGameMenuGenerator
             DetectionHashes = detectionHashes,
             DetectionVariable = string.Empty,
             DetectionVariables = detectionVariables,
-            // 有独立门控变量 / hash 时不再退回未限定的全局 $object_detected
+            // 有独立门控变量 / hash 时不再退回未限定的全局 $object_detected。
+            // 变量因为命名空间非法被丢弃时也不退回：全局量是所有 Mod 共享的，
+            // 退了就等于「任何角色在场都点亮菜单」，比没有门控更容易串味。
             GateOnObjectDetected = detectionHashes.Count == 0
                                    && detectionVariables.Count == 0
+                                   && detectionSet.Dropped == 0
                                    && effectiveOptions.GateOnObjectDetected
                                    && ContainsObjectDetected(modFolderPath),
         };
@@ -452,17 +492,27 @@ public static partial class InGameMenuGenerator
         return Path.Combine(modFolderPath, best);
     }
 
+    /// <summary>逐角色门控变量，以及因命名空间含非法字符而写不进表达式的数量。</summary>
+    private readonly record struct DetectionVariableSet(IReadOnlyList<string> Variables, int Dropped);
+
     /// <summary>
     /// 收集这个 Mod 里所有真正把 <c>$object_detected</c> 置 1 的文件的门控变量。
     ///
     /// 普通 / 大招两套形态各自有一个 <c>$object_detected</c>，因此可能返回多个限定名；
     /// 菜单用 <c>||</c> 串联，任意一套形态在绘制时都能点亮菜单。
     /// 文件本身没有 namespace 时变量属于全局命名空间，返回未限定的 <c>$object_detected</c>。
+    ///
+    /// 命名空间含连字符等 3DMigoto 表达式不认的字符时（<c>Mods\Xin-HunSha</c> 是常见写法），
+    /// 这个变量写进去会让整条门控 <c>if</c> 变成语法错误；3DMigoto 会把无法识别的
+    /// <c>if</c> 丢掉、让里面的 <c>present = 1</c> 无条件执行 —— 菜单于是永远「在场」。
+    /// 这类变量直接丢弃（<see cref="DetectionVariableSet.Dropped"/>），由调用方退回纹理 hash。
     /// </summary>
-    private static IReadOnlyList<string> CollectDetectionVariables(string modFolderPath)
+    private static DetectionVariableSet CollectDetectionVariables(string modFolderPath)
     {
         var result = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dropped = 0;
+        var droppedSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in Directory
                      .EnumerateFiles(modFolderPath, "*.ini", SearchOption.AllDirectories)
@@ -507,6 +557,21 @@ public static partial class InGameMenuGenerator
                     ? "$object_detected"
                     : "$\\" + qualifier + "\\object_detected";
 
+                // 写不进表达式（命名空间带连字符等）的变量会毁掉整条门控 if，直接丢掉
+                if (!IniVariableSyntax.IsExpressibleReference(variable))
+                {
+                    if (droppedSeen.Add(variable))
+                    {
+                        dropped++;
+                        Serilog.Log.Warning(
+                            "[InGameMenu] 命名空间含 3DMigoto 表达式不支持的字符，已跳过变量门控：{Variable}（{File}）",
+                            variable,
+                            Path.GetFileName(file));
+                    }
+
+                    continue;
+                }
+
                 if (seen.Add(variable))
                     result.Add(variable);
             }
@@ -518,7 +583,7 @@ public static partial class InGameMenuGenerator
         if (result.Any(v => v.StartsWith("$\\", StringComparison.Ordinal)))
             result.RemoveAll(v => v == "$object_detected");
 
-        return result;
+        return new DetectionVariableSet(result, dropped);
     }
 
     /// <summary>
@@ -560,6 +625,16 @@ public static partial class InGameMenuGenerator
             var ns = ReadFileNamespace(text);
             if (string.IsNullOrWhiteSpace(ns))
                 continue; // 全局 $object_detected 是所有 Mod 共享的，不能区分形态
+
+            // 命名空间含连字符等非法字符时，这条 if 会变成语法错误并让整段行**无条件绘制**，
+            // 所以宁可不做形态门控（行照常显示），也不要写一条假门控。
+            if (!IniVariableSyntax.IsExpressibleName(ns))
+            {
+                Serilog.Log.Debug(
+                    "[InGameMenu] 命名空间含非法字符，跳过行形态门控：{Namespace}（{File}）",
+                    ns, Path.GetFileName(file));
+                continue;
+            }
 
             result[Path.GetRelativePath(modFolderPath, file)] = "$\\" + ns + "\\object_detected";
         }
