@@ -136,11 +136,10 @@ public class OilGlossMenuTests : IDisposable
         var apply = OilGlossPatcher.Apply(mod, body: body);
         Assert.Equal(OilGlossApplyStatus.Applied, apply.Status);
 
-        // OilGlossService.ToOptions 在油光 manifest 存在时会带上这个开关
+        // 作者菜单不再阻止生成：油光行必须能进 F7
         var result = InGameMenuGenerator.Generate(mod, new InGameMenuOptions
         {
             ExtraRows = OilGlossMenuRows.Create(apply.Manifest!),
-            AllowWithExistingClickableMenu = true,
         });
 
         Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
