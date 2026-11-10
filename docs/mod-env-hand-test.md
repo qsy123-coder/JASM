@@ -633,3 +633,33 @@ JASM 在 `ModEnvSetupFacade.EnsureLauncherConfigPathsAsync` 里顺带对齐：**
    不该冒出「与当前 WWMi 包可能不兼容」这种没来由的提示
 5. 回归：§14.3–§14.6、§19 全跑
 
+## 21. 启动器负载完整性（「启动器在初始化期间崩溃」）
+
+用户反馈的现场：点右上角「启动 3Dmigoto」弹出 XXMI 自己的致命错误窗，traceback 停在
+`av/codec/hwaccel`，日志文件指向 `XXMI Launcher Log.txt`。
+
+原因：启动器是 Python(GUI) 程序，PyAV 的 C 扩展（`Resources\Bin\av\**\*.pyd`）静态链到**带哈希的
+具体 DLL 名**（`avutil-61-<hash>.dll`，在 `Resources\Bin\av.libs\`）。`av` 与 `av.libs` 不是同一代
+（旧「源码布局」升级上来、更新被中断、杀软删了 av.libs）时，`import av` 在初始化阶段就抛 DLL
+加载失败 —— 每次点都一样，JASM 侧原本毫无提示（`LauncherFilesOk` 只查 exe 在不在）。
+
+现在的行为：
+
+- 预检查按**导入表**核对 `.pyd` 点名要的 DLL 是否都在 `av.libs`（不是只看目录在不在）；不一致时
+  启动器包判「需修复」，issues 里写明缺的是哪一份。
+- 安装启动器包时把 `Resources\Bin` 当**整包替换**：包内没有的旧文件删除（`*.log` 保留；不碰 XXMI
+  根目录与 `WWMI\`）。清理失败（需要管理员权限）只告警，安装本身照常成功。
+- 启动前拦截：命令指向 `…\Resources\Bin\XXMI Launcher.exe` 且负载不自洽时不拉起启动器，弹
+  「XXMI 启动器无法启动」并指路「设置 → 配置 Mod 环境 → 开始配置」。**注入直启路径不受影响**
+  （那条路不用启动器，不能因为启动器坏了就不许起游戏）。
+
+手测：
+
+1. 正常安装后 `Resources\Bin\av.libs` 8 个 DLL 齐全 → 预检查「已是最新」，点「启动 3Dmigoto」正常弹 GUI
+2. 删掉 `Resources\Bin\av.libs\avutil-*.dll` → 预检查显示启动器「需修复」且写明缺哪份；
+   点「启动 3Dmigoto」被 JASM 拦下（通知），不再弹 XXMI 的崩溃窗
+3. 点「开始配置」→ 重装启动器、`avutil-*.dll` 回到磁盘 → 再点「启动 3Dmigoto」正常
+4. 残留清理：在 `Resources\Bin` 里放 `stale.py` 和 `old\stale.pyd` → 重装后两者都被删，
+   `XXMI Launcher Log.txt` 保留
+5. 回归：§9、§19 全跑（启动命令、启动器版本切换都不受影响）
+

@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 
 using GIMI_ModManager.Core.GamesService;
 using GIMI_ModManager.Core.GamesService.Models;
+using GIMI_ModManager.Core.Helpers;
 using GIMI_ModManager.Core.Services.CommandService;
 using GIMI_ModManager.Core.Services.CommandService.Models;
 using GIMI_ModManager.WinUI.Models.ModEnvSetup;
@@ -269,6 +270,7 @@ public class ModEnvSetupFacade
                 }
                 else
                 {
+                    var launcherProblems = LauncherPayloadProblems(rootFolder);
                     packages.Add(new ModEnvPackagePreCheck
                     {
                         PackageId = launcherPkgId,
@@ -276,8 +278,17 @@ public class ModEnvSetupFacade
                         ManifestVersion = launcherPkg.Version,
                         InstalledVersion = installed.GetValueOrDefault(launcherPkgId),
                         Action = EvaluateAction(installed, launcherPkgId, launcherPkg,
-                            LauncherFilesOk(rootFolder))
+                            launcherProblems.Count == 0)
                     });
+
+                    // 「需修复」不能只留一个徽标：启动器负载不全时点「启动 3Dmigoto」只会弹它自己的
+                    // 「启动器在初始化期间崩溃」（一屏 traceback），用户不知道那和 JASM 有关。
+                    // 只在「记录里装过」时说 —— 全新安装本来就会装启动器，说「文件不完整」反而误导。
+                    if (launcherProblems.Count > 0 && installed.ContainsKey(launcherPkgId))
+                    {
+                        issues.Add($"XXMI 启动器文件不完整（{launcherProblems[0]}）："
+                                   + "点「开始配置」会重装启动器；否则「启动 3Dmigoto」会直接崩溃。");
+                    }
                 }
             }
 
@@ -420,12 +431,23 @@ public class ModEnvSetupFacade
                 if (launcherPkg is null)
                     return Fail("版本清单缺少必要的安装包");
 
-                var launcherAction = EvaluateAction(installed, launcherPkgId, launcherPkg, LauncherFilesOk(rootFolder));
+                var launcherProblems = LauncherPayloadProblems(rootFolder);
+                var launcherAction = EvaluateAction(installed, launcherPkgId, launcherPkg,
+                    launcherProblems.Count == 0);
+                if (launcherProblems.Count > 0)
+                {
+                    _logger.Warning("XXMI launcher payload incomplete, reinstalling: {Problems}",
+                        string.Join("; ", launcherProblems));
+                }
                 if (launcherAction != ModEnvPackageAction.UpToDate)
                 {
                     progress?.Report($"安装/更新 XXMI 启动器 (GUI) ({launcherPkg.Version})...");
+                    // pruneStaleSubDir：启动器包是「整包替换 Resources\Bin」，新旧版本混在一起会让
+                    // PyAV 的 .pyd 与 av.libs 对不上（启动器初始化即崩）。只清 Resources\Bin，
+                    // 不碰 XXMI 根目录与 WWMI\ —— 那里有用户配置和 Mods。
                     await _installer.InstallPackageAsync(launcherPkg, rootFolder, null, progress, ct,
-                        preserveExistingFiles: new[] { LauncherConfigFileName });
+                        preserveExistingFiles: new[] { LauncherConfigFileName },
+                        pruneStaleSubDir: XxmiLauncherPayloadInspector.BinRelativePath);
                 }
                 else
                 {
@@ -947,9 +969,18 @@ public class ModEnvSetupFacade
     /// </summary>
     private const string WwmiUserIniFileName = "d3dx_user.ini";
 
-    /// <summary>True when the XXMI Launcher GUI executable is present at the root.</summary>
-    private static bool LauncherFilesOk(string rootFolder)
-        => File.Exists(Path.Combine(rootFolder, "Resources", "Bin", "XXMI Launcher.exe"));
+    /// <summary>
+    /// 启动器负载的问题清单（空 = 健康）。判定「需修复」与把原因说给用户听，都走这一份。
+    /// </summary>
+    /// <remarks>
+    /// 不能只查 exe 在不在：启动器是 Python 程序，<c>Resources\Bin</c> 里的 PyAV（<c>av\**\*.pyd</c>）
+    /// 与它依赖的 <c>av.libs\*.dll</c> 必须来自同一个版本，否则点「启动 3Dmigoto」时启动器会在
+    /// 初始化阶段弹「启动器在初始化期间崩溃」（实测用户反馈）。判定细则见
+    /// <see cref="XxmiLauncherPayloadInspector"/>。
+    /// </remarks>
+    private static IReadOnlyList<string> LauncherPayloadProblems(string rootFolder)
+        => XxmiLauncherPayloadInspector.FindProblems(
+            XxmiLauncherPayloadInspector.GetLauncherExePath(rootFolder));
 
     /// <summary>
     /// Creates (or restores) a "XXMI Launcher" shortcut on the user's desktop pointing at the launcher exe.
@@ -958,7 +989,7 @@ public class ModEnvSetupFacade
     /// </summary>
     private void EnsureLauncherDesktopShortcut(string rootFolder, List<string> issues, IProgress<string>? progress)
     {
-        var launcherExe = Path.Combine(rootFolder, "Resources", "Bin", "XXMI Launcher.exe");
+        var launcherExe = XxmiLauncherPayloadInspector.GetLauncherExePath(rootFolder);
         if (!File.Exists(launcherExe))
         {
             progress?.Report("未找到 XXMI 启动器可执行文件，跳过桌面快捷方式。");
@@ -1266,7 +1297,7 @@ public class ModEnvSetupFacade
         if (string.IsNullOrWhiteSpace(_options.Value.LauncherPackageId))
             return;
 
-        var launcherExe = Path.Combine(rootFolder, "Resources", "Bin", "XXMI Launcher.exe");
+        var launcherExe = XxmiLauncherPayloadInspector.GetLauncherExePath(rootFolder);
         if (!File.Exists(launcherExe))
         {
             progress?.Report("未找到 XXMI 启动器可执行文件，跳过启动命令配置。");
