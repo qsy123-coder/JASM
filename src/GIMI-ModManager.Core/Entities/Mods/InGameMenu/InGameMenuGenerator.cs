@@ -114,6 +114,11 @@ public static partial class InGameMenuGenerator
 
         var effectiveOptionsInput = options ?? new InGameMenuOptions();
 
+        // 作者命名空间含 3DMigoto 表达式写不进的字符（连字符等）时，先统一改成 ASCII 安全名：
+        // 不改名的话菜单里所有 `$\Ns\var` 都是语法错误，门控会 fail-open、点击/取值也全失效。
+        // 改名只动 Mod 自己的 ini，标记行记录原名，「移除菜单」时还原。
+        var namespaceRewrites = IniNamespaceRewriter.Apply(modFolderPath);
+
         // 作者已有可点击菜单时也照常生成：JASM 菜单只在按 F7 时显示，
         // 不与作者常驻菜单争抢；而「[Present] + 光标 + 鼠标键」的检测规则会把
         // 可拖动的帮助图 / 浮层误判成菜单（绯雪 mod 的 draw_image.ini）。
@@ -279,7 +284,7 @@ public static partial class InGameMenuGenerator
             var shaderPath = Path.Combine(assetsDirectory, "draw_2d.hlsl");
             File.WriteAllText(shaderPath, DrawShader, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
-            WriteManifest(assetsDirectory, modFolderPath, rows, effectiveOptions, menuToken, build);
+            WriteManifest(assetsDirectory, modFolderPath, rows, effectiveOptions, menuToken, build, namespaceRewrites);
 
             // ini 最后写：即使中途失败，也不会留下一个指向不存在纹理的菜单
             File.WriteAllText(iniPath, build.IniText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -302,6 +307,9 @@ public static partial class InGameMenuGenerator
     {
         if (!Directory.Exists(modFolderPath))
             return false;
+
+        // 先还原生成菜单时改过的命名空间（标记行就在作者 ini 里，与菜单文件无关），再删产物
+        IniNamespaceRewriter.Restore(modFolderPath);
 
         var removed = false;
 
@@ -959,7 +967,8 @@ public static partial class InGameMenuGenerator
         IReadOnlyList<ModIniToggleRow> rows,
         InGameMenuOptions options,
         string menuToken,
-        InGameMenuBuildResult build)
+        InGameMenuBuildResult build,
+        IReadOnlyList<IniNamespaceRewrite> namespaceRewrites)
     {
         var manifest = new
         {
@@ -972,6 +981,13 @@ public static partial class InGameMenuGenerator
             pageCount = build.PageCount,
             panelWidth = build.PanelWidth,
             panelHeight = build.PanelHeight,
+            // 作者命名空间的改名记录（含被改文件与原名），便于排查与手动还原
+            namespaceRewrites = namespaceRewrites.Select(r => new
+            {
+                file = r.File,
+                original = r.Original,
+                renamed = r.Renamed,
+            }),
             rows = rows.Select(r => new
             {
                 section = r.SectionName,
