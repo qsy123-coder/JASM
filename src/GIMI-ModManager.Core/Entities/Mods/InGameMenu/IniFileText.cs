@@ -102,11 +102,15 @@ public static class IniFileText
     public static bool UsesCrLf(string text) => text.Contains("\r\n", StringComparison.Ordinal);
 
     /// <summary>
-    /// 计算 ini 的内容哈希，但**忽略 JASM 自己补的 namespace 行**。
+    /// 计算 ini 的内容哈希，但**忽略 JASM 自己做的两类改动**：
+    /// <list type="bullet">
+    ///   <item>给没有 namespace 的作者 ini 补的标记 + namespace 行；</item>
+    ///   <item>为了让菜单能引用变量而做的命名空间改名（标记 + 引用替换）。</item>
+    /// </list>
     ///
-    /// 菜单生成器会在油光补丁之后给没有 namespace 的作者 ini 补两行（标记 + namespace）。
-    /// 如果撤销时按原始字节比对哈希，就会把这次 JASM 自己的改动误判成「用户改了文件」而拒绝撤销。
-    /// 这里在求哈希前把这段前缀去掉；文件本来就有 namespace 时等价于普通字节哈希。
+    /// 菜单生成器会在油光补丁之后改这些文件；如果撤销时按原始字节比对哈希，就会把
+    /// JASM 自己的改动误判成「用户改了文件」而拒绝撤销。这里在求哈希前抵消掉这些改动；
+    /// 文件本来既没补 namespace、也没改名时等价于普通字节哈希。
     /// </summary>
     public static string ComputeContentHash(string path)
     {
@@ -125,6 +129,9 @@ public static class IniFileText
                 lines.RemoveAt(index);
             text = string.Join(newLine, lines);
         }
+
+        // 改名标记与引用替换只在有标记时才处理，普通 Mod 的文件不受影响
+        text = IniNamespaceRewriter.NormalizeForHash(text);
 
         var (encoding, preamble) = DetectEncoding(bytes);
         var payload = preamble.Concat(encoding.GetBytes(text)).ToArray();
