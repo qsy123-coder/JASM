@@ -254,6 +254,42 @@ public class ModIniToggleParserTests
     }
 
     [Fact]
+    public void KeepsSameVariableFromDifferentFilesWithoutNamespace()
+    {
+        // 多形态 Mod（普通 / 大招各一份 ini）常在不同文件里声明同名变量，作者又没写 namespace。
+        // 3DMigoto 用 ini 路径当默认命名空间，所以它们不是同一个变量；去重若只看变量名，
+        // 第二套形态的行会被整批丢掉 —— 首次生成后「大招形态菜单不全」。
+        var root = Path.Combine(Path.GetTempPath(), "jasm-multiform-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "norm"));
+        Directory.CreateDirectory(Path.Combine(root, "ult"));
+        File.WriteAllText(Path.Combine(root, "norm", "mod.ini"), """
+            [KeySwapAccessory]
+            key = /
+            type = cycle
+            $swapvar_accessory = -1, 0
+            """);
+        File.WriteAllText(Path.Combine(root, "ult", "mod.ini"), """
+            [KeySwapAccessory]
+            key = /
+            type = cycle
+            $swapvar_accessory = -1, 0
+            """);
+
+        try
+        {
+            var rows = ModIniToggleParser.ParseDirectory(root);
+
+            Assert.Equal(2, rows.Count);
+            Assert.Contains(rows, r => r.IniRelativePath.Contains("norm"));
+            Assert.Contains(rows, r => r.IniRelativePath.Contains("ult"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void QuotedValuesKeepTheirQuotesForIniGeneration()
     {
         var rows = ModIniToggleParser.ParseText("""
