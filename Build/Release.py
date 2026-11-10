@@ -2,6 +2,7 @@
 import os
 import shutil
 import re
+import struct
 import sys
 
 
@@ -39,6 +40,72 @@ def extractVersionNumber() -> str:
             line = line.strip()
             if line.startswith("<VersionPrefix>"):
                 return re.findall(r"\d+\.\d+\.\d+", line)
+
+# 从 .NET 9 起 SDK 默认给 apphost / singlefilehost 打 /CETCOMPAT：PE 调试目录里多一条
+# IMAGE_DEBUG_TYPE_EX_DLLCHARACTERISTICS，值为 1（CET_COMPAT）。未打全更新的 Win10
+# （22H2 低于 1904x.5007）不支持 CET，CLR 启动时直接 fatal：
+#   Fatal error. Your Windows doesn't fully support CET. Please install all available windows updates.
+# 用户侧表现是「双击没反应」。工程里用 <CETCompat>false</CETCompat> 关掉；这里在打包前
+# 逐个体检真正要发出去的 exe —— 本机跑的是 Win11，复现不了这个故障，只能靠标记本身把关，
+# 防止换 SDK、加新 exe 工程时静默回归。
+IMAGE_DEBUG_TYPE_EX_DLLCHARACTERISTICS = 20
+CET_COMPAT = 0x1
+
+
+def assertCetCompatDisabled(exePath: str) -> None:
+    """产物 exe 的 PE 调试目录里不能带 CET_COMPAT 标记（见上面的说明）。"""
+    with open(exePath, "rb") as exe:
+        data = exe.read()
+
+    def fail(reason: str) -> None:
+        print("ERROR: " + reason + " (" + exePath + ")")
+        exit(1)
+
+    if data[:2] != b"MZ":
+        fail("not a PE image")
+    peOffset = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[peOffset:peOffset + 4] != b"PE\0\0":
+        fail("no PE signature")
+    coffOffset = peOffset + 4
+    numberOfSections = struct.unpack_from("<H", data, coffOffset + 2)[0]
+    sizeOfOptionalHeader = struct.unpack_from("<H", data, coffOffset + 16)[0]
+    optionalOffset = coffOffset + 20
+    magic = struct.unpack_from("<H", data, optionalOffset)[0]
+    if magic == 0x20B:      # PE32+
+        dataDirectoriesOffset = optionalOffset + 112
+    elif magic == 0x10B:    # PE32
+        dataDirectoriesOffset = optionalOffset + 96
+    else:
+        fail("unknown optional header magic 0x%X" % magic)
+
+    # 数据目录第 6 项是调试目录；目录里存的是 RVA，需要按节表换算成文件偏移。
+    # 没有调试目录（RVA/大小为 0）时自然也不会有 CET 标记。
+    debugDirectoryRva, debugDirectorySize = struct.unpack_from("<II", data, dataDirectoriesOffset + 6 * 8)
+    if debugDirectoryRva == 0 or debugDirectorySize == 0:
+        return
+    sections = []
+    sectionTableOffset = optionalOffset + sizeOfOptionalHeader
+    for index in range(numberOfSections):
+        entryOffset = sectionTableOffset + index * 40
+        virtualSize, virtualAddress, rawSize, rawPointer = struct.unpack_from("<IIII", data, entryOffset + 8)
+        sections.append((virtualAddress, max(virtualSize, rawSize), rawPointer))
+
+    for virtualAddress, sectionSize, rawPointer in sections:
+        if virtualAddress <= debugDirectoryRva < virtualAddress + sectionSize:
+            debugDirectoryOffset = rawPointer + (debugDirectoryRva - virtualAddress)
+            break
+    else:
+        fail("debug directory RVA 0x%X is not mapped by any section" % debugDirectoryRva)
+
+    for index in range(debugDirectorySize // 28):
+        entryOffset = debugDirectoryOffset + index * 28
+        debugType = struct.unpack_from("<I", data, entryOffset + 12)[0]
+        sizeOfData = struct.unpack_from("<I", data, entryOffset + 16)[0]
+        pointerToRawData = struct.unpack_from("<I", data, entryOffset + 24)[0]
+        if debugType == IMAGE_DEBUG_TYPE_EX_DLLCHARACTERISTICS and pointerToRawData and sizeOfData >= 4:
+            if struct.unpack_from("<I", data, pointerToRawData)[0] & CET_COMPAT:
+                fail("CET_COMPAT is set; add <CETCompat>false</CETCompat> to the project " +
+                     "or unpatched Windows 10 cannot start it")
 
 print("PostBuild.py")
 print("PWD: " + os.getcwd())
@@ -89,6 +156,7 @@ if SelfContained == False and SingleFile == False:
     jasmUpdaterPublishCommand = f'dotnet publish {JASM_Updater_CSPROJ} -o {JASM_Updater_OUTPUT} /p:PublishProfile=FolderProfile.pubxml -c Release'
     print(jasmUpdaterPublishCommand)
     checkSuccessfulExitCode(os.system(jasmUpdaterPublishCommand))
+    assertCetCompatDisabled(os.path.join(JASM_Updater_OUTPUT, "JASM - Auto Updater.exe"))
     print()
     print("Finished building JASM - Auto Updater")
 else:
@@ -108,6 +176,7 @@ else:
 jasmPublishCommand = f'dotnet publish {JASM_CSPROJ} -o {jasmOutput} /p:PublishProfile={profile} -c Release{platformArgs}'
 print(jasmPublishCommand)
 checkSuccessfulExitCode(os.system(jasmPublishCommand))
+assertCetCompatDisabled(os.path.join(jasmOutput, "JASM - Just Another Skin Manager.exe"))
 print()
 print("Finished building JASM")
 

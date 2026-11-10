@@ -15,6 +15,9 @@
 	<Title>JASM - Auto Updater</Title>
 	<AssemblyName>JASM - Auto Updater</AssemblyName>
 	<CsWinRTAotOptimizerEnabled>false</CsWinRTAotOptimizerEnabled>
+	<!-- 同主程序：.NET 9 起 apphost 默认带 CET_COMPAT 标记，未打全更新的 Win10 上
+	     CLR 会直接 fatal 退出。更新器要是也起不来，用户连「更新修好主程序」这一步都走不了。 -->
+	<CETCompat>false</CETCompat>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\7z\7-zip.dll" />

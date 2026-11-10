@@ -21,6 +21,14 @@
 		<Title>JASM - Just Another Skin Manager</Title>
 		<AssemblyName>JASM - Just Another Skin Manager</AssemblyName>
 		<CsWinRTAotOptimizerEnabled>false</CsWinRTAotOptimizerEnabled>
+		<!-- 从 .NET 9 起 SDK 默认给 apphost / singlefilehost 打 /CETCOMPAT
+		     （PE 调试目录里的 IMAGE_DEBUG_TYPE_EX_DLLCHARACTERISTICS = 1）。
+		     未打全更新的 Win10（22H2 低于 1904x.5007）不支持 CET，CLR 启动时直接 fatal：
+		     「Your Windows doesn't fully support CET. Please install all available windows updates.」
+		     用户侧表现就是双击没反应。本程序不依赖 CET 的安全收益，而 TargetPlatformMinVersion
+		     承诺的 1809 恰好落在「不支持」那一侧 —— 显式关掉，换回对老系统的兼容。
+		     Build/Release.py 会在打包前检查产物上的标记是否真的没了（本机复现不了这个故障）。 -->
+		<CETCompat>false</CETCompat>
 	</PropertyGroup>
 
 	<ItemGroup>

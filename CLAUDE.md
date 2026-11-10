@@ -74,6 +74,7 @@ push 前必须验证完整 CI 链路 —— `dotnet build` 单跑不算完成：
 - `dotnet publish` 不加 `-o` 时输出到 TFM 子目录，与脚本期望的路径不匹配
 - workflow `branches:` 过滤器不匹配会导致 push 不触发 CI
 - **本地构建前先关闭运行中的 JASM 进程**，避免 exe/dll 被锁定导致编译或打包失败
+- **apphost 的 CET_COMPAT 标记**：.NET 9 起 SDK 默认给 apphost / singlefilehost 打 `/CETCOMPAT`（PE 调试目录 `IMAGE_DEBUG_TYPE_EX_DLLCHARACTERISTICS = 1`）。未打全更新的 Win10（22H2 低于 1904x.5007）不支持 CET，CLR 启动即 fatal：「Your Windows doesn't fully support CET. Please install all available windows updates.」用户侧表现就是**双击没反应**。主程序与 AutoUpdater 的 csproj 都已设 `<CETCompat>false</CETCompat>`；`Build/Release.py` 打包前会检查产物上的标记（本机 Win11 复现不了这个故障），新加 exe 工程时记得同样关掉
 - **本机没装 7-Zip**：脚本最后的 `7z a` / `7z h` 会失败（`'7z' is not recognized`），本地验证只能走到 `output/` 那一步 + 检查目录内容。压缩这一步交给 CI
 - 本地验证 `SingleFile` 时，`dotnet publish` 必须带 `-p:Platform=x64`（脚本已带），漏了会在运行时炸 WinUI 激活
 
