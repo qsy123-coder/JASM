@@ -185,6 +185,26 @@ public class CommandHandlerService(CommandService commandService, GameLaunchInje
             _logger.Warning("[注入启动] 失败，回退原启动命令：{Reason} {Error}", injection.Reason, injection.Error);
         }
 
+        // XXMI 启动器是 Python 程序：它的 Resources\Bin 负载不自洽时（旧版残留 / 杀软删了 av.libs /
+        // 更新被中断），import av 会在初始化阶段直接崩 —— 用户看到的是 XXMI 自己的
+        // 「启动器在初始化期间崩溃」加一屏 traceback，而且每次点「启动 3Dmigoto」都重演。
+        //
+        // 拦截点放在这里（而不是更早）是有意的：上面的注入直启路径根本不用启动器，不能因为启动器坏了
+        // 就连游戏都不许起。走到这一行说明这次真的要拉起启动器，而它注定失败 —— 拦下来并说清怎么修。
+        if (XxmiLauncherPayloadInspector.IsXxmiLauncherExe(command.ExecutionOptions.Command))
+        {
+            var launcherProblems = XxmiLauncherPayloadInspector.FindProblems(command.ExecutionOptions.Command);
+            if (launcherProblems.Count > 0)
+            {
+                _logger.Warning("XXMI launcher payload is incomplete, not starting {Exe}: {Problems}",
+                    command.ExecutionOptions.Command, string.Join("; ", launcherProblems));
+                return Result<ProcessCommand>.Error(new SimpleNotification(
+                    "XXMI 启动器无法启动",
+                    $"启动器文件不完整：{launcherProblems[0]}。"
+                    + "请到「设置 → 配置 Mod 环境」点「开始配置」重新安装启动器（会顺带清理旧版残留文件）。"));
+            }
+        }
+
         processCommand.Start();
 
 
