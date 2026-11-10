@@ -385,7 +385,9 @@ public static partial class ModIniToggleParser
             // 两个文件里的同名变量并不是同一个变量（多形态 Mod 的普通 / 大招常各写一份 $swapvar_*）。
             // 此时按「文件 + 变量」去重，否则后一个文件的行会被整批丢掉。
             // 有 namespace 时限定名本身就能区分文件，仍按变量去重（同文件多段绑定只留第一行）。
-            var key = row.IsClickable
+            // 用 HasToggleTarget 而不是 IsClickable：去重看「ini 里有没有这个循环目标」，
+            // 与命名空间能不能写进表达式无关。
+            var key = row.HasToggleTarget
                 ? string.IsNullOrEmpty(row.Namespace)
                     ? row.IniRelativePath + "|" + row.VariableName
                     : row.QualifiedVariable

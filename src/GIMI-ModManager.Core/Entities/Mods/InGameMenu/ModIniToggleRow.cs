@@ -70,12 +70,28 @@ public sealed record ModIniToggleRow
     public IReadOnlyList<string> ValueLabels { get; init; } = [];
 
     /// <summary>
-    /// 这一行能否由菜单直接改值。循环行需要变量名 + 至少两个候选值 + 循环/开关类型；
-    /// 滑块行只需要变量名。
+    /// 这一行在 ini 里确实是一个「可改值的目标」：循环行需要变量名 + 至少两个候选值 +
+    /// 循环/开关类型；滑块行只需要变量名。
+    ///
+    /// 只看 ini 里写了什么，不看菜单能不能访问到它 —— 判断后者用 <see cref="IsClickable"/>。
     /// </summary>
-    public bool IsClickable =>
+    public bool HasToggleTarget =>
         !string.IsNullOrWhiteSpace(VariableName)
         && (IsSlider || (Values.Count >= 2 && IsCycleLikeType(KeyType)));
+
+    /// <summary>
+    /// 变量引用能不能写进 3DMigoto 表达式。作者命名空间里的连字符（<c>Mods\Xin-HunSha</c>）
+    /// 会让整个 <c>if</c> 变成语法错误，而 3DMigoto 对无法识别的 <c>if</c> 是「丢掉条件、
+    /// 照常执行里面的语句」，门控会直接失效（详见 <see cref="IniVariableSyntax"/>）。
+    /// </summary>
+    public bool HasExpressibleVariable => IniVariableSyntax.IsExpressibleReference(QualifiedVariable);
+
+    /// <summary>
+    /// 这一行能否由菜单直接改值：既是可改值的目标，又能在表达式里安全引用到变量。
+    /// 引用不成立时这一行只可能是「点了没反应、值永远显示最后一个」的假开关，
+    /// 生成器会把它整行移除。
+    /// </summary>
+    public bool IsClickable => HasToggleTarget && HasExpressibleVariable;
 
     /// <summary>
     /// 跨命名空间引用变量时的完整写法：<c>$\Namespace\var</c>；无命名空间时为 <c>$var</c>。

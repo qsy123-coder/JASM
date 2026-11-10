@@ -117,8 +117,12 @@ public sealed record InGameMenuOptions
     /// v36：非当前形态的行整行不画（多套形态共用槽位），只显示当前形态对应的按键。
     /// v37：滑块支持自定义上限（油光强度上限提高到 2.0）；循环行支持按值显示文本（油光贴图名）。
     /// v38：修无 namespace 的多形态 Mod 首次生成只留下第一套形态行的问题（去重改为按「文件 + 变量」）。
+    /// v39：命名空间含 3DMigoto 表达式不支持的字符（作者常用的 <c>Mods\Xin-HunSha</c> 这种连字符）时，
+    ///      不再把变量写进表达式 —— 门控退回纹理 hash，无法驱动的行整行移除。旧版本把这类
+    ///      <c>if</c> 写成语法错误，3DMigoto 会丢掉条件、让 <c>present = 1</c> 无条件执行，
+    ///      结果按 F7 会连带打开别的角色的菜单。
     /// </summary>
-    public const int CurrentGeneratorVersion = 38;
+    public const int CurrentGeneratorVersion = 39;
 
     /// <summary>生成器版本，写进 ini 头与 manifest，便于日后失效重生成。</summary>
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
@@ -649,6 +653,12 @@ public static class InGameMenuIniBuilder
         else if (options.GateOnObjectDetected)
             detectionVariables.Add("$object_detected");
 
+        // 兜底：命名空间含 3DMigoto 表达式不支持的字符（作者常用的连字符）时，这条 if
+        // 会被判成语法错误；3DMigoto 对无法识别的 if 是「丢掉条件、照常执行里面的语句」，
+        // 紧跟其后的 present = 1 因此每帧都跑 —— 菜单永远「在场」，按 F7 会连带打开。
+        // 生成器已经过滤过一次，这里保证 builder 被单独调用时也不会写出坏门控。
+        detectionVariables.RemoveAll(variable => !IniVariableSyntax.IsExpressibleReference(variable));
+
         // 两个信号取“或”：作者变量（多形态 = 多个命名空间）或纹理 hash（多形态 = 多个 hash）。
         // 任一成立就算角色在场。hash 不依赖变量命名空间，是变量门控失效时的兜底。
         var hasDetectionHashes = options.DetectionHashes.Count > 0
@@ -994,8 +1004,9 @@ public static class InGameMenuIniBuilder
         AppendQuad(ini, v, token, ResourceName($"Label{index:00}", token), $"{v}x + {LabelOffsetX}",
             $"{v}y + {rowY + labelOffsetY}", LabelWidthFor(options), LabelHeight, labelTint);
 
-        // 滑块行：拖动条 + 滑块头，按住 Alt+左键在轨道上拖动实时写变量
-        if (row.IsSlider)
+        // 滑块行：拖动条 + 滑块头，按住 Alt+左键在轨道上拖动实时写变量。
+        // 变量写不进表达式时不画轨道（生成器会整行移除，这里只是防御）。
+        if (row.IsSlider && row.IsClickable)
         {
             var trackX = (int)(rowWidth * 0.42);
             var trackW = (int)(rowWidth * 0.45);

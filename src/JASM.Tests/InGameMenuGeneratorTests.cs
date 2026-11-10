@@ -474,6 +474,105 @@ public class InGameMenuGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void DropsRowsWhoseNamespaceCannotBeWrittenIntoExpressions()
+    {
+        // 作者命名空间带连字符（Mods\Xin-HunSha 是常见写法）：这个变量写进 3DMigoto
+        // 表达式会整行报 Syntax Error，取值永远显示最后一个、点击也写不对；
+        // 更糟的是无法识别的 if 会被丢掉、让里面的语句无条件执行。这类行必须整行移除。
+        var mod = CreateMod("HyphenRows", """
+            namespace = Mods\Xin-HunSha
+
+            [KeyQunzi]
+            key = VK_DOWN
+            type = cycle
+            $qunzi = 0,1
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "02_Safe.ini"), """
+            namespace = SafeNs
+
+            [KeyShoes]
+            key = VK_UP
+            type = cycle
+            $xiezi = 0,1
+            """);
+
+        var result = InGameMenuGenerator.Generate(mod);
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.Contains(@"$\SafeNs\xiezi", menu);
+        Assert.DoesNotContain("Xin-HunSha", menu);
+        Assert.DoesNotContain("[KeyQunzi]", menu);
+    }
+
+    [Fact]
+    public void FallsBackToHashGatingWhenNamespaceCannotBeReferenced()
+    {
+        // 变量门控写不进表达式时退回纹理 hash（纯数字，不受解析字符集限制）。
+        // 不退回就只能写一条语法错误的 if，而它会让 present 永远为 1。
+        var mod = CreateMod("HyphenGate", """
+            namespace = Mods\Xin-HunSha
+
+            [Constants]
+            global $object_detected = 0
+
+            [KeyQunzi]
+            key = VK_DOWN
+            type = cycle
+            $qunzi = 0,1
+
+            [TextureOverrideComponent0]
+            hash = 9bb8b247
+            match_first_index = 0
+            $object_detected = 1
+            """);
+        File.WriteAllText(Path.Combine(mod, "Normal", "02_Safe.ini"), """
+            namespace = SafeNs
+
+            [KeyShoes]
+            key = VK_UP
+            type = cycle
+            $xiezi = 0,1
+            """);
+
+        var result = InGameMenuGenerator.Generate(mod);
+
+        Assert.Equal(InGameMenuGenerationStatus.Generated, result.Status);
+        var menu = File.ReadAllText(Path.Combine(mod, "Normal", "JASM_Menu.ini"));
+        Assert.DoesNotContain("Xin-HunSha", menu);
+        Assert.Contains("[TextureOverrideJasmDetect_", menu);
+        Assert.Contains("hash = 9bb8b247", menu);
+        Assert.Contains("age = time -", menu);
+    }
+
+    [Fact]
+    public void RemovesStaleMenuWhenEveryRowVariableIsUnaddressable()
+    {
+        // 旧版本会给这类 Mod 生成一份「点了没反应、按 F7 必然弹出」的菜单；
+        // 现在一条可驱动的行都不剩，旧菜单必须从磁盘上清掉，否则它还会继续串菜单。
+        var mod = CreateMod("HyphenOnly");
+        Assert.Equal(InGameMenuGenerationStatus.Generated, InGameMenuGenerator.Generate(mod).Status);
+
+        var iniPath = Path.Combine(mod, "Normal", "JASM_Menu.ini");
+        Assert.True(File.Exists(iniPath));
+
+        File.WriteAllText(Path.Combine(mod, "Normal", "mod.ini"), """
+            namespace = Mods\Xin-HunSha
+
+            [KeyQunzi]
+            key = VK_DOWN
+            type = cycle
+            $qunzi = 0,1
+            """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        var result = InGameMenuGenerator.Generate(mod);
+
+        Assert.Equal(InGameMenuGenerationStatus.SkippedNoClickableRows, result.Status);
+        Assert.False(File.Exists(iniPath));
+        Assert.False(Directory.Exists(Path.Combine(mod, "Normal", "JASM_Menu")));
+    }
+
+    [Fact]
     public void AppliesRowHideAndOrder()
     {
         var mod = CreateMod("LayoutMod");

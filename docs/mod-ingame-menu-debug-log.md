@@ -394,8 +394,41 @@ F:\XXMI\WWMI\Mods\character\others\RabbitFX反虚化+发光前置v82自定义版
      （`F:\XXMI\WWMI\Core\WWMI\KeyBindings.ini`），最终改为 **F7**（d3dx.ini / WWMI / 所有 Mod 均未占用）。
      生成器 **v8** 会重建旧菜单。
 
+### 5.14 命名空间里的连字符会让门控「永远在场」（2026-11-10）
 
+现象：启用绯雪油光后按 F7，绯雪的菜单和「心」的菜单一起出现（截图里左边国韵·落红、右边 x(hdz) 两份 JASM 菜单）。
 
+根因链：
+
+1. 心 Mod 的 ini 用 `namespace = Mods\Xin-HunSha` 这类**带连字符**的命名空间，
+   JASM 菜单把它们写成 `$\Mods\Xin-HunSha\object_detected`。
+2. 3DMigoto 表达式解析器按固定字符集切分变量 token（字母数字 + ``% , . : ? @ [ \ ] ^ _ ` { } ~``，
+   见 S3DMIni 规范），**连字符不在其中**：整行报 `Syntax Error` / `Variable not recognized`。
+3. `if <无法识别的表达式>` 不是「条件为假」：3DMigoto 丢掉这层 `if`，里面的语句**无条件执行** ——
+   门控里的 `present = 1` 每帧都跑，菜单永远「在场」，按 F7 必然弹出。`d3d11_log.txt` 证据：
+   ```
+   Syntax Error: $\mods\xin-xingshengshipin\object_detected == 1 || ...
+   ^: Variable not recognized: ...
+   Unrecognised entry: if $\mods\...
+   $jasm_ef814263_present = 1
+   Statement "endif" missing "if"
+   ```
+   同一个原因还让取值恒显示最后一个选项（截图里所有行都是 `2/2`、`4/4`），点击写值也不可预期。
+4. 换成单个变量（`if $\mods\xin-leichong\jiaohuan == 1`）一样失败——问题在变量 token，不在 `||`。
+   （作者自己的 ListGUI 也有同类跨命名空间引用，同样报错；那是作者侧问题。）
+
+修复（生成器 **v39**）：
+
+- 新增 `IniVariableSyntax`：按上面的字符集判定命名空间 / 变量名能否写进表达式；
+  生成器与 ini 构造器都不再写出非法引用。
+- 行：变量引用非法 ⇒ **整行移除**（否则就是「点了没反应、值永远最后一个」的假开关）；
+  只剩这类行时整个菜单不生成，并清掉旧版本留下的菜单文件。
+- 门控：非法的 `object_detected` 变量丢弃、退回纹理 hash（纯数字，不受字符集限制）；
+  也不退回共享的全局 `$object_detected`，避免「任何角色在场都点亮」。
+- 行形态门控遇到非法命名空间时不做门控（行照常显示），绝不写假条件。
+
+教训：**任何写进 3DMigoto 表达式的东西（变量名、命名空间）都要先过字符集校验**；
+`if` 解析失败是 fail-open（丢条件、照常执行），比条件恒假危险得多。
 
 ---
 
