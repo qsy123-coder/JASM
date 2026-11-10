@@ -114,6 +114,22 @@ public class InGameMenuIniBuilderTests
     }
 
     [Fact]
+    public void IgnoresDetectionVariablesThatCannotBeParsed()
+    {
+        // 命名空间带连字符时，这条 if 会被 3DMigoto 判成语法错误；它不会把条件当假，
+        // 而是丢掉 if、让里面的 present = 1 无条件执行 —— 菜单永远「在场」。
+        // 没有可用门控时宁可不写，也不能写一条恒真的假门控。
+        var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x", new InGameMenuOptions
+        {
+            DetectionVariables = [@"$\Mods\Xin-HunSha\object_detected"],
+            GateOnObjectDetected = false,
+        });
+
+        Assert.DoesNotContain("Xin-HunSha", build.IniText);
+        Assert.DoesNotContain("$jasm_x_present = 1", build.IniText);
+    }
+
+    [Fact]
     public void EntryCommandListHasBalancedIfEndifWithDetectionVariable()
     {
         var build = InGameMenuIniBuilder.Build([Row("Shoes")], "x", new InGameMenuOptions
