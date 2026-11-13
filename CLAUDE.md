@@ -259,6 +259,15 @@ GitHub 回退通道上没有 `kind` 字段（API 只给文件名），由 `AppUp
 
 - **Context7**：遇到第三方库（Windows App SDK / WinUI 3 / CommunityToolkit / Supabase 等）的 API 用法、配置、示例时，自动查实时文档，避免过时 API。
 
+## 网络与代理
+
+本机访问 GitHub（`github.com` / `api.github.com` / `uploads.github.com` / `raw.githubusercontent.com`）**必须走本地代理 `http://127.0.0.1:7897`，不要直连**。
+
+- `curl`：加 `--proxy http://127.0.0.1:7897`（或 `-x http://127.0.0.1:7897`）；下载 release 资产 / CI artifact 这类大文件也走代理，不要用 `--noproxy '*'` 图快
+- `Invoke-WebRequest` / `Invoke-RestMethod`：加 `-Proxy http://127.0.0.1:7897`
+- `git`：`git -c http.proxy=http://127.0.0.1:7897 push/fetch ...`（不要改全局 git config）
+- 腾讯云 COS（`*.cos.*.myqcloud.com`）是直连通道，不需要代理；不要把 COS 流量绕进代理
+
 ## 常用命令
 
 ```bash
