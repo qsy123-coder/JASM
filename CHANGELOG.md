@@ -1,27 +1,5 @@
 # Changelog
 
-## [2.37.0](https://github.com/qsy123-coder/JASM/compare/v2.36.1...v2.37.0) (2026-11-13)
-
-
-### Features
-
-* **data-sync:** 游戏数据同步改走 COS 清单，流式下载并校验 SHA-256，串行化同步避免并发重载 ([d1cab13](https://github.com/qsy123-coder/JASM/commit/d1cab13781e9406230c1ae1f953c9e4e8cfd4b93))
-* **settings:** 游戏数据同步增加下载进度状态 ([f2130f7](https://github.com/qsy123-coder/JASM/commit/f2130f770fe674ad4c8cdb2fa6ca38d48ea62e81))
-* **settings:** 游戏数据同步显示下载进度条 ([d97b2c7](https://github.com/qsy123-coder/JASM/commit/d97b2c7d8d2131c1de18dfdb22724d68c6ae6c54))
-* **WuWa:** 同步上游角色数据，新增莉莉与 9 个游戏内皮肤 ([430011c](https://github.com/qsy123-coder/JASM/commit/430011c9b6e5029250f7bcb53de6d851b3e31e56))
-* **WuWa:** 同步上游角色数据并改造游戏数据同步（COS + 进度条） ([cb52214](https://github.com/qsy123-coder/JASM/commit/cb52214c3facef73f093b09f838f7c435fed06d2))
-* **WuWa:** 同步中文角色名，新增莉莉等条目 ([2dfaf25](https://github.com/qsy123-coder/JASM/commit/2dfaf257e31be033fa84fe718883f3a19f1048c7))
-* **WuWa:** 添加游戏内皮肤图 CarlottaSplashingSummer.png ([66c4d9b](https://github.com/qsy123-coder/JASM/commit/66c4d9b7342080c3598de095c84dd9b6a27d718f))
-* **WuWa:** 添加游戏内皮肤图 ChangliLaurelNymph.png ([595fb41](https://github.com/qsy123-coder/JASM/commit/595fb414755f7f8a5a982c9ebf6bc8bc9c91b3cf))
-* **WuWa:** 添加游戏内皮肤图 ChisaPeachParfait.png ([3174caf](https://github.com/qsy123-coder/JASM/commit/3174caf71922ef9e5791558c14ecc4cdea3564c6))
-* **WuWa:** 添加游戏内皮肤图 JinhsiPeachBlossom.png ([6e321d9](https://github.com/qsy123-coder/JASM/commit/6e321d97bb5984624180b498703df56ac43baaa8))
-* **WuWa:** 添加游戏内皮肤图 LynaePeppermint.png ([00bbb9b](https://github.com/qsy123-coder/JASM/commit/00bbb9bef07d247bf1da7ece68e21a25d8d3dc54))
-* **WuWa:** 添加游戏内皮肤图 MornyePlushDream.png ([10a5edf](https://github.com/qsy123-coder/JASM/commit/10a5edfc3b4b3d1bfb13d72f7e9f541b0e26dbb9))
-* **WuWa:** 添加游戏内皮肤图 RoverPerpetualSpark.webp ([4618385](https://github.com/qsy123-coder/JASM/commit/4618385663b43e27964cc6f595ce86a0f5398417))
-* **WuWa:** 添加游戏内皮肤图 SanhuaExorcisticAdjuration.png ([8d7d421](https://github.com/qsy123-coder/JASM/commit/8d7d42115fd28821c7dd139e147917ba772dd39b))
-* **WuWa:** 添加游戏内皮肤图 ZaniDowntownRepose.webp ([4bf8d1e](https://github.com/qsy123-coder/JASM/commit/4bf8d1ecca0223b88abc640178db52e575f25b9a))
-* **WuWa:** 添加莉莉（Lily）角色立绘 ([f38a523](https://github.com/qsy123-coder/JASM/commit/f38a5232eb6764db905f634b01be886d88e080a3))
-
 ## [2.36.1](https://github.com/qsy123-coder/JASM/compare/v2.36.0...v2.36.1) (2026-11-10)
 
 
