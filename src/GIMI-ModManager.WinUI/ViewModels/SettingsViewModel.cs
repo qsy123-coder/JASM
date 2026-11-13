@@ -234,6 +234,10 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware,
     private bool _isGameDataSyncRunning = false;
     public bool IsGameDataSyncNotRunning => !IsGameDataSyncRunning;
 
+    [ObservableProperty] private double _gameDataSyncProgress;
+    [ObservableProperty] private bool _isGameDataSyncProgressIndeterminate;
+    [ObservableProperty] private bool _isGameDataSyncProgressVisible;
+
     // Mod 商店
     /// <summary>
     /// 「Mod 商店」里隐藏成人内容。默认 true（PRD 的硬性决定：默认不看到）。
@@ -1407,11 +1411,20 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware,
         if (IsGameDataSyncRunning) return;
         IsGameDataSyncRunning = true;
         GameDataSyncStatus = _localizer.GetLocalizedStringOrDefault("SettingsVM_GameDataSyncChecking", defaultValue: "Checking...");
+        GameDataSyncProgress = 0;
+        IsGameDataSyncProgressIndeterminate = true;
+        IsGameDataSyncProgressVisible = true;
 
         try
         {
+            var progress = new Progress<GameDataSyncProgress>(p =>
+            {
+                IsGameDataSyncProgressIndeterminate = p.IsIndeterminate;
+                GameDataSyncProgress = p.Percentage;
+            });
+
             var result = await _gameDataSyncService.CheckAndSyncAsync(
-                Enum.Parse<SupportedGames>(SelectedGame), isManual: true);
+                Enum.Parse<SupportedGames>(SelectedGame), isManual: true, progress: progress);
 
             GameDataSyncStatus = result switch
             {
@@ -1425,6 +1438,7 @@ public partial class SettingsViewModel : ObservableRecipient, INavigationAware,
         finally
         {
             IsGameDataSyncRunning = false;
+            IsGameDataSyncProgressVisible = false;
             RefreshSyncDisplay();
         }
     }

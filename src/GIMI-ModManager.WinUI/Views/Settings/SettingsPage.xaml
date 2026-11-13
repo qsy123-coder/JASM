@@ -254,6 +254,13 @@
                             Style="{ThemeResource BodyTextBlockStyle}"
                             Text="{x:Bind ViewModel.GameDataSyncStatus, Mode=OneWay}" />
                     </StackPanel>
+                    <ProgressBar
+                        Margin="0,6,0,2"
+                        Minimum="0"
+                        Maximum="100"
+                        Value="{x:Bind ViewModel.GameDataSyncProgress, Mode=OneWay}"
+                        IsIndeterminate="{x:Bind ViewModel.IsGameDataSyncProgressIndeterminate, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsGameDataSyncProgressVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <Button
                         Margin="0,6,0,4"
                         Command="{x:Bind ViewModel.CheckAndSyncGameDataCommand}"
