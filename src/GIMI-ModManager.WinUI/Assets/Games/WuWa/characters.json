@@ -1,6 +1,14 @@
 [
   {
-    "Keys": ["rover", "女主", "女漂", "女漂泊者", "男漂"],
+    "Keys": [
+      "rover",
+      "女主",
+      "女漂",
+      "女漂泊者",
+      "男漂",
+      "Rover Female",
+      "Rover Male"
+    ],
     "ReleaseDate": "2024-05-23T00:00:00",
     "Image": "rover.png",
     "Rarity": 5,
@@ -10,7 +18,14 @@
       "Outlander"
     ],
     "ModFilesName": "rover",
-    "InGameSkins": [],
+    "InGameSkins": [
+      {
+        "ModFilesName": "RoverPerpetualSpark",
+        "Image": "RoverPerpetualSpark.webp",
+        "InternalName": "Rover Perpetual Spark",
+        "DisplayName": "Perpetual Spark"
+      }
+    ],
     "InternalName": "Rover",
     "DisplayName": "Rover"
   },
@@ -131,12 +146,12 @@
     "ModFilesName": "Sanhua",
     "InGameSkins": [
       {
-        "ModFilesName": "ExorcisticAdjuration",
-        "Image": "Exorcistic_Adjuration.png",
-        "InternalName": "ExorcisticAdjuration",
+        "ModFilesName": "Exorcistic Adjuration",
+        "Image": "SanhuaExorcisticAdjuration.png",
+        "InternalName": "Sanhua Exorcistic Adjuration",
         "DisplayName": "Exorcistic Adjuration"
       }
-	],
+    ],
     "InternalName": "Sanhua",
     "DisplayName": "Sanhua"
   },
@@ -308,12 +323,12 @@
     "ModFilesName": "Changli",
     "InGameSkins": [
       {
-        "ModFilesName": "LaurelNymph",
-        "Image": "Laurel_Nymph.png",
-        "InternalName": "LaurelNymph",
+        "ModFilesName": "ChangliLaurelNymph",
+        "Image": "ChangliLaurelNymph.png",
+        "InternalName": "Changli Laurel Nymph",
         "DisplayName": "Laurel Nymph"
       }
-	],
+    ],
     "InternalName": "Changli",
     "DisplayName": "Changli"
   },
@@ -332,12 +347,12 @@
     "ModFilesName": "Jinhsi",
     "InGameSkins": [
       {
-        "ModFilesName": "PeachBlossom",
-        "Image": "Peach_Blossom.png",
-        "InternalName": "PeachBlossom",
+        "ModFilesName": "Peach Blossom",
+        "Image": "JinhsiPeachBlossom.png",
+        "InternalName": "Jinhsi Peach Blossom",
         "DisplayName": "Peach Blossom"
       }
-	],
+    ],
     "InternalName": "Jinhsi",
     "DisplayName": "Jinhsi"
   },
@@ -430,7 +445,7 @@
     "Keys": [
       "Lumi"
     ],
-    "ReleaseDate": "2024-12-12T00:00:00",
+    "ReleaseDate": "2024-11-14T00:00:00",
     "Image": "Lumi.png",
     "Rarity": 4,
     "Element": "Electro",
@@ -458,12 +473,12 @@
     "ModFilesName": "Carlotta",
     "InGameSkins": [
       {
-        "ModFilesName": "SplashingSummer",
-        "Image": "Splashing_Summer.png",
-        "InternalName": "SplashingSummer",
+        "ModFilesName": "CarlottaSplashingSummer",
+        "Image": "CarlottaSplashingSummer.png",
+        "InternalName": "Carlotta Splashing Summer",
         "DisplayName": "Splashing Summer"
       }
-	],
+    ],
     "InternalName": "Carlotta",
     "DisplayName": "Carlotta"
   },
@@ -471,7 +486,7 @@
     "Keys": [
       "Roccia"
     ],
-    "ReleaseDate": "2025-01-23T00:00:00",
+    "ReleaseDate": "2025-01-02T00:00:00",
     "Image": "Roccia.png",
     "Rarity": 5,
     "Element": "Havoc",
@@ -488,7 +503,7 @@
     "Keys": [
       "Brant"
     ],
-    "ReleaseDate": "2025-03-06T00:00:00",
+    "ReleaseDate": "2025-02-13T00:00:00",
     "Image": "Brant.png",
     "Rarity": 5,
     "Element": "Fusion",
@@ -520,33 +535,9 @@
   },
   {
     "Keys": [
-      "Zani"
-    ],
-    "ReleaseDate": "2025-04-29T00:00:00",
-    "Image": "Zani.png",
-    "Rarity": 5,
-    "Element": "Spectro",
-    "Class": "Gauntlets",
-    "Region": [
-      "Rinascita"
-    ],
-    "ModFilesName": "Zani",
-    "InGameSkins": [
-      {
-        "ModFilesName": "DowntownRepose",
-        "Image": "Downtown_Repose.webp",
-        "InternalName": "DowntownRepose",
-        "DisplayName": "Downtown Repose"
-      }
-	],
-    "InternalName": "Zani",
-    "DisplayName": "Zani"
-  },
-  {
-    "Keys": [
       "Cantarella"
     ],
-    "ReleaseDate": "2025-03-27T00:00:00",
+    "ReleaseDate": "2025-03-28T00:00:00",
     "Image": "Cantarella.png",
     "Rarity": 5,
     "Element": "Havoc",
@@ -561,9 +552,33 @@
   },
   {
     "Keys": [
+      "Zani"
+    ],
+    "ReleaseDate": "2025-04-29T00:00:00",
+    "Image": "Zani.png",
+    "Rarity": 5,
+    "Element": "Spectro",
+    "Class": "Gauntlets",
+    "Region": [
+      "Rinascita"
+    ],
+    "ModFilesName": "Zani",
+    "InGameSkins": [
+      {
+        "ModFilesName": "ZaniDowntownRepose",
+        "Image": "ZaniDowntownRepose.webp",
+        "InternalName": "Zani Downtown Repose",
+        "DisplayName": "Downtown Repose"
+      }
+    ],
+    "InternalName": "Zani",
+    "DisplayName": "Zani"
+  },
+  {
+    "Keys": [
       "Ciaccona"
     ],
-    "ReleaseDate": "2025-05-22T00:00:00",
+    "ReleaseDate": "2025-04-29T00:00:00",
     "Image": "Ciaccona.png",
     "Rarity": 5,
     "Element": "Aero",
@@ -597,7 +612,7 @@
     "Keys": [
       "Lupa"
     ],
-    "ReleaseDate": "2025-07-03T00:00:00",
+    "ReleaseDate": "2025-07-02T00:00:00",
     "Image": "Lupa.png",
     "Rarity": 5,
     "Element": "Fusion",
@@ -620,7 +635,7 @@
     "Element": "Havoc",
     "Class": "Rectifier",
     "Region": [
-      "Fractsidus"
+      "Rinascita"
     ],
     "ModFilesName": "Phrolova",
     "InGameSkins": [],
@@ -648,7 +663,7 @@
     "Keys": [
       "Iuno"
     ],
-    "ReleaseDate": "2025-09-17T00:00:00",
+    "ReleaseDate": "2025-08-28T00:00:00",
     "Image": "Iuno.png",
     "Rarity": 5,
     "Element": "Aero",
@@ -662,14 +677,17 @@
     "DisplayName": "Iuno"
   },
   {
-    "Keys": ["Galbrena", "嘉贝莉娜"],
+    "Keys": [
+      "Galbrena",
+      "嘉贝莉娜"
+    ],
     "ReleaseDate": "2025-10-09T00:00:00",
     "Image": "Galbrena.png",
     "Rarity": 5,
-    "Element": "Havoc",
-    "Class": "Rectifier",
+    "Element": "Fusion",
+    "Class": "Pistols",
     "Region": [
-      "Bshores"
+      "Rinascita"
     ],
     "ModFilesName": "Galbrena",
     "InGameSkins": [],
@@ -680,7 +698,7 @@
     "Keys": [
       "Qiuyuan"
     ],
-    "ReleaseDate": "2025-10-30T00:00:00",
+    "ReleaseDate": "2025-10-09T00:00:00",
     "Image": "Qiuyuan.png",
     "Rarity": 5,
     "Element": "Aero",
@@ -703,10 +721,17 @@
     "Element": "Havoc",
     "Class": "Broadblade",
     "Region": [
-      "Ashinohara"
+      "Startorch Academy"
     ],
     "ModFilesName": "Chisa",
-    "InGameSkins": [],
+    "InGameSkins": [
+      {
+        "ModFilesName": "ChisaPeachParfait",
+        "Image": "ChisaPeachParfait.png",
+        "InternalName": "Chisa Peach Parfait",
+        "DisplayName": "Peach Parfait"
+      }
+    ],
     "InternalName": "Chisa",
     "DisplayName": "Chisa"
   },
@@ -714,35 +739,18 @@
     "Keys": [
       "Buling"
     ],
-    "ReleaseDate": "2025-12-11T00:00:00",
+    "ReleaseDate": "2025-11-20T00:00:00",
     "Image": "Buling.webp",
     "Rarity": 4,
     "Element": "Electro",
     "Class": "Rectifier",
     "Region": [
-      "Ashinohara"
+      "Bshores"
     ],
     "ModFilesName": "Buling",
     "InGameSkins": [],
     "InternalName": "Buling",
     "DisplayName": "Buling"
-  },
-  {
-    "Keys": [
-      "Mornye"
-    ],
-    "ReleaseDate": "2026-01-15T00:00:00",
-    "Image": "Mornye.webp",
-    "Rarity": 5,
-    "Element": "Fusion",
-    "Class": "Broadblade",
-    "Region": [
-      "Lahai"
-    ],
-    "ModFilesName": "Mornye",
-    "InGameSkins": [],
-    "InternalName": "Mornye",
-    "DisplayName": "Mornye"
   },
   {
     "Keys": [
@@ -754,26 +762,112 @@
     "Element": "Spectro",
     "Class": "Pistols",
     "Region": [
-      "Lahai"
+      "Lahai-Roi"
     ],
     "ModFilesName": "Lynae",
-    "InGameSkins": [],
+    "InGameSkins": [
+      {
+        "ModFilesName": "LynaePeppermint",
+        "Image": "LynaePeppermint.png",
+        "InternalName": "Lynae Peppermint",
+        "DisplayName": "Peppermint"
+      }
+    ],
     "InternalName": "Lynae",
     "DisplayName": "Lynae"
   },
   {
     "Keys": [
+      "Mornye"
+    ],
+    "ReleaseDate": "2026-01-15T00:00:00",
+    "Image": "Mornye.webp",
+    "Rarity": 5,
+    "Element": "Fusion",
+    "Class": "Broadblade",
+    "Region": [
+      "Lahai-Roi"
+    ],
+    "ModFilesName": "Mornye",
+    "InGameSkins": [
+      {
+        "ModFilesName": "MornyePlushDream",
+        "Image": "MornyePlushDream.png",
+        "InternalName": "Mornye Plush Dream",
+        "DisplayName": "Plush Dream"
+      }
+    ],
+    "InternalName": "Mornye",
+    "DisplayName": "Mornye"
+  },
+  {
+    "Keys": [
+      "aemeath",
+      "爱弥斯",
+      "Aemeath"
+    ],
+    "ReleaseDate": "2026-02-06T00:00:00",
+    "Image": "Aemeath.png",
+    "Rarity": 5,
+    "Element": "Fusion",
+    "Class": "Sword",
+    "Region": [
+      "Lahai-Roi"
+    ],
+    "ModFilesName": "Aemeath",
+    "InGameSkins": [],
+    "InternalName": "Aemeath",
+    "DisplayName": "Aemeath"
+  },
+  {
+    "Keys": [
+      "Luuk",
+      "Herssen"
+    ],
+    "ReleaseDate": "2026-02-26T00:00:00",
+    "Image": "Luuk.webp",
+    "Rarity": 5,
+    "Element": "Spectro",
+    "Class": "Gauntlets",
+    "Region": [
+      "Lahai-Roi"
+    ],
+    "ModFilesName": "Luuk",
+    "InGameSkins": [],
+    "InternalName": "Luuk",
+    "DisplayName": "Luuk"
+  },
+  {
+    "Keys": [
+      "Sigrika"
+    ],
+    "ReleaseDate": "2026-03-19T00:00:00",
+    "Image": "Sigrika.webp",
+    "Rarity": 5,
+    "Element": "Aero",
+    "Class": "Gauntlets",
+    "Region": [
+      "Lahai-Roi"
+    ],
+    "ModFilesName": "Sigrika",
+    "InGameSkins": [],
+    "InternalName": "Sigrika",
+    "DisplayName": "Sigrika"
+  },
+  {
+    "Keys": [
       "feixue",
       "hiyuki",
-      "绯雪"
+      "绯雪",
+      "Hiyuki"
     ],
-    "ReleaseDate": "2026-04-30T00:00:00",
+    "ReleaseDate": "2026-04-17T00:00:00",
     "Image": "Feixue.png",
     "Rarity": 5,
     "Element": "Glacio",
     "Class": "Sword",
     "Region": [
-      "Rinascita"
+      "Lahai-Roi"
     ],
     "ModFilesName": "Feixue",
     "InGameSkins": [],
@@ -782,20 +876,22 @@
   },
   {
     "Keys": [
-      "Rebecca"
+      "denia",
+      "达妮娅",
+      "Denia"
     ],
-    "ReleaseDate": "2026-06-08T00:00:00",
-    "Image": "rebecca.jpeg",
+    "ReleaseDate": "2026-05-21T00:00:00",
+    "Image": "Denia.png",
     "Rarity": 5,
-    "Element": "Conductive",
-    "Class": "Pistols",
+    "Element": "Fusion",
+    "Class": "Rectifier",
     "Region": [
-      "NightCity"
+      "Lahai-Roi"
     ],
-    "ModFilesName": "Rebecca",
+    "ModFilesName": "Denia",
     "InGameSkins": [],
-    "InternalName": "Rebecca",
-    "DisplayName": "丽贝卡"
+    "InternalName": "Denia",
+    "DisplayName": "Denia"
   },
   {
     "Keys": [
@@ -807,59 +903,41 @@
     "Element": "Spectro",
     "Class": "Pistols",
     "Region": [
-      "NightCity"
+      "Lahai-Roi"
     ],
     "ModFilesName": "Lucy",
     "InGameSkins": [],
     "InternalName": "Lucy",
-    "DisplayName": "露西"
+    "DisplayName": "Lucy"
   },
   {
     "Keys": [
-      "Sigrika"
+      "Rebecca"
     ],
-    "ReleaseDate": "2026-12-11T00:00:00",
-    "Image": "Sigrika.webp",
+    "ReleaseDate": "2026-06-08T00:00:00",
+    "Image": "rebecca.jpeg",
     "Rarity": 5,
     "Element": "Electro",
-    "Class": "Rectifier",
+    "Class": "Pistols",
     "Region": [
-      "Lahai"
+      "Night City"
     ],
-    "ModFilesName": "Sigrika",
+    "ModFilesName": "Rebecca",
     "InGameSkins": [],
-    "InternalName": "Sigrika",
-    "DisplayName": "Sigrika"
-  },
-  {
-    "Keys": [
-      "Luuk",
-      "Herssen"
-    ],
-    "ReleaseDate": "2026-12-11T00:00:00",
-    "Image": "Luuk.webp",
-    "Rarity": 5,
-    "Element": "Electro",
-    "Class": "Rectifier",
-    "Region": [
-      "Lahai"
-    ],
-    "ModFilesName": "Luuk",
-    "InGameSkins": [],
-    "InternalName": "Luuk",
-    "DisplayName": "Luuk Herssen"
+    "InternalName": "Rebecca",
+    "DisplayName": "Rebecca"
   },
   {
     "Keys": [
       "Lucilla"
     ],
-    "ReleaseDate": "2026-12-11T00:00:00",
+    "ReleaseDate": "2026-06-08T00:00:00",
     "Image": "Lucilla.webp",
     "Rarity": 5,
-    "Element": "Electro",
+    "Element": "Glacio",
     "Class": "Rectifier",
     "Region": [
-      "Lahai"
+      "Lahai-Roi"
     ],
     "ModFilesName": "Lucilla",
     "InGameSkins": [],
@@ -868,28 +946,11 @@
   },
   {
     "Keys": [
-      "aemeath",
-      "爱弥斯"
-    ],
-    "ReleaseDate": "2026-02-05T00:00:00",
-    "Image": "Aemeath.png",
-    "Rarity": 5,
-    "Element": "Fusion",
-    "Class": "Sword",
-    "Region": [
-      "Lahai"
-    ],
-    "ModFilesName": "Aemeath",
-    "InGameSkins": [],
-    "InternalName": "Aemeath",
-    "DisplayName": "Aemeath"
-  },
-  {
-    "Keys": [
       "yangyangxuanling",
       "yangyang",
       "xuanling",
-      "玄翎"
+      "玄翎",
+      "YangyangXuanling"
     ],
     "ReleaseDate": "2026-07-10T00:00:00",
     "Image": "YangyangXuanling.webp",
@@ -897,24 +958,25 @@
     "Element": "Havoc",
     "Class": "Sword",
     "Region": [
-      "Mingting"
+      "Huanglong"
     ],
     "ModFilesName": "YangyangXuanling",
     "InGameSkins": [],
     "InternalName": "YangyangXuanling",
-    "DisplayName": "Yangyang・Xuanling"
+    "DisplayName": "Yangyang: Xuanling"
   },
   {
     "Keys": [
-      "suisui"
+      "suisui",
+      "Suisui"
     ],
-    "ReleaseDate": "2026-08-13T00:00:00",
+    "ReleaseDate": "2026-07-10T00:00:00",
     "Image": "Suisui.webp",
     "Rarity": 5,
     "Element": "Glacio",
     "Class": "Rectifier",
     "Region": [
-      "Mingting"
+      "Huanglong"
     ],
     "ModFilesName": "Suisui",
     "InGameSkins": [],
@@ -922,14 +984,20 @@
     "DisplayName": "Suisui"
   },
   {
-    "Keys": ["qingxiao", "清霄", "青霄", "청초"],
-    "ReleaseDate": "2026-08-20T00:00:00",
+    "Keys": [
+      "qingxiao",
+      "清霄",
+      "青霄",
+      "청초",
+      "Qingxiao"
+    ],
+    "ReleaseDate": "2026-08-10T00:00:00",
     "Image": "Qingxiao.webp",
     "Rarity": 5,
     "Element": "Aero",
     "Class": "Sword",
     "Region": [
-      "Mengzhou"
+      "Huanglong"
     ],
     "ModFilesName": "Qingxiao",
     "InGameSkins": [],
@@ -938,15 +1006,16 @@
   },
   {
     "Keys": [
-      "jingran"
+      "jingran",
+      "Jingran"
     ],
-    "ReleaseDate": "2026-09-04T00:00:00",
+    "ReleaseDate": "2026-08-10T00:00:00",
     "Image": "Jingran.webp",
     "Rarity": 5,
     "Element": "Fusion",
     "Class": "Broadblade",
     "Region": [
-      "Mengzhou"
+      "Huanglong"
     ],
     "ModFilesName": "Jingran",
     "InGameSkins": [],
@@ -954,14 +1023,20 @@
     "DisplayName": "Jingran"
   },
   {
-    "Keys": ["xinyuehu", "心", "hsin", "心月狐"],
-    "ReleaseDate": "2026-09-11T00:00:00",
+    "Keys": [
+      "xinyuehu",
+      "心",
+      "hsin",
+      "心月狐",
+      "Hsin"
+    ],
+    "ReleaseDate": "2026-09-10T00:00:00",
     "Image": "Xinyuehu.webp",
     "Rarity": 5,
     "Element": "Electro",
-    "Class": "Rectifier",
+    "Class": "None",
     "Region": [
-      "Mengzhou"
+      "Huanglong"
     ],
     "ModFilesName": "Xinyuehu",
     "InGameSkins": [],
@@ -970,15 +1045,16 @@
   },
   {
     "Keys": [
-      "suoming"
+      "suoming",
+      "Suoming"
     ],
-    "ReleaseDate": "2026-09-25T00:00:00",
+    "ReleaseDate": "2026-09-10T00:00:00",
     "Image": "Suoming.webp",
     "Rarity": 5,
-    "Element": "Havoc",
-    "Class": "Rectifier",
+    "Element": "Electro",
+    "Class": "None",
     "Region": [
-      "Mengzhou"
+      "Huanglong"
     ],
     "ModFilesName": "Suoming",
     "InGameSkins": [],
@@ -987,20 +1063,16 @@
   },
   {
     "Keys": [
-      "denia",
-      "达妮娅"
+      "Lily"
     ],
-    "ReleaseDate": "2026-05-21T00:00:00",
-    "Image": "Denia.png",
+    "ReleaseDate": "2026-11-12T00:00:00",
+    "Image": "Lily.png",
     "Rarity": 5,
-    "Element": "Fusion",
-    "Class": "Rectifier",
-    "Region": [
-      "Lahai"
-    ],
-    "ModFilesName": "Denia",
+    "Element": "Spectro",
+    "Class": "Pistols",
+    "ModFilesName": "Lily",
     "InGameSkins": [],
-    "InternalName": "Denia",
-    "DisplayName": "Denia"
+    "InternalName": "Lily",
+    "DisplayName": "Lily"
   }
 ]
