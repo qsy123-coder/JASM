@@ -1,9 +1,10 @@
 ﻿# 从 Release.py 产出的 output/JASM 生成安装包 JASM_Setup_v<版本>.exe。
 #
-# 用法：
-#   pwsh Build/PackInstaller.ps1                 # 版本号自动从 csproj 的 VersionPrefix 读
-#   pwsh Build/PackInstaller.ps1 -Version 2.36.2
-#   pwsh Build/PackInstaller.ps1 -Sign           # 打包前后调用 Build/Sign.ps1（有证书时才真正签）
+# 用法（本机没有 pwsh 时用 Windows PowerShell；CI 上用 pwsh 亦可）：
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build/PackInstaller.ps1
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build/PackInstaller.ps1 -Version 2.36.2
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build/PackInstaller.ps1 -Sign
+#   （-Sign = 打包前后调用 Build/Sign.ps1，有证书时才真正签）
 #
 # 前提：先跑过 `python Build/Release.py`（CI 的 folder 构建），output/JASM 必须存在且完整。
 # 本机没有 Inno Setup 时脚本会给出安装命令（winget install JRSoftware.InnoSetup）。
