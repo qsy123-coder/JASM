@@ -182,6 +182,10 @@ GitHub 回退通道上没有 `kind` 字段（API 只给文件名），由 `AppUp
 单 exe 被杀软拦截的根因是自解压（`IncludeAllContentForSelfExtract`）+ 无签名 + 运行时往 AppData
 释放 exe/dll；安装包只解决第一条，**签名仍必须做**（`Build/Sign.ps1` / CI 的 `trusted-signing-action`）。
 
+单文件版从 2.36.3 起，在清单里发现 `kind=installer` 时优先迁移到安装版（下载 Setup → `/NOLAUNCH=1`
+静默安装 → 删除旧 exe，失败则回退旧 exe）。因此 **2.36.3 仍需发布 `SingleFile_JASM_*.zip`**，
+让 ≤2.36.2 的老客户端先升上来；2.36.4 起可以停发单文件包。细节见 `docs/app-update-cos-setup.md` §九。
+
 ### 9. 发布时要挂载的多形态产物
 
 每次发布要把面向不同用户的分发形态都传上去 —— **同一批包要传两个地方**：
