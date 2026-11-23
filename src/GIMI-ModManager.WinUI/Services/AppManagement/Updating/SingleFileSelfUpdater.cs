@@ -18,10 +18,15 @@ public sealed record SingleFileSelfUpdateResult(bool Success, string? Error)
 /// 因此由本进程直接完成：下载 SingleFile 更新包 → 用 <see cref="System.IO.Compression.ZipFile"/> 解出新的
 /// “JASM - Just Another Skin Manager.exe” → 写一个临时 PowerShell 脚本等待本进程退出 → 脚本用新版 exe 覆盖旧 exe
 /// → 再启动新版。全程保持纯单文件，无需外部更新器。选用 .zip（而非 .7z）正是为了用 BCL 解压、不依赖运行时 7z.exe。
+///
+/// 清单里出现安装包（<c>kind=installer</c>）时优先走迁移：下载 Setup → 静默安装到
+/// <c>%LOCALAPPDATA%\Programs\JASM</c> → 删除旧的单文件 exe。单文件形态是杀软误报最严重的分发方式，
+/// 迁移后用户回到正常的 folder 更新通道。迁移失败时退回上面的单文件替换路径。
 /// </summary>
 public class SingleFileSelfUpdater
 {
     private const string SingleFileAssetPrefix = "SingleFile_JASM_";
+    private const string InstallerAssetPrefix = "JASM_Setup_";
     private const string ExeName = "JASM - Just Another Skin Manager.exe";
 
     /// <summary>
@@ -78,6 +83,66 @@ Start-Process -FilePath $Target -WorkingDirectory (Split-Path -LiteralPath $Targ
 exit 0
 ";
 
+    /// <summary>
+    /// 从单文件版迁移到安装版的交接脚本：等本进程退出 → 静默跑 Setup（/NOLAUNCH，不让安装器
+    /// 自己启动）→ 校验安装目录里的 exe 存在 → 删掉旧的单文件 exe → 启动安装版。
+    ///
+    /// 安装失败（非 0 退出码或目标 exe 不存在）时重新拉起旧 exe，用户至少还能继续用旧版。
+    /// 删除旧 exe 前比较路径：如果用户本来就把单文件放在安装目录，删掉的就是刚装好的那份。
+    /// </summary>
+    private const string InstallerUpdateScript = @"
+param(
+    [string]$Setup,
+    [string]$OldExe,
+    [string]$InstalledExe,
+    [string]$LogFile,
+    [int]$PidToWatch
+)
+
+$ErrorActionPreference = 'Continue'
+
+function Log([string]$msg) {
+    try {
+        Add-Content -LiteralPath $LogFile -Value ((Get-Date).ToString('yyyy-MM-dd HH:mm:ss') + ' ' + $msg) -ErrorAction SilentlyContinue
+    } catch {}
+}
+
+Log 'Installer migration started. Waiting for JASM to exit...'
+
+$deadline = (Get-Date).AddMinutes(5)
+while ((Get-Process -Id $PidToWatch -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $deadline)) {
+    Start-Sleep -Milliseconds 300
+}
+Log 'Process exit wait finished.'
+
+$installLog = $LogFile + '.install.log'
+$arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', '/NOLAUNCH=1', ('/LOG=' + $installLog))
+$installer = Start-Process -FilePath $Setup -ArgumentList $arguments -Wait -PassThru
+Log ('Installer exit code: ' + $installer.ExitCode)
+
+if ($installer.ExitCode -eq 0 -and (Test-Path -LiteralPath $InstalledExe)) {
+    if ($OldExe -ne $InstalledExe -and (Test-Path -LiteralPath $OldExe)) {
+        try {
+            Remove-Item -LiteralPath $OldExe -Force -ErrorAction Stop
+            Log 'Removed old single-file exe.'
+        } catch {
+            Log ('Failed to remove old exe: ' + $_.Exception.Message)
+        }
+    }
+
+    Remove-Item -LiteralPath $Setup -Force -ErrorAction SilentlyContinue
+    Log 'Starting installed JASM.'
+    Start-Process -FilePath $InstalledExe -WorkingDirectory (Split-Path -LiteralPath $InstalledExe -Parent)
+    exit 0
+}
+
+Log 'Installer migration failed. Restarting old JASM.'
+if (Test-Path -LiteralPath $OldExe) {
+    Start-Process -FilePath $OldExe -WorkingDirectory (Split-Path -LiteralPath $OldExe -Parent)
+}
+exit 1
+";
+
     private readonly ILogger _logger;
     private readonly AppUpdateManifestService _appUpdateManifestService;
     private readonly AppUpdateDownloader _downloader;
@@ -112,6 +177,35 @@ exit 0
 
             if (version <= currentVersion)
                 return SingleFileSelfUpdateResult.Fail($"当前已是最新版本（v{currentVersion}）。");
+
+            // 清单里有安装包时优先迁移到安装版：单文件形态是杀软误报的重灾区，把它留在用户机器上
+            // 只会让下一次更新继续被拦。下载 / 交接失败时退回旧的单文件替换路径，不能把用户卡住。
+            var installerAsset = AppUpdateManifestParser.FindAsset(release, AppUpdateAsset.KindInstaller,
+                InstallerAssetPrefix);
+
+            if (installerAsset?.Url is not null)
+            {
+                try
+                {
+                    var migration = await MigrateToInstallerAsync(version, installerAsset, progress,
+                        cancellationToken);
+
+                    if (migration.Success)
+                        return migration;
+
+                    _logger.Warning(
+                        "Installer migration did not start: {Error}. Falling back to single-file replacement.",
+                        migration.Error);
+                }
+                catch (OperationCanceledException)
+                {
+                    return SingleFileSelfUpdateResult.Fail("更新已取消。");
+                }
+                catch (Exception e)
+                {
+                    _logger.Warning(e, "Installer migration failed. Falling back to single-file replacement.");
+                }
+            }
 
             // 单文件包由清单的 kind 字段指定，缺省退回文件名前缀 —— 与亮徽标时用的是同一条发布记录，
             // 所以不可能出现"徽标说 v2.31.0、下载的却是别的版本"。
@@ -152,6 +246,73 @@ exit 0
         {
             _logger.Error(e, "Single-file self update failed.");
             return SingleFileSelfUpdateResult.Fail($"更新失败：{e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 下载安装包并交接给 <see cref="InstallerUpdateScript"/>。只有在脚本成功启动时才返回
+    /// <c>Success</c>；调用方在失败时会退回单文件替换，所以这里不要抛异常来"表示失败"。
+    /// </summary>
+    private async Task<SingleFileSelfUpdateResult> MigrateToInstallerAsync(Version version,
+        AppUpdateAsset asset, IProgress<AppUpdateDownloadProgress>? progress, CancellationToken cancellationToken)
+    {
+        var workDir = Path.Combine(Path.GetTempPath(), "JASM_Installer_Update");
+        Directory.CreateDirectory(workDir);
+        var setupPath = Path.Combine(workDir, $"JASM_Setup_v{version}.exe");
+
+        await _downloader.DownloadAsync(asset.Url!, setupPath + ".part", setupPath, asset.SizeBytes,
+            asset.Sha256, progress, cancellationToken);
+
+        var oldExe = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(oldExe))
+            return SingleFileSelfUpdateResult.Fail("无法确定当前 JASM.exe 的路径，请手动下载安装包。");
+
+        // 与 Build/Installer/JASM.iss 的 DefaultDirName 保持一致：{localappdata}\Programs\JASM。
+        var installedExe = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Programs", "JASM", ExeName);
+
+        return LaunchInstallerScript(workDir, setupPath, oldExe, installedExe)
+            ? SingleFileSelfUpdateResult.Ok()
+            : SingleFileSelfUpdateResult.Fail("启动安装脚本失败，请重试。");
+    }
+
+    private bool LaunchInstallerScript(string workDir, string setupPath, string oldExe, string installedExe)
+    {
+        var scriptPath = Path.Combine(workDir, "JASM_InstallerUpdate.ps1");
+        var logFile = Path.Combine(workDir, "JASM_InstallerUpdate_Log.txt");
+        File.WriteAllText(scriptPath, InstallerUpdateScript);
+
+        var powershellPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32",
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+        if (!File.Exists(powershellPath))
+            powershellPath = "powershell.exe";
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = powershellPath,
+            Arguments =
+                $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" " +
+                $"-Setup \"{setupPath}\" -OldExe \"{oldExe}\" -InstalledExe \"{installedExe}\" " +
+                $"-LogFile \"{logFile}\" -PidToWatch {Environment.ProcessId}",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = workDir
+        };
+
+        try
+        {
+            Process.Start(psi);
+            _logger.Information("Launched installer migration script. Setup={Setup}, OldExe={OldExe}",
+                setupPath, oldExe);
+            return true;
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, "Failed to launch installer migration script.");
+            return false;
         }
     }
 
