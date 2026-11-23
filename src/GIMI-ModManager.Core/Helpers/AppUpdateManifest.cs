@@ -59,6 +59,12 @@ public sealed class AppUpdateAsset
     /// <summary>单文件版（.zip，只有一个 exe，走进程内自更新通道）。</summary>
     public const string KindSingleFile = "singleFile";
 
+    /// <summary>
+    /// 安装包（Inno Setup 产出的 <c>JASM_Setup_*.exe</c>）。面向新用户的下载入口；
+    /// 应用内更新仍然消费 <see cref="KindFolder"/> —— 安装包只负责首次安装与分发。
+    /// </summary>
+    public const string KindInstaller = "installer";
+
     /// <summary>资产文件名（如 <c>SingleFile_JASM_v2.31.0.zip</c>）。作展示，也作 <see cref="Kind"/> 缺失时的回退匹配。</summary>
     public string? Name { get; set; }
 
