@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.36.3](https://github.com/qsy123-coder/JASM/compare/v2.36.2...v2.36.3) (2026-11-23)
+
+
+### Features
+
+* **installer:** 支持 /NOLAUNCH=1 跳过自动启动 ([72c1c25](https://github.com/qsy123-coder/JASM/commit/72c1c2547dfb45ccaf78d2c8a3ade1474ed84609))
+* **release:** ????????????(2.36.3)([#23](https://github.com/qsy123-coder/JASM/issues/23)) ([810fea0](https://github.com/qsy123-coder/JASM/commit/810fea0c079b307f2f0b123d8c8811abedae03b7))
+* **release:** 更新清单支持 installer 资产 ([b6eb34c](https://github.com/qsy123-coder/JASM/commit/b6eb34c06d89b4a9210165c1977b4af7419bc5c1))
+* **update:** 单文件版更新优先迁移到安装版 ([ed49d72](https://github.com/qsy123-coder/JASM/commit/ed49d72a715fe45140b70f65da189f6f5957b008))
+* **update:** 新增 installer 资产类型 ([c316c07](https://github.com/qsy123-coder/JASM/commit/c316c0749efc211c7dbae384719ea84c83190e94))
+
+
+### Bug Fixes
+
+* **installer:** 使用仓库内置的简体中文语言文件 ([4038754](https://github.com/qsy123-coder/JASM/commit/403875478d8dd9f336ad5eea3b4e1866c3bfa63b))
+* **installer:** 支持用户级 Inno Setup 安装路径 ([3c6423e](https://github.com/qsy123-coder/JASM/commit/3c6423eea734ab67767718ca553c7d32edcdc095))
+* **update:** 避免安装包被识别为 folder 包 ([a6ad378](https://github.com/qsy123-coder/JASM/commit/a6ad378260254a4ea38e92846a118d8234f84eb6))
+
+
+### Miscellaneous Chores
+
+* **release:** bump to 2.36.3 ([7784c10](https://github.com/qsy123-coder/JASM/commit/7784c1018c5c5d0cce3b560d0f2bd0d14c141871))
+
 ## [2.36.2](https://github.com/qsy123-coder/JASM/compare/v2.36.1...v2.36.2) (2026-11-13)
 
 
