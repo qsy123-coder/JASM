@@ -202,6 +202,10 @@ public static class AppUpdateReleaseResolver
         if (name.StartsWith("SingleFile_", StringComparison.OrdinalIgnoreCase))
             return AppUpdateAsset.KindSingleFile;
 
+        // 必须排在 JASM_ 之前：安装包同样以 JASM_ 开头，不先认出来就会被当成 folder 包。
+        if (name.StartsWith("JASM_Setup_", StringComparison.OrdinalIgnoreCase))
+            return AppUpdateAsset.KindInstaller;
+
         return name.StartsWith("JASM_", StringComparison.OrdinalIgnoreCase)
             ? AppUpdateAsset.KindFolder
             : null;
