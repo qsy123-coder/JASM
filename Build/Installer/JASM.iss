@@ -71,7 +71,9 @@ RestartApplications=no
 ; SignTool=trustedsigning
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; 官方安装包只附带部分语言，ChineseSimplified.isl 不在其中（issrc 仓库里有，但不会随安装器分发）。
+; 因此把它 vendor 到 Build/Installer/Languages/，路径相对本脚本目录。
+Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
