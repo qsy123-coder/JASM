@@ -152,6 +152,31 @@ public class AppUpdateReleaseResolverTests
         Assert.Equal(AppUpdateAsset.KindSingleFile, singleFileAsset?.Kind);
     }
 
+    // 安装包同样以 JASM_ 开头：kind 反推必须先认出 JASM_Setup_，否则它会被当成 folder 包，
+    // 更新器下到 .exe 后按 .7z 解压，用户那边就是"点了更新直接失败"。
+    [Fact]
+    public async Task TheGitHubFallbackDoesNotConfuseTheInstallerWithTheFolderPackage()
+    {
+        const string json = """
+        [
+          { "tag_name": "v2.31.0", "prerelease": false,
+            "assets": [
+              { "name": "JASM_Setup_v2.31.0.exe", "browser_download_url": "https://github.invalid/setup.exe" },
+              { "name": "JASM_v2.31.0.7z", "browser_download_url": "https://github.invalid/a.7z" }
+            ] }
+        ]
+        """;
+        var handler = new StubHandler(uri => StubHandler.Json(json));
+
+        var result = await AppUpdateReleaseResolver.ResolveAsync(NewClient(handler), null, GitHubUrl);
+        var release = result.Release!;
+
+        Assert.Equal("JASM_Setup_v2.31.0.exe",
+            AppUpdateManifestParser.FindAsset(release, AppUpdateAsset.KindInstaller, "JASM_Setup_")?.Name);
+        Assert.Equal("JASM_v2.31.0.7z",
+            AppUpdateManifestParser.FindAsset(release, AppUpdateAsset.KindFolder, "JASM_")?.Name);
+    }
+
     [Fact]
     public async Task TheGitHubFallbackPicksTheHighestNonPrereleaseTag()
     {
