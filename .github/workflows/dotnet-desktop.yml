@@ -10,11 +10,13 @@ on:
     branches: [ master ]
     paths:
       - 'src/**'
+      - 'Build/**'
       - '.github/workflows/dotnet-desktop.yml'
   push:
     branches: [ master ]
     paths:
       - 'src/**'
+      - 'Build/**'
       - 'CHANGELOG.md'
       # 改本 workflow 也要跑一次：打包步骤（如先构建 UHD 映射 DLL）只能靠真实构建验证
       - '.github/workflows/dotnet-desktop.yml'
@@ -28,6 +30,9 @@ jobs:
 
     runs-on: windows-latest  # For a list of available runner types, refer to
                              # https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idruns-on
+    env:
+      # 证书没配时跳过签名步骤，PR / fork 构建不应因此失败。
+      HAS_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -82,10 +87,66 @@ jobs:
         set "IlcUseEnvironmentalTools=true"
         python ${{ github.workspace }}\Build\Release.py
 
+    - name: Install Inno Setup
+      run: choco install innosetup --no-progress -y
+
+    # 先签负载，再重打 .7z：Release.py 在签名之前就把 output/ 压成了归档，
+    # 只签磁盘上的文件会让 .7z 里仍然是未签名字节。
+    - name: Sign release payload
+      if: env.HAS_SIGNING == 'true'
+      uses: azure/trusted-signing-action@v0
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+        trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+        certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+        files-folder: ${{ github.workspace }}\output
+        files-folder-filter: exe,dll
+        files-folder-recurse: true
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Rebuild folder archive with signed binaries
+      if: env.HAS_SIGNING == 'true'
+      shell: pwsh
+      run: |
+        Remove-Item -LiteralPath "${{ github.workspace }}\${{ env.zipFile }}" -ErrorAction SilentlyContinue
+        7z a -mx4 "${{ github.workspace }}\${{ env.zipFile }}" "${{ github.workspace }}\output\*"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        7z h -scrcsha256 "${{ github.workspace }}\${{ env.zipFile }}"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    # 安装包：output/JASM -> JASM_Setup_v<版本>.exe（见 Build/Installer/JASM.iss）
+    - name: Build installer
+      shell: pwsh
+      run: pwsh -NoProfile -File Build/PackInstaller.ps1
+
+    - name: Sign installer
+      if: env.HAS_SIGNING == 'true'
+      uses: azure/trusted-signing-action@v0
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+        trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+        certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+        files-folder: ${{ github.workspace }}
+        files-folder-filter: exe
+        files-folder-recurse: false
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
     # Upload the app
     - name: Upload JASM
       uses: actions/upload-artifact@v4
       with:
         name: Upload JASM
-        path: ${{ github.workspace }}\\${{ env.zipFile }}
+        path: |
+          ${{ github.workspace }}\${{ env.zipFile }}
+          ${{ github.workspace }}\JASM_Setup_v*.exe
         
