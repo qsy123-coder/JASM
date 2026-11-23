@@ -89,10 +89,18 @@ Name: "{autodesktop}\{#MyAppShortName}"; Filename: "{app}\{#MyAppExeName}"; Task
 
 [Run]
 ; 不加 skipifsilent：应用内更新以 /VERYSILENT 静默运行时，装完要把 JASM 自动拉起来。
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppShortName}}"; Flags: nowait
+; /NOLAUNCH 由单文件版→安装版的迁移脚本传入：脚本自己启动安装后的 exe，避免双开。
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppShortName}}"; Flags: nowait; Check: ShouldLaunchApp
 
 [UninstallDelete]
 ; 这些目录是运行期由程序/更新器改名或创建的，不在安装清单里，卸载时手动清掉。
 ; 用户数据（%LOCALAPPDATA%\JASM：助手、UHD 运行时、日志、配置）不在安装目录，保留。
 Type: filesandordirs; Name: "{app}\JASM - Auto Updater"
 Type: filesandordirs; Name: "{app}\JASM - Auto Updater_New"
+
+[Code]
+{ 单文件版迁移脚本用 /NOLAUNCH=1 禁止安装器自己启动 JASM，由脚本在安装成功后启动。 }
+function ShouldLaunchApp(): Boolean;
+begin
+  Result := ExpandConstant('{param:NOLAUNCH|0}') <> '1';
+end;
