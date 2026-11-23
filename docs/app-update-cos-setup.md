@@ -89,7 +89,9 @@ https://jasm-modenv-1327973389.cos.ap-guangzhou.myqcloud.com/app/update.json
 python Build/Release.py                 # → output/JASM + JASM_v2.31.0.7z
 
 # 2) 用 folder 产物打安装包（产物必须在 output/JASM；-Sign 会调用 Build/Sign.ps1）
-pwsh Build/PackInstaller.ps1 -Sign      # → JASM_Setup_v2.31.0.exe
+#    本机没有 pwsh 时用 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build/PackInstaller.ps1 -Sign
+# → JASM_Setup_v2.31.0.exe
 
 # 3) 单文件版（需 MSVC，只能由 CI 产出；CI 的 single-file workflow）
 python Build/Release.py SingleFile      # → SingleFile_JASM_v2.31.0.zip
