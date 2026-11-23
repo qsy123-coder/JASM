@@ -19,6 +19,9 @@ JASM 的应用更新原先完全靠 GitHub Releases：包挂在那里，客户�
           "publishedAt": "2026-09-30T08:00:00Z",
           "notesUrl": "https://github.com/qsy123-coder/JASM/releases/tag/v2.31.0",
           "assets": [
+            { "name": "JASM_Setup_v2.31.0.exe", "kind": "installer",
+              "url": "https://<桶域名>/app/JASM_Setup_v2.31.0.exe",
+              "sizeBytes": 151000000, "sha256": "……" },
             { "name": "JASM_v2.31.0.7z", "kind": "folder",
               "url": "https://<桶域名>/app/JASM_v2.31.0.7z",
               "sizeBytes": 148726913, "sha256": "……" },
@@ -30,15 +33,22 @@ JASM 的应用更新原先完全靠 GitHub Releases：包挂在那里，客户�
       ]
     }
 
-  * `kind` 是**显式**判别：`folder`（.7z，含独立更新器；由 `JASM - Auto Updater.exe` 下载）
-    与 `singleFile`（.zip，单 exe；由主程序自己进程内下载替换）。缺字段时客户端退回按文件名前缀
-    （`JASM_` / `SingleFile_JASM_`）匹配，所以文件名仍然是承重的，脚本会断言。
+  * `kind` 是**显式**判别：`installer`（Inno Setup 安装包，新用户下载入口）、
+    `folder`（.7z，含独立更新器；由 `JASM - Auto Updater.exe` 下载，**应用内更新走这条**）
+    与 `singleFile`（.zip，单 exe；由主程序自己进程内下载替换，仅老客户端还在用）。
+    缺字段时客户端退回按文件名前缀（`JASM_Setup_` / `JASM_` / `SingleFile_JASM_`）匹配，
+    所以文件名仍然是承重的，脚本会断言。
+
+  * ⚠️ 安装包 `JASM_Setup_*` 也以 `JASM_` 开头：≤2.36.x 的老更新器在找不到 `kind=folder`
+    时会把它当 folder 包下载并尝试解 .7z。所以本脚本强制「带 installer 的发布必须同时带 folder
+    资产」，否则老客户端会点到更新却没有能用的包。
   * `sizeBytes` / `sha256` 给客户端的进度总量与完整性校验用；`sha256` 缺省则跳过校验。
 
 用法
 ----
-    # 两个包一起发（最常见）：包就是 Release.py 产在仓库根目录的那两个
+    # 三个包一起发（当前形态）：安装包给新用户，folder 包给应用内更新，单文件包照顾老客户端
     python Build/PackAppUpdate.py --version 2.31.0 \\
+        --installer-package JASM_Setup_v2.31.0.exe \\
         --folder-package JASM_v2.31.0.7z \\
         --single-file-package SingleFile_JASM_v2.31.0.zip
 
@@ -82,11 +92,15 @@ MANIFEST_NAME = "update.json"
 
 KIND_FOLDER = "folder"
 KIND_SINGLE_FILE = "singleFile"
+KIND_INSTALLER = "installer"
 
 # 文件名前缀：除了给人看，还是客户端在 kind 缺失时的回退匹配依据（GitHub 回退通道就是按前缀反推
 # kind 的），所以文件名不能随便改。
 FOLDER_PREFIX = "JASM_"
 SINGLE_FILE_PREFIX = "SingleFile_JASM_"
+# 注意它同样以 JASM_ 开头：老更新器的 folder 回退匹配会命中它。所以带 installer 的发布
+# 必须同时带 folder 资产（main() 里有硬性检查）。
+INSTALLER_PREFIX = "JASM_Setup_"
 
 # 单文件包里必须能找到的那个 exe（对应 SingleFileSelfUpdater.ExtractExe 的查找条件）。
 EXE_NAME = "JASM - Just Another Skin Manager.exe"
@@ -157,6 +171,22 @@ def assert_single_file_zip(path: Path) -> None:
         )
 
 
+def assert_installer_exe(path: Path) -> None:
+    """断言安装包确实是 PE 文件（MZ 头）。
+
+    COS 上传最常见的翻车是「传成了 HTML 错误页 / 0 字节对象」，客户端下完才发现跑不起来。
+    这里在生成清单前拦掉，比用户侧报错早得多。
+    """
+    with path.open("rb") as handle:
+        head = handle.read(2)
+
+    if head != b"MZ":
+        raise SystemExit(
+            f"{path.name} 不是 PE 安装包（缺少 MZ 头）。"
+            f"确认它是 PackInstaller.ps1 / ISCC 的产物，而不是 HTML 错误页或占位文件。"
+        )
+
+
 def build_asset(path: Path, kind: str, prefix: str, extension: str, version: str, base_url: str) -> dict:
     """算出清单里的一条资产记录（名字 / 类型 / 直链 / 体积 / 哈希）。"""
     if not path.is_file():
@@ -165,6 +195,8 @@ def build_asset(path: Path, kind: str, prefix: str, extension: str, version: str
     assert_asset_name(path, prefix, extension, version)
     if kind == KIND_SINGLE_FILE:
         assert_single_file_zip(path)
+    elif kind == KIND_INSTALLER:
+        assert_installer_exe(path)
 
     size_bytes = path.stat().st_size
     if size_bytes <= 0:
@@ -238,6 +270,8 @@ def main() -> int:
         description="生成 / 增量更新 COS 上的 JASM 更新清单 app/update.json",
     )
     parser.add_argument("--version", required=True, help="本次发布的版本号，纯数字点分（如 2.31.0）")
+    parser.add_argument("--installer-package", type=Path, default=None,
+                        help="安装包（PackInstaller.ps1 产出的 JASM_Setup_v<版本>.exe）")
     parser.add_argument("--folder-package", type=Path, default=None,
                         help="folder 版包（Release.py 产出的 JASM_v<版本>.7z）")
     parser.add_argument("--single-file-package", type=Path, default=None,
@@ -265,8 +299,10 @@ def main() -> int:
             f"  带 v 前缀或后缀的写法客户端解析不出来，只会被静默跳过（现象是「发了新版用户端不提示」）。"
         )
 
-    if args.folder_package is None and args.single_file_package is None:
-        raise SystemExit("至少要给一个包：--folder-package 或 --single-file-package。")
+    if args.folder_package is None and args.single_file_package is None and args.installer_package is None:
+        raise SystemExit(
+            "至少要给一个包：--installer-package / --folder-package / --single-file-package。"
+        )
 
     base_url = args.base_url if args.base_url.endswith("/") else args.base_url + "/"
 
@@ -278,6 +314,8 @@ def main() -> int:
 
     print("校验并计算资产：")
     assets: list[dict] = []
+    if args.installer_package is not None:
+        assets.append(build_asset(args.installer_package, KIND_INSTALLER, INSTALLER_PREFIX, ".exe", version, base_url))
     if args.folder_package is not None:
         assets.append(build_asset(args.folder_package, KIND_FOLDER, FOLDER_PREFIX, ".7z", version, base_url))
     if args.single_file_package is not None:
@@ -308,6 +346,23 @@ def main() -> int:
 
     action = merge_release(manifest["releases"], new_release)
     manifest["schemaVersion"] = SCHEMA_VERSION
+
+    # 带安装包时必须保证同版本记录里仍有 folder 资产：≤2.36.x 的老更新器只认 kind=folder，
+    # 缺 kind 时按 JASM_ 前缀猜 —— JASM_Setup_*.exe 会被误当成 .7z 下载。
+    if args.installer_package is not None:
+        merged = next(
+            (r for r in manifest["releases"]
+             if isinstance(r, dict) and str(r.get("version", "")).strip() == version),
+            None,
+        )
+        merged_kinds = {asset.get("kind") for asset in (merged or {}).get("assets", [])}
+        if KIND_FOLDER not in merged_kinds:
+            raise SystemExit(
+                "带 --installer-package 发布时必须同时提供 --folder-package"
+                "（或线上清单里同版本已有 folder 资产）。\n"
+                "  ≤2.36.x 的老更新器找不到 kind=folder 时会按 JASM_ 前缀匹配，"
+                "把 JASM_Setup_*.exe 当成 .7z 下载，用户点了更新只会失败。"
+            )
 
     # 按版本降序排列（客户端取的是「最大非预发布版」，顺序只是给人看；但保持有序便于人工核对）。
     manifest["releases"].sort(key=lambda r: version_sort_key(str(r.get("version", "")).strip()), reverse=True)
@@ -346,9 +401,15 @@ def main() -> int:
     print()
     print(" 2) ⚠️ GitHub release 上仍要挂同一版本的同名资产 —— ≤2.30.0 的老客户端和用户机上那份旧的")
     print("    JASM - Auto Updater.exe 只会读 GitHub Releases API；COS 清单拉不到时（欠费/权限/被刷）")
-    print("    也是靠它回退。清单拉不到时把两个包重新挂回 release 即可让所有已发布客户端自动走回退。")
-    release_args = " ".join(asset["name"] for asset in assets)
-    print(f"      gh release upload v{version} {release_args} --repo qsy123-coder/JASM --clobber")
+    print("    也是靠它回退。清单拉不到时把包重新挂回 release 即可让所有已发布客户端自动走回退。")
+    print("    上传顺序：先 .7z、再 Setup、最后单文件 zip。老更新器在 GitHub 回退通道上会把")
+    print("    JASM_Setup_*.exe 也按 JASM_ 前缀当成 folder 包，先挂 .7z 才能让它先命中正确的那个。")
+    ordered_names = (
+        [asset["name"] for asset in assets if asset["kind"] == KIND_FOLDER] +
+        [asset["name"] for asset in assets if asset["kind"] == KIND_INSTALLER] +
+        [asset["name"] for asset in assets if asset["kind"] == KIND_SINGLE_FILE]
+    )
+    print(f"      gh release upload v{version} {' '.join(ordered_names)} --repo qsy123-coder/JASM --clobber")
     print()
     print(" 3) 清单是「先下载线上那份、再本地增量合并」的用法：加下一个版本前，先把 COS 上的")
     print(f"    {MANIFEST_NAME} 存到 --manifest 指向的位置，否则本地这份会丢掉更早的版本记录。")
