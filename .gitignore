@@ -688,6 +688,7 @@ Testing_ZZZ/
 /JASM_v*.7z
 /SelfContained_JASM_v*.7z
 /SingleFile_JASM_v*.zip
+/JASM_Setup_v*.exe
 /SingleFile_JASM_*/
 /提示截图/
 /屏幕截图 *.png

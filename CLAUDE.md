@@ -174,6 +174,18 @@ GitHub 回退通道上没有 `kind` 字段（API 只给文件名），由 `AppUp
 - 助手是**内嵌在主 exe 里**的（csproj 的 `EmbeddedResource`，见第 10 节），不是靠散文件分发 —— 单 exe 版磁盘上只有一个文件，散文件无处可放。folder 版额外把 `Elevator.exe` 复制到 exe 同目录，那份会被优先使用（不重复释放）。
 - `ExcludeElevator` 现在是**本机逃生口**（本机无 MSVC，编不出 AOT 助手）：它会把助手一并跳过，产出的包送不了按键。CI 上**不要**带它。
 
+**安装包（新用户下载入口）**：`Build/PackInstaller.ps1` 从 folder 产物 `output/JASM` 生成
+`JASM_Setup_v*.exe`（Inno Setup，脚本 `Build/Installer/JASM.iss`，简体中文语言文件已 vendor 到
+`Build/Installer/Languages/`）。安装到 `%LOCALAPPDATA%\Programs\JASM`，免 UAC；应用内更新**仍然**
+走 folder 的 `.7z`，安装包只负责首次安装与分发。
+
+单 exe 被杀软拦截的根因是自解压（`IncludeAllContentForSelfExtract`）+ 无签名 + 运行时往 AppData
+释放 exe/dll；安装包只解决第一条，**签名仍必须做**（`Build/Sign.ps1` / CI 的 `trusted-signing-action`）。
+
+单文件版从 2.36.3 起，在清单里发现 `kind=installer` 时优先迁移到安装版（下载 Setup → `/NOLAUNCH=1`
+静默安装 → 删除旧 exe，失败则回退旧 exe）。因此 **2.36.3 仍需发布 `SingleFile_JASM_*.zip`**，
+让 ≤2.36.2 的老客户端先升上来；2.36.4 起可以停发单文件包。细节见 `docs/app-update-cos-setup.md` §九。
+
 ### 9. 发布时要挂载的多形态产物
 
 每次发布要把面向不同用户的分发形态都传上去 —— **同一批包要传两个地方**：
@@ -181,9 +193,14 @@ GitHub 回退通道上没有 `kind` 字段（API 只给文件名），由 `AppUp
 | 产物 | 用途 | 传 COS `app/` | 挂 GitHub release |
 |---|---|---|---|
 | `app/update.json` | 版本清单，**客户端现在只认它** | ✅ 必须 | ❌ |
-| `JASM_vX.Y.Z.7z` | folder 版，含 AutoUpdater，**外部更新器通道的唯一对象** | ✅ 必须 | ✅ 必须 |
-| `SingleFile_JASM_vX.Y.Z.zip` | 单 exe 便携版（**大多数用户用的就是它**），走进程内自更新 | ✅ 必须 | ✅ 必须 |
+| `JASM_Setup_vX.Y.Z.exe` | 安装包，**新用户下载入口**（应用内更新不消费） | ✅ 必须 | ✅ 必须（最后上传） |
+| `JASM_vX.Y.Z.7z` | folder 版，含 AutoUpdater，**外部更新器通道的唯一对象** | ✅ 必须 | ✅ 必须（先上传） |
+| `SingleFile_JASM_vX.Y.Z.zip` | 单 exe 便携版（老客户端用），走进程内自更新 | ✅ 必须 | ✅ 必须 |
 | `SelfContained_JASM_v*.7z` | 自包含版 | 按需 | 按需 |
+
+> GitHub 上传顺序必须是 **`.7z` → Setup → 单文件 zip**：老更新器在 GitHub 回退通道上会把
+> `JASM_Setup_*.exe` 也按 `JASM_` 前缀当成 folder 包，先挂 `.7z` 才能命中正确的资产。
+> `PackAppUpdate.py` 已强制「带 installer 必须同时带 folder」，并在打印的命令里排好顺序。
 
 **为什么 GitHub 也要挂**：release 的 asset 本来就不会自动挂（见第 4 节），而且现在还多了两个理由 —— ① ≤2.30.0 的老客户端与用户机上那份**旧的** `JASM - Auto Updater.exe` 只会读 GitHub API；② COS 出事（欠费 / 权限配错 / 被刷 / 传成坏 JSON）时，客户端会自动回退 GitHub，那是**不用发新版就能救回全部已发布客户端**的唯一手段。
 

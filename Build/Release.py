@@ -215,6 +215,16 @@ if SelfContained == False and SingleFile == False:
     print()
     print("Finished copying JASM - Auto Updater to release directory")
 
+# 可选签名钩子：CI 上把 JASM_SIGN_COMMAND 设为 `pwsh -NoProfile -File Build/Sign.ps1 -Path output/JASM -Recurse`，
+# 在压缩之前把 output/JASM 下的 exe/dll 全部签名。必须先签再打包 —— 压缩完之后再签，
+# .7z 里躺的还是未签名的文件。本机不设置该变量时行为完全不变。
+sign_command = os.getenv("JASM_SIGN_COMMAND")
+if sign_command:
+    print("Signing release payload...")
+    checkSuccessfulExitCode(os.system(sign_command))
+    print("Finished signing release payload")
+    print()
+
 print("Copying text files to RELEASE_DIR...")
 shutil.copy("Build/README.txt", RELEASE_DIR)
 shutil.copy("CHANGELOG.md", os.path.join(RELEASE_DIR, "CHANGELOG.txt"))
