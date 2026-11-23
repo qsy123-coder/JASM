@@ -257,6 +257,24 @@ TRUSTED_SIGNING_PROFILE
   独立进程，拿不到主程序的 `appsettings.json`。改桶 / 改前缀时，这一处和 `appsettings.json`、以及
   `Build/PackAppUpdate.py` 的 `DEFAULT_BASE_URL` **三处要一起改**。
 
+## 九、单文件版（SingleFile）迁移到安装版
+
+单文件形态是杀软误报最集中的分发方式，所以从 2.36.3 起，单文件构建的
+`SingleFileSelfUpdater` 在清单里发现 `kind=installer` 时优先走迁移，而不是继续替换 exe：
+
+1. 下载 `JASM_Setup_v<版本>.exe`；
+2. 等本进程退出后，用 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /NOLAUNCH=1`
+   静默安装到 `%LOCALAPPDATA%\Programs\JASM`；
+3. 安装成功（退出码 0 且目标 exe 存在）→ 删除旧的单文件 exe（如果它不在安装目录）→ 启动安装版；
+4. 安装失败 → 重新拉起旧 exe，用户继续用旧版。
+
+为了迁移链路能接上，**2.36.3 仍然必须发布 `SingleFile_JASM_v2.36.3.zip`**：≤2.36.2 的老客户端
+只认得 `kind=singleFile`，先让它们升到 2.36.3，下一次更新（2.36.4）才会走安装包迁移。
+
+从 2.36.4 起可以停止发布单文件 zip、只发 installer + folder；仍停留在 ≤2.36.2 且没升到
+2.36.3 的单文件用户需要手动下载安装包。迁移脚本的日志在
+`%TEMP%\JASM_Installer_Update\JASM_InstallerUpdate_Log.txt`。
+
 ## 参考
 
 - 桶的创建与域名：[`docs/mod-env-cdn-setup.md`](mod-env-cdn-setup.md)
