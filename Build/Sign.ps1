@@ -17,10 +17,10 @@
 # 两者都没有时脚本只打印警告并正常退出（PR 构建 / 未配置证书的开发机不应因此失败）。
 # 发布构建应该在 CI 里额外断言签名成功（signtool verify 已包含在本脚本末尾）。
 #
-# 用法：
-#   pwsh Build/Sign.ps1 -Path output/JASM -Recurse
-#   pwsh Build/Sign.ps1 -Path JASM_Setup_v2.36.2.exe
-#   pwsh Build/Sign.ps1 -Path output/JASM -Recurse,JASM_Setup_v2.36.2.exe   # 多个路径用逗号
+# 用法（本机没有 pwsh 时用 Windows PowerShell）：
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build/Sign.ps1 -Path output/JASM -Recurse
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build/Sign.ps1 -Path JASM_Setup_v2.36.2.exe
+#   # 多个路径用逗号：-Path output/JASM -Recurse,JASM_Setup_v2.36.2.exe
 
 [CmdletBinding()]
 param(
